@@ -14,12 +14,14 @@
  * limitations under the License.
  */
 
-import { ChildProcess, execSync } from 'child_process';
+import { ChildProcess } from 'child_process';
 import { EventEmitter } from 'events';
+import { helper } from '../helper';
 
 export class WebSocketWrapper {
   readonly wsEndpoint: string;
   private _bindings: (Map<any, any> | Set<any>)[];
+
   constructor(wsEndpoint: string, bindings: (Map<any, any>|Set<any>)[]) {
     this.wsEndpoint = wsEndpoint;
     this._bindings = bindings;
@@ -48,14 +50,13 @@ export class WebSocketWrapper {
 
 export class BrowserServer extends EventEmitter {
   private _process: ChildProcess;
-  private _gracefullyClose: () => Promise<void>;
-  private _webSocketWrapper: WebSocketWrapper | null;
+  private _gracefullyClose: (() => Promise<void>);
+  _webSocketWrapper: WebSocketWrapper | null = null;
 
-  constructor(process: ChildProcess, gracefullyClose: () => Promise<void>, webSocketWrapper: WebSocketWrapper | null) {
+  constructor(process: ChildProcess, gracefullyClose: () => Promise<void>) {
     super();
     this._process = process;
     this._gracefullyClose = gracefullyClose;
-    this._webSocketWrapper = webSocketWrapper;
   }
 
   process(): ChildProcess {
@@ -67,16 +68,7 @@ export class BrowserServer extends EventEmitter {
   }
 
   kill() {
-    if (this._process.pid && !this._process.killed) {
-      try {
-        if (process.platform === 'win32')
-          execSync(`taskkill /pid ${this._process.pid} /T /F`);
-        else
-          process.kill(-this._process.pid, 'SIGKILL');
-      } catch (e) {
-        // the process might have already stopped
-      }
-    }
+    helper.killProcess(this._process);
   }
 
   async close(): Promise<void> {
@@ -86,5 +78,13 @@ export class BrowserServer extends EventEmitter {
   async _checkLeaks(): Promise<void> {
     if (this._webSocketWrapper)
       await this._webSocketWrapper.checkLeaks();
+  }
+
+  async _closeOrKill(deadline: number): Promise<void> {
+    try {
+      await helper.waitWithDeadline(this.close(), '', deadline, ''); // The error message is ignored.
+    } catch (ignored) {
+      this.kill();
+    }
   }
 }

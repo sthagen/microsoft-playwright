@@ -18,7 +18,7 @@ const path = require('path');
 const InlineSource = require('./webpack-inline-source-plugin.js');
 
 module.exports = {
-  entry: path.join(__dirname, 'zsSelectorEngine.ts'),
+  entry: path.join(__dirname, 'injectedScript.ts'),
   devtool: 'source-map',
   module: {
     rules: [
@@ -36,10 +36,10 @@ module.exports = {
     extensions: [ '.tsx', '.ts', '.js' ]
   },
   output: {
-    filename: 'zsSelectorEngineSource.js',
-    path: path.resolve(__dirname, '../../lib/injected/generated')
+    filename: 'injectedScriptSource.js',
+    path: path.resolve(__dirname, '../../lib/injected/packed')
   },
   plugins: [
-    new InlineSource(path.join(__dirname, '..', 'generated', 'zsSelectorEngineSource.ts')),
+    new InlineSource(path.join(__dirname, '..', 'generated', 'injectedScriptSource.ts')),
   ]
 };

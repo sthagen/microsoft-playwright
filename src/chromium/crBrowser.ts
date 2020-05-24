@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import { BrowserBase } from '../browser';
+import { BrowserBase, BrowserOptions } from '../browser';
 import { assertBrowserContextIsNotOwned, BrowserContext, BrowserContextBase, BrowserContextOptions, validateBrowserContextOptions, verifyGeolocation } from '../browserContext';
 import { Events as CommonEvents } from '../events';
 import { assert, helper } from '../helper';
@@ -29,33 +29,34 @@ import { readProtocolStream } from './crProtocolHelper';
 import { Events } from './events';
 import { Protocol } from './protocol';
 import { CRExecutionContext } from './crExecutionContext';
-import { InnerLogger, logError } from '../logger';
+import { logError } from '../logger';
+import { CRDevTools } from './crDevTools';
 
 export class CRBrowser extends BrowserBase {
   readonly _connection: CRConnection;
   _session: CRSession;
   private _clientRootSessionPromise: Promise<CRSession> | null = null;
-  readonly _defaultContext: CRBrowserContext | null = null;
   readonly _contexts = new Map<string, CRBrowserContext>();
   _crPages = new Map<string, CRPage>();
   _backgroundPages = new Map<string, CRPage>();
   _serviceWorkers = new Map<string, CRServiceWorker>();
-  readonly _firstPagePromise: Promise<void>;
-  private _firstPageCallback = () => {};
+  _devtools?: CRDevTools;
 
   private _tracingRecording = false;
   private _tracingPath: string | null = '';
   private _tracingClient: CRSession | undefined;
-  readonly _isHeadful: boolean;
 
-  static async connect(transport: ConnectionTransport, isPersistent: boolean, logger: InnerLogger, options: { slowMo?: number, headless?: boolean } = {}): Promise<CRBrowser> {
-    const connection = new CRConnection(SlowMoTransport.wrap(transport, options.slowMo), logger);
-    const browser = new CRBrowser(connection, logger, isPersistent, !options.headless);
+  static async connect(transport: ConnectionTransport, options: BrowserOptions, devtools?: CRDevTools): Promise<CRBrowser> {
+    const connection = new CRConnection(SlowMoTransport.wrap(transport, options.slowMo), options.logger);
+    const browser = new CRBrowser(connection, options);
+    browser._devtools = devtools;
     const session = connection.rootSession;
-    if (!isPersistent) {
+    if (!options.persistent) {
       await session.send('Target.setAutoAttach', { autoAttach: true, waitForDebuggerOnStart: true, flatten: true });
       return browser;
     }
+
+    browser._defaultContext = new CRBrowserContext(browser, null, options.persistent);
 
     const existingTargetAttachPromises: Promise<any>[] = [];
     // First page, background pages and their service workers in the persistent context
@@ -78,6 +79,7 @@ export class CRBrowser extends BrowserBase {
     await Promise.all([
       startDiscover,
       autoAttachAndStopDiscover,
+      (browser._defaultContext as CRBrowserContext)._initialize(),
     ]);
 
     // Wait for initial targets to arrive.
@@ -85,14 +87,10 @@ export class CRBrowser extends BrowserBase {
     return browser;
   }
 
-  constructor(connection: CRConnection, logger: InnerLogger, isPersistent: boolean, isHeadful: boolean) {
-    super(logger);
+  constructor(connection: CRConnection, options: BrowserOptions) {
+    super(options);
     this._connection = connection;
     this._session = this._connection.rootSession;
-
-    if (isPersistent)
-      this._defaultContext = new CRBrowserContext(this, null, validateBrowserContextOptions({}));
-    this._isHeadful = isHeadful;
     this._connection.on(ConnectionEvents.Disconnected, () => {
       for (const context of this._contexts.values())
         context._browserClosed();
@@ -100,7 +98,6 @@ export class CRBrowser extends BrowserBase {
     });
     this._session.on('Target.attachedToTarget', this._onAttachedToTarget.bind(this));
     this._session.on('Target.detachedFromTarget', this._onDetachedFromTarget.bind(this));
-    this._firstPagePromise = new Promise(f => this._firstPageCallback = f);
   }
 
   async newContext(options: BrowserContextOptions = {}): Promise<BrowserContext> {
@@ -125,7 +122,12 @@ export class CRBrowser extends BrowserBase {
     if (!context) {
       // TODO: auto attach only to pages from our contexts.
       // assert(this._defaultContext);
-      context = this._defaultContext;
+      context = this._defaultContext as CRBrowserContext;
+    }
+
+    if (targetInfo.type === 'other' && targetInfo.url.startsWith('devtools://devtools') && this._devtools) {
+      this._devtools.install(session);
+      return;
     }
 
     if (targetInfo.type === 'other' || !context) {
@@ -153,14 +155,9 @@ export class CRBrowser extends BrowserBase {
 
     if (targetInfo.type === 'page') {
       const opener = targetInfo.openerId ? this._crPages.get(targetInfo.openerId) || null : null;
-      const crPage = new CRPage(session, targetInfo.targetId, context, opener, this._isHeadful);
+      const crPage = new CRPage(session, targetInfo.targetId, context, opener, !!this._options.headful);
       this._crPages.set(targetInfo.targetId, crPage);
-      if (opener && opener._initializedPage) {
-        for (const signalBarrier of opener._initializedPage._frameManager._signalBarriers)
-          signalBarrier.addPopup(crPage.pageOrError());
-      }
       crPage.pageOrError().then(() => {
-        this._firstPageCallback();
         context!.emit(CommonEvents.BrowserContext.Page, crPage._page);
         if (opener) {
           opener.pageOrError().then(openerPage => {
@@ -293,19 +290,17 @@ export class CRBrowserContext extends BrowserContextBase {
   }
 
   async _initialize() {
-    const promises: Promise<any>[] = [
-      this._browser._session.send('Browser.setDownloadBehavior', {
+    assert(!Array.from(this._browser._crPages.values()).some(page => page._browserContext === this));
+    const promises: Promise<any>[] = [];
+    if (this._browser._options.downloadsPath) {
+      promises.push(this._browser._session.send('Browser.setDownloadBehavior', {
         behavior: this._options.acceptDownloads ? 'allowAndName' : 'deny',
         browserContextId: this._browserContextId || undefined,
-        downloadPath: this._browser._downloadsPath
-      })
-    ];
+        downloadPath: this._browser._options.downloadsPath
+      }));
+    }
     if (this._options.permissions)
       promises.push(this.grantPermissions(this._options.permissions));
-    if (this._options.offline)
-      promises.push(this.setOffline(this._options.offline));
-    if (this._options.httpCredentials)
-      promises.push(this.setHTTPCredentials(this._options.httpCredentials));
     await Promise.all(promises);
   }
 
@@ -415,15 +410,7 @@ export class CRBrowserContext extends BrowserContextBase {
       await (page._delegate as CRPage).evaluateOnNewDocument(source);
   }
 
-  async exposeFunction(name: string, playwrightFunction: Function): Promise<void> {
-    for (const page of this.pages()) {
-      if (page._pageBindings.has(name))
-        throw new Error(`Function "${name}" has been already registered in one of the pages`);
-    }
-    if (this._pageBindings.has(name))
-      throw new Error(`Function "${name}" has been already registered`);
-    const binding = new PageBinding(name, playwrightFunction);
-    this._pageBindings.set(name, binding);
+  async _doExposeBinding(binding: PageBinding) {
     for (const page of this.pages())
       await (page._delegate as CRPage).exposeBinding(binding);
   }

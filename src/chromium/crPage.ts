@@ -21,7 +21,7 @@ import * as frames from '../frames';
 import { helper, RegisteredListener, assert } from '../helper';
 import * as network from '../network';
 import { CRSession, CRConnection, CRSessionEvents } from './crConnection';
-import { EVALUATION_SCRIPT_URL, CRExecutionContext } from './crExecutionContext';
+import { CRExecutionContext } from './crExecutionContext';
 import { CRNetworkManager } from './crNetworkManager';
 import { Page, Worker, PageBinding } from '../page';
 import { Protocol } from './protocol';
@@ -56,6 +56,13 @@ export class CRPage implements PageDelegate {
   private readonly _pagePromise: Promise<Page | Error>;
   _initializedPage: Page | null = null;
 
+  // Holds window features for the next popup being opened via window.open,
+  // until the popup target arrives. This could be racy if two oopifs
+  // simultaneously call window.open with window features: the order
+  // of their Page.windowOpen events is not guaranteed to match the order
+  // of new popup targets.
+  readonly _nextWindowOpenPopupFeatures: string[][] = [];
+
   constructor(client: CRSession, targetId: string, browserContext: CRBrowserContext, opener: CRPage | null, hasUIWindow: boolean) {
     this._targetId = targetId;
     this._opener = opener;
@@ -65,9 +72,15 @@ export class CRPage implements PageDelegate {
     this._coverage = new CRCoverage(client, browserContext);
     this._browserContext = browserContext;
     this._page = new Page(this, browserContext);
-    this._mainFrameSession = new FrameSession(this, client, targetId);
+    this._mainFrameSession = new FrameSession(this, client, targetId, null);
     this._sessions.set(targetId, this._mainFrameSession);
     client.once(CRSessionEvents.Disconnected, () => this._page._didDisconnect());
+    if (opener && browserContext._options.viewport !== null) {
+      const features = opener._nextWindowOpenPopupFeatures.shift() || [];
+      const viewportSize = helper.getViewportSizeFromWindowFeatures(features);
+      if (viewportSize)
+        this._page._state.viewportSize = viewportSize;
+    }
     this._pagePromise = this._mainFrameSession._initialize(hasUIWindow).then(() => this._initializedPage = this._page).catch(e => e);
   }
 
@@ -75,7 +88,7 @@ export class CRPage implements PageDelegate {
     await Promise.all(Array.from(this._sessions.values()).map(frame => cb(frame)));
   }
 
-  private _sessionForFrame(frame: frames.Frame): FrameSession {
+  _sessionForFrame(frame: frames.Frame): FrameSession {
     // Frame id equals target id.
     while (!this._sessions.has(frame._id)) {
       const parent = frame.parentFrame();
@@ -95,8 +108,9 @@ export class CRPage implements PageDelegate {
     // Frame id equals target id.
     const frame = this._page._frameManager.frame(targetId);
     assert(frame);
+    const parentSession = this._sessionForFrame(frame);
     this._page._frameManager.removeChildFramesRecursively(frame);
-    const frameSession = new FrameSession(this, session, targetId);
+    const frameSession = new FrameSession(this, session, targetId, parentSession);
     this._sessions.set(targetId, frameSession);
     frameSession._initialize(false).catch(e => e);
   }
@@ -254,7 +268,7 @@ export class CRPage implements PageDelegate {
     return this._sessionForHandle(handle)._getBoundingBox(handle);
   }
 
-  async scrollRectIntoViewIfNeeded(handle: dom.ElementHandle, rect?: types.Rect): Promise<void> {
+  async scrollRectIntoViewIfNeeded(handle: dom.ElementHandle, rect?: types.Rect): Promise<'success' | 'invisible'> {
     return this._sessionForHandle(handle)._scrollRectIntoViewIfNeeded(handle, rect);
   }
 
@@ -330,12 +344,12 @@ class FrameSession {
   private _firstNonInitialNavigationCommittedReject = (e: Error) => {};
   private _windowId: number | undefined;
 
-  constructor(crPage: CRPage, client: CRSession, targetId: string) {
+  constructor(crPage: CRPage, client: CRSession, targetId: string, parentSession: FrameSession | null) {
     this._client = client;
     this._crPage = crPage;
     this._page = crPage._page;
     this._targetId = targetId;
-    this._networkManager = new CRNetworkManager(client, this._page);
+    this._networkManager = new CRNetworkManager(client, this._page, parentSession ? parentSession._networkManager : null);
     this._firstNonInitialNavigationCommittedPromise = new Promise((f, r) => {
       this._firstNonInitialNavigationCommittedFulfill = f;
       this._firstNonInitialNavigationCommittedReject = r;
@@ -371,11 +385,12 @@ class FrameSession {
       helper.addEventListener(this._client, 'Runtime.executionContextsCleared', event => this._onExecutionContextsCleared()),
       helper.addEventListener(this._client, 'Target.attachedToTarget', event => this._onAttachedToTarget(event)),
       helper.addEventListener(this._client, 'Target.detachedFromTarget', event => this._onDetachedFromTarget(event)),
+      helper.addEventListener(this._client, 'Page.windowOpen', event => this._onWindowOpen(event)),
     ];
   }
 
   async _initialize(hasUIWindow: boolean) {
-    if (hasUIWindow) {
+    if (hasUIWindow && this._crPage._browserContext._options.viewport !== null) {
       const { windowId } = await this._client.send('Browser.getWindowForTarget');
       this._windowId = windowId;
     }
@@ -417,7 +432,7 @@ class FrameSession {
       lifecycleEventsEnabled = this._client.send('Page.setLifecycleEventsEnabled', { enabled: true }),
       this._client.send('Runtime.enable', {}),
       this._client.send('Page.addScriptToEvaluateOnNewDocument', {
-        source: `//# sourceURL=${EVALUATION_SCRIPT_URL}`,
+        source: js.generateSourceUrl(),
         worldName: UTILITY_WORLD_NAME,
       }),
       this._networkManager.initialize(),
@@ -429,7 +444,7 @@ class FrameSession {
       promises.push(this._client.send('Page.setBypassCSP', { enabled: true }));
     if (options.ignoreHTTPSErrors)
       promises.push(this._client.send('Security.setIgnoreCertificateErrors', { ignore: true }));
-    if (this._isMainFrame() && options.viewport)
+    if (this._isMainFrame())
       promises.push(this._updateViewport());
     if (options.hasTouch)
       promises.push(this._client.send('Emulation.setTouchEmulationEnabled', { enabled: true }));
@@ -500,7 +515,7 @@ class FrameSession {
   }
 
   _onFrameNavigated(framePayload: Protocol.Page.Frame, initial: boolean) {
-    this._page._frameManager.frameCommittedNewDocumentNavigation(framePayload.id, framePayload.url, framePayload.name || '', framePayload.loaderId, initial);
+    this._page._frameManager.frameCommittedNewDocumentNavigation(framePayload.id, framePayload.url + (framePayload.urlFragment || ''), framePayload.name || '', framePayload.loaderId, initial);
     if (!initial)
       this._firstNonInitialNavigationCommittedFulfill();
   }
@@ -577,7 +592,7 @@ class FrameSession {
       session.send('Runtime.runIfWaitingForDebugger'),
     ]).catch(logError(this._page));  // This might fail if the target is closed before we initialize.
     session.on('Runtime.consoleAPICalled', event => {
-      const args = event.args.map(o => worker._existingExecutionContext!._createHandle(o));
+      const args = event.args.map(o => worker._existingExecutionContext!.createHandle(o));
       this._page._addConsoleMessage(event.type, args, toConsoleMessageLocation(event.stackTrace));
     });
     session.on('Runtime.exceptionThrown', exception => this._page.emit(Events.Page.PageError, exceptionToError(exception.exceptionDetails)));
@@ -588,6 +603,10 @@ class FrameSession {
   _onDetachedFromTarget(event: Protocol.Target.detachedFromTargetPayload) {
     this._crPage.removeFrameSession(event.targetId!);
     this._page._removeWorker(event.sessionId);
+  }
+
+  _onWindowOpen(event: Protocol.Page.windowOpenPayload) {
+    this._crPage._nextWindowOpenPopupFeatures.push(event.windowFeatures);
   }
 
   async _onConsoleAPI(event: Protocol.Runtime.consoleAPICalledPayload) {
@@ -608,7 +627,7 @@ class FrameSession {
       return;
     }
     const context = this._contextIdToContext.get(event.executionContextId)!;
-    const values = event.args.map(arg => context._createHandle(arg));
+    const values = event.args.map(arg => context.createHandle(arg));
     this._page._addConsoleMessage(event.type, values, toConsoleMessageLocation(event.stackTrace));
   }
 
@@ -670,7 +689,7 @@ class FrameSession {
     }
     if (!originPage)
       return;
-    this._crPage._browserContext._browser._downloadCreated(originPage, payload.guid, payload.url);
+    this._crPage._browserContext._browser._downloadCreated(originPage, payload.guid, payload.url, payload.suggestedFilename);
   }
 
   _onDownloadProgress(payload: Protocol.Page.downloadProgressPayload) {
@@ -706,23 +725,23 @@ class FrameSession {
   async _updateViewport(): Promise<void> {
     assert(this._isMainFrame());
     const options = this._crPage._browserContext._options;
-    let viewport = options.viewport || { width: 0, height: 0 };
     const viewportSize = this._page._state.viewportSize;
-    if (viewportSize)
-      viewport = { ...viewport, ...viewportSize };
-    const isLandscape = viewport.width > viewport.height;
+    if (viewportSize === null)
+      return;
+    const isLandscape = viewportSize.width > viewportSize.height;
     const promises = [
       this._client.send('Emulation.setDeviceMetricsOverride', {
         mobile: !!options.isMobile,
-        width: viewport.width,
-        height: viewport.height,
-        screenWidth: viewport.width,
-        screenHeight: viewport.height,
+        width: viewportSize.width,
+        height: viewportSize.height,
+        screenWidth: viewportSize.width,
+        screenHeight: viewportSize.height,
         deviceScaleFactor: options.deviceScaleFactor || 1,
         screenOrientation: isLandscape ? { angle: 90, type: 'landscapePrimary' } : { angle: 0, type: 'portraitPrimary' },
       }),
     ];
     if (this._windowId) {
+      // TODO: popup windows have their own insets.
       let insets = { width: 24, height: 88 };
       if (process.platform === 'win32')
         insets = { width: 16, height: 88 };
@@ -733,7 +752,7 @@ class FrameSession {
 
       promises.push(this._client.send('Browser.setWindowBounds', {
         windowId: this._windowId,
-        bounds: { width: viewport.width + insets.width, height: viewport.height + insets.height }
+        bounds: { width: viewportSize.width + insets.width, height: viewportSize.height + insets.height }
       }));
     }
     await Promise.all(promises);
@@ -759,7 +778,7 @@ class FrameSession {
 
   async _getContentFrame(handle: dom.ElementHandle): Promise<frames.Frame | null> {
     const nodeInfo = await this._client.send('DOM.describeNode', {
-      objectId: toRemoteObject(handle).objectId
+      objectId: handle._remoteObject.objectId
     });
     if (!nodeInfo || typeof nodeInfo.node.frameId !== 'string')
       return null;
@@ -776,7 +795,7 @@ class FrameSession {
     });
     if (!documentElement)
       return null;
-    const remoteObject = toRemoteObject(documentElement);
+    const remoteObject = documentElement._remoteObject;
     if (!remoteObject.objectId)
       return null;
     const nodeInfo = await this._client.send('DOM.describeNode', {
@@ -790,7 +809,7 @@ class FrameSession {
 
   async _getBoundingBox(handle: dom.ElementHandle): Promise<types.Rect | null> {
     const result = await this._client.send('DOM.getBoxModel', {
-      objectId: toRemoteObject(handle).objectId
+      objectId: handle._remoteObject.objectId
     }).catch(logError(this._page));
     if (!result)
       return null;
@@ -802,15 +821,15 @@ class FrameSession {
     return {x, y, width, height};
   }
 
-  async _scrollRectIntoViewIfNeeded(handle: dom.ElementHandle, rect?: types.Rect): Promise<void> {
-    await this._client.send('DOM.scrollIntoViewIfNeeded', {
-      objectId: toRemoteObject(handle).objectId,
+  async _scrollRectIntoViewIfNeeded(handle: dom.ElementHandle, rect?: types.Rect): Promise<'success' | 'invisible'> {
+    return await this._client.send('DOM.scrollIntoViewIfNeeded', {
+      objectId: handle._remoteObject.objectId,
       rect,
-    }).catch(e => {
+    }).then(() => 'success' as const).catch(e => {
+      if (e instanceof Error && e.message.includes('Node does not have a layout object'))
+        return 'invisible';
       if (e instanceof Error && e.message.includes('Node is detached from document'))
         throw new NotConnectedError();
-      if (e instanceof Error && e.message.includes('Node does not have a layout object'))
-        e.message = 'Node is either not visible or not an HTMLElement';
       throw e;
     });
   }
@@ -820,7 +839,7 @@ class FrameSession {
 
   async _getContentQuads(handle: dom.ElementHandle): Promise<types.Quad[] | null> {
     const result = await this._client.send('DOM.getContentQuads', {
-      objectId: toRemoteObject(handle).objectId
+      objectId: handle._remoteObject.objectId
     }).catch(logError(this._page));
     if (!result)
       return null;
@@ -834,7 +853,7 @@ class FrameSession {
 
   async _adoptElementHandle<T extends Node>(handle: dom.ElementHandle<T>, to: dom.FrameExecutionContext): Promise<dom.ElementHandle<T>> {
     const nodeInfo = await this._client.send('DOM.describeNode', {
-      objectId: toRemoteObject(handle).objectId,
+      objectId: handle._remoteObject.objectId,
     });
     return this._adoptBackendNodeId(nodeInfo.node.backendNodeId, to) as Promise<dom.ElementHandle<T>>;
   }
@@ -846,12 +865,8 @@ class FrameSession {
     }).catch(logError(this._page));
     if (!result || result.object.subtype === 'null')
       throw new Error('Unable to adopt element handle from a different document');
-    return to._createHandle(result.object).asElement()!;
+    return to.createHandle(result.object).asElement()!;
   }
-}
-
-function toRemoteObject(handle: js.JSHandle): Protocol.Runtime.RemoteObject {
-  return handle._remoteObject as Protocol.Runtime.RemoteObject;
 }
 
 async function emulateLocale(session: CRSession, locale: string) {

@@ -102,6 +102,20 @@ describe('BrowserContext', function() {
     expect(await page.evaluate('window.innerHeight')).toBe(789);
     await context.close();
   });
+  it('should respect deviceScaleFactor', async({ browser }) => {
+    const context = await browser.newContext({ deviceScaleFactor: 3 });
+    const page = await context.newPage();
+    expect(await page.evaluate('window.devicePixelRatio')).toBe(3);
+    await context.close();
+  });
+  it('should not allow deviceScaleFactor with null viewport', async({ browser }) => {
+    const error = await browser.newContext({ viewport: null, deviceScaleFactor: 1 }).catch(e => e);
+    expect(error.message).toBe('"deviceScaleFactor" option is not supported with null "viewport"');
+  });
+  it('should not allow isMobile with null viewport', async({ browser }) => {
+    const error = await browser.newContext({ viewport: null, isMobile: true }).catch(e => e);
+    expect(error.message).toBe('"isMobile" option is not supported with null "viewport"');
+  });
   it('close() should work for empty context', async({ browser }) => {
     const context = await browser.newContext();
     await context.close();
@@ -318,16 +332,37 @@ describe('BrowserContext.pages()', function() {
   });
 });
 
+describe('BrowserContext.exposeBinding', () => {
+  it('should work', async({browser}) => {
+    const context = await browser.newContext();
+    let bindingSource;
+    await context.exposeBinding('add', (source, a, b) => {
+      bindingSource = source;
+      return a + b;
+    });
+    const page = await context.newPage();
+    const result = await page.evaluate(async function() {
+      return add(5, 6);
+    });
+    expect(bindingSource.context).toBe(context);
+    expect(bindingSource.page).toBe(page);
+    expect(bindingSource.frame).toBe(page.mainFrame());
+    expect(result).toEqual(11);
+    await context.close();
+  });
+});
+
 describe('BrowserContext.exposeFunction', () => {
   it('should work', async({browser, server}) => {
     const context = await browser.newContext();
     await context.exposeFunction('add', (a, b) => a + b);
     const page = await context.newPage();
     await page.exposeFunction('mul', (a, b) => a * b);
+    await context.exposeFunction('sub', (a, b) => a - b);
     const result = await page.evaluate(async function() {
-      return { mul: await mul(9, 4), add: await add(9, 4) };
+      return { mul: await mul(9, 4), add: await add(9, 4), sub: await sub(9, 4) };
     });
-    expect(result).toEqual({ mul: 36, add: 13 });
+    expect(result).toEqual({ mul: 36, add: 13, sub: 5 });
     await context.close();
   });
   it('should throw for duplicate registrations', async({browser, server}) => {
@@ -437,7 +472,7 @@ describe('BrowserContext.route', () => {
 });
 
 describe('BrowserContext.setHTTPCredentials', function() {
-  it('should work', async({browser, server}) => {
+  it.fail(CHROMIUM && !HEADLESS)('should work', async({browser, server}) => {
     server.setAuth('/empty.html', 'user', 'pass');
     const context = await browser.newContext();
     const page = await context.newPage();
@@ -467,7 +502,7 @@ describe('BrowserContext.setHTTPCredentials', function() {
     expect(response.status()).toBe(200);
     await context.close();
   });
-  it('should allow disable authentication', async({browser, server}) => {
+  it.fail(CHROMIUM && !HEADLESS)('should allow disable authentication', async({browser, server}) => {
     server.setAuth('/empty.html', 'user', 'pass');
     const context = await browser.newContext({
       httpCredentials: { username: 'user', password: 'pass' }
@@ -478,6 +513,32 @@ describe('BrowserContext.setHTTPCredentials', function() {
     await context.setHTTPCredentials(null);
     // Navigate to a different origin to bust Chromium's credential caching.
     response = await page.goto(server.CROSS_PROCESS_PREFIX + '/empty.html');
+    expect(response.status()).toBe(401);
+    await context.close();
+  });
+  it.fail(true)('should update', async({browser, server}) => {
+    server.setAuth('/empty.html', 'user', 'pass');
+    const context = await browser.newContext({
+      httpCredentials: { username: 'user', password: 'pass' }
+    });
+    const page = await context.newPage();
+    let response = await page.goto(server.EMPTY_PAGE);
+    expect(response.status()).toBe(200);
+    await context.setHTTPCredentials({ username: 'user', password: 'letmein' });
+    response = await page.goto(server.EMPTY_PAGE);
+    expect(response.status()).toBe(401);
+    await context.close();
+  });
+  it.fail(true)('should update to null', async({browser, server}) => {
+    server.setAuth('/empty.html', 'user', 'pass');
+    const context = await browser.newContext({
+      httpCredentials: { username: 'user', password: 'pass' }
+    });
+    const page = await context.newPage();
+    let response = await page.goto(server.EMPTY_PAGE);
+    expect(response.status()).toBe(200);
+    await context.setHTTPCredentials(null);
+    response = await page.goto(server.EMPTY_PAGE);
     expect(response.status()).toBe(401);
     await context.close();
   });

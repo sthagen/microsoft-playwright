@@ -16,7 +16,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const {FFOX, CHROMIUM, WEBKIT, MAC} = require('./utils').testOptions(browserType);
+const {FFOX, CHROMIUM, WEBKIT, MAC, WIN} = require('./utils').testOptions(browserType);
 
 describe('Download', function() {
   beforeEach(async(state) => {
@@ -25,16 +25,22 @@ describe('Download', function() {
       res.setHeader('Content-Disposition', 'attachment');
       res.end(`Hello world`);
     });
+    state.server.setRoute('/downloadWithFilename', (req, res) => {
+      res.setHeader('Content-Type', 'application/octet-stream');
+      res.setHeader('Content-Disposition', 'attachment; filename=file.txt');
+      res.end(`Hello world`);
+    });
   });
 
   it('should report downloads with acceptDownloads: false', async({page, server}) => {
-    await page.setContent(`<a href="${server.PREFIX}/download">download</a>`);
+    await page.setContent(`<a href="${server.PREFIX}/downloadWithFilename">download</a>`);
     const [ download ] = await Promise.all([
       page.waitForEvent('download'),
       page.click('a')
     ]);
     let error;
-    expect(download.url()).toBe(`${server.PREFIX}/download`);
+    expect(download.url()).toBe(`${server.PREFIX}/downloadWithFilename`);
+    expect(download.suggestedFilename()).toBe(`file.txt`);
     await download.path().catch(e => error = e);
     expect(await download.failure()).toContain('acceptDownloads');
     expect(error.message).toContain('acceptDownloads: true');
@@ -51,8 +57,8 @@ describe('Download', function() {
     expect(fs.readFileSync(path).toString()).toBe('Hello world');
     await page.close();
   });
-  it.fail(WEBKIT)('should report non-navigation downloads', async({browser, server}) => {
-    // Our WebKit embedder does not download in this case, although Safari does.
+  it('should report non-navigation downloads', async({browser, server}) => {
+    // Mac WebKit embedder does not download in this case, although Safari does.
     server.setRoute('/download', (req, res) => {
       res.setHeader('Content-Type', 'application/octet-stream');
       res.end(`Hello world`);
@@ -65,6 +71,7 @@ describe('Download', function() {
       page.waitForEvent('download'),
       page.click('a')
     ]);
+    expect(download.suggestedFilename()).toBe(`file.txt`);
     const path = await download.path();
     expect(fs.existsSync(path)).toBeTruthy();
     expect(fs.readFileSync(path).toString()).toBe('Hello world');
@@ -116,7 +123,7 @@ describe('Download', function() {
     expect(fs.readFileSync(path).toString()).toBe('Hello world');
     await page.close();
   });
-  it('should report new window downloads', async({browser, server}) => {
+  it.fail(CHROMIUM && !HEADLESS)('should report new window downloads', async({browser, server}) => {
     // TODO: - the test fails in headful Chromium as the popup page gets closed along
     // with the session before download completed event arrives.
     // - WebKit doesn't close the popup page

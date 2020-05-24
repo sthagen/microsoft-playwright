@@ -15,135 +15,67 @@
  * limitations under the License.
  */
 
-import * as fs from 'fs';
-import * as os from 'os';
 import * as path from 'path';
-import * as util from 'util';
-import { helper, assert } from '../helper';
+import { helper, assert, isDebugMode } from '../helper';
 import { CRBrowser } from '../chromium/crBrowser';
 import * as ws from 'ws';
-import { launchProcess } from './processLauncher';
+import { Env } from './processLauncher';
 import { kBrowserCloseMessageId } from '../chromium/crConnection';
-import { PipeTransport } from './pipeTransport';
-import { LaunchOptions, BrowserArgOptions, ConnectOptions, LaunchServerOptions, AbstractBrowserType } from './browserType';
-import { LaunchType } from '../browser';
-import { BrowserServer, WebSocketWrapper } from './browserServer';
-import { Events } from '../events';
-import { ConnectionTransport, ProtocolRequest, WebSocketTransport } from '../transport';
-import { BrowserContext } from '../browserContext';
-import { InnerLogger, logError, RootLogger } from '../logger';
+import { BrowserArgOptions, BrowserTypeBase, processBrowserArgOptions } from './browserType';
+import { WebSocketWrapper } from './browserServer';
+import { ConnectionTransport, ProtocolRequest } from '../transport';
+import { InnerLogger, logError } from '../logger';
 import { BrowserDescriptor } from '../install/browserPaths';
+import { CRDevTools } from '../chromium/crDevTools';
+import { BrowserOptions } from '../browser';
 
-export class Chromium extends AbstractBrowserType<CRBrowser> {
+export class Chromium extends BrowserTypeBase {
+  private _devtools: CRDevTools | undefined;
+
   constructor(packagePath: string, browser: BrowserDescriptor) {
-    super(packagePath, browser);
+    super(packagePath, browser, null /* use pipe not websocket */);
+    if (isDebugMode())
+      this._devtools = this._createDevTools();
   }
 
-  async launch(options: LaunchOptions = {}): Promise<CRBrowser> {
-    assert(!(options as any).userDataDir, 'userDataDir option is not supported in `browserType.launch`. Use `browserType.launchPersistentContext` instead');
-    const { browserServer, transport, downloadsPath, logger } = await this._launchServer(options, 'local');
-    const browser = await CRBrowser.connect(transport!, false, logger, options);
-    browser._ownedServer = browserServer;
-    browser._downloadsPath = downloadsPath;
-    return browser;
+  private _createDevTools() {
+    return new CRDevTools(path.join(this._browserPath, 'devtools-preferences.json'));
   }
 
-  async launchServer(options: LaunchServerOptions = {}): Promise<BrowserServer> {
-    return (await this._launchServer(options, 'server')).browserServer;
-  }
-
-  async launchPersistentContext(userDataDir: string, options: LaunchOptions = {}): Promise<BrowserContext> {
-    const { transport, browserServer, logger } = await this._launchServer(options, 'persistent', userDataDir);
-    const browser = await CRBrowser.connect(transport!, true, logger, options);
-    browser._ownedServer = browserServer;
-    await helper.waitWithTimeout(browser._firstPagePromise, 'first page', options.timeout || 30000);
-    return browser._defaultContext!;
-  }
-
-  private async _launchServer(options: LaunchServerOptions, launchType: LaunchType, userDataDir?: string): Promise<{ browserServer: BrowserServer, transport?: ConnectionTransport, downloadsPath: string, logger: InnerLogger }> {
-    const {
-      ignoreDefaultArgs = false,
-      args = [],
-      executablePath = null,
-      env = process.env,
-      handleSIGINT = true,
-      handleSIGTERM = true,
-      handleSIGHUP = true,
-      port = 0,
-    } = options;
-    assert(!port || launchType === 'server', 'Cannot specify a port without launching as a server.');
-    const logger = new RootLogger(options.logger);
-
-    let temporaryUserDataDir: string | null = null;
-    if (!userDataDir) {
-      userDataDir = await mkdtempAsync(CHROMIUM_PROFILE_PATH);
-      temporaryUserDataDir = userDataDir;
+  async _connectToTransport(transport: ConnectionTransport, options: BrowserOptions): Promise<CRBrowser> {
+    let devtools = this._devtools;
+    if ((options as any).__testHookForDevTools) {
+      devtools = this._createDevTools();
+      await (options as any).__testHookForDevTools(devtools);
     }
-
-    const chromeArguments = [];
-    if (!ignoreDefaultArgs)
-      chromeArguments.push(...this._defaultArgs(options, launchType, userDataDir));
-    else if (Array.isArray(ignoreDefaultArgs))
-      chromeArguments.push(...this._defaultArgs(options, launchType, userDataDir).filter(arg => ignoreDefaultArgs.indexOf(arg) === -1));
-    else
-      chromeArguments.push(...args);
-
-    const chromeExecutable = executablePath || this.executablePath();
-    if (!chromeExecutable)
-      throw new Error(`No executable path is specified. Pass "executablePath" option directly.`);
-    const { launchedProcess, gracefullyClose, downloadsPath } = await launchProcess({
-      executablePath: chromeExecutable,
-      args: chromeArguments,
-      env,
-      handleSIGINT,
-      handleSIGTERM,
-      handleSIGHUP,
-      logger,
-      pipe: true,
-      tempDir: temporaryUserDataDir || undefined,
-      attemptToGracefullyClose: async () => {
-        assert(browserServer);
-        // We try to gracefully close to prevent crash reporting and core dumps.
-        // Note that it's fine to reuse the pipe transport, since
-        // our connection ignores kBrowserCloseMessageId.
-        const t = transport!;
-        const message: ProtocolRequest = { method: 'Browser.close', id: kBrowserCloseMessageId, params: {} };
-        t.send(message);
-      },
-      onkill: (exitCode, signal) => {
-        if (browserServer)
-          browserServer.emit(Events.BrowserServer.Close, exitCode, signal);
-      },
-    });
-
-    let transport: PipeTransport | undefined = undefined;
-    let browserServer: BrowserServer | undefined = undefined;
-    const stdio = launchedProcess.stdio as unknown as [NodeJS.ReadableStream, NodeJS.WritableStream, NodeJS.WritableStream, NodeJS.WritableStream, NodeJS.ReadableStream];
-    transport = new PipeTransport(stdio[3], stdio[4], logger);
-    browserServer = new BrowserServer(launchedProcess, gracefullyClose, launchType === 'server' ? wrapTransportWithWebSocket(transport, logger, port) : null);
-    return { browserServer, transport, downloadsPath, logger };
+    return CRBrowser.connect(transport, options, devtools);
   }
 
-  async connect(options: ConnectOptions): Promise<CRBrowser> {
-    return await WebSocketTransport.connect(options.wsEndpoint, transport => {
-      return CRBrowser.connect(transport, false, new RootLogger(options.logger), options);
-    });
+  _amendEnvironment(env: Env, userDataDir: string, executable: string, browserArguments: string[]): Env {
+    const runningAsRoot = process.geteuid && process.geteuid() === 0;
+    assert(!runningAsRoot || browserArguments.includes('--no-sandbox'), 'Cannot launch Chromium as root without --no-sandbox. See https://crbug.com/638180.');
+    return env;
   }
 
-  private _defaultArgs(options: BrowserArgOptions = {}, launchType: LaunchType, userDataDir: string): string[] {
-    const {
-      devtools = false,
-      headless = !devtools,
-      args = [],
-    } = options;
+  _attemptToGracefullyCloseBrowser(transport: ConnectionTransport): void {
+    const message: ProtocolRequest = { method: 'Browser.close', id: kBrowserCloseMessageId, params: {} };
+    transport.send(message);
+  }
+
+  _wrapTransportWithWebSocket(transport: ConnectionTransport, logger: InnerLogger, port: number): WebSocketWrapper {
+    return wrapTransportWithWebSocket(transport, logger, port);
+  }
+
+  _defaultArgs(options: BrowserArgOptions, isPersistent: boolean, userDataDir: string): string[] {
+    const { devtools, headless } = processBrowserArgOptions(options);
+    const { args = [] } = options;
     const userDataDirArg = args.find(arg => arg.startsWith('--user-data-dir'));
     if (userDataDirArg)
       throw new Error('Pass userDataDir parameter instead of specifying --user-data-dir argument');
     if (args.find(arg => arg.startsWith('--remote-debugging-pipe')))
       throw new Error('Playwright manages remote debugging connection itself.');
-    if (launchType !== 'persistent' && args.find(arg => !arg.startsWith('-')))
+    if (args.find(arg => !arg.startsWith('-')))
       throw new Error('Arguments can not specify page to be opened');
-
     const chromeArguments = [...DEFAULT_ARGS];
     chromeArguments.push(`--user-data-dir=${userDataDir}`);
     chromeArguments.push('--remote-debugging-pipe');
@@ -157,26 +89,49 @@ export class Chromium extends AbstractBrowserType<CRBrowser> {
       );
     }
     chromeArguments.push(...args);
-    if (launchType === 'persistent') {
-      if (args.every(arg => arg.startsWith('-')))
-        chromeArguments.push('about:blank');
-    } else {
+    if (isPersistent)
+      chromeArguments.push('about:blank');
+    else
       chromeArguments.push('--no-startup-window');
-    }
-
     return chromeArguments;
   }
 }
+
+type SessionData = {
+  socket: ws,
+  children: Set<string>,
+  isBrowserSession: boolean,
+  parent?: string,
+};
 
 function wrapTransportWithWebSocket(transport: ConnectionTransport, logger: InnerLogger, port: number): WebSocketWrapper {
   const server = new ws.Server({ port });
   const guid = helper.guid();
 
   const awaitingBrowserTarget = new Map<number, ws>();
-  const sessionToSocket = new Map<string, ws>();
+  const sessionToData = new Map<string, SessionData>();
   const socketToBrowserSession = new Map<ws, { sessionId?: string, queue?: ProtocolRequest[] }>();
-  const browserSessions = new Set<string>();
   let lastSequenceNumber = 1;
+
+  function addSession(sessionId: string, socket: ws, parentSessionId?: string) {
+    sessionToData.set(sessionId, {
+      socket,
+      children: new Set(),
+      isBrowserSession: !parentSessionId,
+      parent: parentSessionId
+    });
+    if (parentSessionId)
+      sessionToData.get(parentSessionId)!.children.add(sessionId);
+  }
+
+  function removeSession(sessionId: string) {
+    const data = sessionToData.get(sessionId)!;
+    for (const child of data.children)
+      removeSession(child);
+    if (data.parent)
+      sessionToData.get(data.parent)!.children.delete(sessionId);
+    sessionToData.delete(sessionId);
+  }
 
   transport.onmessage = message => {
     if (typeof message.id === 'number' && awaitingBrowserTarget.has(message.id)) {
@@ -185,14 +140,13 @@ function wrapTransportWithWebSocket(transport: ConnectionTransport, logger: Inne
 
       const sessionId = message.result.sessionId;
       if (freshSocket.readyState !== ws.CLOSED && freshSocket.readyState !== ws.CLOSING) {
-        sessionToSocket.set(sessionId, freshSocket);
         const { queue } = socketToBrowserSession.get(freshSocket)!;
         for (const item of queue!) {
           item.sessionId = sessionId;
           transport.send(item);
         }
         socketToBrowserSession.set(freshSocket, { sessionId });
-        browserSessions.add(sessionId);
+        addSession(sessionId, freshSocket);
       } else {
         transport.send({
           id: ++lastSequenceNumber,
@@ -208,16 +162,16 @@ function wrapTransportWithWebSocket(transport: ConnectionTransport, logger: Inne
     if (!message.sessionId)
       return;
 
-    const socket = sessionToSocket.get(message.sessionId);
-    if (socket && socket.readyState !== ws.CLOSING) {
+    const data = sessionToData.get(message.sessionId);
+    if (data && data.socket.readyState !== ws.CLOSING) {
       if (message.method === 'Target.attachedToTarget')
-        sessionToSocket.set(message.params.sessionId, socket);
+        addSession(message.params.sessionId, data.socket, message.sessionId);
       if (message.method === 'Target.detachedFromTarget')
-        sessionToSocket.delete(message.params.sessionId);
+        removeSession(message.params.sessionId);
       // Strip session ids from the browser sessions.
-      if (browserSessions.has(message.sessionId))
+      if (data.isBrowserSession)
         delete message.sessionId;
-      socket.send(JSON.stringify(message));
+      data.socket.send(JSON.stringify(message));
     }
   };
 
@@ -271,8 +225,7 @@ function wrapTransportWithWebSocket(transport: ConnectionTransport, logger: Inne
       const session = socketToBrowserSession.get(socket);
       if (!session || !session.sessionId)
         return;
-      sessionToSocket.delete(session.sessionId);
-      browserSessions.delete(session.sessionId);
+      removeSession(session.sessionId);
       socketToBrowserSession.delete(socket);
       transport.send({
         id: ++lastSequenceNumber,
@@ -284,13 +237,9 @@ function wrapTransportWithWebSocket(transport: ConnectionTransport, logger: Inne
 
   const address = server.address();
   const wsEndpoint = typeof address === 'string' ? `${address}/${guid}` : `ws://127.0.0.1:${address.port}/${guid}`;
-  return new WebSocketWrapper(wsEndpoint, [awaitingBrowserTarget, sessionToSocket, socketToBrowserSession, browserSessions]);
+  return new WebSocketWrapper(wsEndpoint, [awaitingBrowserTarget, sessionToData, socketToBrowserSession]);
 }
 
-
-const mkdtempAsync = util.promisify(fs.mkdtemp);
-
-const CHROMIUM_PROFILE_PATH = path.join(os.tmpdir(), 'playwright_dev_profile-');
 
 const DEFAULT_ARGS = [
   '--disable-background-networking',

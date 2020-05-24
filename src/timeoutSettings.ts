@@ -57,10 +57,14 @@ export class TimeoutSettings {
 
   computeDeadline(options?: TimeoutOptions) {
     const { timeout } = options || {};
+    return TimeoutSettings.computeDeadline(typeof timeout === 'number' ? timeout : this._timeout());
+  }
+
+  static computeDeadline(timeout: number | undefined, defaultValue = 30000): number {
     if (timeout === 0)
       return Number.MAX_SAFE_INTEGER;
     else if (typeof timeout === 'number')
       return helper.monotonicTime() + timeout;
-    return helper.monotonicTime() + this._timeout();
+    return helper.monotonicTime() + defaultValue;
   }
 }

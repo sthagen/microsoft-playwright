@@ -50,7 +50,7 @@ describe('Frame.waitForFunction', function() {
       }
       return Date.now() - window.__startTime;
     }, {}, {polling});
-    expect(timeDelta).not.toBeLessThan(polling);
+    expect(await timeDelta.jsonValue()).not.toBeLessThan(polling);
   });
   it('should throw on polling:mutation', async({page, server}) => {
     const error = await page.waitForFunction(() => true, {}, {polling: 'mutation'}).catch(e => e);
@@ -341,7 +341,7 @@ describe('Frame.waitForSelector', function() {
     let error = null;
     await page.waitForSelector('div', { state: 'hidden', timeout: 1000 }).catch(e => error = e);
     expect(error).toBeTruthy();
-    expect(error.message).toContain('waiting for selector "[hidden] div" failed: timeout');
+    expect(error.message).toContain('waiting for selector "div" to be hidden failed: timeout');
   });
   it('should respond to node attribute mutation', async({page, server}) => {
     let divFound = false;

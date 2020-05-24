@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import { BrowserBase } from '../browser';
+import { BrowserBase, BrowserOptions } from '../browser';
 import { assertBrowserContextIsNotOwned, BrowserContext, BrowserContextBase, BrowserContextOptions, validateBrowserContextOptions, verifyGeolocation } from '../browserContext';
 import { Events } from '../events';
 import { assert, helper, RegisteredListener } from '../helper';
@@ -27,31 +27,31 @@ import { ConnectionEvents, FFConnection } from './ffConnection';
 import { headersArray } from './ffNetworkManager';
 import { FFPage } from './ffPage';
 import { Protocol } from './protocol';
-import { InnerLogger } from '../logger';
 
 export class FFBrowser extends BrowserBase {
   _connection: FFConnection;
   readonly _ffPages: Map<string, FFPage>;
-  readonly _defaultContext: FFBrowserContext | null = null;
   readonly _contexts: Map<string, FFBrowserContext>;
   private _eventListeners: RegisteredListener[];
-  readonly _firstPagePromise: Promise<void>;
-  private _firstPageCallback = () => {};
 
-  static async connect(transport: ConnectionTransport, logger: InnerLogger, attachToDefaultContext: boolean, slowMo?: number): Promise<FFBrowser> {
-    const connection = new FFConnection(SlowMoTransport.wrap(transport, slowMo), logger);
-    const browser = new FFBrowser(connection, logger, attachToDefaultContext);
-    await connection.send('Browser.enable', { attachToDefaultContext });
+  static async connect(transport: ConnectionTransport, options: BrowserOptions): Promise<FFBrowser> {
+    const connection = new FFConnection(SlowMoTransport.wrap(transport, options.slowMo), options.logger);
+    const browser = new FFBrowser(connection, options);
+    const promises: Promise<any>[] = [
+      connection.send('Browser.enable', { attachToDefaultContext: !!options.persistent }),
+    ];
+    if (options.persistent) {
+      browser._defaultContext = new FFBrowserContext(browser, null, options.persistent);
+      promises.push((browser._defaultContext as FFBrowserContext)._initialize());
+    }
+    await Promise.all(promises);
     return browser;
   }
 
-  constructor(connection: FFConnection, logger: InnerLogger, isPersistent: boolean) {
-    super(logger);
+  constructor(connection: FFConnection, options: BrowserOptions) {
+    super(options);
     this._connection = connection;
     this._ffPages = new Map();
-
-    if (isPersistent)
-      this._defaultContext = new FFBrowserContext(this, null, validateBrowserContextOptions({}));
     this._contexts = new Map();
     this._connection.on(ConnectionEvents.Disconnected, () => {
       for (const context of this._contexts.values())
@@ -64,7 +64,6 @@ export class FFBrowser extends BrowserBase {
       helper.addEventListener(this._connection, 'Browser.downloadCreated', this._onDownloadCreated.bind(this)),
       helper.addEventListener(this._connection, 'Browser.downloadFinished', this._onDownloadFinished.bind(this)),
     ];
-    this._firstPagePromise = new Promise(f => this._firstPageCallback = f);
   }
 
   isConnected(): boolean {
@@ -73,39 +72,9 @@ export class FFBrowser extends BrowserBase {
 
   async newContext(options: BrowserContextOptions = {}): Promise<BrowserContext> {
     options = validateBrowserContextOptions(options);
-    let viewport;
-    if (options.viewport) {
-      // TODO: remove isMobile from the protocol?
-      if (options.isMobile)
-        throw new Error('options.isMobile is not supported in Firefox');
-      viewport = {
-        viewportSize: { width: options.viewport.width, height: options.viewport.height },
-        deviceScaleFactor: options.deviceScaleFactor || 1,
-        isMobile: false,
-        hasTouch: !!options.hasTouch,
-      };
-    } else if (options.viewport !== null) {
-      viewport = {
-        viewportSize: { width: 1280, height: 720 },
-        deviceScaleFactor: 1,
-        isMobile: false,
-        hasTouch: false,
-      };
-    }
-    const { browserContextId } = await this._connection.send('Browser.createBrowserContext', {
-      userAgent: options.userAgent,
-      bypassCSP: options.bypassCSP,
-      ignoreHTTPSErrors: options.ignoreHTTPSErrors,
-      javaScriptDisabled: options.javaScriptEnabled === false ? true : undefined,
-      viewport,
-      locale: options.locale,
-      timezoneId: options.timezoneId,
-      removeOnDetach: true,
-      downloadOptions: {
-        behavior: options.acceptDownloads ? 'saveToDisk' : 'cancel',
-        downloadsDir: this._downloadsPath,
-      },
-    });
+    if (options.isMobile)
+      throw new Error('options.isMobile is not supported in Firefox');
+    const { browserContextId } = await this._connection.send('Browser.createBrowserContext', { removeOnDetach: true });
     const context = new FFBrowserContext(this, browserContextId, options);
     await context._initialize();
     this._contexts.set(browserContextId, context);
@@ -125,19 +94,14 @@ export class FFBrowser extends BrowserBase {
   _onAttachedToTarget(payload: Protocol.Browser.attachedToTargetPayload) {
     const {targetId, browserContextId, openerId, type} = payload.targetInfo;
     assert(type === 'page');
-    const context = browserContextId ? this._contexts.get(browserContextId)! : this._defaultContext;
+    const context = browserContextId ? this._contexts.get(browserContextId)! : this._defaultContext as FFBrowserContext;
     assert(context, `Unknown context id:${browserContextId}, _defaultContext: ${this._defaultContext}`);
     const session = this._connection.createSession(payload.sessionId, type);
     const opener = openerId ? this._ffPages.get(openerId)! : null;
     const ffPage = new FFPage(session, context, opener);
     this._ffPages.set(targetId, ffPage);
 
-    if (opener && opener._initializedPage) {
-      for (const signalBarrier of opener._initializedPage._frameManager._signalBarriers)
-        signalBarrier.addPopup(ffPage.pageOrError());
-    }
     ffPage.pageOrError().then(async () => {
-      this._firstPageCallback();
       const page = ffPage._page;
       context.emit(Events.BrowserContext.Page, page);
       if (!opener)
@@ -164,7 +128,7 @@ export class FFBrowser extends BrowserBase {
     }
     if (!originPage)
       return;
-    this._downloadCreated(originPage, payload.uuid, payload.url);
+    this._downloadCreated(originPage, payload.uuid, payload.url, payload.suggestedFileName);
   }
 
   _onDownloadFinished(payload: Protocol.Browser.downloadFinishedPayload) {
@@ -191,18 +155,52 @@ export class FFBrowserContext extends BrowserContextBase {
   }
 
   async _initialize() {
+    assert(!this._ffPages().length);
+    const browserContextId = this._browserContextId || undefined;
+    const promises: Promise<any>[] = [];
+    if (this._browser._options.downloadsPath) {
+      promises.push(this._browser._connection.send('Browser.setDownloadOptions', {
+        browserContextId,
+        downloadOptions: {
+          behavior: this._options.acceptDownloads ? 'saveToDisk' : 'cancel',
+          downloadsDir: this._browser._options.downloadsPath,
+        },
+      }));
+    }
+    if (this._options.viewport) {
+      const viewport = {
+        viewportSize: { width: this._options.viewport.width, height: this._options.viewport.height },
+        deviceScaleFactor: this._options.deviceScaleFactor || 1,
+      };
+      promises.push(this._browser._connection.send('Browser.setDefaultViewport', { browserContextId, viewport }));
+    }
+    if (this._options.hasTouch)
+      promises.push(this._browser._connection.send('Browser.setTouchOverride', { browserContextId, hasTouch: true }));
+    if (this._options.userAgent)
+      promises.push(this._browser._connection.send('Browser.setUserAgentOverride', { browserContextId, userAgent: this._options.userAgent }));
+    if (this._options.bypassCSP)
+      promises.push(this._browser._connection.send('Browser.setBypassCSP', { browserContextId, bypassCSP: true }));
+    if (this._options.ignoreHTTPSErrors)
+      promises.push(this._browser._connection.send('Browser.setIgnoreHTTPSErrors', { browserContextId, ignoreHTTPSErrors: true }));
+    if (this._options.javaScriptEnabled === false)
+      promises.push(this._browser._connection.send('Browser.setJavaScriptDisabled', { browserContextId, javaScriptDisabled: true }));
+    if (this._options.locale)
+      promises.push(this._browser._connection.send('Browser.setLocaleOverride', { browserContextId, locale: this._options.locale }));
+    if (this._options.timezoneId)
+      promises.push(this._browser._connection.send('Browser.setTimezoneOverride', { browserContextId, timezoneId: this._options.timezoneId }));
     if (this._options.permissions)
-      await this.grantPermissions(this._options.permissions);
+      promises.push(this.grantPermissions(this._options.permissions));
     if (this._options.extraHTTPHeaders || this._options.locale)
-      await this.setExtraHTTPHeaders(this._options.extraHTTPHeaders || {});
+      promises.push(this.setExtraHTTPHeaders(this._options.extraHTTPHeaders || {}));
     if (this._options.httpCredentials)
-      await this.setHTTPCredentials(this._options.httpCredentials);
+      promises.push(this.setHTTPCredentials(this._options.httpCredentials));
     if (this._options.geolocation)
-      await this.setGeolocation(this._options.geolocation);
+      promises.push(this.setGeolocation(this._options.geolocation));
     if (this._options.offline)
-      await this.setOffline(this._options.offline);
+      promises.push(this.setOffline(this._options.offline));
     if (this._options.colorScheme)
-      await this._setColorScheme(this._options.colorScheme);
+      promises.push(this._browser._connection.send('Browser.setColorScheme', { browserContextId, colorScheme: this._options.colorScheme }));
+    await Promise.all(promises);
   }
 
   _ffPages(): FFPage[] {
@@ -298,10 +296,6 @@ export class FFBrowserContext extends BrowserContextBase {
     await this._browser._connection.send('Browser.setOnlineOverride', { browserContextId: this._browserContextId || undefined, override: offline ? 'offline' : 'online' });
   }
 
-  async _setColorScheme(colorScheme?: types.ColorScheme): Promise<void> {
-    await this._browser._connection.send('Browser.setColorScheme', { browserContextId: this._browserContextId || undefined, colorScheme });
-  }
-
   async setHTTPCredentials(httpCredentials: types.Credentials | null): Promise<void> {
     this._options.httpCredentials = httpCredentials || undefined;
     await this._browser._connection.send('Browser.setHTTPCredentials', { browserContextId: this._browserContextId || undefined, credentials: httpCredentials });
@@ -313,16 +307,8 @@ export class FFBrowserContext extends BrowserContextBase {
     await this._browser._connection.send('Browser.addScriptToEvaluateOnNewDocument', { browserContextId: this._browserContextId || undefined, script: source });
   }
 
-  async exposeFunction(name: string, playwrightFunction: Function): Promise<void> {
-    for (const page of this.pages()) {
-      if (page._pageBindings.has(name))
-        throw new Error(`Function "${name}" has been already registered in one of the pages`);
-    }
-    if (this._pageBindings.has(name))
-      throw new Error(`Function "${name}" has been already registered`);
-    const binding = new PageBinding(name, playwrightFunction);
-    this._pageBindings.set(name, binding);
-    await this._browser._connection.send('Browser.addBinding', { browserContextId: this._browserContextId || undefined, name, script: binding.source });
+  async _doExposeBinding(binding: PageBinding) {
+    await this._browser._connection.send('Browser.addBinding', { browserContextId: this._browserContextId || undefined, name: binding.name, script: binding.source });
   }
 
   async route(url: types.URLMatch, handler: network.RouteHandler): Promise<void> {

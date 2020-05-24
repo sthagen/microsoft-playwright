@@ -16,7 +16,7 @@
  */
 
 import * as frames from '../frames';
-import { helper, RegisteredListener, assert } from '../helper';
+import { helper, RegisteredListener, assert, debugAssert } from '../helper';
 import * as dom from '../dom';
 import * as network from '../network';
 import { WKSession } from './wkConnection';
@@ -68,6 +68,10 @@ export class WKPage implements PageDelegate {
   _firstNonInitialNavigationCommittedReject = (e: Error) => {};
   private _lastConsoleMessage: { derivedType: string, text: string, handles: JSHandle[]; count: number, location: ConsoleMessageLocation; } | null = null;
 
+  // Holds window features for the next popup being opened via window.open,
+  // until the popup page proxy arrives.
+  private _nextWindowOpenPopupFeatures?: string[];
+
   constructor(browserContext: WKBrowserContext, pageProxySession: WKSession, opener: WKPage | null) {
     this._pageProxySession = pageProxySession;
     this._opener = opener;
@@ -90,6 +94,12 @@ export class WKPage implements PageDelegate {
       this._firstNonInitialNavigationCommittedFulfill = f;
       this._firstNonInitialNavigationCommittedReject = r;
     });
+    if (opener && browserContext._options.viewport !== null && opener._nextWindowOpenPopupFeatures) {
+      const viewportSize = helper.getViewportSizeFromWindowFeatures(opener._nextWindowOpenPopupFeatures);
+      opener._nextWindowOpenPopupFeatures = undefined;
+      if (viewportSize)
+        this._page._state.viewportSize = viewportSize;
+    }
   }
 
   private async _initializePageProxySession() {
@@ -100,8 +110,7 @@ export class WKPage implements PageDelegate {
     const contextOptions = this._browserContext._options;
     if (contextOptions.javaScriptEnabled === false)
       promises.push(this._pageProxySession.send('Emulation.setJavaScriptEnabled', { enabled: false }));
-    if (this._page._state.viewportSize || contextOptions.viewport)
-      promises.push(this._updateViewport());
+    promises.push(this._updateViewport());
     promises.push(this.updateHttpCredentials());
     if (this._browserContext._permissions.size) {
       for (const [key, value] of this._browserContext._permissions)
@@ -120,9 +129,11 @@ export class WKPage implements PageDelegate {
 
   // This method is called for provisional targets as well. The session passed as the parameter
   // may be different from the current session and may be destroyed without becoming current.
-  async _initializeSession(session: WKSession, resourceTreeHandler: (r: Protocol.Page.getResourceTreeReturnValue) => void) {
+  async _initializeSession(session: WKSession, provisional: boolean, resourceTreeHandler: (r: Protocol.Page.getResourceTreeReturnValue) => void) {
     await this._initializeSessionMayThrow(session, resourceTreeHandler).catch(e => {
-      if (session.isDisposed())
+      // Provisional session can be disposed at any time, for example due to new navigation initiating
+      // a new provisional page.
+      if (provisional && session.isDisposed())
         return;
       // Swallow initialization errors due to newer target swap in,
       // since we will reinitialize again.
@@ -242,6 +253,11 @@ export class WKPage implements PageDelegate {
     this._page._frameManager.provisionalLoadFailed(this._page.mainFrame(), event.loaderId, errorText);
   }
 
+  handleWindowOpen(event: Protocol.Playwright.windowOpenPayload) {
+    debugAssert(!this._nextWindowOpenPopupFeatures);
+    this._nextWindowOpenPopupFeatures = event.windowFeatures;
+  }
+
   async pageOrError(): Promise<Page | Error> {
     return this._pagePromise;
   }
@@ -264,7 +280,7 @@ export class WKPage implements PageDelegate {
         this._setSession(session);
         await Promise.all([
           this._initializePageProxySession(),
-          this._initializeSession(session, ({frameTree}) => this._handleFrameTree(frameTree)),
+          this._initializeSession(session, false, ({frameTree}) => this._handleFrameTree(frameTree)),
         ]);
         pageOrError = this._page;
       } catch (e) {
@@ -310,6 +326,7 @@ export class WKPage implements PageDelegate {
   }
 
   private _addSessionListeners() {
+    // TODO: remove Page.willRequestOpenWindow and Page.didRequestOpenWindow from the protocol.
     this._sessionListeners = [
       helper.addEventListener(this._session, 'Page.frameNavigated', event => this._onFrameNavigated(event.frame, false)),
       helper.addEventListener(this._session, 'Page.navigatedWithinDocument', event => this._onFrameNavigatedWithinDocument(event.frameId, event.url)),
@@ -319,8 +336,6 @@ export class WKPage implements PageDelegate {
       helper.addEventListener(this._session, 'Page.frameStoppedLoading', event => this._onFrameStoppedLoading(event.frameId)),
       helper.addEventListener(this._session, 'Page.loadEventFired', event => this._onLifecycleEvent(event.frameId, 'load')),
       helper.addEventListener(this._session, 'Page.domContentEventFired', event => this._onLifecycleEvent(event.frameId, 'domcontentloaded')),
-      helper.addEventListener(this._session, 'Page.willRequestOpenWindow', event => this._onWillRequestOpenWindow()),
-      helper.addEventListener(this._session, 'Page.didRequestOpenWindow', event => this._onDidRequestOpenWindow(event)),
       helper.addEventListener(this._session, 'Runtime.executionContextCreated', event => this._onExecutionContextCreated(event.context)),
       helper.addEventListener(this._session, 'Console.messageAdded', event => this._onConsoleMessage(event)),
       helper.addEventListener(this._session, 'Console.messageRepeatCountUpdated', event => this._onConsoleRepeatCountUpdated(event)),
@@ -362,18 +377,6 @@ export class WKPage implements PageDelegate {
 
   private _onLifecycleEvent(frameId: string, event: types.LifecycleEvent) {
     this._page._frameManager.frameLifecycleEvent(frameId, event);
-  }
-
-  private _onWillRequestOpenWindow() {
-    for (const barrier of this._page._frameManager._signalBarriers)
-      barrier.expectPopup();
-  }
-
-  private _onDidRequestOpenWindow(event: Protocol.Page.didRequestOpenWindowPayload) {
-    if (!event.opened) {
-      for (const barrier of this._page._frameManager._signalBarriers)
-        barrier.unexpectPopup();
-    }
   }
 
   private _handleFrameTree(frameTree: Protocol.Page.FrameResourceTree) {
@@ -485,7 +488,7 @@ export class WKPage implements PageDelegate {
       } else {
         context = this._contextIdToContext.get(this._mainFrameContextId!)!;
       }
-      return context._createHandle(p);
+      return context.createHandle(p);
     });
     this._lastConsoleMessage = {
       derivedType,
@@ -528,7 +531,7 @@ export class WKPage implements PageDelegate {
 
   private async _onFileChooserOpened(event: {frameId: Protocol.Network.FrameId, element: Protocol.Runtime.RemoteObject}) {
     const context = await this._page._frameManager.frame(event.frameId)!._mainContext();
-    const handle = context._createHandle(event.element).asElement()!;
+    const handle = context.createHandle(event.element).asElement()!;
     this._page._onFileChooserOpened(handle);
   }
 
@@ -573,24 +576,23 @@ export class WKPage implements PageDelegate {
 
   async _updateViewport(): Promise<void> {
     const options = this._browserContext._options;
-    let viewport = options.viewport || { width: 0, height: 0 };
     const viewportSize = this._page._state.viewportSize;
-    if (viewportSize)
-      viewport = { ...viewport, ...viewportSize };
+    if (viewportSize === null)
+      return;
     const promises: Promise<any>[] = [
       this._pageProxySession.send('Emulation.setDeviceMetricsOverride', {
-        width: viewport.width,
-        height: viewport.height,
+        width: viewportSize.width,
+        height: viewportSize.height,
         fixedLayout: !!options.isMobile,
         deviceScaleFactor: options.deviceScaleFactor || 1
       }),
       this._session.send('Page.setScreenSizeOverride', {
-        width: viewport.width,
-        height: viewport.height,
+        width: viewportSize.width,
+        height: viewportSize.height,
       }),
     ];
     if (options.isMobile) {
-      const angle = viewport.width > viewport.height ? 90 : 0;
+      const angle = viewportSize.width > viewportSize.height ? 90 : 0;
       promises.push(this._session.send('Page.setOrientationOverride', { angle }));
     }
     await Promise.all(promises);
@@ -748,15 +750,15 @@ export class WKPage implements PageDelegate {
     return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
   }
 
-  async scrollRectIntoViewIfNeeded(handle: dom.ElementHandle, rect?: types.Rect): Promise<void> {
-    await this._session.send('DOM.scrollIntoViewIfNeeded', {
+  async scrollRectIntoViewIfNeeded(handle: dom.ElementHandle, rect?: types.Rect): Promise<'success' | 'invisible'> {
+    return await this._session.send('DOM.scrollIntoViewIfNeeded', {
       objectId: toRemoteObject(handle).objectId!,
       rect,
-    }).catch(e => {
+    }).then(() => 'success' as const).catch(e => {
+      if (e instanceof Error && e.message.includes('Node does not have a layout object'))
+        return 'invisible';
       if (e instanceof Error && e.message.includes('Node is detached from document'))
         throw new NotConnectedError();
-      if (e instanceof Error && e.message.includes('Node does not have a layout object'))
-        e.message = 'Node is either not visible or not an HTMLElement';
       throw e;
     });
   }
@@ -798,7 +800,7 @@ export class WKPage implements PageDelegate {
     }).catch(logError(this._page));
     if (!result || result.object.subtype === 'null')
       throw new Error('Unable to adopt element handle from a different document');
-    return to._createHandle(result.object) as dom.ElementHandle<T>;
+    return to.createHandle(result.object) as dom.ElementHandle<T>;
   }
 
   async getAccessibilityTree(needle?: dom.ElementHandle): Promise<{tree: accessibility.AXNode, needle: accessibility.AXNode | null}> {

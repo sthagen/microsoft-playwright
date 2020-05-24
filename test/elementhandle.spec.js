@@ -19,7 +19,7 @@ const utils = require('./utils');
 const {FFOX, CHROMIUM, WEBKIT} = require('./utils').testOptions(browserType);
 
 describe('ElementHandle.boundingBox', function() {
-  it('should work', async({page, server}) => {
+  it.fail(FFOX && !HEADLESS)('should work', async({page, server}) => {
     await page.setViewportSize({width: 500, height: 500});
     await page.goto(server.PREFIX + '/grid.html');
     const elementHandle = await page.$('.box:nth-of-type(13)');
@@ -254,25 +254,25 @@ describe('ElementHandle.click', function() {
     await button.click().catch(err => error = err);
     expect(error.message).toContain('Element is not attached to the DOM');
   });
-  it('should throw for hidden nodes', async({page, server}) => {
+  it('should throw for hidden nodes with force', async({page, server}) => {
     await page.goto(server.PREFIX + '/input/button.html');
     const button = await page.$('button');
     await page.evaluate(button => button.style.display = 'none', button);
     const error = await button.click({ force: true }).catch(err => err);
-    expect(error.message).toBe('Node is either not visible or not an HTMLElement');
+    expect(error.message).toBe('Element is not visible');
   });
-  it('should throw for recursively hidden nodes', async({page, server}) => {
+  it('should throw for recursively hidden nodes with force', async({page, server}) => {
     await page.goto(server.PREFIX + '/input/button.html');
     const button = await page.$('button');
     await page.evaluate(button => button.parentElement.style.display = 'none', button);
     const error = await button.click({ force: true }).catch(err => err);
-    expect(error.message).toBe('Node is either not visible or not an HTMLElement');
+    expect(error.message).toBe('Element is not visible');
   });
-  it('should throw for <br> elements', async({page, server}) => {
+  it('should throw for <br> elements with force', async({page, server}) => {
     await page.setContent('hello<br>goodbye');
     const br = await page.$('br');
     const error = await br.click({ force: true }).catch(err => err);
-    expect(error.message).toBe('Node is either not visible or not an HTMLElement');
+    expect(error.message).toBe('Element is outside of the viewport');
   });
 });
 
@@ -366,20 +366,24 @@ describe('ElementHandle convenience API', function() {
     await page.goto(`${server.PREFIX}/dom.html`);
     const handle = await page.$('#outer');
     expect(await handle.getAttribute('name')).toBe('value');
+    expect(await page.getAttribute('#outer', 'name')).toBe('value');
   });
   it('innerHTML should work', async({page, server}) => {
     await page.goto(`${server.PREFIX}/dom.html`);
     const handle = await page.$('#outer');
     expect(await handle.innerHTML()).toBe('<div id="inner">Text,\nmore text</div>');
+    expect(await page.innerHTML('#outer')).toBe('<div id="inner">Text,\nmore text</div>');
   });
   it('innerText should work', async({page, server}) => {
     await page.goto(`${server.PREFIX}/dom.html`);
     const handle = await page.$('#inner');
     expect(await handle.innerText()).toBe('Text, more text');
+    expect(await page.innerText('#inner')).toBe('Text, more text');
   });
   it('textContent should work', async({page, server}) => {
     await page.goto(`${server.PREFIX}/dom.html`);
     const handle = await page.$('#inner');
     expect(await handle.textContent()).toBe('Text,\nmore text');
+    expect(await page.textContent('#inner')).toBe('Text,\nmore text');
   });
 });

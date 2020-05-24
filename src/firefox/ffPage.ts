@@ -62,6 +62,7 @@ export class FFPage implements PageDelegate {
     this._page = new Page(this, browserContext);
     this._networkManager = new FFNetworkManager(session, this._page);
     this._page.on(Events.Page.FrameDetached, frame => this._removeContextsForFrame(frame));
+    // TODO: remove Page.willOpenNewWindowAsynchronously from the protocol.
     this._eventListeners = [
       helper.addEventListener(this._session, 'Page.eventFired', this._onEventFired.bind(this)),
       helper.addEventListener(this._session, 'Page.frameAttached', this._onFrameAttached.bind(this)),
@@ -73,7 +74,6 @@ export class FFPage implements PageDelegate {
       helper.addEventListener(this._session, 'Runtime.executionContextCreated', this._onExecutionContextCreated.bind(this)),
       helper.addEventListener(this._session, 'Runtime.executionContextDestroyed', this._onExecutionContextDestroyed.bind(this)),
       helper.addEventListener(this._session, 'Page.linkClicked', event => this._onLinkClicked(event.phase)),
-      helper.addEventListener(this._session, 'Page.willOpenNewWindowAsynchronously', this._onWillOpenNewWindowAsynchronously.bind(this)),
       helper.addEventListener(this._session, 'Page.uncaughtError', this._onUncaughtError.bind(this)),
       helper.addEventListener(this._session, 'Runtime.console', this._onConsole.bind(this)),
       helper.addEventListener(this._session, 'Page.dialogOpened', this._onDialogOpened.bind(this)),
@@ -136,11 +136,6 @@ export class FFPage implements PageDelegate {
       this._page._frameManager.frameDidPotentiallyRequestNavigation();
   }
 
-  _onWillOpenNewWindowAsynchronously() {
-    for (const barrier of this._page._frameManager._signalBarriers)
-      barrier.expectPopup();
-  }
-
   _onNavigationStarted(params: Protocol.Page.navigationStartedPayload) {
     this._page._frameManager.frameRequestedNavigation(params.frameId, params.navigationId);
   }
@@ -189,7 +184,7 @@ export class FFPage implements PageDelegate {
   _onConsole(payload: Protocol.Runtime.consolePayload) {
     const {type, args, executionContextId, location} = payload;
     const context = this._contextIdToContext.get(executionContextId)!;
-    this._page._addConsoleMessage(type, args.map(arg => context._createHandle(arg)), location);
+    this._page._addConsoleMessage(type, args.map(arg => context.createHandle(arg)), location);
   }
 
   _onDialogOpened(params: Protocol.Page.dialogOpenedPayload) {
@@ -210,7 +205,7 @@ export class FFPage implements PageDelegate {
   async _onFileChooserOpened(payload: Protocol.Page.fileChooserOpenedPayload) {
     const {executionContextId, element} = payload;
     const context = this._contextIdToContext.get(executionContextId)!;
-    const handle = context._createHandle(element).asElement()!;
+    const handle = context.createHandle(element).asElement()!;
     this._page._onFileChooserOpened(handle);
   }
 
@@ -234,7 +229,7 @@ export class FFPage implements PageDelegate {
     workerSession.on('Runtime.console', event => {
       const {type, args, location} = event;
       const context = worker._existingExecutionContext!;
-      this._page._addConsoleMessage(type, args.map(arg => context._createHandle(arg)), location);
+      this._page._addConsoleMessage(type, args.map(arg => context.createHandle(arg)), location);
     });
     // Note: we receive worker exceptions directly from the page.
   }
@@ -378,7 +373,7 @@ export class FFPage implements PageDelegate {
   async getContentFrame(handle: dom.ElementHandle): Promise<frames.Frame | null> {
     const { contentFrameId } = await this._session.send('Page.describeNode', {
       frameId: handle._context.frame._id,
-      objectId: toRemoteObject(handle).objectId!,
+      objectId: handle._remoteObject.objectId!,
     });
     if (!contentFrameId)
       return null;
@@ -388,7 +383,7 @@ export class FFPage implements PageDelegate {
   async getOwnerFrame(handle: dom.ElementHandle): Promise<string | null> {
     const { ownerFrameId } = await this._session.send('Page.describeNode', {
       frameId: handle._context.frame._id,
-      objectId: toRemoteObject(handle).objectId!,
+      objectId: handle._remoteObject.objectId!,
     });
     return ownerFrameId || null;
   }
@@ -416,12 +411,12 @@ export class FFPage implements PageDelegate {
     return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
   }
 
-  async scrollRectIntoViewIfNeeded(handle: dom.ElementHandle, rect?: types.Rect): Promise<void> {
-    await this._session.send('Page.scrollIntoViewIfNeeded', {
+  async scrollRectIntoViewIfNeeded(handle: dom.ElementHandle, rect?: types.Rect): Promise<'success' | 'invisible'> {
+    return await this._session.send('Page.scrollIntoViewIfNeeded', {
       frameId: handle._context.frame._id,
-      objectId: toRemoteObject(handle).objectId!,
+      objectId: handle._remoteObject.objectId!,
       rect,
-    }).catch(e => {
+    }).then(() => 'success' as const).catch(e => {
       if (e instanceof Error && e.message.includes('Node is detached from document'))
         throw new NotConnectedError();
       throw e;
@@ -438,7 +433,7 @@ export class FFPage implements PageDelegate {
   async getContentQuads(handle: dom.ElementHandle): Promise<types.Quad[] | null> {
     const result = await this._session.send('Page.getContentQuads', {
       frameId: handle._context.frame._id,
-      objectId: toRemoteObject(handle).objectId!,
+      objectId: handle._remoteObject.objectId!,
     }).catch(logError(this._page));
     if (!result)
       return null;
@@ -457,12 +452,12 @@ export class FFPage implements PageDelegate {
   async adoptElementHandle<T extends Node>(handle: dom.ElementHandle<T>, to: dom.FrameExecutionContext): Promise<dom.ElementHandle<T>> {
     const result = await this._session.send('Page.adoptNode', {
       frameId: handle._context.frame._id,
-      objectId: toRemoteObject(handle).objectId!,
+      objectId: handle._remoteObject.objectId!,
       executionContextId: (to._delegate as FFExecutionContext)._executionContextId
     });
     if (!result.remoteObject)
       throw new Error('Unable to adopt element handle from a different document');
-    return to._createHandle(result.remoteObject) as dom.ElementHandle<T>;
+    return to.createHandle(result.remoteObject) as dom.ElementHandle<T>;
   }
 
   async getAccessibilityTree(needle?: dom.ElementHandle) {
@@ -487,8 +482,4 @@ export class FFPage implements PageDelegate {
       throw new Error('Frame has been detached.');
     return result.handle;
   }
-}
-
-function toRemoteObject(handle: dom.ElementHandle): Protocol.Runtime.RemoteObject {
-  return handle._remoteObject;
 }

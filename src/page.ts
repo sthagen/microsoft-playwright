@@ -68,7 +68,7 @@ export interface PageDelegate {
   setInputFiles(handle: dom.ElementHandle<HTMLInputElement>, files: types.FilePayload[]): Promise<void>;
   getBoundingBox(handle: dom.ElementHandle): Promise<types.Rect | null>;
   getFrameElement(frame: frames.Frame): Promise<dom.ElementHandle>;
-  scrollRectIntoViewIfNeeded(handle: dom.ElementHandle, rect?: types.Rect): Promise<void>;
+  scrollRectIntoViewIfNeeded(handle: dom.ElementHandle, rect?: types.Rect): Promise<'success' | 'invisible'>;
   setActivityPaused(paused: boolean): Promise<void>;
   rafCountForStablePosition(): number;
 
@@ -120,15 +120,8 @@ export class Page extends ExtendedEventEmitter implements InnerLogger {
     this._disconnectedCallback = () => {};
     this._disconnectedPromise = new Promise(f => this._disconnectedCallback = f);
     this._browserContext = browserContext;
-    let viewportSize: types.Size | null = null;
-    if (browserContext._options.viewport) {
-      viewportSize = {
-        width: browserContext._options.viewport.width,
-        height: browserContext._options.viewport.height,
-      };
-    }
     this._state = {
-      viewportSize,
+      viewportSize: browserContext._options.viewport ? { ...browserContext._options.viewport } : null,
       mediaType: null,
       colorScheme: null,
       extraHTTPHeaders: null,
@@ -260,11 +253,15 @@ export class Page extends ExtendedEventEmitter implements InnerLogger {
   }
 
   async exposeFunction(name: string, playwrightFunction: Function) {
+    await this.exposeBinding(name, (options, ...args: any) => playwrightFunction(...args));
+  }
+
+  async exposeBinding(name: string, playwrightBinding: frames.FunctionWithSource) {
     if (this._pageBindings.has(name))
       throw new Error(`Function "${name}" has been already registered`);
     if (this._browserContext._pageBindings.has(name))
       throw new Error(`Function "${name}" has been already registered in the browser context`);
-    const binding = new PageBinding(name, playwrightFunction);
+    const binding = new PageBinding(name, playwrightBinding);
     this._pageBindings.set(name, binding);
     await this._delegate.exposeBinding(binding);
   }
@@ -274,7 +271,7 @@ export class Page extends ExtendedEventEmitter implements InnerLogger {
     return this._delegate.updateExtraHTTPHeaders();
   }
 
-  async _onBindingCalled(payload: string, context: js.ExecutionContext) {
+  async _onBindingCalled(payload: string, context: dom.FrameExecutionContext) {
     await PageBinding.dispatch(this, payload, context);
   }
 
@@ -459,6 +456,22 @@ export class Page extends ExtendedEventEmitter implements InnerLogger {
     return this.mainFrame().focus(selector, options);
   }
 
+  async textContent(selector: string, options?: types.TimeoutOptions): Promise<null|string> {
+    return this.mainFrame().textContent(selector, options);
+  }
+
+  async innerText(selector: string, options?: types.TimeoutOptions): Promise<string> {
+    return this.mainFrame().innerText(selector, options);
+  }
+
+  async innerHTML(selector: string, options?: types.TimeoutOptions): Promise<string> {
+    return this.mainFrame().innerHTML(selector, options);
+  }
+
+  async getAttribute(selector: string, name: string, options?: types.TimeoutOptions): Promise<string | null> {
+    return this.mainFrame().getAttribute(selector, name, options);
+  }
+
   async hover(selector: string, options?: dom.PointerActionOptions & types.PointerActionWaitOptions) {
     return this.mainFrame().hover(selector, options);
   }
@@ -587,23 +600,23 @@ export class Worker extends EventEmitter {
 
 export class PageBinding {
   readonly name: string;
-  readonly playwrightFunction: Function;
+  readonly playwrightFunction: frames.FunctionWithSource;
   readonly source: string;
 
-  constructor(name: string, playwrightFunction: Function) {
+  constructor(name: string, playwrightFunction: frames.FunctionWithSource) {
     this.name = name;
     this.playwrightFunction = playwrightFunction;
     this.source = helper.evaluationString(addPageBinding, name);
   }
 
-  static async dispatch(page: Page, payload: string, context: js.ExecutionContext) {
+  static async dispatch(page: Page, payload: string, context: dom.FrameExecutionContext) {
     const {name, seq, args} = JSON.parse(payload);
     let expression = null;
     try {
       let binding = page._pageBindings.get(name);
       if (!binding)
         binding = page._browserContext._pageBindings.get(name);
-      const result = await binding!.playwrightFunction(...args);
+      const result = await binding!.playwrightFunction({ frame: context.frame, page, context: page._browserContext }, ...args);
       expression = helper.evaluationString(deliverResult, name, seq, result);
     } catch (error) {
       if (error instanceof Error)

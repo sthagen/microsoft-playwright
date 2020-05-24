@@ -15,7 +15,7 @@
  */
 
 const path = require('path');
-const playwright = require('../../../..');
+const playwright = require('../../../../');
 const checkPublicAPI = require('..');
 const Source = require('../../Source');
 const mdBuilder = require('../MDBuilder');

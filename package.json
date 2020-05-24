@@ -1,5 +1,6 @@
 {
-  "name": "playwright-core",
+  "name": "playwright-internal",
+  "private": true,
   "version": "1.0.0-post",
   "description": "A high-level API to automate web browsers",
   "repository": "github:Microsoft/playwright",
@@ -7,7 +8,6 @@
   "engines": {
     "node": ">=10.15.0"
   },
-  "main": "index.js",
   "scripts": {
     "ctest": "cross-env BROWSER=chromium node --unhandled-rejections=strict test/test.js",
     "ftest": "cross-env BROWSER=firefox node --unhandled-rejections=strict test/test.js",
@@ -65,6 +65,7 @@
     "colors": "^1.4.0",
     "commonmark": "^0.28.1",
     "cross-env": "^5.0.5",
+    "electron": "^9.0.0-beta.24",
     "eslint": "^6.6.0",
     "esprima": "^4.0.0",
     "formidable": "^1.2.1",

@@ -18,7 +18,7 @@
 const path = require('path');
 const util = require('util');
 const vm = require('vm');
-const {FFOX, CHROMIUM, WEBKIT} = require('./utils').testOptions(browserType);
+const {FFOX, CHROMIUM, WEBKIT, WIN} = require('./utils').testOptions(browserType);
 
 describe('Page.close', function() {
   it('should reject all promises when page is closed', async({context}) => {
@@ -105,7 +105,9 @@ describe('Async stacks', () => {
   });
 });
 
-describe('Page.Events.Crash', function() {
+describe.fail(FFOX && WIN)('Page.Events.Crash', function() {
+  // Firefox Win: it just doesn't crash sometimes.
+
   function crash(page) {
     if (CHROMIUM)
       page.goto('chrome://crash').catch(e => {});
@@ -345,6 +347,16 @@ describe('Page.waitForRequest', function() {
   });
 });
 
+describe('Page.waitForEvent', function() {
+  it('should fail with error upon disconnect', async({page, server}) => {
+    let error;
+    const waitForPromise = page.waitForEvent('download').catch(e => error = e);
+    await page.close();
+    await waitForPromise;
+    expect(error.message).toContain('Target closed');
+  });
+});
+
 describe('Page.waitForResponse', function() {
   it('should work', async({page, server}) => {
     await page.goto(server.EMPTY_PAGE);
@@ -392,6 +404,26 @@ describe('Page.waitForResponse', function() {
       }, 50))
     ]);
     expect(response.url()).toBe(server.PREFIX + '/digits/2.png');
+  });
+});
+
+describe('Page.exposeBinding', () => {
+  it('should work', async({browser}) => {
+    const context = await browser.newContext();
+    const page = await context.newPage();
+    let bindingSource;
+    await page.exposeBinding('add', (source, a, b) => {
+      bindingSource = source;
+      return a + b;
+    });
+    const result = await page.evaluate(async function() {
+      return add(5, 6);
+    });
+    expect(bindingSource.context).toBe(context);
+    expect(bindingSource.page).toBe(page);
+    expect(bindingSource.frame).toBe(page.mainFrame());
+    expect(result).toEqual(11);
+    await context.close();
   });
 });
 
@@ -527,6 +559,37 @@ describe('Page.Events.PageError', function() {
       page.goto(server.PREFIX + '/error.html'),
     ]);
     expect(error.stack).toContain('myscript.js');
+  });
+  it('should handle odd values', async ({page}) => {
+    const cases = [
+      [null, 'null'],
+      [undefined, 'undefined'],
+      [0, '0'],
+      ['', ''],
+    ];
+    for (const [value, message] of cases) {
+      const [error] = await Promise.all([
+        page.waitForEvent('pageerror'),
+        page.evaluate(value => setTimeout(() => { throw value; }, 0), value),
+      ]);
+      expect(error.message).toBe(FFOX ? 'uncaught exception: ' + message : message);
+    }
+  });
+  it.fail(FFOX)('should handle object', async ({page}) => {
+    // Firefox just does not report this error.
+    const [error] = await Promise.all([
+      page.waitForEvent('pageerror'),
+      page.evaluate(() => setTimeout(() => { throw {}; }, 0)),
+    ]);
+    expect(error.message).toBe(CHROMIUM ? 'Object' : '[object Object]');
+  });
+  it.fail(FFOX)('should handle window', async ({page}) => {
+    // Firefox just does not report this error.
+    const [error] = await Promise.all([
+      page.waitForEvent('pageerror'),
+      page.evaluate(() => setTimeout(() => { throw window; }, 0)),
+    ]);
+    expect(error.message).toBe(CHROMIUM ? 'Window' : '[object Window]');
   });
 });
 
@@ -676,8 +739,8 @@ describe('Page.addScriptTag', function() {
     expect(await page.evaluate(() => __injected)).toBe(35);
   });
 
-  // Firefox fires onload for blocked script before it issues the CSP console error.
-  it('should throw when added with content to the CSP page', async({page, server}) => {
+  it.fail(FFOX && WIN)('should throw when added with content to the CSP page', async({page, server}) => {
+    // Firefox fires onload for blocked script before it issues the CSP console error.
     await page.goto(server.PREFIX + '/csp.html');
     let error = null;
     await page.addScriptTag({ content: 'window.__injected = 35;' }).catch(e => error = e);
@@ -769,6 +832,14 @@ describe('Page.url', function() {
     expect(page.url()).toBe('about:blank');
     await page.goto(server.EMPTY_PAGE);
     expect(page.url()).toBe(server.EMPTY_PAGE);
+  });
+  it('should include hashes', async({page, server}) => {
+    await page.goto(server.EMPTY_PAGE + '#hash');
+    expect(page.url()).toBe(server.EMPTY_PAGE + '#hash');
+    await page.evaluate(() => {
+      window.location.hash = "dynamic";
+    });
+    expect(page.url()).toBe(server.EMPTY_PAGE + '#dynamic');
   });
 });
 
@@ -1165,3 +1236,4 @@ describe('Page api coverage', function() {
     expect(await frame.evaluate(() => document.querySelector('textarea').value)).toBe('a');
   });
 });
+

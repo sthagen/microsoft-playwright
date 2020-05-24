@@ -16,6 +16,8 @@
  */
 
 const fs = require('fs');
+const path = require('path');
+const utils = require('./utils');
 const TestRunner = require('../utils/testrunner/');
 const {Environment} = require('../utils/testrunner/Test');
 
@@ -72,24 +74,23 @@ function collect(browserNames) {
 
   // TODO: this should be a preinstalled playwright by default.
   const playwrightPath = config.playwrightPath;
-  const playwright = require(playwrightPath);
+  const playwright = require('..');
   const { setUnderTest } = require(require('path').join(playwrightPath, 'lib/helper.js'));
   setUnderTest();
 
   const playwrightEnvironment = new Environment('Playwright');
   playwrightEnvironment.beforeAll(async state => {
     state.playwright = playwright;
-    global.playwright = playwright;
   });
   playwrightEnvironment.afterAll(async state => {
     delete state.playwright;
-    delete global.playwright;
   });
 
   testRunner.collector().useEnvironment(playwrightEnvironment);
   for (const e of config.globalEnvironments || [])
     testRunner.collector().useEnvironment(e);
 
+  global.playwright = playwright;
   for (const browserName of browserNames) {
     const browserType = playwright[browserName];
     const browserTypeEnvironment = new Environment('BrowserType');
@@ -120,17 +121,8 @@ function collect(browserNames) {
 
     const browserEnvironment = new Environment(browserName);
     browserEnvironment.beforeAll(async state => {
-      state._logger = null;
-      state.browser = await state.browserType.launch({...launchOptions, logger: {
-        isEnabled: (name, severity) => {
-          return name === 'browser' ||
-              (name === 'protocol' && config.dumpProtocolOnFailure);
-        },
-        log: (name, severity, message, args) => {
-          if (state._logger)
-            state._logger(name, severity, message);
-        }
-      }});
+      state._logger = utils.createTestLogger(config.dumpProtocolOnFailure);
+      state.browser = await state.browserType.launch({...launchOptions, logger: state._logger});
     });
     browserEnvironment.afterAll(async state => {
       await state.browser.close();
@@ -138,23 +130,10 @@ function collect(browserNames) {
       delete state._logger;
     });
     browserEnvironment.beforeEach(async(state, testRun) => {
-      state._logger = (name, severity, message) => {
-        if (name === 'browser') {
-          if (severity === 'warning')
-            testRun.log(`\x1b[31m[browser]\x1b[0m ${message}`)
-          else
-            testRun.log(`\x1b[33m[browser]\x1b[0m ${message}`)
-        } else if (name === 'protocol' && config.dumpProtocolOnFailure) {
-          testRun.log(`\x1b[32m[protocol]\x1b[0m ${message}`)
-        }
-      }
+      state._logger.setTestRun(testRun);
     });
     browserEnvironment.afterEach(async (state, testRun) => {
-      state._logger = null;
-      if (config.dumpProtocolOnFailure) {
-        if (testRun.ok())
-          testRun.output().splice(0);
-      }
+      state._logger.setTestRun(null);
     });
 
     const pageEnvironment = new Environment('Page');
@@ -171,7 +150,6 @@ function collect(browserNames) {
     const suiteName = { 'chromium': 'Chromium', 'firefox': 'Firefox', 'webkit': 'WebKit' }[browserName];
     describe(suiteName, () => {
       // In addition to state, expose these two on global so that describes can access them.
-      global.playwright = playwright;
       global.browserType = browserType;
       global.HEADLESS = !!launchOptions.headless;
 
@@ -199,7 +177,6 @@ function collect(browserNames) {
 
       delete global.HEADLESS;
       delete global.browserType;
-      delete global.playwright;
     });
   }
   for (const [key, value] of Object.entries(testRunner.api())) {

@@ -21,9 +21,6 @@ import { valueFromRemoteObject, getExceptionMessage, releaseObject } from './crP
 import { Protocol } from './protocol';
 import * as js from '../javascript';
 
-export const EVALUATION_SCRIPT_URL = '__playwright_evaluation_script__';
-const SOURCE_URL_REGEX = /^[\040\t]*\/\/[@#] sourceURL=\s*(\S*?)\s*$/m;
-
 export class CRExecutionContext implements js.ExecutionContextDelegate {
   _client: CRSession;
   _contextId: number;
@@ -33,23 +30,22 @@ export class CRExecutionContext implements js.ExecutionContextDelegate {
     this._contextId = contextPayload.id;
   }
 
-  async evaluate(context: js.ExecutionContext, returnByValue: boolean, pageFunction: Function | string, ...args: any[]): Promise<any> {
-    const suffix = `//# sourceURL=${EVALUATION_SCRIPT_URL}`;
+  async rawEvaluate(expression: string): Promise<js.RemoteObject> {
+    const { exceptionDetails, result: remoteObject } = await this._client.send('Runtime.evaluate', {
+      expression: js.ensureSourceUrl(expression),
+      contextId: this._contextId,
+    }).catch(rewriteError);
+    if (exceptionDetails)
+      throw new Error('Evaluation failed: ' + getExceptionMessage(exceptionDetails));
+    return remoteObject;
+  }
 
+  async evaluate(context: js.ExecutionContext, returnByValue: boolean, pageFunction: Function | string, ...args: any[]): Promise<any> {
     if (helper.isString(pageFunction)) {
-      const contextId = this._contextId;
-      const expression: string = pageFunction;
-      const expressionWithSourceUrl = SOURCE_URL_REGEX.test(expression) ? expression : expression + '\n' + suffix;
-      const {exceptionDetails, result: remoteObject} = await this._client.send('Runtime.evaluate', {
-        expression: expressionWithSourceUrl,
-        contextId,
-        returnByValue,
-        awaitPromise: true,
-        userGesture: true
-      }).catch(rewriteError);
-      if (exceptionDetails)
-        throw new Error('Evaluation failed: ' + getExceptionMessage(exceptionDetails));
-      return returnByValue ? valueFromRemoteObject(remoteObject) : context._createHandle(remoteObject);
+      return this._callOnUtilityScript(context,
+          `evaluate`, [
+            { value: js.ensureSourceUrl(pageFunction) },
+          ], returnByValue, () => { });
     }
 
     if (typeof pageFunction !== 'function')
@@ -77,13 +73,23 @@ export class CRExecutionContext implements js.ExecutionContextDelegate {
       return { value };
     });
 
-    try {
-      const { exceptionDetails, result: remoteObject } = await this._client.send('Runtime.callFunctionOn', {
-        functionDeclaration: functionText + '\n' + suffix + '\n',
-        executionContextId: this._contextId,
-        arguments: [
+    return this._callOnUtilityScript(context,
+        'callFunction', [
+          { value: functionText },
           ...values.map(value => ({ value })),
           ...handles,
+        ], returnByValue, dispose);
+  }
+
+  private async _callOnUtilityScript(context: js.ExecutionContext, method: string, args: Protocol.Runtime.CallArgument[], returnByValue: boolean, dispose: () => void) {
+    try {
+      const utilityScript = await context.utilityScript();
+      const { exceptionDetails, result: remoteObject } = await this._client.send('Runtime.callFunctionOn', {
+        functionDeclaration: `function (...args) { return this.${method}(...args) }${js.generateSourceUrl()}`,
+        objectId: utilityScript._remoteObject.objectId,
+        arguments: [
+          { value: returnByValue },
+          ...args
         ],
         returnByValue,
         awaitPromise: true,
@@ -91,22 +97,9 @@ export class CRExecutionContext implements js.ExecutionContextDelegate {
       }).catch(rewriteError);
       if (exceptionDetails)
         throw new Error('Evaluation failed: ' + getExceptionMessage(exceptionDetails));
-      return returnByValue ? valueFromRemoteObject(remoteObject) : context._createHandle(remoteObject);
+      return returnByValue ? valueFromRemoteObject(remoteObject) : context.createHandle(remoteObject);
     } finally {
       dispose();
-    }
-
-    function rewriteError(error: Error): Protocol.Runtime.evaluateReturnValue {
-      if (error.message.includes('Object reference chain is too long'))
-        return {result: {type: 'undefined'}};
-      if (error.message.includes('Object couldn\'t be returned by value'))
-        return {result: {type: 'undefined'}};
-
-      if (error.message.endsWith('Cannot find context with specified id') || error.message.endsWith('Inspected target navigated or closed') || error.message.endsWith('Execution context was destroyed.'))
-        throw new Error('Execution context was destroyed, most likely because of a navigation.');
-      if (error instanceof TypeError && error.message.startsWith('Converting circular structure to JSON'))
-        error.message += ' Are you passing a nested JSHandle?';
-      throw error;
     }
   }
 
@@ -122,7 +115,7 @@ export class CRExecutionContext implements js.ExecutionContextDelegate {
     for (const property of response.result) {
       if (!property.enumerable)
         continue;
-      result.set(property.name, handle._context._createHandle(property.value));
+      result.set(property.name, handle._context.createHandle(property.value));
     }
     return result;
   }
@@ -157,4 +150,17 @@ export class CRExecutionContext implements js.ExecutionContextDelegate {
 
 function toRemoteObject(handle: js.JSHandle): Protocol.Runtime.RemoteObject {
   return handle._remoteObject as Protocol.Runtime.RemoteObject;
+}
+
+function rewriteError(error: Error): Protocol.Runtime.evaluateReturnValue {
+  if (error.message.includes('Object reference chain is too long'))
+    return {result: {type: 'undefined'}};
+  if (error.message.includes('Object couldn\'t be returned by value'))
+    return {result: {type: 'undefined'}};
+
+  if (error.message.endsWith('Cannot find context with specified id') || error.message.endsWith('Inspected target navigated or closed') || error.message.endsWith('Execution context was destroyed.'))
+    throw new Error('Execution context was destroyed, most likely because of a navigation.');
+  if (error instanceof TypeError && error.message.startsWith('Converting circular structure to JSON'))
+    error.message += ' Are you passing a nested JSHandle?';
+  throw error;
 }

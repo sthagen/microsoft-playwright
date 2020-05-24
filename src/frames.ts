@@ -28,6 +28,7 @@ import { Page } from './page';
 import { selectors } from './selectors';
 import * as types from './types';
 import { waitForTimeoutWasUsed } from './hints';
+import { BrowserContext } from './browserContext';
 
 type ContextType = 'main' | 'utility';
 type ContextData = {
@@ -45,6 +46,8 @@ export type GotoResult = {
 };
 
 type ConsoleTagHandler = () => void;
+
+export type FunctionWithSource = (source: { context: BrowserContext, page: Page, frame: Frame}, ...args: any) => any;
 
 export class FrameManager {
   private _page: Page;
@@ -215,8 +218,13 @@ export class FrameManager {
     this._inflightRequestStarted(request);
     for (const task of request.frame()._frameTasks)
       task.onRequest(request);
-    if (!request._isFavicon)
-      this._page._requestStarted(request);
+    if (request._isFavicon) {
+      const route = request._route();
+      if (route)
+        route.continue();
+      return;
+    }
+    this._page._requestStarted(request);
   }
 
   requestReceivedResponse(response: network.Response) {
@@ -443,7 +451,7 @@ export class Frame {
 
     const deadline = this._page._timeoutSettings.computeDeadline(options);
     const { world, task } = selectors._waitForSelectorTask(selector, state, deadline);
-    const result = await this._scheduleRerunnableTask(task, world, deadline, `selector "${selectorToString(selector, state)}"`);
+    const result = await this._scheduleRerunnableTask(task, world, deadline, `selector "${selector}"${state === 'attached' ? '' : ' to be ' + state}`);
     if (!result.asElement()) {
       result.dispose();
       return null;
@@ -461,7 +469,7 @@ export class Frame {
   async dispatchEvent(selector: string, type: string, eventInit?: Object, options?: types.TimeoutOptions): Promise<void> {
     const deadline = this._page._timeoutSettings.computeDeadline(options);
     const task = selectors._dispatchEventTask(selector, type, eventInit || {}, deadline);
-    const result = await this._scheduleRerunnableTask(task, 'main', deadline, `selector "${selectorToString(selector, 'attached')}"`);
+    const result = await this._scheduleRerunnableTask(task, 'main', deadline, `selector "${selector}"`);
     result.dispose();
   }
 
@@ -730,6 +738,26 @@ export class Frame {
         (handle, deadline) => handle.focus());
   }
 
+  async textContent(selector: string, options: types.TimeoutOptions = {}): Promise<null|string> {
+    return await this._retryWithSelectorIfNotConnected('textContent', selector, options,
+        (handle, deadline) => handle.textContent());
+  }
+
+  async innerText(selector: string, options: types.TimeoutOptions = {}): Promise<string> {
+    return await this._retryWithSelectorIfNotConnected('innerText', selector, options,
+        (handle, deadline) => handle.innerText());
+  }
+
+  async innerHTML(selector: string, options: types.TimeoutOptions = {}): Promise<string> {
+    return await this._retryWithSelectorIfNotConnected('innerHTML', selector, options,
+        (handle, deadline) => handle.innerHTML());
+  }
+
+  async getAttribute(selector: string, name: string, options: types.TimeoutOptions = {}): Promise<string | null> {
+    return await this._retryWithSelectorIfNotConnected('getAttribute', selector, options,
+        (handle, deadline) => handle.getAttribute(name) as Promise<string>);
+  }
+
   async hover(selector: string, options: dom.PointerActionOptions & types.PointerActionWaitOptions = {}) {
     await this._retryWithSelectorIfNotConnected('hover', selector, options,
         (handle, deadline) => handle.hover(helper.optionsWithUpdatedTimeout(options, deadline)));
@@ -786,7 +814,7 @@ export class Frame {
     const task = async (context: dom.FrameExecutionContext) => context.evaluateHandleInternal(({ injected, predicateBody, polling, timeout, arg }) => {
       const innerPredicate = new Function('arg', predicateBody);
       return injected.poll(polling, timeout, () => innerPredicate(arg));
-    }, { injected: await context._injected(), predicateBody, polling, timeout: helper.timeUntilDeadline(deadline), arg });
+    }, { injected: await context.injectedScript(), predicateBody, polling, timeout: helper.timeUntilDeadline(deadline), arg });
     return this._scheduleRerunnableTask(task, 'main', deadline) as any as types.SmartHandle<R>;
   }
 
@@ -942,22 +970,9 @@ class RerunnableTask {
   }
 }
 
-function selectorToString(selector: string, state: 'attached' | 'detached' | 'visible' | 'hidden'): string {
-  let label;
-  switch (state) {
-    case 'visible': label = '[visible] '; break;
-    case 'hidden': label = '[hidden] '; break;
-    case 'attached': label = ''; break;
-    case 'detached': label = '[detached]'; break;
-  }
-  return `${label}${selector}`;
-}
-
 export class SignalBarrier {
-  private _frameIds = new Map<string, number>();
   private _options: types.NavigatingActionWaitOptions;
   private _protectCount = 0;
-  private _expectedPopups = 0;
   private _promise: Promise<void>;
   private _promiseCallback = () => {};
   private _deadline: number;
@@ -981,23 +996,6 @@ export class SignalBarrier {
     this.release();
   }
 
-  async expectPopup() {
-    ++this._expectedPopups;
-  }
-
-  async unexpectPopup() {
-    --this._expectedPopups;
-    this._maybeResolve();
-  }
-
-  async addPopup(pageOrError: Promise<Page | Error>) {
-    if (this._expectedPopups)
-      --this._expectedPopups;
-    this.retain();
-    await pageOrError;
-    this.release();
-  }
-
   retain() {
     ++this._protectCount;
   }
@@ -1008,7 +1006,7 @@ export class SignalBarrier {
   }
 
   private async _maybeResolve() {
-    if (!this._protectCount && !this._expectedPopups && !this._frameIds.size)
+    if (!this._protectCount)
       this._promiseCallback();
   }
 }

@@ -16,10 +16,7 @@
  */
 
 import * as childProcess from 'child_process';
-import { Log, InnerLogger } from '../logger';
-import * as fs from 'fs';
-import * as os from 'os';
-import * as path from 'path';
+import { Log, RootLogger } from '../logger';
 import * as readline from 'readline';
 import * as removeFolder from 'rimraf';
 import * as stream from 'stream';
@@ -28,8 +25,6 @@ import { TimeoutError } from '../errors';
 import { helper } from '../helper';
 
 const removeFolderAsync = util.promisify(removeFolder);
-const mkdtempAsync = util.promisify(fs.mkdtemp);
-const DOWNLOADS_FOLDER = path.join(os.tmpdir(), 'playwright_downloads-');
 
 const browserLog: Log = {
   name: 'browser',
@@ -44,31 +39,39 @@ const browserStdErrLog: Log = {
   severity: 'warning'
 };
 
+export type Env = {[key: string]: string | number | boolean | undefined};
 
 export type LaunchProcessOptions = {
   executablePath: string,
   args: string[],
-  env?: {[key: string]: string | number | boolean | undefined},
+  env?: Env,
 
   handleSIGINT?: boolean,
   handleSIGTERM?: boolean,
   handleSIGHUP?: boolean,
   pipe?: boolean,
-  tempDir?: string,
+  tempDirectories: string[],
+
+  cwd?: string,
 
   // Note: attemptToGracefullyClose should reject if it does not close the browser.
   attemptToGracefullyClose: () => Promise<any>,
   onkill: (exitCode: number | null, signal: string | null) => void,
-  logger: InnerLogger,
+  logger: RootLogger,
 };
 
 type LaunchResult = {
   launchedProcess: childProcess.ChildProcess,
   gracefullyClose: () => Promise<void>,
-  downloadsPath: string
 };
 
 export async function launchProcess(options: LaunchProcessOptions): Promise<LaunchResult> {
+  const cleanup = async () => {
+    await Promise.all(options.tempDirectories.map(dir => {
+      return removeFolderAsync(dir).catch((err: Error) => console.error(err));
+    }));
+  };
+
   const logger = options.logger;
   const stdio: ('ignore' | 'pipe')[] = options.pipe ? ['ignore', 'pipe', 'pipe', 'pipe', 'pipe'] : ['ignore', 'pipe', 'pipe'];
   logger._log(browserLog, `<launching> ${options.executablePath} ${options.args.join(' ')}`);
@@ -81,16 +84,17 @@ export async function launchProcess(options: LaunchProcessOptions): Promise<Laun
         // @see https://nodejs.org/api/child_process.html#child_process_options_detached
         detached: process.platform !== 'win32',
         env: (options.env as {[key: string]: string}),
-        stdio
+        cwd: options.cwd,
+        stdio,
       }
   );
   if (!spawnedProcess.pid) {
-    let reject: (e: Error) => void;
-    const result = new Promise<LaunchResult>((f, r) => reject = r);
+    let failed: (e: Error) => void;
+    const failedPromise = new Promise<Error>((f, r) => failed = f);
     spawnedProcess.once('error', error => {
-      reject(new Error('Failed to launch browser: ' + error));
+      failed(new Error('Failed to launch browser: ' + error));
     });
-    return result;
+    return cleanup().then(() => failedPromise).then(e => Promise.reject(e));
   }
   logger._log(browserLog, `<launched> pid=${spawnedProcess.pid}`);
 
@@ -104,21 +108,19 @@ export async function launchProcess(options: LaunchProcessOptions): Promise<Laun
     logger._log(browserStdErrLog, data);
   });
 
-  const downloadsPath = await mkdtempAsync(DOWNLOADS_FOLDER);
-
   let processClosed = false;
-  const waitForProcessToClose = new Promise((fulfill, reject) => {
-    spawnedProcess.once('exit', (exitCode, signal) => {
-      logger._log(browserLog, `<process did exit ${exitCode}, ${signal}>`);
-      processClosed = true;
-      helper.removeEventListeners(listeners);
-      options.onkill(exitCode, signal);
-      // Cleanup as processes exit.
-      Promise.all([
-        removeFolderAsync(downloadsPath),
-        options.tempDir ? removeFolderAsync(options.tempDir) : Promise.resolve()
-      ]).catch((err: Error) => console.error(err)).then(fulfill);
-    });
+  let fulfillClose = () => {};
+  const waitForClose = new Promise(f => fulfillClose = f);
+  let fulfillCleanup = () => {};
+  const waitForCleanup = new Promise(f => fulfillCleanup = f);
+  spawnedProcess.once('exit', (exitCode, signal) => {
+    logger._log(browserLog, `<process did exit ${exitCode}, ${signal}>`);
+    processClosed = true;
+    helper.removeEventListeners(listeners);
+    options.onkill(exitCode, signal);
+    fulfillClose();
+    // Cleanup as process exits.
+    cleanup().then(fulfillCleanup);
   });
 
   const listeners = [ helper.addEventListener(process, 'exit', killProcess) ];
@@ -141,12 +143,13 @@ export async function launchProcess(options: LaunchProcessOptions): Promise<Laun
     if (gracefullyClosing) {
       logger._log(browserLog, `<forecefully close>`);
       killProcess();
+      await waitForClose;  // Ensure the process is dead and we called options.onkill.
       return;
     }
     gracefullyClosing = true;
     logger._log(browserLog, `<gracefully close start>`);
     await options.attemptToGracefullyClose().catch(() => killProcess());
-    await waitForProcessToClose;
+    await waitForCleanup;  // Ensure the process is dead and we have cleaned up.
     logger._log(browserLog, `<gracefully close end>`);
   }
 
@@ -165,14 +168,14 @@ export async function launchProcess(options: LaunchProcessOptions): Promise<Laun
         // the process might have already stopped
       }
     }
-    // Attempt to remove temporary profile directory to avoid littering.
     try {
-      if (options.tempDir)
-        removeFolder.sync(options.tempDir);
+      // Attempt to remove temporary directories to avoid littering.
+      for (const dir of options.tempDirectories)
+        removeFolder.sync(dir);
     } catch (e) { }
   }
 
-  return { launchedProcess: spawnedProcess, gracefullyClose, downloadsPath };
+  return { launchedProcess: spawnedProcess, gracefullyClose };
 }
 
 export function waitForLine(process: childProcess.ChildProcess, inputStream: stream.Readable, regex: RegExp, timeout: number, timeoutError: TimeoutError): Promise<RegExpMatchArray> {

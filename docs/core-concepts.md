@@ -8,14 +8,15 @@ Along with a test runner Playwright can be used to automate user interactions to
 validate and test web applications. The Playwright API enables this through
 the following primitives.
 
-#### Contents
-  - [Browser](#browser)
-  - [Browser contexts](#browser-contexts)
-  - [Pages and frames](#pages-and-frames)
-  - [Selectors](#selectors)
-  - [Auto-waiting](#auto-waiting)
-  - [Node.js and browser execution contexts](#nodejs-and-browser-execution-contexts)
-  - [Object & element handles](#object--element-handles)
+<!-- GEN:toc-top-level -->
+- [Browser](#browser)
+- [Browser contexts](#browser-contexts)
+- [Pages and frames](#pages-and-frames)
+- [Selectors](#selectors)
+- [Auto-waiting](#auto-waiting)
+- [Node.js and browser execution contexts](#nodejs-and-browser-execution-contexts)
+- [Object & element handles](#object--element-handles)
+<!-- GEN:stop -->
 
 <br/>
 
@@ -277,7 +278,7 @@ Playwright's [`ElementHandle`](./api.md#class-elementhandle) extends
 [`JSHandle`](./api.md#class-jshandle).
 
 Handles Lifetime:
-- Handles can we be acquired using the page methods [`page.evaluteHandle`](./api.md#pageevaluatehandlepagefunction-arg), [`page.$`](./api.md#pageselector) or [`page.$$`](./api.md#pageselector-1) or
+- Handles can be acquired using the page methods [`page.evaluteHandle`](./api.md#pageevaluatehandlepagefunction-arg), [`page.$`](./api.md#pageselector) or [`page.$$`](./api.md#pageselector-1) or
   their frame counterparts [`frame.evaluateHandle`](./api.md#frameevaluatehandlepagefunction-arg), [`frame.$`](./api.md#frameselector) or [`frame.$$`](./api.md#frameselector-1).
 - Once created, handles will retain object from [garbage collection](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Memory_Management)
 - Handles will be **automatically disposed** once the page or frame they belong to navigates or closes.

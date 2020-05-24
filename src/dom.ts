@@ -20,7 +20,8 @@ import * as path from 'path';
 import * as util from 'util';
 import * as frames from './frames';
 import { assert, helper } from './helper';
-import { Injected, InjectedResult } from './injected/injected';
+import InjectedScript from './injected/injectedScript';
+import * as injectedScriptSource from './generated/injectedScriptSource';
 import * as input from './input';
 import * as js from './javascript';
 import { Page } from './page';
@@ -52,29 +53,35 @@ export class FrameExecutionContext extends js.ExecutionContext {
     this.frame = frame;
   }
 
-  _adoptIfNeeded(handle: js.JSHandle): Promise<js.JSHandle> | null {
+  adoptIfNeeded(handle: js.JSHandle): Promise<js.JSHandle> | null {
     if (handle instanceof ElementHandle && handle._context !== this)
       return this.frame._page._delegate.adoptElementHandle(handle, this);
     return null;
   }
 
-  async _doEvaluateInternal(returnByValue: boolean, waitForNavigations: boolean, pageFunction: string | Function, ...args: any[]): Promise<any> {
+  async doEvaluateInternal(returnByValue: boolean, waitForNavigations: boolean, pageFunction: string | Function, ...args: any[]): Promise<any> {
     return await this.frame._page._frameManager.waitForSignalsCreatedBy(async () => {
       return this._delegate.evaluate(this, returnByValue, pageFunction, ...args);
     }, Number.MAX_SAFE_INTEGER, waitForNavigations ? undefined : { noWaitAfter: true });
   }
 
-  _createHandle(remoteObject: any): js.JSHandle {
+  createHandle(remoteObject: any): js.JSHandle {
     if (this.frame._page._delegate.isElementHandle(remoteObject))
       return new ElementHandle(this, remoteObject);
-    return super._createHandle(remoteObject);
+    return super.createHandle(remoteObject);
   }
 
-  _injected(): Promise<js.JSHandle<Injected>> {
+  injectedScript(): Promise<js.JSHandle<InjectedScript>> {
     if (!this._injectedPromise) {
-      this._injectedPromise = selectors._prepareEvaluator(this).then(evaluator => {
-        return this.evaluateHandleInternal(evaluator => evaluator.injected, evaluator);
-      });
+      const custom: string[] = [];
+      for (const [name, { source }] of selectors._engines)
+        custom.push(`{ name: '${name}', engine: (${source}) }`);
+      const source = `
+        new (${injectedScriptSource.source})([
+          ${custom.join(',\n')}
+        ])
+      `;
+      this._injectedPromise = this._delegate.rawEvaluate(source).then(object => this.createHandle(object));
     }
     return this._injectedPromise;
   }
@@ -94,14 +101,14 @@ export class ElementHandle<T extends Node = Node> extends js.JSHandle<T> {
     return this;
   }
 
-  async _evaluateInMain<R, Arg>(pageFunction: types.FuncOn<{ injected: Injected, node: T }, Arg, R>, arg: Arg): Promise<R> {
+  async _evaluateInMain<R, Arg>(pageFunction: types.FuncOn<{ injected: InjectedScript, node: T }, Arg, R>, arg: Arg): Promise<R> {
     const main = await this._context.frame._mainContext();
-    return main._doEvaluateInternal(true /* returnByValue */, true /* waitForNavigations */, pageFunction, { injected: await main._injected(), node: this }, arg);
+    return main.doEvaluateInternal(true /* returnByValue */, true /* waitForNavigations */, pageFunction, { injected: await main.injectedScript(), node: this }, arg);
   }
 
-  async _evaluateInUtility<R, Arg>(pageFunction: types.FuncOn<{ injected: Injected, node: T }, Arg, R>, arg: Arg): Promise<R> {
+  async _evaluateInUtility<R, Arg>(pageFunction: types.FuncOn<{ injected: InjectedScript, node: T }, Arg, R>, arg: Arg): Promise<R> {
     const utility = await this._context.frame._utilityContext();
-    return utility._doEvaluateInternal(true /* returnByValue */, true /* waitForNavigations */, pageFunction, { injected: await utility._injected(), node: this }, arg);
+    return utility.doEvaluateInternal(true /* returnByValue */, true /* waitForNavigations */, pageFunction, { injected: await utility.injectedScript(), node: this }, arg);
   }
 
   async ownerFrame(): Promise<frames.Frame | null> {
@@ -139,16 +146,18 @@ export class ElementHandle<T extends Node = Node> extends js.JSHandle<T> {
     return this._evaluateInUtility(({node}) => node.textContent, {});
   }
 
-  async innerText(): Promise<string | null> {
+  async innerText(): Promise<string> {
     return this._evaluateInUtility(({node}) => {
       if (node.nodeType !== Node.ELEMENT_NODE)
         throw new Error('Not an element');
+      if (node.namespaceURI !== 'http://www.w3.org/1999/xhtml')
+        throw new Error('Not an HTMLElement');
       const element = node as unknown as HTMLElement;
       return element.innerText;
     }, {});
   }
 
-  async innerHTML(): Promise<string | null> {
+  async innerHTML(): Promise<string> {
     return this._evaluateInUtility(({node}) => {
       if (node.nodeType !== Node.ELEMENT_NODE)
         throw new Error('Not an element');
@@ -162,15 +171,15 @@ export class ElementHandle<T extends Node = Node> extends js.JSHandle<T> {
       injected.dispatchEvent(node, type, eventInit), { type, eventInit });
   }
 
-  async _scrollRectIntoViewIfNeeded(rect?: types.Rect): Promise<void> {
-    await this._page._delegate.scrollRectIntoViewIfNeeded(this, rect);
+  async _scrollRectIntoViewIfNeeded(rect?: types.Rect): Promise<'success' | 'invisible'> {
+    return await this._page._delegate.scrollRectIntoViewIfNeeded(this, rect);
   }
 
   async scrollIntoViewIfNeeded() {
     await this._scrollRectIntoViewIfNeeded();
   }
 
-  private async _clickablePoint(): Promise<types.Point> {
+  private async _clickablePoint(): Promise<types.Point | 'invisible' | 'outsideviewport'> {
     const intersectQuadWithViewport = (quad: types.Quad): types.Quad => {
       return quad.map(point => ({
         x: Math.min(Math.max(point.x, 0), metrics.width),
@@ -195,11 +204,11 @@ export class ElementHandle<T extends Node = Node> extends js.JSHandle<T> {
       this._page._delegate.layoutViewport(),
     ] as const);
     if (!quads || !quads.length)
-      throw new Error('Node is either not visible or not an HTMLElement');
+      return 'invisible';
 
     const filtered = quads.map(quad => intersectQuadWithViewport(quad)).filter(quad => computeQuadArea(quad) > 1);
     if (!filtered.length)
-      throw new Error('Node is either not visible or not an HTMLElement');
+      return 'outsideviewport';
     // Return the middle point of the first quad.
     const result = { x: 0, y: 0 };
     for (const point of filtered[0]) {
@@ -209,22 +218,18 @@ export class ElementHandle<T extends Node = Node> extends js.JSHandle<T> {
     return result;
   }
 
-  private async _offsetPoint(offset: types.Point): Promise<types.Point> {
+  private async _offsetPoint(offset: types.Point): Promise<types.Point | 'invisible'> {
     const [box, border] = await Promise.all([
       this.boundingBox(),
       this._evaluateInUtility(({ injected, node }) => injected.getElementBorderWidth(node), {}).catch(logError(this._context._logger)),
     ]);
-    const point = { x: offset.x, y: offset.y };
-    if (box) {
-      point.x += box.x;
-      point.y += box.y;
-    }
-    if (border) {
-      // Make point relative to the padding box to align with offsetX/offsetY.
-      point.x += border.left;
-      point.y += border.top;
-    }
-    return point;
+    if (!box || !border)
+      return 'invisible';
+    // Make point relative to the padding box to align with offsetX/offsetY.
+    return {
+      x: box.x + border.left + offset.x,
+      y: box.y + border.top + offset.y,
+    };
   }
 
   async _retryPointerAction(actionName: string, action: (point: types.Point) => Promise<void>, options: PointerActionOptions & types.PointerActionWaitOptions & types.NavigatingActionWaitOptions = {}): Promise<void> {
@@ -248,11 +253,30 @@ export class ElementHandle<T extends Node = Node> extends js.JSHandle<T> {
       await this._page._delegate.setActivityPaused(true);
       paused = true;
 
-      // Scroll into view and calculate the point again while paused just in case something has moved.
       this._page._log(inputLog, 'scrolling into view if needed...');
-      await this._scrollRectIntoViewIfNeeded(position ? { x: position.x, y: position.y, width: 0, height: 0 } : undefined);
+      const scrolled = await this._scrollRectIntoViewIfNeeded(position ? { x: position.x, y: position.y, width: 0, height: 0 } : undefined);
+      if (scrolled === 'invisible') {
+        if (force)
+          throw new Error('Element is not visible');
+        this._page._log(inputLog, '...element is not visible, retrying input action');
+        return 'retry';
+      }
       this._page._log(inputLog, '...done scrolling');
-      const point = roundPoint(position ? await this._offsetPoint(position) : await this._clickablePoint());
+
+      const maybePoint = position ? await this._offsetPoint(position) : await this._clickablePoint();
+      if (maybePoint === 'invisible') {
+        if (force)
+          throw new Error('Element is not visible');
+        this._page._log(inputLog, 'element is not visibile, retrying input action');
+        return 'retry';
+      }
+      if (maybePoint === 'outsideviewport') {
+        if (force)
+          throw new Error('Element is outside of the viewport');
+        this._page._log(inputLog, 'element is outside of the viewport, retrying input action');
+        return 'retry';
+      }
+      const point = roundPoint(maybePoint);
 
       if (!force) {
         if ((options as any).__testHookBeforeHitTarget)
@@ -352,7 +376,7 @@ export class ElementHandle<T extends Node = Node> extends js.JSHandle<T> {
   async setInputFiles(files: string | types.FilePayload | string[] | types.FilePayload[], options?: types.NavigatingActionWaitOptions) {
     this._page._log(inputLog, `elementHandle.setInputFiles(...)`);
     const deadline = this._page._timeoutSettings.computeDeadline(options);
-    const injectedResult = await this._evaluateInUtility(({ node }): InjectedResult<boolean> => {
+    const injectedResult = await this._evaluateInUtility(({ node }): types.InjectedScriptResult<boolean> => {
       if (node.nodeType !== Node.ELEMENT_NODE || (node as Node as Element).tagName !== 'INPUT')
         return { status: 'error', error: 'Node is not an HTMLInputElement' };
       if (!node.isConnected)
@@ -470,7 +494,7 @@ export class ElementHandle<T extends Node = Node> extends js.JSHandle<T> {
       return injected.waitForDisplayedAtStablePosition(node, rafCount, timeout);
     }, { rafCount, timeout: helper.timeUntilDeadline(deadline) });
     const timeoutMessage = 'element to be displayed and not moving';
-    const injectedResult = await helper.waitWithDeadline(stablePromise, timeoutMessage, deadline);
+    const injectedResult = await helper.waitWithDeadline(stablePromise, timeoutMessage, deadline, 'pw:input');
     handleInjectedResult(injectedResult, timeoutMessage);
     this._page._log(inputLog, '...element is displayed and does not move');
   }
@@ -500,7 +524,7 @@ export function toFileTransferPayload(files: types.FilePayload[]): types.FileTra
   }));
 }
 
-function handleInjectedResult<T = undefined>(injectedResult: InjectedResult<T>, timeoutMessage: string): T {
+function handleInjectedResult<T = undefined>(injectedResult: types.InjectedScriptResult<T>, timeoutMessage: string): T {
   if (injectedResult.status === 'notconnected')
     throw new NotConnectedError();
   if (injectedResult.status === 'timeout')

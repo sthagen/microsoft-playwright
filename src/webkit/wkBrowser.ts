@@ -15,10 +15,10 @@
  * limitations under the License.
  */
 
-import { BrowserBase } from '../browser';
+import { BrowserBase, BrowserOptions } from '../browser';
 import { assertBrowserContextIsNotOwned, BrowserContext, BrowserContextBase, BrowserContextOptions, validateBrowserContextOptions, verifyGeolocation } from '../browserContext';
 import { Events } from '../events';
-import { assert, helper, RegisteredListener } from '../helper';
+import { helper, RegisteredListener, assert } from '../helper';
 import * as network from '../network';
 import { Page, PageBinding } from '../page';
 import { ConnectionTransport, SlowMoTransport } from '../transport';
@@ -26,44 +26,43 @@ import * as types from '../types';
 import { Protocol } from './protocol';
 import { kPageProxyMessageReceived, PageProxyMessageReceivedPayload, WKConnection, WKSession } from './wkConnection';
 import { WKPage } from './wkPage';
-import { InnerLogger } from '../logger';
 
-const DEFAULT_USER_AGENT = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_2) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/13.0.4 Safari/605.1.15';
+const DEFAULT_USER_AGENT = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_4) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/13.2 Safari/605.1.15';
 
 export class WKBrowser extends BrowserBase {
   private readonly _connection: WKConnection;
   readonly _browserSession: WKSession;
-  readonly _defaultContext: WKBrowserContext | null = null;
   readonly _contexts = new Map<string, WKBrowserContext>();
   readonly _wkPages = new Map<string, WKPage>();
   private readonly _eventListeners: RegisteredListener[];
 
-  private _firstPageCallback: () => void = () => {};
-  private readonly _firstPagePromise: Promise<void>;
-
-  static async connect(transport: ConnectionTransport, logger: InnerLogger, slowMo: number = 0, attachToDefaultContext: boolean = false): Promise<WKBrowser> {
-    const browser = new WKBrowser(SlowMoTransport.wrap(transport, slowMo), logger, attachToDefaultContext);
+  static async connect(transport: ConnectionTransport, options: BrowserOptions): Promise<WKBrowser> {
+    const browser = new WKBrowser(SlowMoTransport.wrap(transport, options.slowMo), options);
+    const promises: Promise<any>[] = [
+      browser._browserSession.send('Playwright.enable'),
+    ];
+    if (options.persistent) {
+      browser._defaultContext = new WKBrowserContext(browser, undefined, options.persistent);
+      promises.push((browser._defaultContext as WKBrowserContext)._initialize());
+    }
+    await Promise.all(promises);
     return browser;
   }
 
-  constructor(transport: ConnectionTransport, logger: InnerLogger, attachToDefaultContext: boolean) {
-    super(logger);
-    this._connection = new WKConnection(transport, logger, this._onDisconnect.bind(this));
+  constructor(transport: ConnectionTransport, options: BrowserOptions) {
+    super(options);
+    this._connection = new WKConnection(transport, options.logger, this._onDisconnect.bind(this));
     this._browserSession = this._connection.browserSession;
-
-    if (attachToDefaultContext)
-      this._defaultContext = new WKBrowserContext(this, undefined, validateBrowserContextOptions({}));
-
     this._eventListeners = [
       helper.addEventListener(this._browserSession, 'Playwright.pageProxyCreated', this._onPageProxyCreated.bind(this)),
       helper.addEventListener(this._browserSession, 'Playwright.pageProxyDestroyed', this._onPageProxyDestroyed.bind(this)),
       helper.addEventListener(this._browserSession, 'Playwright.provisionalLoadFailed', event => this._onProvisionalLoadFailed(event)),
+      helper.addEventListener(this._browserSession, 'Playwright.windowOpen', event => this._onWindowOpen(event)),
       helper.addEventListener(this._browserSession, 'Playwright.downloadCreated', this._onDownloadCreated.bind(this)),
+      helper.addEventListener(this._browserSession, 'Playwright.downloadFilenameSuggested', this._onDownloadFilenameSuggested.bind(this)),
       helper.addEventListener(this._browserSession, 'Playwright.downloadFinished', this._onDownloadFinished.bind(this)),
       helper.addEventListener(this._browserSession, kPageProxyMessageReceived, this._onPageProxyMessageReceived.bind(this)),
     ];
-
-    this._firstPagePromise = new Promise<void>(resolve => this._firstPageCallback = resolve);
   }
 
   _onDisconnect() {
@@ -88,11 +87,6 @@ export class WKBrowser extends BrowserBase {
 
   contexts(): BrowserContext[] {
     return Array.from(this._contexts.values());
-  }
-
-  async _waitForFirstPageTarget(): Promise<void> {
-    assert(!this._wkPages.size);
-    return this._firstPagePromise;
   }
 
   _onDownloadCreated(payload: Protocol.Playwright.downloadCreatedPayload) {
@@ -121,6 +115,10 @@ export class WKBrowser extends BrowserBase {
     this._downloadCreated(originPage, payload.uuid, payload.url);
   }
 
+  _onDownloadFilenameSuggested(payload: Protocol.Playwright.downloadFilenameSuggestedPayload) {
+    this._downloadFilenameSuggested(payload.uuid, payload.suggestedFilename);
+  }
+
   _onDownloadFinished(payload: Protocol.Playwright.downloadFinishedPayload) {
     this._downloadFinished(payload.uuid, payload.error);
   }
@@ -137,7 +135,7 @@ export class WKBrowser extends BrowserBase {
       context = this._contexts.get(pageProxyInfo.browserContextId) || null;
     }
     if (!context)
-      context = this._defaultContext;
+      context = this._defaultContext as WKBrowserContext;
     if (!context)
       return;
     const pageProxySession = new WKSession(this._connection, pageProxyId, `The page has been closed.`, (message: any) => {
@@ -147,12 +145,7 @@ export class WKBrowser extends BrowserBase {
     const wkPage = new WKPage(context, pageProxySession, opener || null);
     this._wkPages.set(pageProxyId, wkPage);
 
-    if (opener && opener._initializedPage) {
-      for (const signalBarrier of opener._initializedPage._frameManager._signalBarriers)
-        signalBarrier.addPopup(wkPage.pageOrError());
-    }
     wkPage.pageOrError().then(async () => {
-      this._firstPageCallback();
       const page = wkPage._page;
       context!.emit(Events.BrowserContext.Page, page);
       if (!opener)
@@ -188,6 +181,13 @@ export class WKBrowser extends BrowserBase {
     wkPage.handleProvisionalLoadFailed(event);
   }
 
+  _onWindowOpen(event: Protocol.Playwright.windowOpenPayload) {
+    const wkPage = this._wkPages.get(event.pageProxyId);
+    if (!wkPage)
+      return;
+    wkPage.handleWindowOpen(event);
+  }
+
   isConnected(): boolean {
     return !this._connection.isClosed();
   }
@@ -211,14 +211,16 @@ export class WKBrowserContext extends BrowserContextBase {
   }
 
   async _initialize() {
+    assert(!this._wkPages().length);
     const browserContextId = this._browserContextId;
-    const promises: Promise<any>[] = [
-      this._browser._browserSession.send('Playwright.setDownloadBehavior', {
+    const promises: Promise<any>[] = [];
+    if (this._browser._options.downloadsPath) {
+      promises.push(this._browser._browserSession.send('Playwright.setDownloadBehavior', {
         behavior: this._options.acceptDownloads ? 'allow' : 'deny',
-        downloadPath: this._browser._downloadsPath,
+        downloadPath: this._browser._options.downloadsPath,
         browserContextId
-      })
-    ];
+      }));
+    }
     if (this._options.ignoreHTTPSErrors)
       promises.push(this._browser._browserSession.send('Playwright.setIgnoreCertificateErrors', { browserContextId, ignore: true }));
     if (this._options.locale)
@@ -319,15 +321,7 @@ export class WKBrowserContext extends BrowserContextBase {
       await (page._delegate as WKPage)._updateBootstrapScript();
   }
 
-  async exposeFunction(name: string, playwrightFunction: Function): Promise<void> {
-    for (const page of this.pages()) {
-      if (page._pageBindings.has(name))
-        throw new Error(`Function "${name}" has been already registered in one of the pages`);
-    }
-    if (this._pageBindings.has(name))
-      throw new Error(`Function "${name}" has been already registered`);
-    const binding = new PageBinding(name, playwrightFunction);
-    this._pageBindings.set(name, binding);
+  async _doExposeBinding(binding: PageBinding) {
     for (const page of this.pages())
       await (page._delegate as WKPage).exposeBinding(binding);
   }

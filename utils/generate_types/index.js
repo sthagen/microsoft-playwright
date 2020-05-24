@@ -17,7 +17,7 @@
 //@ts-check
 const path = require('path');
 const Source = require('../doclint/Source');
-const {chromium} = require('../../index');
+const {chromium} = require('../..');
 const Documentation = require('../doclint/check_public_api/Documentation');
 const PROJECT_DIR = path.join(__dirname, '..', '..');
 const fs = require('fs');
@@ -159,7 +159,7 @@ function createEventDescriptions(classDesc) {
 function classBody(classDesc) {
   const parts = [];
   const eventDescriptions = createEventDescriptions(classDesc);
-  for (const method of ['on', 'once', 'addListener']) {
+  for (const method of ['on', 'once', 'addListener', 'removeListener', 'off']) {
     for (const {eventName, params, comment} of eventDescriptions) {
         if (comment)
           parts.push(writeComment(comment, '  '));

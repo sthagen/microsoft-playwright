@@ -300,6 +300,61 @@ describe('Page.evaluate', function() {
     await page.goto(server.PREFIX + '/empty.html');
     expect(await page.evaluate(() => new Function('return true')())).toBe(true);
   });
+  it('should work with non-strict expressions', async({page, server}) => {
+    expect(await page.evaluate(() => {
+      y = 3.14;
+      return y;
+    })).toBe(3.14);
+  });
+  it('should respect use strict expression', async({page, server}) => {
+    const error = await page.evaluate(() => {
+      "use strict";
+      variableY = 3.14;
+      return variableY;
+    }).catch(e => e);
+    expect(error.message).toContain('variableY');
+  });
+  it('should not leak utility script', async({page, server}) => {
+    expect(await page.evaluate(() => this === window)).toBe(true);
+  });
+  it('should not leak handles', async({page, server}) => {
+    const error = await page.evaluate(() => handles.length).catch(e => e);
+    expect(error.message).toContain(' handles');
+  });
+  it('should work with CSP', async({page, server}) => {
+    server.setCSP('/empty.html', `script-src 'self'`);
+    await page.goto(server.EMPTY_PAGE);
+    expect(await page.evaluate(() => 2 + 2)).toBe(4);
+  });
+  it('should evaluate exception', async({page, server}) => {
+    const error = await page.evaluate(() => {
+      return (function functionOnStack() {
+        return new Error('error message');
+      })();
+    });
+    expect(error).toContain('Error: error message');
+    expect(error).toContain('functionOnStack');
+  });
+  it('should evaluate exception', async({page, server}) => {
+    const error = await page.evaluate(`new Error('error message')`);
+    expect(error).toContain('Error: error message');
+  });
+  it('should evaluate date as {}', async({page}) => {
+    const result = await page.evaluate(() => ({ date: new Date() }));
+    expect(result).toEqual({ date: {} });
+  });
+  it('should jsonValue() date as {}', async({page}) => {
+    const resultHandle = await page.evaluateHandle(() => ({ date: new Date() }));
+    expect(await resultHandle.jsonValue()).toEqual({ date: {} });
+  });
+  it.fail(FFOX)('should not use toJSON when evaluating', async({page, server}) => {
+    const result = await page.evaluate(() => ({ toJSON: () => 'string', data: 'data' }));
+    expect(result).toEqual({ data: 'data', toJSON: {} });
+  });
+  it.fail(FFOX)('should not use toJSON in jsonValue', async({page, server}) => {
+    const resultHandle = await page.evaluateHandle(() => ({ toJSON: () => 'string', data: 'data' }));
+    expect(await resultHandle.jsonValue()).toEqual({ data: 'data', toJSON: {} });
+  });
 });
 
 describe('Page.addInitScript', function() {

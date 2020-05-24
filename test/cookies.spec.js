@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-const {FFOX, CHROMIUM, WEBKIT, MAC, LINUX} = require('./utils').testOptions(browserType);
+const {FFOX, CHROMIUM, WEBKIT, WIN} = require('./utils').testOptions(browserType);
 
 describe('BrowserContext.cookies', function() {
   it('should return no cookies in pristine browser context', async({context, page, server}) => {
@@ -23,9 +23,11 @@ describe('BrowserContext.cookies', function() {
   });
   it('should get a cookie', async({context, page, server}) => {
     await page.goto(server.EMPTY_PAGE);
-    await page.evaluate(() => {
+    const documentCookie = await page.evaluate(() => {
       document.cookie = 'username=John Doe';
+      return document.cookie;
     });
+    expect(documentCookie).toBe('username=John Doe');
     expect(await context.cookies()).toEqual([{
       name: 'username',
       value: 'John Doe',
@@ -41,10 +43,12 @@ describe('BrowserContext.cookies', function() {
     await page.goto(server.EMPTY_PAGE);
     // @see https://en.wikipedia.org/wiki/Year_2038_problem
     const date = +(new Date('1/1/2038'));
-    await page.evaluate(timestamp => {
+    const documentCookie = await page.evaluate(timestamp => {
       const date = new Date(timestamp);
       document.cookie = `username=John Doe;expires=${date.toUTCString()}`;
+      return document.cookie;
     }, date);
+    expect(documentCookie).toBe('username=John Doe');
     expect(await context.cookies()).toEqual([{
       name: 'username',
       value: 'John Doe',
@@ -66,7 +70,7 @@ describe('BrowserContext.cookies', function() {
     expect(cookies.length).toBe(1);
     expect(cookies[0].httpOnly).toBe(true);
   });
-  it.fail(WEBKIT && !MAC)('should properly report "Strict" sameSite cookie', async({context, page, server}) => {
+  it.fail(WEBKIT && WIN)('should properly report "Strict" sameSite cookie', async({context, page, server}) => {
     server.setRoute('/empty.html', (req, res) => {
       res.setHeader('Set-Cookie', 'name=value;SameSite=Strict');
       res.end();
@@ -76,7 +80,7 @@ describe('BrowserContext.cookies', function() {
     expect(cookies.length).toBe(1);
     expect(cookies[0].sameSite).toBe('Strict');
   });
-  it.fail(WEBKIT && !MAC)('should properly report "Lax" sameSite cookie', async({context, page, server}) => {
+  it.fail(WEBKIT && WIN)('should properly report "Lax" sameSite cookie', async({context, page, server}) => {
     server.setRoute('/empty.html', (req, res) => {
       res.setHeader('Set-Cookie', 'name=value;SameSite=Lax');
       res.end();
@@ -88,12 +92,14 @@ describe('BrowserContext.cookies', function() {
   });
   it('should get multiple cookies', async({context, page, server}) => {
     await page.goto(server.EMPTY_PAGE);
-    await page.evaluate(() => {
+    const documentCookie = await page.evaluate(() => {
       document.cookie = 'username=John Doe';
       document.cookie = 'password=1234';
+      return document.cookie.split('; ').sort().join('; ');
     });
     const cookies = await context.cookies();
     cookies.sort((a, b) => a.name.localeCompare(b.name));
+    expect(documentCookie).toBe('password=1234; username=John Doe');
     expect(cookies).toEqual([
       {
         name: 'password',
@@ -169,10 +175,12 @@ describe('BrowserContext.addCookies', function() {
     await page.goto(server.EMPTY_PAGE);
     // @see https://en.wikipedia.org/wiki/Year_2038_problem
     const date = +(new Date('1/1/2038'));
-    await page.evaluate(timestamp => {
+    const documentCookie = await page.evaluate(timestamp => {
       const date = new Date(timestamp);
       document.cookie = `username=John Doe;expires=${date.toUTCString()}`;
+      return document.cookie;
     }, date);
+    expect(documentCookie).toBe('username=John Doe');
     const cookies = await context.cookies();
     await context.clearCookies();
     expect(await context.cookies()).toEqual([]);

@@ -21,6 +21,10 @@ import * as fs from 'fs';
 import * as util from 'util';
 import { TimeoutError } from './errors';
 import * as types from './types';
+import { ChildProcess, execSync } from 'child_process';
+
+// NOTE: update this to point to playwright/lib when moving this file.
+const PLAYWRIGHT_LIB_PATH = __dirname;
 
 export type RegisteredListener = {
   emitter: EventEmitter;
@@ -133,6 +137,8 @@ class Helper {
       resolveCallback = resolve;
       rejectCallback = reject;
     });
+
+    // Add listener.
     const listener = Helper.addEventListener(emitter, eventName, event => {
       try {
         if (!predicate(event))
@@ -142,29 +148,26 @@ class Helper {
         rejectCallback(e);
       }
     });
+
+    // Reject upon timeout.
     const eventTimeout = setTimeout(() => {
       rejectCallback(new TimeoutError(`Timeout exceeded while waiting for ${String(eventName)}`));
     }, helper.timeUntilDeadline(deadline));
-    function cleanup() {
+
+    // Reject upon abort.
+    abortPromise.then(rejectCallback);
+
+    try {
+      return await promise;
+    } finally {
       Helper.removeEventListeners([listener]);
       clearTimeout(eventTimeout);
     }
-    return await Promise.race([promise, abortPromise]).then(r => {
-      cleanup();
-      return r;
-    }, e => {
-      cleanup();
-      throw e;
-    });
   }
 
-  static async waitWithTimeout<T>(promise: Promise<T>, taskName: string, timeout: number): Promise<T> {
-    return this.waitWithDeadline(promise, taskName, helper.monotonicTime() + timeout);
-  }
-
-  static async waitWithDeadline<T>(promise: Promise<T>, taskName: string, deadline: number): Promise<T> {
+  static async waitWithDeadline<T>(promise: Promise<T>, taskName: string, deadline: number, debugName: string): Promise<T> {
     let reject: (error: Error) => void;
-    const timeoutError = new TimeoutError(`Waiting for ${taskName} failed: timeout exceeded. Re-run with the DEBUG=pw:input env variable to see the debug log.`);
+    const timeoutError = new TimeoutError(`Waiting for ${taskName} failed: timeout exceeded. Re-run with the DEBUG=${debugName} env variable to see the debug log.`);
     const timeoutPromise = new Promise<T>((resolve, x) => reject = x);
     const timeoutTimer = setTimeout(() => reject(timeoutError), helper.timeUntilDeadline(deadline));
     try {
@@ -330,6 +333,29 @@ class Helper {
   static optionsWithUpdatedTimeout<T extends types.TimeoutOptions>(options: T | undefined, deadline: number): T {
     return { ...(options || {}) as T, timeout: this.timeUntilDeadline(deadline) };
   }
+
+  static killProcess(proc: ChildProcess) {
+    if (proc.pid && !proc.killed) {
+      try {
+        if (process.platform === 'win32')
+          execSync(`taskkill /pid ${proc.pid} /T /F`);
+        else
+          process.kill(-proc.pid, 'SIGKILL');
+      } catch (e) {
+        // the process might have already stopped
+      }
+    }
+  }
+
+  static getViewportSizeFromWindowFeatures(features: string[]): types.Size | null {
+    const widthString = features.find(f => f.startsWith('width='));
+    const heightString = features.find(f => f.startsWith('height='));
+    const width = widthString ? parseInt(widthString.substring(6), 10) : NaN;
+    const height = heightString ? parseInt(heightString.substring(7), 10) : NaN;
+    if (!Number.isNaN(width) && !Number.isNaN(height))
+      return { width, height };
+    return null;
+  }
 }
 
 export function assert(value: any, message?: string): asserts value {
@@ -369,6 +395,38 @@ export function logPolitely(toBeLogged: string) {
 
   if (!logLevelDisplay)
     console.log(toBeLogged);  // eslint-disable-line no-console
+}
+
+export function getCallerFilePath(ignorePrefix = PLAYWRIGHT_LIB_PATH): string | null {
+  const error = new Error();
+  const stackFrames = (error.stack || '').split('\n').slice(1);
+  // Find first stackframe that doesn't point to ignorePrefix.
+  for (let frame of stackFrames) {
+    frame = frame.trim();
+    if (!frame.startsWith('at '))
+      return null;
+    if (frame.endsWith(')')) {
+      const from = frame.indexOf('(');
+      frame = frame.substring(from + 1, frame.length - 1);
+    } else {
+      frame = frame.substring('at '.length);
+    }
+    const match = frame.match(/^(?:async )?(.*):(\d+):(\d+)$/);
+    if (!match)
+      return null;
+    const filePath = match[1];
+    if (filePath.startsWith(ignorePrefix))
+      continue;
+    return filePath;
+  }
+  return null;
+}
+
+let debugMode: boolean | undefined;
+export function isDebugMode(): boolean {
+  if (debugMode === undefined)
+    debugMode = !!getFromENV('PLAYWRIGHT_DEBUG_UI');
+  return debugMode;
 }
 
 const escapeGlobChars = new Set(['/', '$', '^', '+', '.', '(', ')', '=', '!', '|']);
