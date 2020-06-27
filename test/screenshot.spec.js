@@ -15,7 +15,8 @@
  * limitations under the License.
  */
 
-const {FFOX, CHROMIUM, WEBKIT} = require('./utils').testOptions(browserType);
+const utils = require('./utils');
+const {FFOX, CHROMIUM, WEBKIT} = utils.testOptions(browserType);
 const {PNG} = require('pngjs');
 
 // Firefox headful produces a different image.
@@ -80,7 +81,7 @@ describe.skip(ffheadful)('Page.screenshot', function() {
         height: 100
       }
     }).catch(error => error);
-    expect(screenshotError.message).toBe('Clipped area is either empty or outside the resulting image');
+    expect(screenshotError.message).toContain('Clipped area is either empty or outside the resulting image');
   });
   it('should run in parallel', async({page, server, golden}) => {
     await page.setViewportSize({width: 500, height: 500});
@@ -112,11 +113,10 @@ describe.skip(ffheadful)('Page.screenshot', function() {
     await page.goto(server.PREFIX + '/grid.html');
     const screenshot = await page.screenshot({ fullPage: true });
     expect(screenshot).toBeInstanceOf(Buffer);
-    expect(page.viewportSize().width).toBe(500);
-    expect(page.viewportSize().height).toBe(500);
+    await utils.verifyViewport(page, 500, 500);
   });
   it('should run in parallel in multiple pages', async({page, server, context, golden}) => {
-    const N = 2;
+    const N = 5;
     const pages = await Promise.all(Array(N).fill(0).map(async() => {
       const page = await context.newPage();
       await page.goto(server.PREFIX + '/grid.html');
@@ -124,10 +124,10 @@ describe.skip(ffheadful)('Page.screenshot', function() {
     }));
     const promises = [];
     for (let i = 0; i < N; ++i)
-      promises.push(pages[i].screenshot({ clip: { x: 50 * i, y: 0, width: 50, height: 50 } }));
+      promises.push(pages[i].screenshot({ clip: { x: 50 * (i % 2), y: 0, width: 50, height: 50 } }));
     const screenshots = await Promise.all(promises);
     for (let i = 0; i < N; ++i)
-      expect(screenshots[i]).toBeGolden(golden(`grid-cell-${i}.png`));
+      expect(screenshots[i]).toBeGolden(golden(`grid-cell-${i % 2}.png`));
     await Promise.all(pages.map(page => page.close()));
   });
   it.fail(FFOX)('should allow transparency', async({page, golden}) => {
@@ -223,6 +223,11 @@ describe.skip(ffheadful)('Page.screenshot', function() {
     expect(screenshot).toBeGolden(golden('screenshot-device-scale-factor.png'));
     await context.close();
   });
+  it('should work with iframe in shadow', async({browser, page, server, golden}) => {
+    await page.setViewportSize({width: 500, height: 500});
+    await page.goto(server.PREFIX + '/grid-iframe-in-shadow.html');
+    expect(await page.screenshot()).toBeGolden(golden('screenshot-iframe.png'));
+  });
 });
 
 describe.skip(ffheadful)('ElementHandle.screenshot', function() {
@@ -276,7 +281,7 @@ describe.skip(ffheadful)('ElementHandle.screenshot', function() {
     const screenshots = await Promise.all(promises);
     expect(screenshots[2]).toBeGolden(golden('screenshot-element-larger-than-viewport.png'));
 
-    expect(await page.evaluate(() => ({ w: window.innerWidth, h: window.innerHeight }))).toEqual({ w: 500, h: 500 });
+    await utils.verifyViewport(page, 500, 500);
   });
   it('should capture full element when larger than viewport', async({page, golden}) => {
     await page.setViewportSize({width: 500, height: 500});
@@ -302,7 +307,7 @@ describe.skip(ffheadful)('ElementHandle.screenshot', function() {
     const screenshot = await elementHandle.screenshot();
     expect(screenshot).toBeGolden(golden('screenshot-element-larger-than-viewport.png'));
 
-    expect(await page.evaluate(() => ({ w: window.innerWidth, h: window.innerHeight }))).toEqual({ w: 500, h: 500 });
+    await utils.verifyViewport(page, 500, 500);
   });
   it('should scroll element into view', async({page, golden}) => {
     await page.setViewportSize({width: 500, height: 500});
@@ -370,11 +375,30 @@ describe.skip(ffheadful)('ElementHandle.screenshot', function() {
     const screenshotError = await elementHandle.screenshot().catch(error => error);
     expect(screenshotError.message).toContain('Element is not attached to the DOM');
   });
-  it('should not hang with zero width/height element', async({page, server}) => {
+  it('should timeout waiting for visible', async({page, server}) => {
     await page.setContent('<div style="width: 50px; height: 0"></div>');
     const div = await page.$('div');
-    const error = await div.screenshot().catch(e => e);
-    expect(error.message).toBe('Node has 0 height.');
+    const error = await div.screenshot({ timeout: 3000 }).catch(e => e);
+    expect(error.message).toContain('Timeout 3000ms exceeded during elementHandle.screenshot');
+    expect(error.message).toContain('element is not visible');
+  });
+  it('should wait for visible', async({page, server, golden}) => {
+    await page.setViewportSize({width: 500, height: 500});
+    await page.goto(server.PREFIX + '/grid.html');
+    await page.evaluate(() => window.scrollBy(50, 100));
+    const elementHandle = await page.$('.box:nth-of-type(3)');
+    await elementHandle.evaluate(e => e.style.visibility = 'hidden');
+    let done = false;
+    const promise = elementHandle.screenshot().then(buffer => {
+      done = true;
+      return buffer;
+    });
+    for (let i = 0; i < 10; i++)
+      await page.evaluate(() => new Promise(f => requestAnimationFrame(f)));
+    expect(done).toBe(false);
+    await elementHandle.evaluate(e => e.style.visibility = 'visible');
+    const screenshot = await promise;
+    expect(screenshot).toBeGolden(golden('screenshot-element-bounding-box.png'));
   });
   it('should work for an element with fractional dimensions', async({page, golden}) => {
     await page.setContent('<div style="width:48.51px;height:19.8px;border:1px solid black;"></div>');
@@ -444,16 +468,33 @@ describe.skip(ffheadful)('ElementHandle.screenshot', function() {
   it('should restore default viewport after fullPage screenshot', async({ browser }) => {
     const context = await browser.newContext({ viewport: { width: 456, height: 789 } });
     const page = await context.newPage();
-    expect(page.viewportSize().width).toBe(456);
-    expect(page.viewportSize().height).toBe(789);
-    expect(await page.evaluate('window.innerWidth')).toBe(456);
-    expect(await page.evaluate('window.innerHeight')).toBe(789);
+    await utils.verifyViewport(page, 456, 789);
     const screenshot = await page.screenshot({ fullPage: true });
     expect(screenshot).toBeInstanceOf(Buffer);
-    expect(page.viewportSize().width).toBe(456);
-    expect(page.viewportSize().height).toBe(789);
-    expect(await page.evaluate('window.innerWidth')).toBe(456);
-    expect(await page.evaluate('window.innerHeight')).toBe(789);
+    await utils.verifyViewport(page, 456, 789);
+    await context.close();
+  });
+  it('should restore viewport after page screenshot and exception', async({ browser, server }) => {
+    const context = await browser.newContext({ viewport: { width: 350, height: 360 } });
+    const page = await context.newPage();
+    await page.goto(server.PREFIX + '/grid.html');
+    const __testHookBeforeScreenshot = () => { throw new Error('oh my') };
+    const error = await page.screenshot({ fullPage: true, __testHookBeforeScreenshot }).catch(e => e);
+    expect(error.message).toContain('oh my');
+    await utils.verifyViewport(page, 350, 360);
+    await context.close();
+  });
+  it('should restore viewport after page screenshot and timeout', async({ browser, server }) => {
+    const context = await browser.newContext({ viewport: { width: 350, height: 360 } });
+    const page = await context.newPage();
+    await page.goto(server.PREFIX + '/grid.html');
+    const __testHookAfterScreenshot = () => new Promise(f => setTimeout(f, 5000));
+    const error = await page.screenshot({ fullPage: true, __testHookAfterScreenshot, timeout: 3000 }).catch(e => e);
+    expect(error.message).toContain('Timeout 3000ms exceeded during page.screenshot');
+    await utils.verifyViewport(page, 350, 360);
+    await page.setViewportSize({ width: 400, height: 400 });
+    await page.waitForTimeout(3000); // Give it some time to wrongly restore previous viewport.
+    await utils.verifyViewport(page, 400, 400);
     await context.close();
   });
   it('should take element screenshot when default viewport is null and restore back', async({server, browser}) => {
@@ -483,6 +524,17 @@ describe.skip(ffheadful)('ElementHandle.screenshot', function() {
     const sizeAfter = await page.evaluate(() => ({ width: document.body.offsetWidth, height: document.body.offsetHeight }));
     expect(sizeBefore.width).toBe(sizeAfter.width);
     expect(sizeBefore.height).toBe(sizeAfter.height);
+    await context.close();
+  });
+  it('should restore viewport after element screenshot and exception', async({server, browser}) => {
+    const context = await browser.newContext({ viewport: { width: 350, height: 360 } });
+    const page = await context.newPage();
+    await page.setContent(`<div style="width:600px;height:600px;"></div>`);
+    const elementHandle = await page.$('div');
+    const __testHookBeforeScreenshot = () => { throw new Error('oh my') };
+    const error = await elementHandle.screenshot({ __testHookBeforeScreenshot }).catch(e => e);
+    expect(error.message).toContain('oh my');
+    await utils.verifyViewport(page, 350, 360);
     await context.close();
   });
 });

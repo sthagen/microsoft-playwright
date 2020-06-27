@@ -58,16 +58,6 @@ describe('Page.evaluateHandle', function() {
       a2: { bar: 5, arr: [{ baz: ['baz'] }] }
     });
   });
-  it('should throw for deep objects', async({page, server}) => {
-    let a = { x: 1 };
-    for (let i = 0; i < 98; i++)
-      a = { x: a };
-    expect(await page.evaluate(x => x, a)).toEqual(a);
-    let error = await page.evaluate(x => x, {a}).catch(e => e);
-    expect(error.message).toBe('Argument nesting is too deep');
-    error = await page.evaluate(x => x, [a]).catch(e => e);
-    expect(error.message).toBe('Argument nesting is too deep');
-  });
   it('should throw for circular objects', async({page, server}) => {
     const a = { x: 1 };
     a.y = a;
@@ -137,7 +127,23 @@ describe('JSHandle.getProperty', function() {
     expect(await nullHandle.jsonValue()).toEqual(null);
     const emptyhandle = await aHandle.getProperty('empty');
     expect(String(await emptyhandle.jsonValue())).toEqual('undefined');
-  })
+  });
+  it('should work with unserializable values', async({page, server}) => {
+    const aHandle = await page.evaluateHandle(() => ({
+      infinity: Infinity,
+      nInfinity: -Infinity,
+      nan: NaN,
+      nzero: -0
+    }));
+    const infinityHandle = await aHandle.getProperty('infinity');
+    expect(await infinityHandle.jsonValue()).toEqual(Infinity);
+    const nInfinityHandle = await aHandle.getProperty('nInfinity');
+    expect(await nInfinityHandle.jsonValue()).toEqual(-Infinity);
+    const nanHandle = await aHandle.getProperty('nan');
+    expect(String(await nanHandle.jsonValue())).toEqual('NaN');
+    const nzeroHandle = await aHandle.getProperty('nzero');
+    expect(await nzeroHandle.jsonValue()).toEqual(-0);
+  });
 });
 
 describe('JSHandle.jsonValue', function() {
@@ -155,12 +161,7 @@ describe('JSHandle.jsonValue', function() {
     const windowHandle = await page.evaluateHandle('window');
     let error = null;
     await windowHandle.jsonValue().catch(e => error = e);
-    if (WEBKIT)
-      expect(error.message).toContain('Object has too long reference chain');
-    else if (CHROMIUM)
-      expect(error.message).toContain('Object reference chain is too long');
-    else if (FFOX)
-      expect(error.message).toContain('Object is not serializable');
+    expect(error.message).toContain('Argument is a circular structure');
   });
   it('should work with tricky values', async({page, server}) => {
     const aHandle = await page.evaluateHandle(() => ({a: 1}));
@@ -235,9 +236,9 @@ describe('JSHandle.asElement', function() {
 describe('JSHandle.toString', function() {
   it('should work for primitives', async({page, server}) => {
     const numberHandle = await page.evaluateHandle(() => 2);
-    expect(numberHandle.toString()).toBe('JSHandle:2');
+    expect(numberHandle.toString()).toBe('JSHandle@2');
     const stringHandle = await page.evaluateHandle(() => 'a');
-    expect(stringHandle.toString()).toBe('JSHandle:a');
+    expect(stringHandle.toString()).toBe('JSHandle@a');
   });
   it('should work for complicated objects', async({page, server}) => {
     const aHandle = await page.evaluateHandle(() => window);
@@ -251,15 +252,15 @@ describe('JSHandle.toString', function() {
   });
   it('should work with different subtypes', async({page, server}) => {
     expect((await page.evaluateHandle('(function(){})')).toString()).toBe('JSHandle@function');
-    expect((await page.evaluateHandle('12')).toString()).toBe('JSHandle:12');
-    expect((await page.evaluateHandle('true')).toString()).toBe('JSHandle:true');
-    expect((await page.evaluateHandle('undefined')).toString()).toBe('JSHandle:undefined');
-    expect((await page.evaluateHandle('"foo"')).toString()).toBe('JSHandle:foo');
+    expect((await page.evaluateHandle('12')).toString()).toBe('JSHandle@12');
+    expect((await page.evaluateHandle('true')).toString()).toBe('JSHandle@true');
+    expect((await page.evaluateHandle('undefined')).toString()).toBe('JSHandle@undefined');
+    expect((await page.evaluateHandle('"foo"')).toString()).toBe('JSHandle@foo');
     expect((await page.evaluateHandle('Symbol()')).toString()).toBe('JSHandle@symbol');
     expect((await page.evaluateHandle('new Map()')).toString()).toBe('JSHandle@map');
     expect((await page.evaluateHandle('new Set()')).toString()).toBe('JSHandle@set');
     expect((await page.evaluateHandle('[]')).toString()).toBe('JSHandle@array');
-    expect((await page.evaluateHandle('null')).toString()).toBe('JSHandle:null');
+    expect((await page.evaluateHandle('null')).toString()).toBe('JSHandle@null');
     expect((await page.evaluateHandle('/foo/')).toString()).toBe('JSHandle@regexp');
     expect((await page.evaluateHandle('document.body')).toString()).toBe('JSHandle@node');
     expect((await page.evaluateHandle('new Date()')).toString()).toBe('JSHandle@date');

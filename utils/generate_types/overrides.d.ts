@@ -28,6 +28,10 @@ type Unboxed<Arg> =
   Arg extends ElementHandle<infer T> ? T :
   Arg extends JSHandle<infer T> ? T :
   Arg extends NoHandles<Arg> ? Arg :
+  Arg extends [infer A0] ? [Unboxed<A0>] :
+  Arg extends [infer A0, infer A1] ? [Unboxed<A0>, Unboxed<A1>] :
+  Arg extends [infer A0, infer A1, infer A2] ? [Unboxed<A0>, Unboxed<A1>, Unboxed<A2>] :
+  Arg extends [infer A0, infer A1, infer A2, infer A3] ? [Unboxed<A0>, Unboxed<A1>, Unboxed<A2>, Unboxed<A3>] :
   Arg extends Array<infer T> ? Array<Unboxed<T>> :
   Arg extends object ? { [Key in keyof Arg]: Unboxed<Arg[Key]> } :
   Arg;
@@ -173,7 +177,7 @@ class TimeoutError extends Error {}
 }
 
 export const selectors: Selectors;
-export const devices: {[name: string]: DeviceDescriptor} & DeviceDescriptor[];
+export const devices: Devices & DeviceDescriptor[];
 
 // This is required to not export everything by default. See https://github.com/Microsoft/TypeScript/issues/19545#issuecomment-340490459
 export {};

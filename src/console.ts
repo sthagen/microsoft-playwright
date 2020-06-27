@@ -16,12 +16,7 @@
 
 import * as js from './javascript';
 import * as util from 'util';
-
-export type ConsoleMessageLocation = {
-  url?: string,
-  lineNumber?: number,
-  columnNumber?: number,
-};
+import { ConsoleMessageLocation } from './types';
 
 export class ConsoleMessage {
   private _type: string;
@@ -42,7 +37,7 @@ export class ConsoleMessage {
 
   text(): string {
     if (this._text === undefined)
-      this._text = this._args.map(arg => arg._context._delegate.handleToString(arg, false /* includeType */)).join(' ');
+      this._text = this._args.map(arg => arg._value).join(' ');
     return this._text;
   }
 

@@ -20,8 +20,8 @@ import { FFSession } from './ffConnection';
 import { Page } from '../page';
 import * as network from '../network';
 import * as frames from '../frames';
+import * as types from '../types';
 import { Protocol } from './protocol';
-import { logError } from '../logger';
 
 export class FFNetworkManager {
   private _session: FFSession;
@@ -75,7 +75,7 @@ export class FFNetworkManager {
         throw new Error(`Response body for ${request.request.method()} ${request.request.url()} was evicted!`);
       return Buffer.from(response.base64body, 'base64');
     };
-    const headers: network.Headers = {};
+    const headers: types.Headers = {};
     for (const {name, value} of event.headers)
       headers[name.toLowerCase()] = value;
     const response = new network.Response(request.request, event.status, event.statusText, headers, getResponseBody);
@@ -137,6 +137,10 @@ const causeToResourceType: {[key: string]: string} = {
   TYPE_WEB_MANIFEST: 'manifest',
 };
 
+const internalCauseToResourceType: {[key: string]: string} = {
+  TYPE_INTERNAL_EVENTSOURCE: 'eventsource',
+};
+
 class InterceptableRequest implements network.RouteDelegate {
   readonly request: network.Request;
   _id: string;
@@ -146,29 +150,29 @@ class InterceptableRequest implements network.RouteDelegate {
     this._id = payload.requestId;
     this._session = session;
 
-    const headers: network.Headers = {};
+    const headers: types.Headers = {};
     for (const {name, value} of payload.headers)
       headers[name.toLowerCase()] = value;
 
     this.request = new network.Request(payload.isIntercepted ? this : null, frame, redirectedFrom ? redirectedFrom.request : null, payload.navigationId,
-        payload.url, causeToResourceType[payload.cause] || 'other', payload.method, payload.postData || null, headers);
+        payload.url, internalCauseToResourceType[payload.internalCause] || causeToResourceType[payload.cause] || 'other', payload.method, payload.postData || null, headers);
   }
 
-  async continue(overrides: { method?: string; headers?: network.Headers; postData?: string }) {
+  async continue(overrides: { method?: string; headers?: types.Headers; postData?: string }) {
     const {
       method,
       headers,
       postData
     } = overrides;
-    await this._session.send('Network.resumeInterceptedRequest', {
+    await this._session.sendMayFail('Network.resumeInterceptedRequest', {
       requestId: this._id,
       method,
       headers: headers ? headersArray(headers) : undefined,
       postData: postData ? Buffer.from(postData).toString('base64') : undefined
-    }).catch(logError(this.request._page));
+    });
   }
 
-  async fulfill(response: network.FulfillResponse) {
+  async fulfill(response: types.FulfillResponse) {
     const responseBody = response.body && helper.isString(response.body) ? Buffer.from(response.body) : (response.body || null);
 
     const responseHeaders: { [s: string]: string; } = {};
@@ -181,24 +185,24 @@ class InterceptableRequest implements network.RouteDelegate {
     if (responseBody && !('content-length' in responseHeaders))
       responseHeaders['content-length'] = String(Buffer.byteLength(responseBody));
 
-    await this._session.send('Network.fulfillInterceptedRequest', {
+    await this._session.sendMayFail('Network.fulfillInterceptedRequest', {
       requestId: this._id,
       status: response.status || 200,
       statusText: network.STATUS_TEXTS[String(response.status || 200)] || '',
       headers: headersArray(responseHeaders),
       base64body: responseBody ? responseBody.toString('base64') : undefined,
-    }).catch(logError(this.request._page));
+    });
   }
 
   async abort(errorCode: string) {
-    await this._session.send('Network.abortInterceptedRequest', {
+    await this._session.sendMayFail('Network.abortInterceptedRequest', {
       requestId: this._id,
       errorCode,
-    }).catch(logError(this.request._page));
+    });
   }
 }
 
-export function headersArray(headers: network.Headers): Protocol.Network.HTTPHeader[] {
+export function headersArray(headers: types.Headers): Protocol.Network.HTTPHeader[] {
   const result: Protocol.Network.HTTPHeader[] = [];
   for (const name in headers) {
     if (!Object.is(headers[name], undefined))

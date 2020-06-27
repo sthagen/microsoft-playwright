@@ -125,7 +125,7 @@ Under the hood, this and other pointer-related methods:
 
 #### Forcing the click
 
-Sometimes, apps use non-trivial logic where hovering the element overlays it with another element that intercepts the click. This behavior is indistinguishable from a bug where element gets covered and the click is dispatched elsewhere. If you know this is taking place, you can bypass the actionability checks and force the click:
+Sometimes, apps use non-trivial logic where hovering the element overlays it with another element that intercepts the click. This behavior is indistinguishable from a bug where element gets covered and the click is dispatched elsewhere. If you know this is taking place, you can bypass the [actionability](./actionability.md) checks and force the click:
 
 ```js
 await page.click('button#submit', { force: true });
@@ -162,7 +162,7 @@ await page.dispatchEvent('button#submit', 'click');
 Type into the field character by character, as if it was a user with a real keyboard.
 
 ```js
-// Type characted by character
+// Type character by character
 await page.type('#area', 'Hello World!');
 ```
 
@@ -215,7 +215,7 @@ await page.press('#name', 'Shift+A');
 await page.press('#name', 'Shift+ArrowLeft');
 ```
 
-Shortcuts such as `"Control+o"` or `"Control+Shift+T"` are supported as well. When speficied with the modifier, modifier is pressed and being held while the subsequent key is being pressed.
+Shortcuts such as `"Control+o"` or `"Control+Shift+T"` are supported as well. When specified with the modifier, modifier is pressed and being held while the subsequent key is being pressed.
 
 Note that you still need to specify the capital `A` in `Shift-A` to produce the capital character. `Shift-a` produces a lower-case one as if you had the `CapsLock` toggled.
 

@@ -70,11 +70,18 @@ serverEnvironment.afterEach(async(state) => {
 });
 
 const customEnvironment = new Environment('Golden+CheckContexts');
+
+// simulate globalSetup per browserType that happens only once regardless of TestWorker.
+const hasBeenCleaned = new Set();
+
 customEnvironment.beforeAll(async state => {
   const { OUTPUT_DIR, GOLDEN_DIR } = require('./utils').testOptions(state.browserType);
-  if (fs.existsSync(OUTPUT_DIR))
-    rm(OUTPUT_DIR);
-  fs.mkdirSync(OUTPUT_DIR, { recursive: true });
+  if (!hasBeenCleaned.has(state.browserType)) {
+    hasBeenCleaned.add(state.browserType);
+    if (fs.existsSync(OUTPUT_DIR))
+      rm(OUTPUT_DIR);
+    fs.mkdirSync(OUTPUT_DIR, { recursive: true });
+  }
   state.golden = goldenName => ({ goldenPath: GOLDEN_DIR, outputPath: OUTPUT_DIR, goldenName });
 });
 customEnvironment.afterAll(async state => {
@@ -143,7 +150,7 @@ function setupTestRunner(testRunner) {
 
 module.exports = {
   playwrightPath,
-  dumpProtocolOnFailure: valueFromEnv('DEBUGP', false),
+  dumpLogOnFailure: valueFromEnv('DEBUGP', false),
   launchOptions: {
     executablePath: {
       chromium: process.env.CRPATH,
@@ -209,6 +216,7 @@ module.exports = {
         './browsercontext.spec.js',
         './ignorehttpserrors.spec.js',
         './popup.spec.js',
+        './recorder.spec.js',
       ],
       environments: [customEnvironment, 'browser'],
     },
@@ -216,11 +224,13 @@ module.exports = {
     {
       files: [
         './defaultbrowsercontext.spec.js',
+        './downloadsPath.spec.js',
         './fixtures.spec.js',
         './launcher.spec.js',
         './logger.spec.js',
         './headful.spec.js',
         './multiclient.spec.js',
+        './proxy.spec.js',
       ],
       environments: [customEnvironment],
     },
@@ -233,6 +243,15 @@ module.exports = {
       ],
       browsers: ['chromium'],
       title: '[Chromium]',
+      environments: [customEnvironment],
+    },
+
+    {
+      files: [
+        './firefox/launcher.spec.js',
+      ],
+      browsers: ['firefox'],
+      title: '[Firefox]',
       environments: [customEnvironment],
     },
 

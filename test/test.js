@@ -16,10 +16,13 @@
  */
 
 const fs = require('fs');
-const path = require('path');
 const utils = require('./utils');
 const TestRunner = require('../utils/testrunner/');
 const {Environment} = require('../utils/testrunner/Test');
+const { DispatcherScope } = require('../lib/rpc/dispatcher');
+const { Connection } = require('../lib/rpc/connection');
+const { helper } = require('../lib/helper');
+const { BrowserTypeDispatcher } = require('../lib/rpc/server/browserTypeDispatcher');
 
 function getCLIArgument(argName) {
   for (let i = 0; i < process.argv.length; ++i) {
@@ -57,7 +60,7 @@ function collect(browserNames) {
 
   const testRunner = new TestRunner({
     timeout,
-    totalTimeout: process.env.CI ? 30 * 60 * 1000 : 0, // 30 minutes on CI
+    totalTimeout: process.env.CI ? 30 * 60 * 1000 * browserNames.length : 0, // 30 minutes per browser on CI
     parallel,
     breakOnFailure: process.argv.indexOf('--break-on-failure') !== -1,
     verbose: process.argv.includes('--verbose'),
@@ -91,11 +94,29 @@ function collect(browserNames) {
     testRunner.collector().useEnvironment(e);
 
   global.playwright = playwright;
+
   for (const browserName of browserNames) {
     const browserType = playwright[browserName];
+
     const browserTypeEnvironment = new Environment('BrowserType');
     browserTypeEnvironment.beforeAll(async state => {
-      state.browserType = browserType;
+      // Channel substitute
+      let overridenBrowserType = browserType;
+      if (process.env.PWCHANNEL) {
+        const dispatcherScope = new DispatcherScope();
+        const connection = new Connection();
+        dispatcherScope.onmessage = async message => {
+          setImmediate(() => connection.send(message));
+        };
+        connection.onmessage = async message => {
+          const result = await dispatcherScope.send(message);
+          await new Promise(f => setImmediate(f));
+          return result;
+        };
+        BrowserTypeDispatcher.from(dispatcherScope, browserType);
+        overridenBrowserType = await connection.waitForObjectWithKnownName(browserType.name());
+      }
+      state.browserType = overridenBrowserType;
     });
     browserTypeEnvironment.afterAll(async state => {
       delete state.browserType;
@@ -121,7 +142,7 @@ function collect(browserNames) {
 
     const browserEnvironment = new Environment(browserName);
     browserEnvironment.beforeAll(async state => {
-      state._logger = utils.createTestLogger(config.dumpProtocolOnFailure);
+      state._logger = utils.createTestLogger(config.dumpLogOnFailure);
       state.browser = await state.browserType.launch({...launchOptions, logger: state._logger});
     });
     browserEnvironment.afterAll(async state => {

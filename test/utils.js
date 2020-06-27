@@ -87,6 +87,22 @@ const utils = module.exports = {
     return result;
   },
 
+  verifyViewport: async (page, width, height) => {
+    expect(page.viewportSize().width).toBe(width);
+    expect(page.viewportSize().height).toBe(height);
+    expect(await page.evaluate('window.innerWidth')).toBe(width);
+    expect(await page.evaluate('window.innerHeight')).toBe(height);
+  },
+
+  registerEngine: async (name, script, options) => {
+    try {
+      await playwright.selectors.register(name, script, options);
+    } catch (e) {
+      if (!e.message.includes('has been already registered'))
+        throw e;
+    }
+  },
+
   initializeFlakinessDashboardIfNeeded: async function(testRunner) {
     // Generate testIDs for all tests and verify they don't clash.
     // This will add |test.testId| for every test.
@@ -192,7 +208,7 @@ const utils = module.exports = {
     platform = p;
   },
 
-  createTestLogger(dumpProtocolOnFailure = true, testRun = null, prefix = '') {
+  createTestLogger(dumpLogOnFailure = true, testRun = null, prefix = '') {
     const colors = [31, 32, 33, 34, 35, 36, 37];
     let colorIndex = 0;
     for (let i = 0; i < prefix.length; i++)
@@ -202,7 +218,7 @@ const utils = module.exports = {
 
     const logger = {
       isEnabled: (name, severity) => {
-        return name.startsWith('browser') || (name === 'protocol' && dumpProtocolOnFailure);
+        return name.startsWith('browser') || dumpLogOnFailure;
       },
       log: (name, severity, message, args) => {
         if (!testRun)
@@ -212,8 +228,8 @@ const utils = module.exports = {
             testRun.log(`${prefix}\x1b[31m[browser]\x1b[0m ${message}`)
           else
             testRun.log(`${prefix}\x1b[33m[browser]\x1b[0m ${message}`)
-        } else if (name === 'protocol' && dumpProtocolOnFailure) {
-          testRun.log(`${prefix}\x1b[32m[protocol]\x1b[0m ${message}`)
+        } else if (dumpLogOnFailure) {
+          testRun.log(`${prefix}\x1b[32m[${name}]\x1b[0m ${message}`)
         }
       },
       setTestRun(tr) {

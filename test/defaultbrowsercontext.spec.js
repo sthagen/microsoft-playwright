@@ -111,9 +111,9 @@ describe('launchPersistentContext()', function() {
       document.cookie = 'username=John Doe';
       return document.cookie;
     });
-    expect(documentCookie).toBe('username=John Doe');
     await page.waitForTimeout(2000);
     const allowsThirdParty = CHROMIUM || FFOX;
+    expect(documentCookie).toBe(allowsThirdParty ? 'username=John Doe' : '');
     const cookies = await context.cookies(server.CROSS_PROCESS_PREFIX + '/grid.html');
     if (allowsThirdParty) {
       expect(cookies).toEqual([
@@ -135,15 +135,9 @@ describe('launchPersistentContext()', function() {
   });
   it('should support viewport option', async state => {
     let { page, context } = await launch(state, {viewport: { width: 456, height: 789 }});
-    expect(page.viewportSize().width).toBe(456);
-    expect(page.viewportSize().height).toBe(789);
-    expect(await page.evaluate('window.innerWidth')).toBe(456);
-    expect(await page.evaluate('window.innerHeight')).toBe(789);
+    await utils.verifyViewport(page, 456, 789);
     page = await context.newPage();
-    expect(page.viewportSize().width).toBe(456);
-    expect(page.viewportSize().height).toBe(789);
-    expect(await page.evaluate('window.innerWidth')).toBe(456);
-    expect(await page.evaluate('window.innerHeight')).toBe(789);
+    await utils.verifyViewport(page, 456, 789);
     await close(state);
   });
   it('should support deviceScaleFactor option', async state => {
@@ -300,13 +294,16 @@ describe('launchPersistentContext()', function() {
     await removeUserDataDir(userDataDir);
     await removeUserDataDir(userDataDir2);
   });
-  it.slow().fail(WIN && CHROMIUM)('should restore cookies from userDataDir', async({browserType, defaultBrowserOptions,  server}) => {
-    // TODO: Flaky! See https://github.com/microsoft/playwright/pull/1795/checks?check_run_id=587685496
+  it.slow().fail(CHROMIUM && WIN)('should restore cookies from userDataDir', async({browserType, defaultBrowserOptions,  server}) => {
     const userDataDir = await makeUserDataDir();
     const browserContext = await browserType.launchPersistentContext(userDataDir, defaultBrowserOptions);
     const page = await browserContext.newPage();
     await page.goto(server.EMPTY_PAGE);
-    await page.evaluate(() => document.cookie = 'doSomethingOnlyOnce=true; expires=Fri, 31 Dec 9999 23:59:59 GMT');
+    const documentCookie = await page.evaluate(() => {
+      document.cookie = 'doSomethingOnlyOnce=true; expires=Fri, 31 Dec 9999 23:59:59 GMT';
+      return document.cookie;
+    });
+    expect(documentCookie).toBe('doSomethingOnlyOnce=true');
     await browserContext.close();
 
     const browserContext2 = await browserType.launchPersistentContext(userDataDir, defaultBrowserOptions);
@@ -319,7 +316,7 @@ describe('launchPersistentContext()', function() {
     const browserContext3 = await browserType.launchPersistentContext(userDataDir2, defaultBrowserOptions);
     const page3 = await browserContext3.newPage();
     await page3.goto(server.EMPTY_PAGE);
-    expect(await page3.evaluate(() => localStorage.hey)).not.toBe('doSomethingOnlyOnce=true');
+    expect(await page3.evaluate(() => document.cookie)).not.toBe('doSomethingOnlyOnce=true');
     await browserContext3.close();
 
     // This might throw. See https://github.com/GoogleChrome/puppeteer/issues/2778
@@ -360,7 +357,7 @@ describe('launchPersistentContext()', function() {
     const userDataDir = await makeUserDataDir();
     const options = { ...defaultBrowserOptions, timeout: 5000, __testHookBeforeCreateBrowser: () => new Promise(f => setTimeout(f, 6000)) };
     const error = await browserType.launchPersistentContext(userDataDir, options).catch(e => e);
-    expect(error.message).toContain('Waiting for the browser to launch failed: timeout exceeded. Re-run with the DEBUG=pw:browser* env variable to see the debug log.');
+    expect(error.message).toContain(`Timeout 5000ms exceeded during browserType.launchPersistentContext.`);
     await removeUserDataDir(userDataDir);
   });
   it('should handle exception', async({browserType, defaultBrowserOptions}) => {
@@ -369,17 +366,6 @@ describe('launchPersistentContext()', function() {
     const options = { ...defaultBrowserOptions, __testHookBeforeCreateBrowser: () => { throw e; } };
     const error = await browserType.launchPersistentContext(userDataDir, options).catch(e => e);
     expect(error).toBe(e);
-    await removeUserDataDir(userDataDir);
-  });
-  it('should throw on unsupported options', async ({browserType, defaultBrowserOptions}) => {
-    const userDataDir = await makeUserDataDir();
-    const optionNames = [ 'acceptDownloads' ];
-    for (const option of optionNames) {
-      const options = { ...defaultBrowserOptions };
-      options[option] = 'hello';
-      const error = await browserType.launchPersistentContext(userDataDir, options).catch(e => e);
-      expect(error.message).toBe(`Option "${option}" is not supported for persistent context`);
-    }
     await removeUserDataDir(userDataDir);
   });
 });

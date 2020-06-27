@@ -17,14 +17,13 @@
 
 import * as WebSocket from 'ws';
 import { helper } from './helper';
-import { Log, InnerLogger } from './logger';
+import { Progress } from './progress';
 
 export type ProtocolRequest = {
   id: number;
   method: string;
   params: any;
   sessionId?: string;
-  pageProxyId?: string;
 };
 
 export type ProtocolResponse = {
@@ -35,6 +34,7 @@ export type ProtocolResponse = {
   params?: any;
   result?: any;
   pageProxyId?: string;
+  browserContextId?: string;
 };
 
 export interface ConnectionTransport {
@@ -120,34 +120,41 @@ export class DeferWriteTransport implements ConnectionTransport {
 
 export class WebSocketTransport implements ConnectionTransport {
   private _ws: WebSocket;
-  private _logger: InnerLogger;
+  private _progress: Progress;
 
   onmessage?: (message: ProtocolResponse) => void;
   onclose?: () => void;
 
-  static connect(url: string, logger: InnerLogger, deadline: number): Promise<ConnectionTransport> {
-    logger._log({ name: 'browser' }, `<ws connecting> ${url}`);
-    const transport = new WebSocketTransport(url, logger, deadline);
-    return new Promise<ConnectionTransport>((fulfill, reject) => {
+  static async connect(progress: Progress, url: string): Promise<WebSocketTransport> {
+    progress.logger.info(`<ws connecting> ${url}`);
+    const transport = new WebSocketTransport(progress, url);
+    let success = false;
+    progress.aborted.then(() => {
+      if (!success)
+        transport.closeAndWait().catch(e => null);
+    });
+    await new Promise<WebSocketTransport>((fulfill, reject) => {
       transport._ws.addEventListener('open', async () => {
-        logger._log({ name: 'browser' }, `<ws connected> ${url}`);
+        progress.logger.info(`<ws connected> ${url}`);
         fulfill(transport);
       });
       transport._ws.addEventListener('error', event => {
-        logger._log({ name: 'browser' }, `<ws connect error> ${url} ${event.message}`);
+        progress.logger.info(`<ws connect error> ${url} ${event.message}`);
         reject(new Error('WebSocket error: ' + event.message));
         transport._ws.close();
       });
     });
+    success = true;
+    return transport;
   }
 
-  constructor(url: string, logger: InnerLogger, deadline: number) {
+  constructor(progress: Progress, url: string) {
     this._ws = new WebSocket(url, [], {
       perMessageDeflate: false,
       maxPayload: 256 * 1024 * 1024, // 256Mb,
-      handshakeTimeout: helper.timeUntilDeadline(deadline)
+      handshakeTimeout: progress.timeUntilDeadline(),
     });
-    this._logger = logger;
+    this._progress = progress;
     // The 'ws' module in node sometimes sends us multiple messages in a single task.
     // In Web, all IO callbacks (e.g. WebSocket callbacks)
     // are dispatched into separate tasks, so there's no need
@@ -162,7 +169,7 @@ export class WebSocketTransport implements ConnectionTransport {
     });
 
     this._ws.addEventListener('close', event => {
-      this._logger && this._logger._log({ name: 'browser' }, `<ws server disconnected> ${url}`);
+      this._progress && this._progress.logger.info(`<ws disconnected> ${url}`);
       if (this.onclose)
         this.onclose.call(null);
     });
@@ -175,25 +182,14 @@ export class WebSocketTransport implements ConnectionTransport {
   }
 
   close() {
-    this._logger && this._logger._log({ name: 'browser' }, `<ws disconnecting> ${this._ws.url}`);
+    this._progress && this._progress.logger.info(`<ws disconnecting> ${this._ws.url}`);
     this._ws.close();
   }
-}
 
-export class SequenceNumberMixer<V> {
-  static _lastSequenceNumber = 1;
-  private _values = new Map<number, V>();
-
-  generate(value: V): number {
-    const sequenceNumber = ++SequenceNumberMixer._lastSequenceNumber;
-    this._values.set(sequenceNumber, value);
-    return sequenceNumber;
-  }
-
-  take(sequenceNumber: number): V | undefined {
-    const value = this._values.get(sequenceNumber);
-    this._values.delete(sequenceNumber);
-    return value;
+  async closeAndWait() {
+    const promise = new Promise(f => this.onclose = f);
+    this.close();
+    return promise; // Make sure to await the actual disconnect.
   }
 }
 
@@ -231,9 +227,3 @@ export class InterceptingTransport implements ConnectionTransport {
     this._delegate.close();
   }
 }
-
-export const protocolLog: Log = {
-  name: 'protocol',
-  severity: 'verbose',
-  color: 'green'
-};

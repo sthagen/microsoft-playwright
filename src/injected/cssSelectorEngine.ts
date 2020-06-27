@@ -219,8 +219,8 @@ function parentElementOrShadowHost(element: Element): Element | undefined {
 function split(selector: string): string[][] {
   let index = 0;
   let quote: string | undefined;
+  let insideAttr = false;
   let start = 0;
-  let space: 'none' | 'before' | 'after' = 'none';
   const result: string[][] = [];
   let current: string[] = [];
   const appendToCurrent = () => {
@@ -233,33 +233,38 @@ function split(selector: string): string[][] {
     result.push(current);
     current = [];
   };
+  const isCombinator = (char: string) => {
+    return char === '>' || char === '+' || char === '~';
+  };
+  const peekForward = () => {
+    return selector.substring(index).trim()[0];
+  };
+  const peekBackward = () => {
+    const s = selector.substring(0, index).trim();
+    return s[s.length - 1];
+  };
   while (index < selector.length) {
     const c = selector[index];
-    if (!quote && c === ' ') {
-      if (space === 'none' || space === 'before')
-        space = 'before';
+    if (!quote && !insideAttr && c === ' ' && !isCombinator(peekForward()) && !isCombinator(peekBackward())) {
+      appendToCurrent();
+      start = index;
       index++;
     } else {
-      if (space === 'before') {
-        if (c === '>' || c === '+' || c === '~') {
-          space = 'after';
-        } else {
-          appendToCurrent();
-          start = index;
-          space = 'none';
-        }
-      } else {
-        space = 'none';
-      }
       if (c === '\\' && index + 1 < selector.length) {
         index += 2;
       } else if (c === quote) {
         quote = undefined;
         index++;
-      } else if (c === '\'' || c === '"') {
+      } else if (!quote && (c === '\'' || c === '"')) {
         quote = c;
         index++;
-      } else if (!quote && c === ',') {
+      } else if (!quote && c === '[') {
+        insideAttr = true;
+        index++;
+      } else if (!quote && insideAttr && c === ']') {
+        insideAttr = false;
+        index++;
+      } else if (!quote && !insideAttr && c === ',') {
         appendToResult();
         index++;
         start = index;

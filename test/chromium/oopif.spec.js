@@ -41,6 +41,18 @@ describe('OOPIF', function() {
     expect(page.frames().length).toBe(2);
     expect(await page.frames()[1].evaluate(() => '' + location.href)).toBe(server.CROSS_PROCESS_PREFIX + '/grid.html');
   });
+  it('should handle oopif detach', async function({browser, page, server, context}) {
+    await page.goto(server.PREFIX + '/dynamic-oopif.html');
+    expect(await countOOPIFs(browser)).toBe(1);
+    expect(page.frames().length).toBe(2);
+    const frame = page.frames()[1];
+    expect(await frame.evaluate(() => '' + location.href)).toBe(server.CROSS_PROCESS_PREFIX + '/grid.html');
+    const [detachedFrame] = await Promise.all([
+      page.waitForEvent('framedetached'),
+      page.evaluate(() => document.querySelector('iframe').remove()),
+    ]);
+    expect(detachedFrame).toBe(frame);
+  });
   it('should handle remote -> local -> remote transitions', async function({browser, page, server, context}) {
     await page.goto(server.PREFIX + '/dynamic-oopif.html');
     expect(page.frames().length).toBe(2);
@@ -138,13 +150,12 @@ describe('OOPIF', function() {
     expect(await countOOPIFs(browser)).toBe(1);
     expect(intercepted).toBe(true);
   });
-  it.fail(CHROMIUM)('should take screenshot', async({browser, page, server}) => {
-    // Screenshot differs on the bots, needs debugging.
+  it('should take screenshot', async({browser, page, server, golden}) => {
     await page.setViewportSize({width: 500, height: 500});
     await page.goto(server.PREFIX + '/dynamic-oopif.html');
     expect(page.frames().length).toBe(2);
     expect(await countOOPIFs(browser)).toBe(1);
-    expect(await page.screenshot()).toBeGolden('screenshot-iframe.png');
+    expect(await page.screenshot()).toBeGolden(golden('screenshot-oopif.png'));
   });
   it('should load oopif iframes with subresources and request interception', async function({browser, page, server, context}) {
     await page.route('**/*', route => route.continue());
@@ -187,6 +198,28 @@ describe('OOPIF', function() {
     expect(finishedFrames[1]).toBe(child);
     expect(requestFrames[2]).toBe(grandChild);
     expect(finishedFrames[2]).toBe(grandChild);
+  });
+  it('should support exposeFunction', async function({browser, page, server, context}) {
+    await context.exposeFunction('dec', a => a - 1);
+    await page.exposeFunction('inc', a => a + 1);
+    await page.goto(server.PREFIX + '/dynamic-oopif.html');
+    expect(await countOOPIFs(browser)).toBe(1);
+    expect(page.frames().length).toBe(2);
+    expect(await page.frames()[0].evaluate(() => inc(3))).toBe(4);
+    expect(await page.frames()[1].evaluate(() => inc(4))).toBe(5);
+    expect(await page.frames()[0].evaluate(() => dec(3))).toBe(2);
+    expect(await page.frames()[1].evaluate(() => dec(4))).toBe(3);
+  });
+  it('should support addInitScript', async function({browser, page, server, context}) {
+    await context.addInitScript(() => window.bar = 17);
+    await page.addInitScript(() => window.foo = 42);
+    await page.goto(server.PREFIX + '/dynamic-oopif.html');
+    expect(await countOOPIFs(browser)).toBe(1);
+    expect(page.frames().length).toBe(2);
+    expect(await page.frames()[0].evaluate(() => window.foo)).toBe(42);
+    expect(await page.frames()[1].evaluate(() => window.foo)).toBe(42);
+    expect(await page.frames()[0].evaluate(() => window.bar)).toBe(17);
+    expect(await page.frames()[1].evaluate(() => window.bar)).toBe(17);
   });
   // @see https://github.com/microsoft/playwright/issues/1240
   it('should click a button when it overlays oopif', async function({browser, page, server, context}) {

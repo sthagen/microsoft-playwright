@@ -15,10 +15,12 @@
  * limitations under the License.
  */
 
-import { helper } from '../helper';
 import * as js from '../javascript';
 import { FFSession } from './ffConnection';
 import { Protocol } from './protocol';
+import * as sourceMap from '../utils/sourceMap';
+import { rewriteErrorMessage } from '../utils/stackTrace';
+import { parseEvaluationResultValue } from '../common/utilityScriptSerializers';
 
 export class FFExecutionContext implements js.ExecutionContextDelegate {
   _session: FFSession;
@@ -29,72 +31,35 @@ export class FFExecutionContext implements js.ExecutionContextDelegate {
     this._executionContextId = executionContextId;
   }
 
-  async rawEvaluate(expression: string): Promise<js.RemoteObject> {
+  async rawEvaluate(expression: string): Promise<string> {
     const payload = await this._session.send('Runtime.evaluate', {
-      expression: js.ensureSourceUrl(expression),
+      expression: sourceMap.ensureSourceUrl(expression),
       returnByValue: false,
       executionContextId: this._executionContextId,
     }).catch(rewriteError);
     checkException(payload.exceptionDetails);
-    return payload.result!;
+    return payload.result!.objectId!;
   }
 
-  async evaluate(context: js.ExecutionContext, returnByValue: boolean, pageFunction: Function | string, ...args: any[]): Promise<any> {
-    if (helper.isString(pageFunction)) {
-      return this._callOnUtilityScript(context,
-          `evaluate`, [
-            { value: pageFunction },
-          ], returnByValue, () => {});
-    }
-    if (typeof pageFunction !== 'function')
-      throw new Error(`Expected to get |string| or |function| as the first argument, but got "${pageFunction}" instead.`);
-
-    const { functionText, values, handles, dispose } = await js.prepareFunctionCall<Protocol.Runtime.CallFunctionArgument>(pageFunction, context, args, (value: any) => {
-      if (Object.is(value, -0))
-        return { handle: { unserializableValue: '-0' } };
-      if (Object.is(value, Infinity))
-        return { handle: { unserializableValue: 'Infinity' } };
-      if (Object.is(value, -Infinity))
-        return { handle: { unserializableValue: '-Infinity' } };
-      if (Object.is(value, NaN))
-        return { handle: { unserializableValue: 'NaN' } };
-      if (value && (value instanceof js.JSHandle))
-        return { handle: this._toCallArgument(value._remoteObject) };
-      return { value };
-    });
-
-    return this._callOnUtilityScript(context,
-        `callFunction`, [
-          { value: functionText },
-          ...values.map(value => ({ value })),
-          ...handles,
-        ], returnByValue, dispose);
-  }
-
-  private async _callOnUtilityScript(context: js.ExecutionContext, method: string, args: Protocol.Runtime.CallFunctionArgument[], returnByValue: boolean, dispose: () => void) {
-    try {
-      const utilityScript = await context.utilityScript();
-      const payload = await this._session.send('Runtime.callFunction', {
-        functionDeclaration: `(utilityScript, ...args) => utilityScript.${method}(...args)`,
-        args: [
-          { objectId: utilityScript._remoteObject.objectId, value: undefined },
-          { value: returnByValue },
-          ...args
-        ],
-        returnByValue,
-        executionContextId: this._executionContextId
-      }).catch(rewriteError);
-      checkException(payload.exceptionDetails);
-      if (returnByValue)
-        return deserializeValue(payload.result!);
-      return context.createHandle(payload.result);
-    } finally {
-      dispose();
-    }
+  async evaluateWithArguments(expression: string, returnByValue: boolean, utilityScript: js.JSHandle<any>, values: any[], objectIds: string[]): Promise<any> {
+    const payload = await this._session.send('Runtime.callFunction', {
+      functionDeclaration: expression,
+      args: [
+        { objectId: utilityScript._objectId, value: undefined },
+        ...values.map(value => ({ value })),
+        ...objectIds.map(objectId => ({ objectId, value: undefined })),
+      ],
+      returnByValue,
+      executionContextId: this._executionContextId
+    }).catch(rewriteError);
+    checkException(payload.exceptionDetails);
+    if (returnByValue)
+      return parseEvaluationResultValue(payload.result!.value);
+    return utilityScript._context.createHandle(payload.result!);
   }
 
   async getProperties(handle: js.JSHandle): Promise<Map<string, js.JSHandle>> {
-    const objectId = handle._remoteObject.objectId;
+    const objectId = handle._objectId;
     if (!objectId)
       return new Map();
     const response = await this._session.send('Runtime.getObjectProperties', {
@@ -107,37 +72,17 @@ export class FFExecutionContext implements js.ExecutionContextDelegate {
     return result;
   }
 
+  createHandle(context: js.ExecutionContext, remoteObject: Protocol.Runtime.RemoteObject): js.JSHandle {
+    return new js.JSHandle(context, remoteObject.subtype || remoteObject.type || '', remoteObject.objectId, potentiallyUnserializableValue(remoteObject));
+  }
+
   async releaseHandle(handle: js.JSHandle): Promise<void> {
-    if (!handle._remoteObject.objectId)
+    if (!handle._objectId)
       return;
     await this._session.send('Runtime.disposeObject', {
       executionContextId: this._executionContextId,
-      objectId: handle._remoteObject.objectId,
+      objectId: handle._objectId,
     }).catch(error => {});
-  }
-
-  async handleJSONValue<T>(handle: js.JSHandle<T>): Promise<T> {
-    const payload = handle._remoteObject;
-    if (!payload.objectId)
-      return deserializeValue(payload as Protocol.Runtime.RemoteObject);
-    const simpleValue = await this._session.send('Runtime.callFunction', {
-      executionContextId: this._executionContextId,
-      returnByValue: true,
-      functionDeclaration: ((e: any) => e).toString() + js.generateSourceUrl(),
-      args: [this._toCallArgument(payload)],
-    });
-    return deserializeValue(simpleValue.result!);
-  }
-
-  handleToString(handle: js.JSHandle, includeType: boolean): string {
-    const payload = handle._remoteObject;
-    if (payload.objectId)
-      return 'JSHandle@' + (payload.subtype || payload.type);
-    return (includeType ? 'JSHandle:' : '') + deserializeValue(payload as Protocol.Runtime.RemoteObject);
-  }
-
-  private _toCallArgument(payload: any): any {
-    return { value: payload.value, unserializableValue: payload.unserializableValue, objectId: payload.objectId };
   }
 }
 
@@ -150,24 +95,18 @@ function checkException(exceptionDetails?: Protocol.Runtime.ExceptionDetails) {
     throw new Error('Evaluation failed: ' + exceptionDetails.text + '\n' + exceptionDetails.stack);
 }
 
-export function deserializeValue({unserializableValue, value}: Protocol.Runtime.RemoteObject) {
-  if (unserializableValue === 'Infinity')
-    return Infinity;
-  if (unserializableValue === '-Infinity')
-    return -Infinity;
-  if (unserializableValue === '-0')
-    return -0;
-  if (unserializableValue === 'NaN')
-    return NaN;
-  return value;
-}
-
 function rewriteError(error: Error): (Protocol.Runtime.evaluateReturnValue | Protocol.Runtime.callFunctionReturnValue) {
   if (error.message.includes('cyclic object value') || error.message.includes('Object is not serializable'))
     return {result: {type: 'undefined', value: undefined}};
   if (error.message.includes('Failed to find execution context with id') || error.message.includes('Execution context was destroyed!'))
     throw new Error('Execution context was destroyed, most likely because of a navigation.');
   if (error instanceof TypeError && error.message.startsWith('Converting circular structure to JSON'))
-    error.message += ' Are you passing a nested JSHandle?';
+    rewriteErrorMessage(error, error.message + ' Are you passing a nested JSHandle?');
   throw error;
+}
+
+function potentiallyUnserializableValue(remoteObject: Protocol.Runtime.RemoteObject): any {
+  const value = remoteObject.value;
+  const unserializableValue = remoteObject.unserializableValue;
+  return unserializableValue ? js.parseUnserializableValue(unserializableValue) : value;
 }

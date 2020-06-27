@@ -20,7 +20,7 @@ import { CRSession } from './crConnection';
 
 const kBindingName = '__pw_devtools__';
 
-// This method intercepts preferences-related DevTools embedder methods
+// This class intercepts preferences-related DevTools embedder methods
 // and stores preferences as a json file in the browser installation directory.
 export class CRDevTools {
   private _preferencesPath: string;

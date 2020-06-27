@@ -1,8 +1,10 @@
 # Continuous Integration
 
-Playwright tests can be executed to run on your CI environments. To simplify this, we have created sample configurations for common CI providers that can be used to bootstrap your setup.
+Playwright tests can be executed in CI environments. We have created sample
+configurations for common CI providers.
 
 <!-- GEN:toc -->
+- [Introduction](#introduction)
 - [CI configurations](#ci-configurations)
   * [GitHub Actions](#github-actions)
   * [Docker](#docker)
@@ -10,13 +12,24 @@ Playwright tests can be executed to run on your CI environments. To simplify thi
   * [Travis CI](#travis-ci)
   * [CircleCI](#circleci)
   * [AppVeyor](#appveyor)
+  * [Bitbucket Pipelines](#bitbucket-pipelines)
+  * [GitLab CI](#gitlab-ci)
 - [Caching browsers](#caching-browsers)
     - [Exception: `node_modules` are cached](#exception-nodemodules-are-cached)
     - [Directories to cache](#directories-to-cache)
 - [Debugging browser launches](#debugging-browser-launches)
+- [Running headful](#running-headful)
 <!-- GEN:stop -->
 
-Broadly, configuration on CI involves **ensuring system dependencies** are in place, **installing Playwright and browsers** (typically with `npm install`), and **running tests** (typically with `npm test`). Windows and macOS build agents do not require any additional system dependencies. Linux build agents can require additional dependencies, depending on the Linux distribution.
+## Introduction
+
+3 steps to get your tests running on CI:
+
+1. **Ensure CI agent can run browsers**: Use [our Docker image](docker/README.md)
+   in Linux agents. Windows and macOS agents do not require any additional dependencies.
+1. **Install Playwright**: In most projects, this would be done with `npm ci`
+   (or `npm install`). Playwright would install the relevant browsers automatically.
+1. **Run your tests**: Use `npm test` or equivalent to execute your tests.
 
 ## CI configurations
 
@@ -66,7 +79,18 @@ Suggested configuration
 
 For Windows or macOS agents, no additional configuration required, just install Playwright and run your tests.
 
-For Linux agents, refer to [our Docker setup](docker/README.md) to see additional dependencies that need to be installed.
+For Linux agents, you can use [our Docker container](docker/README.md) with Azure Pipelines support for [running containerized jobs](https://docs.microsoft.com/en-us/azure/devops/pipelines/process/container-phases?view=azure-devops). Alternatively, you can refer to the [Dockerfile](docker/README.md) to see additional dependencies that need to be installed on a Ubuntu agent.
+
+```yml
+pool:
+  vmImage: 'ubuntu-18.04'
+
+container: aslushnikov/playwright:bionic
+
+steps:
+- script: npm install
+- script: npm run test
+```
 
 ### Travis CI
 
@@ -146,6 +170,37 @@ We run our tests on CircleCI, with our [pre-built Docker image](docker/README.md
 
 We run our tests on Windows agents in AppVeyor. Use our [AppVeyor configuration](/.appveyor.yml) to create your own.
 
+### Bitbucket Pipelines
+
+Bitbucket Pipelines can use public [Docker images as build environments](https://confluence.atlassian.com/bitbucket/use-docker-images-as-build-environments-792298897.html). To run Playwright tests on Bitbucket, use our public Docker image ([see Dockerfile](docker/README.md)).
+
+```yml
+image: aslushnikov/playwright:bionic
+```
+
+While the Docker image supports sandboxing for Chromium, it does not work in the Bitbucket Pipelines environment. To launch Chromium on Bitbucket Pipelines, use the `--no-sandbox` launch argument.
+
+```js
+const { chromium } = require('playwright');
+const browser = await chromium.launch({ args: ['--no-sandbox'] });
+```
+
+### GitLab CI
+
+To run Playwright tests on GitLab, use our public Docker image ([see Dockerfile](docker/README.md)).
+
+```yml
+stages:
+  - test
+
+tests:
+  stage: test
+  image: aslushnikov/playwright:bionic
+  script:
+    - npm install # This should install playwright
+    - npm run test
+```
+
 ## Caching browsers
 
 By default, Playwright downloads browser binaries when the Playwright NPM package
@@ -160,8 +215,8 @@ execute and download the browser binaries on every run.
 Most CI providers cache the [npm-cache](https://docs.npmjs.com/cli-commands/cache.html)
 directory (located at `$HOME/.npm`). If your CI pipelines caches the `node_modules`
 directory and you run `npm install` (instead of `npm ci`), the default configuration 
-**will not work**. This is because the `npm install` step will find the NPM
-package on disk, and not execute the `postinstall` step.
+**will not work**. This is because the `npm install` step will find the Playwright NPM
+package on disk and not execute the `postinstall` step.
 
 > Travis CI automatically caches `node_modules` if your repo does not have a
   `package-lock.json` file.
@@ -172,6 +227,8 @@ This behavior can be fixed with one of the following approaches:
 1. Set `PLAYWRIGHT_BROWSERS_PATH=0` as the environment variable before running
    `npm install`. This will download the browser binaries in the `node_modules`
    directory and cache them with the package code. See [installation docs](installation.md).
+1. Use `npm ci` (instead of `npm install`) which forces a clean install: by
+   removing the existing `node_modules` directory. See [npm docs](https://docs.npmjs.com/cli/ci.html).
 1. Cache the browser binaries, with the steps below.
 
 #### Directories to cache
@@ -192,4 +249,20 @@ Playwright supports the `DEBUG` environment variable to output debug logs during
 
 ```
 DEBUG=pw:browser* npm run test
+```
+
+## Running headful
+
+By default, Playwright launches browsers in headless mode. This can be changed by passing a flag when the browser is launched.
+
+```js
+// Works across chromium, firefox and webkit
+const { chromium } = require('playwright');
+const browser = await chromium.launch({ headless: false });
+```
+
+On Linux agents, headful execution requires [Xvfb](https://en.wikipedia.org/wiki/Xvfb) to be installed. Our [Docker image](docker/README.md) and GitHub Action have Xvfb pre-installed. To run browsers in headful mode with Xvfb, add `xvfb-run` before the Node.js command.
+
+```
+xvfb-run node index.js
 ```

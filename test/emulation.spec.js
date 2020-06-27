@@ -16,22 +16,18 @@
  */
 
 const utils = require('./utils');
-const {FFOX, CHROMIUM, WEBKIT} = utils.testOptions(browserType);
+const {FFOX, CHROMIUM, WEBKIT, LINUX} = utils.testOptions(browserType);
 const iPhone = playwright.devices['iPhone 6'];
 const iPhoneLandscape = playwright.devices['iPhone 6 landscape'];
 
 describe('BrowserContext({viewport})', function() {
-  it('should get the proper viewport size', async({page, server}) => {
-    expect(page.viewportSize()).toEqual({width: 1280, height: 720});
-    expect(await page.evaluate(() => window.innerWidth)).toBe(1280);
-    expect(await page.evaluate(() => window.innerHeight)).toBe(720);
+  it('should get the proper default viewport size', async({page, server}) => {
+    await utils.verifyViewport(page, 1280, 720);
   });
   it('should set the proper viewport size', async({page, server}) => {
-    expect(page.viewportSize()).toEqual({width: 1280, height: 720});
+    await utils.verifyViewport(page, 1280, 720);
     await page.setViewportSize({width: 123, height: 456});
-    expect(page.viewportSize()).toEqual({width: 123, height: 456});
-    expect(await page.evaluate(() => window.innerWidth)).toBe(123);
-    expect(await page.evaluate(() => window.innerHeight)).toBe(456);
+    await utils.verifyViewport(page, 123, 456);
   });
   it('should emulate device width', async({page, server}) => {
     expect(page.viewportSize()).toEqual({width: 1280, height: 720});
@@ -204,6 +200,22 @@ describe.skip(FFOX)('Page.emulate', function() {
     await page.evaluate(button => button.style.marginTop = '200px', button);
     await button.click();
     expect(await page.evaluate(() => result)).toBe('Clicked');
+    await context.close();
+  });
+  it('should scroll to click', async({browser, server}) => {
+    const context = await browser.newContext({
+      viewport: {
+        width: 400,
+        height: 400,
+      },
+      deviceScaleFactor: 1,
+      isMobile: true
+    });
+    const page = await context.newPage();
+    await page.goto(server.PREFIX + '/input/scrollable.html');
+    const element = await page.$('#button-91');
+    await element.click();
+    expect(await element.textContent()).toBe('clicked');
     await context.close();
   });
 });

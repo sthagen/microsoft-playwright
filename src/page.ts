@@ -26,12 +26,12 @@ import { TimeoutSettings } from './timeoutSettings';
 import * as types from './types';
 import { Events } from './events';
 import { BrowserContext, BrowserContextBase } from './browserContext';
-import { ConsoleMessage, ConsoleMessageLocation } from './console';
+import { ConsoleMessage } from './console';
 import * as accessibility from './accessibility';
-import { ExtendedEventEmitter } from './extendedEventEmitter';
 import { EventEmitter } from 'events';
 import { FileChooser } from './fileChooser';
-import { logError, InnerLogger, Log } from './logger';
+import { logError, Logger } from './logger';
+import { ProgressController, Progress, runAbortableTask } from './progress';
 
 export interface PageDelegate {
   readonly rawMouse: input.RawMouse;
@@ -64,18 +64,17 @@ export interface PageDelegate {
   getContentFrame(handle: dom.ElementHandle): Promise<frames.Frame | null>;  // Only called for frame owner elements.
   getOwnerFrame(handle: dom.ElementHandle): Promise<string | null>; // Returns frameId.
   getContentQuads(handle: dom.ElementHandle): Promise<types.Quad[] | null>;
-  layoutViewport(): Promise<{ width: number, height: number }>;
   setInputFiles(handle: dom.ElementHandle<HTMLInputElement>, files: types.FilePayload[]): Promise<void>;
   getBoundingBox(handle: dom.ElementHandle): Promise<types.Rect | null>;
   getFrameElement(frame: frames.Frame): Promise<dom.ElementHandle>;
-  scrollRectIntoViewIfNeeded(handle: dom.ElementHandle, rect?: types.Rect): Promise<'success' | 'invisible'>;
-  setActivityPaused(paused: boolean): Promise<void>;
-  rafCountForStablePosition(): number;
+  scrollRectIntoViewIfNeeded(handle: dom.ElementHandle, rect?: types.Rect): Promise<'error:notvisible' | 'error:notconnected' | 'done'>;
 
   getAccessibilityTree(needle?: dom.ElementHandle): Promise<{tree: accessibility.AXNode, needle: accessibility.AXNode | null}>;
   pdf?: (options?: types.PDFOptions) => Promise<Buffer>;
   coverage?: () => any;
 
+  // Work around WebKit's raf issues on Windows.
+  rafCountForStablePosition(): number;
   // Work around Chrome's non-associated input and protocol.
   inputActionEpilogue(): Promise<void>;
   // Work around for asynchronously dispatched CSP errors in Firefox.
@@ -86,23 +85,27 @@ type PageState = {
   viewportSize: types.Size | null;
   mediaType: types.MediaType | null;
   colorScheme: types.ColorScheme | null;
-  extraHTTPHeaders: network.Headers | null;
+  extraHTTPHeaders: types.Headers | null;
 };
 
-export class Page extends ExtendedEventEmitter implements InnerLogger {
+export class Page extends EventEmitter {
   private _closed = false;
   private _closedCallback: () => void;
   private _closedPromise: Promise<void>;
   private _disconnected = false;
   private _disconnectedCallback: (e: Error) => void;
   readonly _disconnectedPromise: Promise<Error>;
+  private _crashedCallback: (e: Error) => void;
+  readonly _crashedPromise: Promise<Error>;
   readonly _browserContext: BrowserContextBase;
   readonly keyboard: input.Keyboard;
   readonly mouse: input.Mouse;
   readonly _timeoutSettings: TimeoutSettings;
   readonly _delegate: PageDelegate;
+  readonly _logger: Logger;
   readonly _state: PageState;
   readonly _pageBindings = new Map<string, PageBinding>();
+  readonly _evaluateOnNewDocumentSources: string[] = [];
   readonly _screenshotter: Screenshotter;
   readonly _frameManager: frames.FrameManager;
   readonly accessibility: accessibility.Accessibility;
@@ -111,14 +114,18 @@ export class Page extends ExtendedEventEmitter implements InnerLogger {
   readonly coverage: any;
   _routes: { url: types.URLMatch, handler: network.RouteHandler }[] = [];
   _ownedContext: BrowserContext | undefined;
+  _callingPageAPI = false;
 
   constructor(delegate: PageDelegate, browserContext: BrowserContextBase) {
     super();
     this._delegate = delegate;
+    this._logger = browserContext._apiLogger;
     this._closedCallback = () => {};
     this._closedPromise = new Promise(f => this._closedCallback = f);
     this._disconnectedCallback = () => {};
     this._disconnectedPromise = new Promise(f => this._disconnectedCallback = f);
+    this._crashedCallback = () => {};
+    this._crashedPromise = new Promise(f => this._crashedCallback = f);
     this._browserContext = browserContext;
     this._state = {
       viewportSize: browserContext._options.viewport ? { ...browserContext._options.viewport } : null,
@@ -137,14 +144,6 @@ export class Page extends ExtendedEventEmitter implements InnerLogger {
     this.coverage = delegate.coverage ? delegate.coverage() : null;
   }
 
-  protected _abortPromiseForEvent(event: string) {
-    return this._disconnectedPromise;
-  }
-
-  protected _computeDeadline(options?: types.TimeoutOptions): number {
-    return this._timeoutSettings.computeDeadline(options);
-  }
-
   _didClose() {
     assert(!this._closed, 'Page closed twice');
     this._closed = true;
@@ -154,12 +153,19 @@ export class Page extends ExtendedEventEmitter implements InnerLogger {
 
   _didCrash() {
     this.emit(Events.Page.Crash);
+    this._crashedCallback(new Error('Page crashed'));
   }
 
   _didDisconnect() {
     assert(!this._disconnected, 'Page disconnected twice');
     this._disconnected = true;
-    this._disconnectedCallback(new Error('Target closed'));
+    this._disconnectedCallback(new Error('Page closed'));
+  }
+
+  async _runAbortableTask<T>(task: (progress: Progress) => Promise<T>, timeout: number, apiName: string): Promise<T> {
+    return runAbortableTask(async progress => {
+      return task(progress);
+    }, this._logger, timeout, apiName);
   }
 
   async _onFileChooserOpened(handle: dom.ElementHandle) {
@@ -208,48 +214,48 @@ export class Page extends ExtendedEventEmitter implements InnerLogger {
   }
 
   async $(selector: string): Promise<dom.ElementHandle<Element> | null> {
-    return this.mainFrame().$(selector);
+    return this._attributeToPage(() => this.mainFrame().$(selector));
   }
 
   async waitForSelector(selector: string, options?: types.WaitForElementOptions): Promise<dom.ElementHandle<Element> | null> {
-    return this.mainFrame().waitForSelector(selector, options);
+    return this._attributeToPage(() => this.mainFrame().waitForSelector(selector, options));
   }
 
   async dispatchEvent(selector: string, type: string, eventInit?: Object, options?: types.TimeoutOptions): Promise<void> {
-    return this.mainFrame().dispatchEvent(selector, type, eventInit, options);
+    return this._attributeToPage(() => this.mainFrame().dispatchEvent(selector, type, eventInit, options));
   }
 
-  async evaluateHandle<R, Arg>(pageFunction: types.Func1<Arg, R>, arg: Arg): Promise<types.SmartHandle<R>>;
-  async evaluateHandle<R>(pageFunction: types.Func1<void, R>, arg?: any): Promise<types.SmartHandle<R>>;
-  async evaluateHandle<R, Arg>(pageFunction: types.Func1<Arg, R>, arg: Arg): Promise<types.SmartHandle<R>> {
+  async evaluateHandle<R, Arg>(pageFunction: js.Func1<Arg, R>, arg: Arg): Promise<js.SmartHandle<R>>;
+  async evaluateHandle<R>(pageFunction: js.Func1<void, R>, arg?: any): Promise<js.SmartHandle<R>>;
+  async evaluateHandle<R, Arg>(pageFunction: js.Func1<Arg, R>, arg: Arg): Promise<js.SmartHandle<R>> {
     assertMaxArguments(arguments.length, 2);
-    return this.mainFrame().evaluateHandle(pageFunction, arg);
+    return this._attributeToPage(() => this.mainFrame().evaluateHandle(pageFunction, arg));
   }
 
-  async $eval<R, Arg>(selector: string, pageFunction: types.FuncOn<Element, Arg, R>, arg: Arg): Promise<R>;
-  async $eval<R>(selector: string, pageFunction: types.FuncOn<Element, void, R>, arg?: any): Promise<R>;
-  async $eval<R, Arg>(selector: string, pageFunction: types.FuncOn<Element, Arg, R>, arg: Arg): Promise<R> {
+  async $eval<R, Arg>(selector: string, pageFunction: js.FuncOn<Element, Arg, R>, arg: Arg): Promise<R>;
+  async $eval<R>(selector: string, pageFunction: js.FuncOn<Element, void, R>, arg?: any): Promise<R>;
+  async $eval<R, Arg>(selector: string, pageFunction: js.FuncOn<Element, Arg, R>, arg: Arg): Promise<R> {
     assertMaxArguments(arguments.length, 3);
-    return this.mainFrame().$eval(selector, pageFunction, arg);
+    return this._attributeToPage(() => this.mainFrame().$eval(selector, pageFunction, arg));
   }
 
-  async $$eval<R, Arg>(selector: string, pageFunction: types.FuncOn<Element[], Arg, R>, arg: Arg): Promise<R>;
-  async $$eval<R>(selector: string, pageFunction: types.FuncOn<Element[], void, R>, arg?: any): Promise<R>;
-  async $$eval<R, Arg>(selector: string, pageFunction: types.FuncOn<Element[], Arg, R>, arg: Arg): Promise<R> {
+  async $$eval<R, Arg>(selector: string, pageFunction: js.FuncOn<Element[], Arg, R>, arg: Arg): Promise<R>;
+  async $$eval<R>(selector: string, pageFunction: js.FuncOn<Element[], void, R>, arg?: any): Promise<R>;
+  async $$eval<R, Arg>(selector: string, pageFunction: js.FuncOn<Element[], Arg, R>, arg: Arg): Promise<R> {
     assertMaxArguments(arguments.length, 3);
-    return this.mainFrame().$$eval(selector, pageFunction, arg);
+    return this._attributeToPage(() => this.mainFrame().$$eval(selector, pageFunction, arg));
   }
 
   async $$(selector: string): Promise<dom.ElementHandle<Element>[]> {
-    return this.mainFrame().$$(selector);
+    return this._attributeToPage(() => this.mainFrame().$$(selector));
   }
 
   async addScriptTag(options: { url?: string; path?: string; content?: string; type?: string; }): Promise<dom.ElementHandle> {
-    return this.mainFrame().addScriptTag(options);
+    return this._attributeToPage(() => this.mainFrame().addScriptTag(options));
   }
 
   async addStyleTag(options: { url?: string; path?: string; content?: string; }): Promise<dom.ElementHandle> {
-    return this.mainFrame().addStyleTag(options);
+    return this._attributeToPage(() => this.mainFrame().addStyleTag(options));
   }
 
   async exposeFunction(name: string, playwrightFunction: Function) {
@@ -266,7 +272,7 @@ export class Page extends ExtendedEventEmitter implements InnerLogger {
     await this._delegate.exposeBinding(binding);
   }
 
-  setExtraHTTPHeaders(headers: network.Headers) {
+  setExtraHTTPHeaders(headers: types.Headers) {
     this._state.extraHTTPHeaders = network.verifyHeaders(headers);
     return this._delegate.updateExtraHTTPHeaders();
   }
@@ -275,7 +281,7 @@ export class Page extends ExtendedEventEmitter implements InnerLogger {
     await PageBinding.dispatch(this, payload, context);
   }
 
-  _addConsoleMessage(type: string, args: js.JSHandle[], location: ConsoleMessageLocation, text?: string) {
+  _addConsoleMessage(type: string, args: js.JSHandle[], location: types.ConsoleMessageLocation, text?: string) {
     const message = new ConsoleMessage(type, text, args, location);
     const intercepted = this._frameManager.interceptConsoleMessage(message);
     if (intercepted || !this.listenerCount(Events.Page.Console))
@@ -285,19 +291,19 @@ export class Page extends ExtendedEventEmitter implements InnerLogger {
   }
 
   url(): string {
-    return this.mainFrame().url();
+    return this._attributeToPage(() => this.mainFrame().url());
   }
 
   async content(): Promise<string> {
-    return this.mainFrame().content();
+    return this._attributeToPage(() => this.mainFrame().content());
   }
 
   async setContent(html: string, options?: types.NavigateOptions): Promise<void> {
-    return this.mainFrame().setContent(html, options);
+    return this._attributeToPage(() => this.mainFrame().setContent(html, options));
   }
 
-  async goto(url: string, options?: frames.GotoOptions): Promise<network.Response | null> {
-    return this.mainFrame().goto(url, options);
+  async goto(url: string, options?: types.GotoOptions): Promise<network.Response | null> {
+    return this._attributeToPage(() => this.mainFrame().goto(url, options));
   }
 
   async reload(options?: types.NavigateOptions): Promise<network.Response | null> {
@@ -307,29 +313,38 @@ export class Page extends ExtendedEventEmitter implements InnerLogger {
   }
 
   async waitForLoadState(state?: types.LifecycleEvent, options?: types.TimeoutOptions): Promise<void> {
-    return this.mainFrame().waitForLoadState(state, options);
+    return this._attributeToPage(() => this.mainFrame().waitForLoadState(state, options));
   }
 
   async waitForNavigation(options?: types.WaitForNavigationOptions): Promise<network.Response | null> {
-    return this.mainFrame().waitForNavigation(options);
+    return this._attributeToPage(() => this.mainFrame().waitForNavigation(options));
   }
 
   async waitForRequest(urlOrPredicate: string | RegExp | ((r: network.Request) => boolean), options: types.TimeoutOptions = {}): Promise<network.Request> {
-    const deadline = this._timeoutSettings.computeDeadline(options);
-    return helper.waitForEvent(this, Events.Page.Request, (request: network.Request) => {
+    const predicate = (request: network.Request) => {
       if (helper.isString(urlOrPredicate) || helper.isRegExp(urlOrPredicate))
         return helper.urlMatches(request.url(), urlOrPredicate);
       return urlOrPredicate(request);
-    }, deadline, this._disconnectedPromise);
+    };
+    return this.waitForEvent(Events.Page.Request, { predicate, timeout: options.timeout });
   }
 
   async waitForResponse(urlOrPredicate: string | RegExp | ((r: network.Response) => boolean), options: types.TimeoutOptions = {}): Promise<network.Response> {
-    const deadline = this._timeoutSettings.computeDeadline(options);
-    return helper.waitForEvent(this, Events.Page.Response, (response: network.Response) => {
+    const predicate = (response: network.Response) => {
       if (helper.isString(urlOrPredicate) || helper.isRegExp(urlOrPredicate))
         return helper.urlMatches(response.url(), urlOrPredicate);
       return urlOrPredicate(response);
-    }, deadline, this._disconnectedPromise);
+    };
+    return this.waitForEvent(Events.Page.Response, { predicate, timeout: options.timeout });
+  }
+
+  async waitForEvent(event: string, optionsOrPredicate: types.WaitForEventOptions = {}): Promise<any> {
+    const options = typeof optionsOrPredicate === 'function' ? { predicate: optionsOrPredicate } : optionsOrPredicate;
+    const progressController = new ProgressController(this._logger, this._timeoutSettings.timeout(options), 'page.waitForEvent');
+    this._disconnectedPromise.then(error => progressController.abort(error));
+    if (event !== Events.Page.Crash)
+      this._crashedPromise.then(error => progressController.abort(error));
+    return progressController.run(progress => helper.waitForEvent(progress, this, event, options.predicate));
   }
 
   async goBack(options?: types.NavigateOptions): Promise<network.Response | null> {
@@ -371,15 +386,21 @@ export class Page extends ExtendedEventEmitter implements InnerLogger {
     return this._state.viewportSize;
   }
 
-  async evaluate<R, Arg>(pageFunction: types.Func1<Arg, R>, arg: Arg): Promise<R>;
-  async evaluate<R>(pageFunction: types.Func1<void, R>, arg?: any): Promise<R>;
-  async evaluate<R, Arg>(pageFunction: types.Func1<Arg, R>, arg: Arg): Promise<R> {
+  async evaluate<R, Arg>(pageFunction: js.Func1<Arg, R>, arg: Arg): Promise<R>;
+  async evaluate<R>(pageFunction: js.Func1<void, R>, arg?: any): Promise<R>;
+  async evaluate<R, Arg>(pageFunction: js.Func1<Arg, R>, arg: Arg): Promise<R> {
     assertMaxArguments(arguments.length, 2);
-    return this.mainFrame().evaluate(pageFunction, arg);
+    return this._attributeToPage(() => this.mainFrame().evaluate(pageFunction, arg));
   }
 
   async addInitScript(script: Function | string | { path?: string, content?: string }, arg?: any) {
-    await this._delegate.evaluateOnNewDocument(await helper.evaluationScript(script, arg));
+    const source = await helper.evaluationScript(script, arg);
+    await this._addInitScriptExpression(source);
+  }
+
+  async _addInitScriptExpression(source: string) {
+    this._evaluateOnNewDocumentSources.push(source);
+    await this._delegate.evaluateOnNewDocument(source);
   }
 
   _needsRequestInterception(): boolean {
@@ -416,19 +437,33 @@ export class Page extends ExtendedEventEmitter implements InnerLogger {
     route.continue();
   }
 
-  async screenshot(options?: types.ScreenshotOptions): Promise<Buffer> {
-    return this._screenshotter.screenshotPage(options);
+  _isRouted(requestURL: string): boolean {
+    for (const { url } of this._routes) {
+      if (helper.urlMatches(requestURL, url))
+        return true;
+    }
+    for (const { url } of this._browserContext._routes) {
+      if (helper.urlMatches(requestURL, url))
+        return true;
+    }
+    return false;
+  }
+
+  async screenshot(options: types.ScreenshotOptions = {}): Promise<Buffer> {
+    return this._runAbortableTask(
+        progress => this._screenshotter.screenshotPage(progress, options),
+        this._timeoutSettings.timeout(options), 'page.screenshot');
   }
 
   async title(): Promise<string> {
-    return this.mainFrame().title();
+    return this._attributeToPage(() => this.mainFrame().title());
   }
 
-  async close(options: { runBeforeUnload: (boolean | undefined); } = {runBeforeUnload: undefined}) {
+  async close(options?: { runBeforeUnload?: boolean }) {
     if (this._closed)
       return;
     assert(!this._disconnected, 'Protocol error: Connection closed. Most likely the page has been closed.');
-    const runBeforeUnload = !!options.runBeforeUnload;
+    const runBeforeUnload = !!options && !!options.runBeforeUnload;
     await this._delegate.closePage(runBeforeUnload);
     if (!runBeforeUnload)
       await this._closedPromise;
@@ -440,74 +475,83 @@ export class Page extends ExtendedEventEmitter implements InnerLogger {
     return this._closed;
   }
 
-  async click(selector: string, options?: dom.ClickOptions & types.PointerActionWaitOptions & types.NavigatingActionWaitOptions) {
-    return this.mainFrame().click(selector, options);
+  private _attributeToPage<T>(func: () => T): T {
+    try {
+      this._callingPageAPI = true;
+      return func();
+    } finally {
+      this._callingPageAPI = false;
+    }
   }
 
-  async dblclick(selector: string, options?: dom.MultiClickOptions & types.PointerActionWaitOptions & types.NavigatingActionWaitOptions) {
-    return this.mainFrame().dblclick(selector, options);
+  async click(selector: string, options?: types.MouseClickOptions & types.PointerActionWaitOptions & types.NavigatingActionWaitOptions) {
+    return this._attributeToPage(() => this.mainFrame().click(selector, options));
+  }
+
+  async dblclick(selector: string, options?: types.MouseMultiClickOptions & types.PointerActionWaitOptions & types.NavigatingActionWaitOptions) {
+    return this._attributeToPage(() => this.mainFrame().dblclick(selector, options));
   }
 
   async fill(selector: string, value: string, options?: types.NavigatingActionWaitOptions) {
-    return this.mainFrame().fill(selector, value, options);
+    return this._attributeToPage(() => this.mainFrame().fill(selector, value, options));
   }
 
   async focus(selector: string, options?: types.TimeoutOptions) {
-    return this.mainFrame().focus(selector, options);
+    return this._attributeToPage(() => this.mainFrame().focus(selector, options));
   }
 
   async textContent(selector: string, options?: types.TimeoutOptions): Promise<null|string> {
-    return this.mainFrame().textContent(selector, options);
+    return this._attributeToPage(() => this.mainFrame().textContent(selector, options));
   }
 
   async innerText(selector: string, options?: types.TimeoutOptions): Promise<string> {
-    return this.mainFrame().innerText(selector, options);
+    return this._attributeToPage(() => this.mainFrame().innerText(selector, options));
   }
 
   async innerHTML(selector: string, options?: types.TimeoutOptions): Promise<string> {
-    return this.mainFrame().innerHTML(selector, options);
+    return this._attributeToPage(() => this.mainFrame().innerHTML(selector, options));
   }
 
   async getAttribute(selector: string, name: string, options?: types.TimeoutOptions): Promise<string | null> {
-    return this.mainFrame().getAttribute(selector, name, options);
+    return this._attributeToPage(() => this.mainFrame().getAttribute(selector, name, options));
   }
 
-  async hover(selector: string, options?: dom.PointerActionOptions & types.PointerActionWaitOptions) {
-    return this.mainFrame().hover(selector, options);
+  async hover(selector: string, options?: types.PointerActionOptions & types.PointerActionWaitOptions) {
+    return this._attributeToPage(() => this.mainFrame().hover(selector, options));
   }
 
-  async selectOption(selector: string, values: string | dom.ElementHandle | types.SelectOption | string[] | dom.ElementHandle[] | types.SelectOption[], options?: types.NavigatingActionWaitOptions): Promise<string[]> {
-    return this.mainFrame().selectOption(selector, values, options);
+  async selectOption(selector: string, values: string | dom.ElementHandle | types.SelectOption | string[] | dom.ElementHandle[] | types.SelectOption[] | null, options?: types.NavigatingActionWaitOptions): Promise<string[]> {
+    return this._attributeToPage(() => this.mainFrame().selectOption(selector, values, options));
   }
 
   async setInputFiles(selector: string, files: string | types.FilePayload | string[] | types.FilePayload[], options?: types.NavigatingActionWaitOptions): Promise<void> {
-    return this.mainFrame().setInputFiles(selector, files, options);
+    return this._attributeToPage(() => this.mainFrame().setInputFiles(selector, files, options));
   }
 
   async type(selector: string, text: string, options?: { delay?: number } & types.NavigatingActionWaitOptions) {
-    return this.mainFrame().type(selector, text, options);
+    return this._attributeToPage(() => this.mainFrame().type(selector, text, options));
   }
 
   async press(selector: string, key: string, options?: { delay?: number } & types.NavigatingActionWaitOptions) {
-    return this.mainFrame().press(selector, key, options);
+    return this._attributeToPage(() => this.mainFrame().press(selector, key, options));
   }
 
   async check(selector: string, options?: types.PointerActionWaitOptions & types.NavigatingActionWaitOptions) {
-    return this.mainFrame().check(selector, options);
+    return this._attributeToPage(() => this.mainFrame().check(selector, options));
   }
 
   async uncheck(selector: string, options?: types.PointerActionWaitOptions & types.NavigatingActionWaitOptions) {
-    return this.mainFrame().uncheck(selector, options);
+    return this._attributeToPage(() => this.mainFrame().uncheck(selector, options));
   }
 
   async waitForTimeout(timeout: number) {
     await this.mainFrame().waitForTimeout(timeout);
   }
 
-  async waitForFunction<R, Arg>(pageFunction: types.Func1<Arg, R>, arg: Arg, options?: types.WaitForFunctionOptions): Promise<types.SmartHandle<R>>;
-  async waitForFunction<R>(pageFunction: types.Func1<void, R>, arg?: any, options?: types.WaitForFunctionOptions): Promise<types.SmartHandle<R>>;
-  async waitForFunction<R, Arg>(pageFunction: types.Func1<Arg, R>, arg: Arg, options?: types.WaitForFunctionOptions): Promise<types.SmartHandle<R>> {
-    return this.mainFrame().waitForFunction(pageFunction, arg, options);
+  async waitForFunction<R, Arg>(pageFunction: js.Func1<Arg, R>, arg: Arg, options?: types.WaitForFunctionOptions): Promise<js.SmartHandle<R>>;
+  async waitForFunction<R>(pageFunction: js.Func1<void, R>, arg?: any, options?: types.WaitForFunctionOptions): Promise<js.SmartHandle<R>>;
+  async waitForFunction<R, Arg>(pageFunction: js.Func1<Arg, R>, arg: Arg, options?: types.WaitForFunctionOptions): Promise<js.SmartHandle<R>> {
+    return this._attributeToPage(() => this.mainFrame().waitForFunction(pageFunction, arg, options));
   }
 
   workers(): Worker[] {
@@ -549,33 +593,23 @@ export class Page extends ExtendedEventEmitter implements InnerLogger {
       this._delegate.setFileChooserIntercepted(false);
     return this;
   }
-
-  _isLogEnabled(log: Log): boolean {
-    return this._browserContext._isLogEnabled(log);
-  }
-
-  _log(log: Log, message: string | Error, ...args: any[]) {
-    return this._browserContext._log(log, message, ...args);
-  }
 }
 
 export class Worker extends EventEmitter {
-  private _logger: InnerLogger;
   private _url: string;
   private _executionContextPromise: Promise<js.ExecutionContext>;
   private _executionContextCallback: (value?: js.ExecutionContext) => void;
   _existingExecutionContext: js.ExecutionContext | null = null;
 
-  constructor(logger: InnerLogger, url: string) {
+  constructor(url: string) {
     super();
-    this._logger = logger;
     this._url = url;
     this._executionContextCallback = () => {};
     this._executionContextPromise = new Promise(x => this._executionContextCallback = x);
   }
 
   _createExecutionContext(delegate: js.ExecutionContextDelegate) {
-    this._existingExecutionContext = new js.ExecutionContext(delegate, this._logger);
+    this._existingExecutionContext = new js.ExecutionContext(delegate);
     this._executionContextCallback(this._existingExecutionContext);
   }
 
@@ -583,18 +617,18 @@ export class Worker extends EventEmitter {
     return this._url;
   }
 
-  async evaluate<R, Arg>(pageFunction: types.Func1<Arg, R>, arg: Arg): Promise<R>;
-  async evaluate<R>(pageFunction: types.Func1<void, R>, arg?: any): Promise<R>;
-  async evaluate<R, Arg>(pageFunction: types.Func1<Arg, R>, arg: Arg): Promise<R> {
+  async evaluate<R, Arg>(pageFunction: js.Func1<Arg, R>, arg: Arg): Promise<R>;
+  async evaluate<R>(pageFunction: js.Func1<void, R>, arg?: any): Promise<R>;
+  async evaluate<R, Arg>(pageFunction: js.Func1<Arg, R>, arg: Arg): Promise<R> {
     assertMaxArguments(arguments.length, 2);
-    return (await this._executionContextPromise).evaluateInternal(pageFunction, arg);
+    return js.evaluate(await this._executionContextPromise, true /* returnByValue */, pageFunction, arg);
   }
 
-  async evaluateHandle<R, Arg>(pageFunction: types.Func1<Arg, R>, arg: Arg): Promise<types.SmartHandle<R>>;
-  async evaluateHandle<R>(pageFunction: types.Func1<void, R>, arg?: any): Promise<types.SmartHandle<R>>;
-  async evaluateHandle<R, Arg>(pageFunction: types.Func1<Arg, R>, arg: Arg): Promise<types.SmartHandle<R>> {
+  async evaluateHandle<R, Arg>(pageFunction: js.Func1<Arg, R>, arg: Arg): Promise<js.SmartHandle<R>>;
+  async evaluateHandle<R>(pageFunction: js.Func1<void, R>, arg?: any): Promise<js.SmartHandle<R>>;
+  async evaluateHandle<R, Arg>(pageFunction: js.Func1<Arg, R>, arg: Arg): Promise<js.SmartHandle<R>> {
     assertMaxArguments(arguments.length, 2);
-    return (await this._executionContextPromise).evaluateHandleInternal(pageFunction, arg);
+    return js.evaluate(await this._executionContextPromise, false /* returnByValue */, pageFunction, arg);
   }
 }
 
@@ -624,7 +658,7 @@ export class PageBinding {
       else
         expression = helper.evaluationString(deliverErrorValue, name, seq, error);
     }
-    context.evaluateInternal(expression).catch(logError(page));
+    context.evaluateInternal(expression).catch(logError(page._logger));
 
     function deliverResult(name: string, seq: number, result: any) {
       (window as any)[name]['callbacks'].get(seq).resolve(result);

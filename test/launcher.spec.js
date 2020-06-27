@@ -53,7 +53,9 @@ describe('Playwright', function() {
     it('should handle timeout', async({browserType, defaultBrowserOptions}) => {
       const options = { ...defaultBrowserOptions, timeout: 5000, __testHookBeforeCreateBrowser: () => new Promise(f => setTimeout(f, 6000)) };
       const error = await browserType.launch(options).catch(e => e);
-      expect(error.message).toContain('Waiting for the browser to launch failed: timeout exceeded. Re-run with the DEBUG=pw:browser* env variable to see the debug log.');
+      expect(error.message).toContain(`Timeout 5000ms exceeded during browserType.launch.`);
+      expect(error.message).toContain(`[browser] <launching>`);
+      expect(error.message).toContain(`[browser] <launched> pid=`);
     });
     it('should handle exception', async({browserType, defaultBrowserOptions}) => {
       const e = new Error('Dummy');
@@ -152,7 +154,7 @@ describe('Browser.disconnect', function() {
     await server.waitForRequest('/one-style.css');
     await remote.close();
     const error = await navigationPromise;
-    expect(error.message).toContain('Navigation failed because browser has disconnected!');
+    expect(error.message).toContain('Navigation failed because page was closed!');
     await browserServer._checkLeaks();
     await browserServer.close();
   });
@@ -209,7 +211,7 @@ describe('Browser.close', function() {
     ]);
     for (let i = 0; i < 2; i++) {
       const message = results[i].message;
-      expect(message).toContain('Target closed');
+      expect(message).toContain('Page closed');
       expect(message).not.toContain('Timeout');
     }
   });
@@ -223,8 +225,8 @@ describe('Browser.close', function() {
   });
 });
 
-describe('browserType.launch |webSocket| option', function() {
-  it('should support the webSocket option', async({browserType, defaultBrowserOptions}) => {
+describe('browserType.launchServer', function() {
+  it('should work', async({browserType, defaultBrowserOptions}) => {
     const browserServer = await browserType.launchServer(defaultBrowserOptions);
     const browser = await browserType.connect({ wsEndpoint: browserServer.wsEndpoint() });
     const browserContext = await browser.newContext();
@@ -237,7 +239,7 @@ describe('browserType.launch |webSocket| option', function() {
     await browserServer._checkLeaks();
     await browserServer.close();
   });
-  it('should fire "disconnected" when closing with webSocket', async({browserType, defaultBrowserOptions}) => {
+  it('should fire "disconnected" when closing the server', async({browserType, defaultBrowserOptions}) => {
     const browserServer = await browserType.launchServer(defaultBrowserOptions);
     const browser = await browserType.connect({ wsEndpoint: browserServer.wsEndpoint() });
     const disconnectedEventPromise = new Promise(resolve => browser.once('disconnected', resolve));
@@ -247,6 +249,19 @@ describe('browserType.launch |webSocket| option', function() {
       disconnectedEventPromise,
       closedPromise,
     ]);
+  });
+  it('should fire "close" event during kill', async({browserType, defaultBrowserOptions}) => {
+    const order = [];
+    const browserServer = await browserType.launchServer(defaultBrowserOptions);
+    const closedPromise = new Promise(f => browserServer.on('close', () => {
+      order.push('closed');
+      f();
+    }));
+    await Promise.all([
+      browserServer.kill().then(() => order.push('killed')),
+      closedPromise,
+    ]);
+    expect(order).toEqual(['closed', 'killed']);
   });
 });
 
@@ -272,11 +287,10 @@ describe('browserType.connect', function() {
   });
   it.slow()('should handle exceptions during connect', async({browserType, defaultBrowserOptions, server}) => {
     const browserServer = await browserType.launchServer(defaultBrowserOptions);
-    const e = new Error('Dummy');
-    const __testHookBeforeCreateBrowser = () => { throw e };
+    const __testHookBeforeCreateBrowser = () => { throw new Error('Dummy') };
     const error = await browserType.connect({ wsEndpoint: browserServer.wsEndpoint(), __testHookBeforeCreateBrowser }).catch(e => e);
     await browserServer._checkLeaks();
     await browserServer.close();
-    expect(error).toBe(e);
+    expect(error.message).toContain('Dummy');
   });
 });

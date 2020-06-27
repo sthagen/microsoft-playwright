@@ -18,35 +18,11 @@ import * as fs from 'fs';
 import * as mime from 'mime';
 import * as util from 'util';
 import * as frames from './frames';
+import * as types from './types';
 import { assert, helper } from './helper';
-import { Page } from './page';
+import { URLSearchParams } from 'url';
 
-export type NetworkCookie = {
-  name: string,
-  value: string,
-  domain: string,
-  path: string,
-  expires: number,
-  httpOnly: boolean,
-  secure: boolean,
-  sameSite: 'Strict' | 'Lax' | 'None'
-};
-
-export type SetNetworkCookieParam = {
-  name: string,
-  value: string,
-  url?: string,
-  domain?: string,
-  path?: string,
-  expires?: number,
-  httpOnly?: boolean,
-  secure?: boolean,
-  sameSite?: 'Strict' | 'Lax' | 'None'
-};
-
-export function filterCookies(cookies: NetworkCookie[], urls: string | string[] = []): NetworkCookie[] {
-  if (!Array.isArray(urls))
-    urls = [ urls ];
+export function filterCookies(cookies: types.NetworkCookie[], urls: string[]): types.NetworkCookie[] {
   const parsedURLs = urls.map(s => new URL(s));
   // Chromiums's cookies are missing sameSite when it is 'None'
   return cookies.filter(c => {
@@ -65,7 +41,7 @@ export function filterCookies(cookies: NetworkCookie[], urls: string | string[] 
   });
 }
 
-export function rewriteCookies(cookies: SetNetworkCookieParam[]): SetNetworkCookieParam[] {
+export function rewriteCookies(cookies: types.SetNetworkCookieParam[]): types.SetNetworkCookieParam[] {
   return cookies.map(c => {
     assert(c.name, 'Cookie should have a name');
     assert(c.value, 'Cookie should have a value');
@@ -93,8 +69,6 @@ function stripFragmentFromUrl(url: string): string {
   return parsed.href;
 }
 
-export type Headers = { [key: string]: string };
-
 export class Request {
   readonly _routeDelegate: RouteDelegate | null;
   private _response: Response | null = null;
@@ -102,23 +76,22 @@ export class Request {
   private _redirectedTo: Request | null = null;
   readonly _documentId?: string;
   readonly _isFavicon: boolean;
-  private _failureText: string | null = null;
+  _failureText: string | null = null;
   private _url: string;
   private _resourceType: string;
   private _method: string;
   private _postData: string | null;
-  private _headers: Headers;
+  private _headers: types.Headers;
   private _frame: frames.Frame;
   private _waitForResponsePromise: Promise<Response | null>;
   private _waitForResponsePromiseCallback: (value: Response | null) => void = () => {};
-  readonly _page: Page;
 
   constructor(routeDelegate: RouteDelegate | null, frame: frames.Frame, redirectedFrom: Request | null, documentId: string | undefined,
-    url: string, resourceType: string, method: string, postData: string | null, headers: Headers) {
+    url: string, resourceType: string, method: string, postData: string | null, headers: types.Headers) {
     assert(!url.startsWith('data:'), 'Data urls should not fire requests');
+    assert(!(routeDelegate && redirectedFrom), 'Should not be able to intercept redirects');
     this._routeDelegate = routeDelegate;
     this._frame = frame;
-    this._page = frame._page;
     this._redirectedFrom = redirectedFrom;
     if (redirectedFrom)
       redirectedFrom._redirectedTo = this;
@@ -151,6 +124,25 @@ export class Request {
 
   postData(): string | null {
     return this._postData;
+  }
+
+  postDataJSON(): Object | null {
+    if (!this._postData)
+      return null;
+
+    const contentType = this.headers()['content-type'];
+    if (!contentType)
+      return null;
+
+    if (contentType === 'application/x-www-form-urlencoded') {
+      const entries: Record<string, string> = {};
+      const parsed = new URLSearchParams(this._postData);
+      for (const [k, v] of parsed.entries())
+        entries[k] = v;
+      return entries;
+    }
+
+    return JSON.parse(this._postData);
   }
 
   headers(): {[key: string]: string} {
@@ -190,7 +182,7 @@ export class Request {
     return this._redirectedTo;
   }
 
-  failure(): { errorText: string; } | null {
+  failure(): { errorText: string } | null {
     if (this._failureText === null)
       return null;
     return {
@@ -225,7 +217,7 @@ export class Route {
     await this._delegate.abort(errorCode);
   }
 
-  async fulfill(response: FulfillResponse & { path?: string }) {
+  async fulfill(response: types.FulfillResponse & { path?: string }) {
     assert(!this._handled, 'Route is already handled!');
     this._handled = true;
     if (response.path) {
@@ -239,7 +231,7 @@ export class Route {
     await this._delegate.fulfill(response);
   }
 
-  async continue(overrides: { method?: string; headers?: Headers; postData?: string } = {}) {
+  async continue(overrides: { method?: string; headers?: types.Headers; postData?: string } = {}) {
     assert(!this._handled, 'Route is already handled!');
     await this._delegate.continue(overrides);
   }
@@ -257,10 +249,10 @@ export class Response {
   private _status: number;
   private _statusText: string;
   private _url: string;
-  private _headers: Headers;
+  private _headers: types.Headers;
   private _getResponseBodyCallback: GetResponseBodyCallback;
 
-  constructor(request: Request, status: number, statusText: string, headers: Headers, getResponseBodyCallback: GetResponseBodyCallback) {
+  constructor(request: Request, status: number, statusText: string, headers: types.Headers, getResponseBodyCallback: GetResponseBodyCallback) {
     this._request = request;
     this._status = status;
     this._statusText = statusText;
@@ -293,7 +285,7 @@ export class Response {
     return this._statusText;
   }
 
-  headers(): object {
+  headers(): types.Headers {
     return { ...this._headers };
   }
 
@@ -331,17 +323,10 @@ export class Response {
   }
 }
 
-export type FulfillResponse = {
-  status?: number,
-  headers?: Headers,
-  contentType?: string,
-  body?: string | Buffer,
-};
-
 export interface RouteDelegate {
   abort(errorCode: string): Promise<void>;
-  fulfill(response: FulfillResponse): Promise<void>;
-  continue(overrides: { method?: string; headers?: Headers; postData?: string; }): Promise<void>;
+  fulfill(response: types.FulfillResponse): Promise<void>;
+  continue(overrides: { method?: string; headers?: types.Headers; postData?: string; }): Promise<void>;
 }
 
 // List taken from https://www.iana.org/assignments/http-status-codes/http-status-codes.xhtml with extra 306 and 418 codes.
@@ -411,8 +396,8 @@ export const STATUS_TEXTS: { [status: string]: string } = {
   '511': 'Network Authentication Required',
 };
 
-export function verifyHeaders(headers: Headers): Headers {
-  const result: Headers = {};
+export function verifyHeaders(headers: types.Headers): types.Headers {
+  const result: types.Headers = {};
   for (const key of Object.keys(headers)) {
     const value = headers[key];
     assert(helper.isString(value), `Expected value of header "${key}" to be String, but "${typeof value}" is found.`);
@@ -421,7 +406,7 @@ export function verifyHeaders(headers: Headers): Headers {
   return result;
 }
 
-export function mergeHeaders(headers: (Headers | undefined | null)[]): Headers {
+export function mergeHeaders(headers: (types.Headers | undefined | null)[]): types.Headers {
   const lowerCaseToValue = new Map<string, string>();
   const lowerCaseToOriginalCase = new Map<string, string>();
   for (const h of headers) {
@@ -433,7 +418,7 @@ export function mergeHeaders(headers: (Headers | undefined | null)[]): Headers {
       lowerCaseToValue.set(lower, h[key]);
     }
   }
-  const result: Headers = {};
+  const result: types.Headers = {};
   for (const [lower, value] of lowerCaseToValue)
     result[lowerCaseToOriginalCase.get(lower)!] = value;
   return result;

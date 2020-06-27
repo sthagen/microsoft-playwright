@@ -36,9 +36,6 @@ import { WKBrowserContext } from './wkBrowser';
 import { selectors } from '../selectors';
 import * as jpeg from 'jpeg-js';
 import * as png from 'pngjs';
-import { NotConnectedError } from '../errors';
-import { logError } from '../logger';
-import { ConsoleMessageLocation } from '../console';
 import { JSHandle } from '../javascript';
 
 const UTILITY_WORLD_NAME = '__playwright_utility_world__';
@@ -60,13 +57,12 @@ export class WKPage implements PageDelegate {
   private _mainFrameContextId?: number;
   private _sessionListeners: RegisteredListener[] = [];
   private _eventListeners: RegisteredListener[];
-  private readonly _evaluateOnNewDocumentSources: string[] = [];
   readonly _browserContext: WKBrowserContext;
   _initializedPage: Page | null = null;
   private _firstNonInitialNavigationCommittedPromise: Promise<void>;
   private _firstNonInitialNavigationCommittedFulfill = () => {};
   _firstNonInitialNavigationCommittedReject = (e: Error) => {};
-  private _lastConsoleMessage: { derivedType: string, text: string, handles: JSHandle[]; count: number, location: ConsoleMessageLocation; } | null = null;
+  private _lastConsoleMessage: { derivedType: string, text: string, handles: JSHandle[]; count: number, location: types.ConsoleMessageLocation; } | null = null;
 
   // Holds window features for the next popup being opened via window.open,
   // until the popup page proxy arrives.
@@ -157,8 +153,10 @@ export class WKPage implements PageDelegate {
       session.send('Network.enable'),
       this._workers.initializeSession(session)
     ];
-    if (this._page._needsRequestInterception())
-      promises.push(session.send('Network.setInterceptionEnabled', { enabled: true, interceptRequests: true }));
+    if (this._page._needsRequestInterception()) {
+      promises.push(session.send('Network.setInterceptionEnabled', { enabled: true }));
+      promises.push(session.send('Network.addInterception', { url: '.*', stage: 'request', isRegex: true }));
+    }
 
     const contextOptions = this._browserContext._options;
     if (contextOptions.userAgent)
@@ -287,7 +285,7 @@ export class WKPage implements PageDelegate {
         pageOrError = e;
       }
       if (targetInfo.isPaused)
-        this._pageProxySession.send('Target.resume', { targetId: targetInfo.targetId }).catch(logError(this._page));
+        this._pageProxySession.sendMayFail('Target.resume', { targetId: targetInfo.targetId });
       if ((pageOrError instanceof Page) && this._page.mainFrame().url() === '') {
         try {
           // Initial empty page has an empty url. We should wait until the first real url has been loaded,
@@ -309,7 +307,7 @@ export class WKPage implements PageDelegate {
       this._provisionalPage = new WKProvisionalPage(session, this);
       if (targetInfo.isPaused) {
         this._provisionalPage.initializationPromise.then(() => {
-          this._pageProxySession.send('Target.resume', { targetId: targetInfo.targetId }).catch(logError(this._page));
+          this._pageProxySession.sendMayFail('Target.resume', { targetId: targetInfo.targetId });
         });
       }
     }
@@ -364,7 +362,7 @@ export class WKPage implements PageDelegate {
     // as well to always be in sync with the backend.
     if (this._provisionalPage)
       sessions.push(this._provisionalPage._session);
-    await Promise.all(sessions.map(session => callback(session).catch(logError(this._page))));
+    await Promise.all(sessions.map(session => callback(session).catch(e => {})));
   }
 
   private _onFrameScheduledNavigation(frameId: string) {
@@ -553,7 +551,7 @@ export class WKPage implements PageDelegate {
     await this._updateState('Network.setExtraHTTPHeaders', { headers: this._calculateExtraHTTPHeaders() });
   }
 
-  _calculateExtraHTTPHeaders(): network.Headers {
+  _calculateExtraHTTPHeaders(): types.Headers {
     const headers = network.mergeHeaders([
       this._browserContext._options.extraHTTPHeaders,
       this._page._state.extraHTTPHeaders
@@ -600,7 +598,10 @@ export class WKPage implements PageDelegate {
 
   async updateRequestInterception(): Promise<void> {
     const enabled = this._page._needsRequestInterception();
-    await this._updateState('Network.setInterceptionEnabled', { enabled, interceptRequests: enabled });
+    await Promise.all([
+      this._updateState('Network.setInterceptionEnabled', { enabled }),
+      this._updateState('Network.addInterception', { url: '.*', stage: 'request', isRegex: true })
+    ]);
   }
 
   async updateOffline() {
@@ -652,11 +653,10 @@ export class WKPage implements PageDelegate {
 
   private async _evaluateBindingScript(binding: PageBinding): Promise<void> {
     const script = this._bindingToScript(binding);
-    await Promise.all(this._page.frames().map(frame => frame.evaluate(script).catch(logError(this._page))));
+    await Promise.all(this._page.frames().map(frame => frame.evaluate(script).catch(e => {})));
   }
 
   async evaluateOnNewDocument(script: string): Promise<void> {
-    this._evaluateOnNewDocumentSources.push(script);
     await this._updateBootstrapScript();
   }
 
@@ -671,7 +671,7 @@ export class WKPage implements PageDelegate {
     for (const binding of this._page._pageBindings.values())
       scripts.push(this._bindingToScript(binding));
     scripts.push(...this._browserContext._evaluateOnNewDocumentSources);
-    scripts.push(...this._evaluateOnNewDocumentSources);
+    scripts.push(...this._page._evaluateOnNewDocumentSources);
     return scripts.join(';');
   }
 
@@ -680,10 +680,10 @@ export class WKPage implements PageDelegate {
   }
 
   async closePage(runBeforeUnload: boolean): Promise<void> {
-    this._pageProxySession.send('Target.close', {
+    this._pageProxySession.sendMayFail('Target.close', {
       targetId: this._session.sessionId,
       runBeforeUnload
-    }).catch(logError(this._page));
+    });
   }
 
   canScreenshotOutsideViewport(): boolean {
@@ -710,7 +710,7 @@ export class WKPage implements PageDelegate {
 
   async getContentFrame(handle: dom.ElementHandle): Promise<frames.Frame | null> {
     const nodeInfo = await this._session.send('DOM.describeNode', {
-      objectId: toRemoteObject(handle).objectId!
+      objectId: handle._objectId
     });
     if (!nodeInfo.contentFrameId)
       return null;
@@ -718,11 +718,10 @@ export class WKPage implements PageDelegate {
   }
 
   async getOwnerFrame(handle: dom.ElementHandle): Promise<string | null> {
-    const remoteObject = toRemoteObject(handle);
-    if (!remoteObject.objectId)
+    if (!handle._objectId)
       return null;
     const nodeInfo = await this._session.send('DOM.describeNode', {
-      objectId: remoteObject.objectId
+      objectId: handle._objectId
     });
     return nodeInfo.ownerFrameId || null;
   }
@@ -750,20 +749,17 @@ export class WKPage implements PageDelegate {
     return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
   }
 
-  async scrollRectIntoViewIfNeeded(handle: dom.ElementHandle, rect?: types.Rect): Promise<'success' | 'invisible'> {
+  async scrollRectIntoViewIfNeeded(handle: dom.ElementHandle, rect?: types.Rect): Promise<'error:notvisible' | 'error:notconnected' | 'done'> {
     return await this._session.send('DOM.scrollIntoViewIfNeeded', {
-      objectId: toRemoteObject(handle).objectId!,
+      objectId: handle._objectId,
       rect,
-    }).then(() => 'success' as const).catch(e => {
+    }).then(() => 'done' as const).catch(e => {
       if (e instanceof Error && e.message.includes('Node does not have a layout object'))
-        return 'invisible';
+        return 'error:notvisible';
       if (e instanceof Error && e.message.includes('Node is detached from document'))
-        throw new NotConnectedError();
+        return 'error:notconnected';
       throw e;
     });
-  }
-
-  async setActivityPaused(paused: boolean): Promise<void> {
   }
 
   rafCountForStablePosition(): number {
@@ -771,9 +767,9 @@ export class WKPage implements PageDelegate {
   }
 
   async getContentQuads(handle: dom.ElementHandle): Promise<types.Quad[] | null> {
-    const result = await this._session.send('DOM.getContentQuads', {
-      objectId: toRemoteObject(handle).objectId!
-    }).catch(logError(this._page));
+    const result = await this._session.sendMayFail('DOM.getContentQuads', {
+      objectId: handle._objectId
+    });
     if (!result)
       return null;
     return result.quads.map(quad => [
@@ -784,20 +780,16 @@ export class WKPage implements PageDelegate {
     ]);
   }
 
-  async layoutViewport(): Promise<{ width: number, height: number }> {
-    return this._page.evaluate(() => ({ width: innerWidth, height: innerHeight }));
-  }
-
   async setInputFiles(handle: dom.ElementHandle<HTMLInputElement>, files: types.FilePayload[]): Promise<void> {
-    const objectId = toRemoteObject(handle).objectId!;
+    const objectId = handle._objectId;
     await this._session.send('DOM.setInputFiles', { objectId, files: dom.toFileTransferPayload(files) });
   }
 
   async adoptElementHandle<T extends Node>(handle: dom.ElementHandle<T>, to: dom.FrameExecutionContext): Promise<dom.ElementHandle<T>> {
-    const result = await this._session.send('DOM.resolveNode', {
-      objectId: toRemoteObject(handle).objectId,
+    const result = await this._session.sendMayFail('DOM.resolveNode', {
+      objectId: handle._objectId,
       executionContextId: (to._delegate as WKExecutionContext)._contextId
-    }).catch(logError(this._page));
+    });
     if (!result || result.object.subtype === 'null')
       throw new Error('Unable to adopt element handle from a different document');
     return to.createHandle(result.object) as dom.ElementHandle<T>;
@@ -844,7 +836,9 @@ export class WKPage implements PageDelegate {
     const documentId = isNavigationRequest ? event.loaderId : undefined;
     if (isNavigationRequest)
       this._page._frameManager.frameUpdatedDocumentIdForNavigation(event.frameId, documentId!);
-    const request = new WKInterceptableRequest(session, this._page._needsRequestInterception(), frame, event, redirectedFrom, documentId);
+    // We do not support intercepting redirects.
+    const allowInterception = this._page._needsRequestInterception() && !redirectedFrom;
+    const request = new WKInterceptableRequest(session, allowInterception, frame, event, redirectedFrom, documentId);
     this._requestIdToRequest.set(event.requestId, request);
     this._page._frameManager.requestStarted(request.request);
   }
@@ -859,8 +853,15 @@ export class WKPage implements PageDelegate {
 
   _onRequestIntercepted(event: Protocol.Network.requestInterceptedPayload) {
     const request = this._requestIdToRequest.get(event.requestId);
-    if (request)
+    if (!request)
+      return;
+    if (!request._allowInterception) {
+      // Intercepted, although we do not intend to allow interception.
+      // Just continue.
+      this._session.sendMayFail('Network.interceptWithRequest', { requestId: request._requestId });
+    } else {
       request._interceptedCallback();
+    }
   }
 
   _onResponseReceived(event: Protocol.Network.responseReceivedPayload) {
@@ -926,8 +927,4 @@ export class WKPage implements PageDelegate {
   async _clearPermissions() {
     await this._pageProxySession.send('Emulation.resetPermissions', {});
   }
-}
-
-function toRemoteObject(handle: dom.ElementHandle): Protocol.Runtime.RemoteObject {
-  return handle._remoteObject as Protocol.Runtime.RemoteObject;
 }

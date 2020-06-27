@@ -18,9 +18,8 @@
 import { CRSession } from './crConnection';
 import { assert, helper, RegisteredListener } from '../helper';
 import { Protocol } from './protocol';
-import * as js from '../javascript';
 import * as types from '../types';
-import { logError, InnerLogger } from '../logger';
+import * as sourceMap from '../utils/sourceMap';
 
 type JSRange = {
   startOffset: number,
@@ -50,9 +49,9 @@ export class CRCoverage {
   private _jsCoverage: JSCoverage;
   private _cssCoverage: CSSCoverage;
 
-  constructor(client: CRSession, logger: InnerLogger) {
-    this._jsCoverage = new JSCoverage(client, logger);
-    this._cssCoverage = new CSSCoverage(client, logger);
+  constructor(client: CRSession) {
+    this._jsCoverage = new JSCoverage(client);
+    this._cssCoverage = new CSSCoverage(client);
   }
 
   async startJSCoverage(options?: types.JSCoverageOptions) {
@@ -80,11 +79,9 @@ class JSCoverage {
   _eventListeners: RegisteredListener[];
   _resetOnNavigation: boolean;
   _reportAnonymousScripts = false;
-  private _logger: InnerLogger;
 
-  constructor(client: CRSession, logger: InnerLogger) {
+  constructor(client: CRSession) {
     this._client = client;
-    this._logger = logger;
     this._enabled = false;
     this._scriptIds = new Set();
     this._scriptSources = new Map();
@@ -125,19 +122,16 @@ class JSCoverage {
 
   async _onScriptParsed(event: Protocol.Debugger.scriptParsedPayload) {
     // Ignore playwright-injected scripts
-    if (js.isPlaywrightSourceUrl(event.url))
+    if (sourceMap.isPlaywrightSourceUrl(event.url))
       return;
     this._scriptIds.add(event.scriptId);
     // Ignore other anonymous scripts unless the reportAnonymousScripts option is true.
     if (!event.url && !this._reportAnonymousScripts)
       return;
-    try {
-      const response = await this._client.send('Debugger.getScriptSource', {scriptId: event.scriptId});
+    // This might fail if the page has already navigated away.
+    const response = await this._client._sendMayFail('Debugger.getScriptSource', {scriptId: event.scriptId});
+    if (response)
       this._scriptSources.set(event.scriptId, response.scriptSource);
-    } catch (e) {
-      // This might happen if the page has already navigated away.
-      logError(this._logger)(e);
-    }
   }
 
   async stop(): Promise<JSCoverageEntry[]> {
@@ -174,11 +168,9 @@ class CSSCoverage {
   _stylesheetSources: Map<string, string>;
   _eventListeners: RegisteredListener[];
   _resetOnNavigation: boolean;
-  private _logger: InnerLogger;
 
-  constructor(client: CRSession, logger: InnerLogger) {
+  constructor(client: CRSession) {
     this._client = client;
-    this._logger = logger;
     this._enabled = false;
     this._stylesheetURLs = new Map();
     this._stylesheetSources = new Map();
@@ -216,13 +208,11 @@ class CSSCoverage {
     // Ignore anonymous scripts
     if (!header.sourceURL)
       return;
-    try {
-      const response = await this._client.send('CSS.getStyleSheetText', {styleSheetId: header.styleSheetId});
+    // This might fail if the page has already navigated away.
+    const response = await this._client._sendMayFail('CSS.getStyleSheetText', {styleSheetId: header.styleSheetId});
+    if (response) {
       this._stylesheetURLs.set(header.styleSheetId, header.sourceURL);
       this._stylesheetSources.set(header.styleSheetId, response.text);
-    } catch (e) {
-      // This might happen if the page has already navigated away.
-      logError(this._logger)(e);
     }
   }
 

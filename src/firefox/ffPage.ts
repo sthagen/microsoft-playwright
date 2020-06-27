@@ -31,8 +31,7 @@ import { RawKeyboardImpl, RawMouseImpl } from './ffInput';
 import { FFNetworkManager, headersArray } from './ffNetworkManager';
 import { Protocol } from './protocol';
 import { selectors } from '../selectors';
-import { NotConnectedError } from '../errors';
-import { logError } from '../logger';
+import { rewriteErrorMessage } from '../utils/stackTrace';
 
 const UTILITY_WORLD_NAME = '__playwright_utility_world__';
 
@@ -192,7 +191,7 @@ export class FFPage implements PageDelegate {
         params.type,
         params.message,
         async (accept: boolean, promptText?: string) => {
-          await this._session.send('Page.handleDialog', { dialogId: params.dialogId, accept, promptText }).catch(logError(this._page));
+          await this._session.sendMayFail('Page.handleDialog', { dialogId: params.dialogId, accept, promptText });
         },
         params.defaultValue));
   }
@@ -211,7 +210,7 @@ export class FFPage implements PageDelegate {
 
   async _onWorkerCreated(event: Protocol.Page.workerCreatedPayload) {
     const workerId = event.workerId;
-    const worker = new Worker(this._page, event.url);
+    const worker = new Worker(event.url);
     const workerSession = new FFSession(this._session._connection, 'worker', workerId, (message: any) => {
       this._session.send('Page.sendMessageToWorker', {
         frameId: event.frameId,
@@ -360,7 +359,7 @@ export class FFPage implements PageDelegate {
       clip: documentRect,
     }).catch(e => {
       if (e instanceof Error && e.message.includes('document.documentElement is null'))
-        e.message = kScreenshotDuringNavigationError;
+        rewriteErrorMessage(e, kScreenshotDuringNavigationError);
       throw e;
     });
     return Buffer.from(data, 'base64');
@@ -373,7 +372,7 @@ export class FFPage implements PageDelegate {
   async getContentFrame(handle: dom.ElementHandle): Promise<frames.Frame | null> {
     const { contentFrameId } = await this._session.send('Page.describeNode', {
       frameId: handle._context.frame._id,
-      objectId: handle._remoteObject.objectId!,
+      objectId: handle._objectId,
     });
     if (!contentFrameId)
       return null;
@@ -383,7 +382,7 @@ export class FFPage implements PageDelegate {
   async getOwnerFrame(handle: dom.ElementHandle): Promise<string | null> {
     const { ownerFrameId } = await this._session.send('Page.describeNode', {
       frameId: handle._context.frame._id,
-      objectId: handle._remoteObject.objectId!,
+      objectId: handle._objectId
     });
     return ownerFrameId || null;
   }
@@ -411,19 +410,18 @@ export class FFPage implements PageDelegate {
     return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
   }
 
-  async scrollRectIntoViewIfNeeded(handle: dom.ElementHandle, rect?: types.Rect): Promise<'success' | 'invisible'> {
+  async scrollRectIntoViewIfNeeded(handle: dom.ElementHandle, rect?: types.Rect): Promise<'error:notvisible' | 'error:notconnected' | 'done'> {
     return await this._session.send('Page.scrollIntoViewIfNeeded', {
       frameId: handle._context.frame._id,
-      objectId: handle._remoteObject.objectId!,
+      objectId: handle._objectId,
       rect,
-    }).then(() => 'success' as const).catch(e => {
+    }).then(() => 'done' as const).catch(e => {
       if (e instanceof Error && e.message.includes('Node is detached from document'))
-        throw new NotConnectedError();
+        return 'error:notconnected';
+      if (e instanceof Error && e.message.includes('Node does not have a layout object'))
+        return 'error:notvisible';
       throw e;
     });
-  }
-
-  async setActivityPaused(paused: boolean): Promise<void> {
   }
 
   rafCountForStablePosition(): number {
@@ -431,28 +429,24 @@ export class FFPage implements PageDelegate {
   }
 
   async getContentQuads(handle: dom.ElementHandle): Promise<types.Quad[] | null> {
-    const result = await this._session.send('Page.getContentQuads', {
+    const result = await this._session.sendMayFail('Page.getContentQuads', {
       frameId: handle._context.frame._id,
-      objectId: handle._remoteObject.objectId!,
-    }).catch(logError(this._page));
+      objectId: handle._objectId,
+    });
     if (!result)
       return null;
     return result.quads.map(quad => [ quad.p1, quad.p2, quad.p3, quad.p4 ]);
   }
 
-  async layoutViewport(): Promise<{ width: number, height: number }> {
-    return this._page.evaluate(() => ({ width: innerWidth, height: innerHeight }));
-  }
-
   async setInputFiles(handle: dom.ElementHandle<HTMLInputElement>, files: types.FilePayload[]): Promise<void> {
-    await handle._evaluateInUtility(({ injected, node }, files) =>
+    await handle._evaluateInUtility(([injected, node, files]) =>
       injected.setInputFiles(node, files), dom.toFileTransferPayload(files));
   }
 
   async adoptElementHandle<T extends Node>(handle: dom.ElementHandle<T>, to: dom.FrameExecutionContext): Promise<dom.ElementHandle<T>> {
     const result = await this._session.send('Page.adoptNode', {
       frameId: handle._context.frame._id,
-      objectId: handle._remoteObject.objectId!,
+      objectId: handle._objectId,
       executionContextId: (to._delegate as FFExecutionContext)._executionContextId
     });
     if (!result.remoteObject)

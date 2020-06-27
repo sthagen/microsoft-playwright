@@ -18,13 +18,12 @@
 import * as crypto from 'crypto';
 import { EventEmitter } from 'events';
 import * as fs from 'fs';
+import * as removeFolder from 'rimraf';
 import * as util from 'util';
-import { TimeoutError } from './errors';
 import * as types from './types';
-import { ChildProcess, execSync } from 'child_process';
+import { Progress } from './progress';
 
-// NOTE: update this to point to playwright/lib when moving this file.
-const PLAYWRIGHT_LIB_PATH = __dirname;
+const removeFolderAsync = util.promisify(removeFolder);
 
 export type RegisteredListener = {
   emitter: EventEmitter;
@@ -34,14 +33,20 @@ export type RegisteredListener = {
 
 export type Listener = (...args: any[]) => void;
 
+let isInDebugMode = !!getFromENV('PWDEBUG');
+let isInRecordMode = false;
+
 class Helper {
   static evaluationString(fun: Function | string, ...args: any[]): string {
     if (Helper.isString(fun)) {
       assert(args.length === 0 || (args.length === 1 && args[0] === undefined), 'Cannot evaluate a string with arguments');
       return fun;
     }
-    return `(${fun})(${args.map(serializeArgument).join(',')})`;
+    return Helper.evaluationStringForFunctionBody(String(fun), ...args);
+  }
 
+  static evaluationStringForFunctionBody(functionBody: string, ...args: any[]): string {
+    return `(${functionBody})(${args.map(serializeArgument).join(',')})`;
     function serializeArgument(arg: any): string {
       if (Object.is(arg, undefined))
         return 'undefined';
@@ -73,7 +78,7 @@ class Helper {
       const isAsync = method.constructor.name === 'AsyncFunction';
       if (!isAsync)
         continue;
-      Reflect.set(classType.prototype, methodName, function(this: any, ...args: any[]) {
+      const override = function(this: any, ...args: any[]) {
         const syncStack: any = {};
         Error.captureStackTrace(syncStack);
         return method.call(this, ...args).catch((e: any) => {
@@ -83,7 +88,9 @@ class Helper {
             e.stack += '\n  -- ASYNC --\n' + stack;
           throw e;
         });
-      });
+      };
+      Object.defineProperty(override, 'name', { writable: false, value: methodName });
+      Reflect.set(classType.prototype, methodName, override);
     }
   }
 
@@ -123,59 +130,6 @@ class Helper {
 
   static isBoolean(obj: any): obj is boolean {
     return typeof obj === 'boolean' || obj instanceof Boolean;
-  }
-
-  static async waitForEvent(
-    emitter: EventEmitter,
-    eventName: (string | symbol),
-    predicate: Function,
-    deadline: number,
-    abortPromise: Promise<Error>): Promise<any> {
-    let resolveCallback: (event: any) => void = () => {};
-    let rejectCallback: (error: any) => void = () => {};
-    const promise = new Promise((resolve, reject) => {
-      resolveCallback = resolve;
-      rejectCallback = reject;
-    });
-
-    // Add listener.
-    const listener = Helper.addEventListener(emitter, eventName, event => {
-      try {
-        if (!predicate(event))
-          return;
-        resolveCallback(event);
-      } catch (e) {
-        rejectCallback(e);
-      }
-    });
-
-    // Reject upon timeout.
-    const eventTimeout = setTimeout(() => {
-      rejectCallback(new TimeoutError(`Timeout exceeded while waiting for ${String(eventName)}`));
-    }, helper.timeUntilDeadline(deadline));
-
-    // Reject upon abort.
-    abortPromise.then(rejectCallback);
-
-    try {
-      return await promise;
-    } finally {
-      Helper.removeEventListeners([listener]);
-      clearTimeout(eventTimeout);
-    }
-  }
-
-  static async waitWithDeadline<T>(promise: Promise<T>, taskName: string, deadline: number, debugName: string): Promise<T> {
-    let reject: (error: Error) => void;
-    const timeoutError = new TimeoutError(`Waiting for ${taskName} failed: timeout exceeded. Re-run with the DEBUG=${debugName} env variable to see the debug log.`);
-    const timeoutPromise = new Promise<T>((resolve, x) => reject = x);
-    const timeoutTimer = setTimeout(() => reject(timeoutError), helper.timeUntilDeadline(deadline));
-    try {
-      return await Promise.race([promise, timeoutPromise]);
-    } finally {
-      if (timeoutTimer)
-        clearTimeout(timeoutTimer);
-    }
   }
 
   static globToRegex(glob: string): RegExp {
@@ -317,36 +271,6 @@ class Helper {
     return crypto.randomBytes(16).toString('hex');
   }
 
-  static monotonicTime(): number {
-    const [seconds, nanoseconds] = process.hrtime();
-    return seconds * 1000 + (nanoseconds / 1000000 | 0);
-  }
-
-  static isPastDeadline(deadline: number) {
-    return deadline !== Number.MAX_SAFE_INTEGER && this.monotonicTime() >= deadline;
-  }
-
-  static timeUntilDeadline(deadline: number): number {
-    return Math.min(deadline - this.monotonicTime(), 2147483647); // 2^31-1 safe setTimeout in Node.
-  }
-
-  static optionsWithUpdatedTimeout<T extends types.TimeoutOptions>(options: T | undefined, deadline: number): T {
-    return { ...(options || {}) as T, timeout: this.timeUntilDeadline(deadline) };
-  }
-
-  static killProcess(proc: ChildProcess) {
-    if (proc.pid && !proc.killed) {
-      try {
-        if (process.platform === 'win32')
-          execSync(`taskkill /pid ${proc.pid} /T /F`);
-        else
-          process.kill(-proc.pid, 'SIGKILL');
-      } catch (e) {
-        // the process might have already stopped
-      }
-    }
-  }
-
   static getViewportSizeFromWindowFeatures(features: string[]): types.Size | null {
     const widthString = features.find(f => f.startsWith('width='));
     const heightString = features.find(f => f.startsWith('height='));
@@ -355,6 +279,47 @@ class Helper {
     if (!Number.isNaN(width) && !Number.isNaN(height))
       return { width, height };
     return null;
+  }
+
+  static async removeFolders(dirs: string[]) {
+    await Promise.all(dirs.map(dir => {
+      return removeFolderAsync(dir).catch((err: Error) => console.error(err));
+    }));
+  }
+
+  static async waitForEvent(progress: Progress, emitter: EventEmitter, event: string, predicate?: Function): Promise<any> {
+    const listeners: RegisteredListener[] = [];
+    const promise = new Promise((resolve, reject) => {
+      listeners.push(helper.addEventListener(emitter, event, eventArg => {
+        try {
+          if (predicate && !predicate(eventArg))
+            return;
+          resolve(eventArg);
+        } catch (e) {
+          reject(e);
+        }
+      }));
+    });
+    progress.cleanupWhenAborted(() => helper.removeEventListeners(listeners));
+    const result = await promise;
+    helper.removeEventListeners(listeners);
+    return result;
+  }
+
+  static isDebugMode(): boolean {
+    return isInDebugMode;
+  }
+
+  static setDebugMode(enabled: boolean) {
+    isInDebugMode = enabled;
+  }
+
+  static isRecordMode(): boolean {
+    return isInRecordMode;
+  }
+
+  static setRecordMode(enabled: boolean) {
+    isInRecordMode = enabled;
   }
 }
 
@@ -395,38 +360,6 @@ export function logPolitely(toBeLogged: string) {
 
   if (!logLevelDisplay)
     console.log(toBeLogged);  // eslint-disable-line no-console
-}
-
-export function getCallerFilePath(ignorePrefix = PLAYWRIGHT_LIB_PATH): string | null {
-  const error = new Error();
-  const stackFrames = (error.stack || '').split('\n').slice(1);
-  // Find first stackframe that doesn't point to ignorePrefix.
-  for (let frame of stackFrames) {
-    frame = frame.trim();
-    if (!frame.startsWith('at '))
-      return null;
-    if (frame.endsWith(')')) {
-      const from = frame.indexOf('(');
-      frame = frame.substring(from + 1, frame.length - 1);
-    } else {
-      frame = frame.substring('at '.length);
-    }
-    const match = frame.match(/^(?:async )?(.*):(\d+):(\d+)$/);
-    if (!match)
-      return null;
-    const filePath = match[1];
-    if (filePath.startsWith(ignorePrefix))
-      continue;
-    return filePath;
-  }
-  return null;
-}
-
-let debugMode: boolean | undefined;
-export function isDebugMode(): boolean {
-  if (debugMode === undefined)
-    debugMode = !!getFromENV('PLAYWRIGHT_DEBUG_UI');
-  return debugMode;
 }
 
 const escapeGlobChars = new Set(['/', '$', '^', '+', '.', '(', ')', '=', '!', '|']);

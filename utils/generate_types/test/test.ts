@@ -409,6 +409,11 @@ playwright.chromium.launch().then(async browser => {
   const browser = await playwright.webkit.launch();
   const page = await browser.newPage();
   const windowHandle = await page.evaluateHandle(() => window);
+
+  function wrap<T>(t: T): [T, string, boolean, number] {
+    return [t, '1', true, 1];
+  }
+
   {
     const value = await page.evaluate(() => 1);
     const assertion: AssertType<number, typeof value> = true;
@@ -436,6 +441,17 @@ playwright.chromium.launch().then(async browser => {
   {
     const value = await page.evaluate(([a, b, c]) => ({a, b, c}), [3, '123', true] as const);
     const assertion: AssertType<{a: 3, b: '123', c: true}, typeof value> = true;
+  }
+  {
+    const handle = await page.evaluateHandle(() => 3);
+    const value = await page.evaluate(([a, b, c, d]) => ({a, b, c, d}), wrap(handle));
+    const assertion: AssertType<{a: number, b: string, c: boolean, d: number}, typeof value> = true;
+  }
+  {
+    const handle = await page.evaluateHandle(() => 3);
+    const h = await page.evaluateHandle(([a, b, c, d]) => ({a, b, c, d}), wrap(handle));
+    const value = await h.evaluate(h => h);
+    const assertion: AssertType<{a: number, b: string, c: boolean, d: number}, typeof value> = true;
   }
 
   {
@@ -699,7 +715,11 @@ playwright.chromium.launch().then(async browser => {
   playwright.chromium.connect;
   playwright.errors.TimeoutError;
   {
-    const iPhone = playwright.devices['iPhone'];
+    playwright.devices['my device'] = {
+      userAgent: 'foo',
+      viewport: {height: 123, width: 456}
+    };
+    const iPhone = playwright.devices['iPhone 11'];
     const assertion: AssertType<string, typeof iPhone.userAgent> = true;
     const numberAssertion: AssertType<number, typeof iPhone.viewport.width> = true;
   }

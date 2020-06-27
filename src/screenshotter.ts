@@ -22,6 +22,8 @@ import * as dom from './dom';
 import { assert, helper } from './helper';
 import { Page } from './page';
 import * as types from './types';
+import { rewriteErrorMessage } from './utils/stackTrace';
+import { Progress } from './progress';
 
 export class Screenshotter {
   private _queue = new TaskQueue();
@@ -29,13 +31,7 @@ export class Screenshotter {
 
   constructor(page: Page) {
     this._page = page;
-
-    const browserContext = page.context();
-    this._queue = (browserContext as any)[taskQueueSymbol];
-    if (!this._queue) {
-      this._queue = new TaskQueue();
-      (browserContext as any)[taskQueueSymbol] = this._queue;
-    }
+    this._queue = new TaskQueue();
   }
 
   private async _originalViewportSize(): Promise<{ viewportSize: types.Size, originalViewportSize: types.Size | null }> {
@@ -71,7 +67,7 @@ export class Screenshotter {
     return fullPageSize;
   }
 
-  async screenshotPage(options: types.ScreenshotOptions = {}): Promise<Buffer> {
+  async screenshotPage(progress: Progress, options: types.ScreenshotOptions): Promise<Buffer> {
     const format = validateScreenshotOptions(options);
     return this._queue.postTask(async () => {
       const { viewportSize, originalViewportSize } = await this._originalViewportSize();
@@ -83,24 +79,30 @@ export class Screenshotter {
         const fitsViewport = fullPageSize.width <= viewportSize.width && fullPageSize.height <= viewportSize.height;
         if (!this._page._delegate.canScreenshotOutsideViewport() && !fitsViewport) {
           overridenViewportSize = fullPageSize;
+          progress.throwIfAborted(); // Avoid side effects.
           await this._page.setViewportSize(overridenViewportSize);
+          progress.cleanupWhenAborted(() => this._restoreViewport(originalViewportSize));
         }
         if (options.clip)
           documentRect = trimClipToSize(options.clip, documentRect);
-        return await this._screenshot(format, documentRect, undefined, options, overridenViewportSize, originalViewportSize);
+        const buffer = await this._screenshot(progress, format, documentRect, undefined, options);
+        progress.throwIfAborted(); // Avoid restoring after failure - should be done by cleanup.
+        if (overridenViewportSize)
+          await this._restoreViewport(originalViewportSize);
+        return buffer;
       }
 
       const viewportRect = options.clip ? trimClipToSize(options.clip, viewportSize) : { x: 0, y: 0, ...viewportSize };
-      return await this._screenshot(format, undefined, viewportRect, options, null, originalViewportSize);
+      return await this._screenshot(progress, format, undefined, viewportRect, options);
     }).catch(rewriteError);
   }
 
-  async screenshotElement(handle: dom.ElementHandle, options: types.ElementScreenshotOptions = {}): Promise<Buffer> {
+  async screenshotElement(progress: Progress, handle: dom.ElementHandle, options: types.ElementScreenshotOptions = {}): Promise<Buffer> {
     const format = validateScreenshotOptions(options);
     return this._queue.postTask(async () => {
       const { viewportSize, originalViewportSize } = await this._originalViewportSize();
 
-      await handle.scrollIntoViewIfNeeded();
+      await handle._waitAndScrollIntoViewIfNeeded(progress);
       let boundingBox = await handle.boundingBox();
       assert(boundingBox, 'Node is either not visible or not an HTMLElement');
       assert(boundingBox.width !== 0, 'Node has 0 width.');
@@ -113,9 +115,11 @@ export class Screenshotter {
           width: Math.max(viewportSize.width, boundingBox.width),
           height: Math.max(viewportSize.height, boundingBox.height),
         });
+        progress.throwIfAborted(); // Avoid side effects.
         await this._page.setViewportSize(overridenViewportSize);
+        progress.cleanupWhenAborted(() => this._restoreViewport(originalViewportSize));
 
-        await handle.scrollIntoViewIfNeeded();
+        await handle._waitAndScrollIntoViewIfNeeded(progress);
         boundingBox = await handle.boundingBox();
         assert(boundingBox, 'Node is either not visible or not an HTMLElement');
         assert(boundingBox.width !== 0, 'Node has 0 width.');
@@ -127,31 +131,43 @@ export class Screenshotter {
       const documentRect = { ...boundingBox };
       documentRect.x += scrollOffset.x;
       documentRect.y += scrollOffset.y;
-      return await this._screenshot(format, helper.enclosingIntRect(documentRect), undefined, options, overridenViewportSize, originalViewportSize);
+      const buffer = await this._screenshot(progress, format, helper.enclosingIntRect(documentRect), undefined, options);
+      progress.throwIfAborted(); // Avoid restoring after failure - should be done by cleanup.
+      if (overridenViewportSize)
+        await this._restoreViewport(originalViewportSize);
+      return buffer;
     }).catch(rewriteError);
   }
 
-  private async _screenshot(format: 'png' | 'jpeg', documentRect: types.Rect | undefined, viewportRect: types.Rect | undefined, options: types.ElementScreenshotOptions, overridenViewportSize: types.Size | null, originalViewportSize: types.Size | null): Promise<Buffer> {
+  private async _screenshot(progress: Progress, format: 'png' | 'jpeg', documentRect: types.Rect | undefined, viewportRect: types.Rect | undefined, options: types.ElementScreenshotOptions): Promise<Buffer> {
+    if ((options as any).__testHookBeforeScreenshot)
+      await (options as any).__testHookBeforeScreenshot();
+    progress.throwIfAborted(); // Screenshotting is expensive - avoid extra work.
     const shouldSetDefaultBackground = options.omitBackground && format === 'png';
-    if (shouldSetDefaultBackground)
+    if (shouldSetDefaultBackground) {
       await this._page._delegate.setBackgroundColor({ r: 0, g: 0, b: 0, a: 0});
+      progress.cleanupWhenAborted(() => this._page._delegate.setBackgroundColor());
+    }
     const buffer = await this._page._delegate.takeScreenshot(format, documentRect, viewportRect, options.quality);
+    progress.throwIfAborted(); // Avoid restoring after failure - should be done by cleanup.
     if (shouldSetDefaultBackground)
       await this._page._delegate.setBackgroundColor();
-    if (overridenViewportSize) {
-      assert(!this._page._delegate.canScreenshotOutsideViewport());
-      if (originalViewportSize)
-        await this._page.setViewportSize(originalViewportSize);
-      else
-        await this._page._delegate.resetViewport();
-    }
+    progress.throwIfAborted(); // Avoid side effects.
     if (options.path)
       await util.promisify(fs.writeFile)(options.path, buffer);
+    if ((options as any).__testHookAfterScreenshot)
+      await (options as any).__testHookAfterScreenshot();
     return buffer;
   }
-}
 
-const taskQueueSymbol = Symbol('TaskQueue');
+  private async _restoreViewport(originalViewportSize: types.Size | null) {
+    assert(!this._page._delegate.canScreenshotOutsideViewport());
+    if (originalViewportSize)
+      await this._page.setViewportSize(originalViewportSize);
+    else
+      await this._page._delegate.resetViewport();
+  }
+}
 
 class TaskQueue {
   private _chain: Promise<any>;
@@ -220,6 +236,6 @@ function validateScreenshotOptions(options: types.ScreenshotOptions): 'png' | 'j
 export const kScreenshotDuringNavigationError = 'Cannot take a screenshot while page is navigating';
 function rewriteError(e: any) {
   if (typeof e === 'object' && e instanceof Error && e.message.includes('Execution context was destroyed'))
-    e.message = kScreenshotDuringNavigationError;
+    rewriteErrorMessage(e, kScreenshotDuringNavigationError);
   throw e;
 }

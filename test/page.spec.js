@@ -78,7 +78,7 @@ describe('Page.close', function() {
     ]);
     for (let i = 0; i < 2; i++) {
       const message = results[i].message;
-      expect(message).toContain('Target closed');
+      expect(message).toContain('Page closed');
       expect(message).not.toContain('Timeout');
     }
   });
@@ -129,6 +129,28 @@ describe.fail(FFOX && WIN)('Page.Events.Crash', function() {
     const err = await page.evaluate(() => {}).then(() => null, e => e);
     expect(err).toBeTruthy();
     expect(err.message).toContain('crash');
+  });
+  it('should cancel waitForEvent when page crashes', async({page}) => {
+    await page.setContent(`<div>This page should crash</div>`);
+    const promise = page.waitForEvent('response').catch(e => e);
+    crash(page);
+    const error = await promise;
+    expect(error.message).toContain('Page crashed');
+  });
+  it('should cancel navigation when page crashes', async({page, server}) => {
+    await page.setContent(`<div>This page should crash</div>`);
+    server.setRoute('/one-style.css', () => {});
+    const promise = page.goto(server.PREFIX + '/one-style.html').catch(e => e);
+    await page.waitForNavigation({ waitUntil: 'domcontentloaded' });
+    crash(page);
+    const error = await promise;
+    expect(error.message).toContain('Navigation failed because page crashed');
+  });
+  it('should be able to close context when page crashes', async({page}) => {
+    await page.setContent(`<div>This page should crash</div>`);
+    crash(page);
+    await page.waitForEvent('crash');
+    await page.context().close();
   });
 });
 
@@ -353,7 +375,7 @@ describe('Page.waitForEvent', function() {
     const waitForPromise = page.waitForEvent('download').catch(e => error = e);
     await page.close();
     await waitForPromise;
-    expect(error.message).toContain('Target closed');
+    expect(error.message).toContain('Page closed');
   });
 });
 
@@ -631,8 +653,8 @@ describe('Page.setContent', function() {
     const imgPath = '/img.png';
     // stall for image
     server.setRoute(imgPath, (req, res) => {});
-    let error = null;
-    await page.setContent(`<img src="${server.PREFIX + imgPath}"></img>`).catch(e => error = e);
+    const error = await page.setContent(`<img src="${server.PREFIX + imgPath}"></img>`).catch(e => e);
+    expect(error.message).toContain('Timeout 1ms exceeded during page.setContent.');
     expect(error).toBeInstanceOf(playwright.errors.TimeoutError);
   });
   it('should await resources to load', async({page, server}) => {
@@ -739,7 +761,7 @@ describe('Page.addScriptTag', function() {
     expect(await page.evaluate(() => __injected)).toBe(35);
   });
 
-  it.fail(FFOX && WIN)('should throw when added with content to the CSP page', async({page, server}) => {
+  it.fail(FFOX)('should throw when added with content to the CSP page', async({page, server}) => {
     // Firefox fires onload for blocked script before it issues the CSP console error.
     await page.goto(server.PREFIX + '/csp.html');
     let error = null;
@@ -850,7 +872,7 @@ describe('Page.title', function() {
   });
 });
 
-describe('Page.select', function() {
+describe('Page.selectOption', function() {
   it('should select single option', async({page, server}) => {
     await page.goto(server.PREFIX + '/input/select.html');
     await page.selectOption('select', 'blue');
@@ -953,6 +975,21 @@ describe('Page.select', function() {
     const result = await page.selectOption('select', []);
     expect(result).toEqual([]);
   });
+  it('should not allow null items',async({page, server}) => {
+    await page.goto(server.PREFIX + '/input/select.html');
+    await page.evaluate(() => makeMultiple());
+    let error = null
+    await page.selectOption('select', ['blue', null, 'black','magenta']).catch(e => error = e);
+    expect(error.message).toContain('Value items must not be null');
+  });
+  it('should unselect with null',async({page, server}) => {
+    await page.goto(server.PREFIX + '/input/select.html');
+    await page.evaluate(() => makeMultiple());
+    const result = await page.selectOption('select', ['blue', 'black','magenta']);
+    expect(result.reduce((accumulator,current) => ['blue', 'black', 'magenta'].includes(current) && accumulator, true)).toEqual(true);
+    await page.selectOption('select', null);
+    expect(await page.$eval('select', select => Array.from(select.options).every(option => !option.selected))).toEqual(true);
+  });
   it('should deselect all options when passed no values for a multiple select',async({page, server}) => {
     await page.goto(server.PREFIX + '/input/select.html');
     await page.evaluate(() => makeMultiple());
@@ -1013,6 +1050,11 @@ describe('Page.select', function() {
 });
 
 describe('Page.fill', function() {
+  async function giveItAChanceToFill(page) {
+    for (let i = 0; i < 5; i++)
+      await page.evaluate(() => new Promise(f => requestAnimationFrame(() => requestAnimationFrame(f))));
+  }
+
   it('should fill textarea', async({page, server}) => {
     await page.goto(server.PREFIX + '/input/textarea.html');
     await page.fill('textarea', 'some value');
@@ -1029,7 +1071,7 @@ describe('Page.fill', function() {
       await page.$eval('input', (input, type) => input.setAttribute('type', type), type);
       let error = null;
       await page.fill('input', '').catch(e => error = e);
-      expect(error.message).toContain('Cannot fill input of type');
+      expect(error.message).toContain(`input of type "${type}" cannot be filled`);
     }
   });
   it('should fill different input types', async({page, server}) => {
@@ -1049,7 +1091,7 @@ describe('Page.fill', function() {
   it.skip(WEBKIT)('should throw on incorrect date', async({page, server}) => {
     await page.setContent('<input type=date>');
     const error = await page.fill('input', '2020-13-05').catch(e => e);
-    expect(error.message).toBe('Malformed date "2020-13-05"');
+    expect(error.message).toContain('Malformed value');
   });
   it('should fill time input', async({page, server}) => {
     await page.setContent('<input type=time>');
@@ -1059,7 +1101,7 @@ describe('Page.fill', function() {
   it.skip(WEBKIT)('should throw on incorrect time', async({page, server}) => {
     await page.setContent('<input type=time>');
     const error = await page.fill('input', '25:05').catch(e => e);
-    expect(error.message).toBe('Malformed time "25:05"');
+    expect(error.message).toContain('Malformed value');
   });
   it('should fill datetime-local input', async({page, server}) => {
     await page.setContent('<input type=datetime-local>');
@@ -1069,7 +1111,7 @@ describe('Page.fill', function() {
   it.skip(WEBKIT || FFOX)('should throw on incorrect datetime-local', async({page, server}) => {
     await page.setContent('<input type=datetime-local>');
     const error = await page.fill('input', 'abc').catch(e => e);
-    expect(error.message).toBe('Malformed datetime-local "abc"');
+    expect(error.message).toContain('Malformed value');
   });
   it('should fill contenteditable', async({page, server}) => {
     await page.goto(server.PREFIX + '/input/textarea.html');
@@ -1113,27 +1155,47 @@ describe('Page.fill', function() {
     await page.fill('textarea', 123).catch(e => error = e);
     expect(error.message).toContain('Value must be string.');
   });
-  it('should throw on disabled and readonly elements', async({page, server}) => {
+  it('should retry on disabled element', async({page, server}) => {
     await page.goto(server.PREFIX + '/input/textarea.html');
     await page.$eval('input', i => i.disabled = true);
-    const disabledError = await page.fill('input', 'some value').catch(e => e);
-    expect(disabledError.message).toBe('Cannot fill a disabled input.');
+    let done = false;
 
+    const promise = page.fill('input', 'some value').then(() => done = true);
+    await giveItAChanceToFill(page);
+    expect(done).toBe(false);
+    expect(await page.evaluate(() => result)).toBe('');
+
+    await page.$eval('input', i => i.disabled = false);
+    await promise;
+    expect(await page.evaluate(() => result)).toBe('some value');
+  });
+  it('should retry on readonly element', async({page, server}) => {
     await page.goto(server.PREFIX + '/input/textarea.html');
     await page.$eval('textarea', i => i.readOnly = true);
-    const readonlyError = await page.fill('textarea', 'some value').catch(e => e);
-    expect(readonlyError.message).toBe('Cannot fill a readonly textarea.');
+    let done = false;
+
+    const promise = page.fill('textarea', 'some value').then(() => done = true);
+    await giveItAChanceToFill(page);
+    expect(done).toBe(false);
+    expect(await page.evaluate(() => result)).toBe('');
+
+    await page.$eval('textarea', i => i.readOnly = false);
+    await promise;
+    expect(await page.evaluate(() => result)).toBe('some value');
   });
-  it('should throw on hidden and invisible elements', async({page, server}) => {
+  it('should retry on invisible element', async({page, server}) => {
     await page.goto(server.PREFIX + '/input/textarea.html');
     await page.$eval('input', i => i.style.display = 'none');
-    const invisibleError = await page.fill('input', 'some value', { force: true }).catch(e => e);
-    expect(invisibleError.message).toBe('Element is not visible');
+    let done = false;
 
-    await page.goto(server.PREFIX + '/input/textarea.html');
-    await page.$eval('input', i => i.style.visibility = 'hidden');
-    const hiddenError = await page.fill('input', 'some value', { force: true }).catch(e => e);
-    expect(hiddenError.message).toBe('Element is not visible');
+    const promise = page.fill('input', 'some value').then(() => done = true);
+    await giveItAChanceToFill(page);
+    expect(done).toBe(false);
+    expect(await page.evaluate(() => result)).toBe('');
+
+    await page.$eval('input', i => i.style.display = 'inline');
+    await promise;
+    expect(await page.evaluate(() => result)).toBe('some value');
   });
   it('should be able to fill the body', async({page}) => {
     await page.setContent(`<body contentEditable="true"></body>`);
@@ -1164,17 +1226,16 @@ describe('Page.fill', function() {
     await page.fill('input', '-10e5');
     expect(await page.evaluate(() => input.value)).toBe('-10e5');
   });
-  it('should not be able to fill input[type=number] with empty string', async({page}) => {
-    await page.setContent(`<input id="input" type="number"></input>`);
-    let error = null;
-    await page.fill('input', '').catch(e => error = e);
-    expect(error.message).toContain('Cannot type text into input[type=number].');
+  it('should be able to fill input[type=number] with empty string', async({page}) => {
+    await page.setContent(`<input id="input" type="number" value="123"></input>`);
+    await page.fill('input', '');
+    expect(await page.evaluate(() => input.value)).toBe('');
   });
   it('should not be able to fill text into the input[type=number]', async({page}) => {
     await page.setContent(`<input id="input" type="number"></input>`);
     let error = null;
-    await page.fill('input', '').catch(e => error = e);
-    expect(error.message).toContain('Cannot type text into input[type=number].');
+    await page.fill('input', 'abc').catch(e => error = e);
+    expect(error.message).toContain('Cannot type text into input[type=number]');
   });
   it('should be able to clear', async({page, server}) => {
     await page.goto(server.PREFIX + '/input/textarea.html');

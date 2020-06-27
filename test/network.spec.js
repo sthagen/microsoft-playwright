@@ -41,8 +41,7 @@ describe('Page.Events.Request', function() {
     await page.evaluate(() => fetch('/empty.html'));
     expect(requests.length).toBe(2);
   });
-  it.fail(FFOX)('should report requests and responses handled by service worker', async({page, server}) => {
-    // Firefox issues Network.requestWillBeSent and nothing else.
+  it('should report requests and responses handled by service worker', async({page, server}) => {
     await page.goto(server.PREFIX + '/serviceworkers/fetchdummy/sw.html');
     await page.evaluate(() => window.activationPromise);
     const [swResponse, request] = await Promise.all([
@@ -140,6 +139,34 @@ describe('Request.postData', function() {
   });
 });
 
+describe('Request.postDataJSON', function () {
+  it('should parse the JSON payload', async ({ page, server }) => {
+    await page.goto(server.EMPTY_PAGE);
+    server.setRoute('/post', (req, res) => res.end());
+    let request = null;
+    page.on('request', r => request = r);
+    await page.evaluate(() => fetch('./post', { method: 'POST', body: JSON.stringify({ foo: 'bar' }) }));
+    expect(request).toBeTruthy();
+    expect(request.postDataJSON()).toEqual({ "foo": "bar" });
+  });
+
+  it('should parse the data if content-type is application/x-www-form-urlencoded', async({page, server}) => {
+    await page.goto(server.EMPTY_PAGE);
+    server.setRoute('/post', (req, res) => res.end());
+    let request = null;
+    page.on('request', r => request = r);
+    await page.setContent(`<form method='POST' action='/post'><input type='text' name='foo' value='bar'><input type='number' name='baz' value='123'><input type='submit'></form>`);
+    await page.click('input[type=submit]');
+    expect(request).toBeTruthy();
+    expect(request.postDataJSON()).toEqual({'foo':'bar','baz':'123'});
+  })
+
+  it('should be |undefined| when there is no post data', async ({ page, server }) => {
+    const response = await page.goto(server.EMPTY_PAGE);
+    expect(response.request().postDataJSON()).toBe(null);
+  });
+});
+
 describe('Response.text', function() {
   it('should work', async({page, server}) => {
     const response = await page.goto(server.PREFIX + '/simple.json');
@@ -228,6 +255,33 @@ describe('Response.statusText', function() {
     });
     const response = await page.goto(server.PREFIX + '/cool');
     expect(response.statusText()).toBe('cool!');
+  });
+});
+
+describe('Request.resourceType', function() {
+  it('should return event source', async ({page, server}) => {
+    const SSE_MESSAGE = {foo: 'bar'};
+    // 1. Setup server-sent events on server that immediately sends a message to the client.
+    server.setRoute('/sse', (req, res) => {
+      res.writeHead(200, {
+        'Content-Type': 'text/event-stream',
+        'Connection': 'keep-alive',
+        'Cache-Control': 'no-cache',
+      });
+      res.write(`data: ${JSON.stringify(SSE_MESSAGE)}\n\n`);
+    });
+    // 2. Subscribe to page request events.
+    await page.goto(server.EMPTY_PAGE);
+    const requests = [];
+    page.on('request', request => requests.push(request));
+    // 3. Connect to EventSource in browser and return first message.
+    expect(await page.evaluate(() => {
+      const eventSource = new EventSource('/sse');
+      return new Promise(resolve => {
+        eventSource.onmessage = e => resolve(JSON.parse(e.data));
+      });
+    })).toEqual(SSE_MESSAGE);
+    expect(requests[0].resourceType()).toBe('eventsource');
   });
 });
 
@@ -354,6 +408,17 @@ describe('Page.setExtraHTTPHeaders', function() {
     const [request] = await Promise.all([
       server.waitForRequest('/empty.html'),
       page.goto(server.EMPTY_PAGE),
+    ]);
+    expect(request.headers['foo']).toBe('bar');
+  });
+  it('should work with redirects', async({page, server}) => {
+    server.setRedirect('/foo.html', '/empty.html');
+    await page.setExtraHTTPHeaders({
+      foo: 'bar'
+    });
+    const [request] = await Promise.all([
+      server.waitForRequest('/empty.html'),
+      page.goto(server.PREFIX + '/foo.html'),
     ]);
     expect(request.headers['foo']).toBe('bar');
   });

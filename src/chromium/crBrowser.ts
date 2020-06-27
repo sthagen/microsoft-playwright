@@ -15,10 +15,10 @@
  * limitations under the License.
  */
 
-import { BrowserBase, BrowserOptions } from '../browser';
-import { assertBrowserContextIsNotOwned, BrowserContext, BrowserContextBase, BrowserContextOptions, validateBrowserContextOptions, verifyGeolocation } from '../browserContext';
+import { BrowserBase, BrowserOptions, BrowserContextOptions } from '../browser';
+import { assertBrowserContextIsNotOwned, BrowserContext, BrowserContextBase, validateBrowserContextOptions, verifyGeolocation } from '../browserContext';
 import { Events as CommonEvents } from '../events';
-import { assert, helper } from '../helper';
+import { assert } from '../helper';
 import * as network from '../network';
 import { Page, PageBinding, Worker } from '../page';
 import { ConnectionTransport, SlowMoTransport } from '../transport';
@@ -29,7 +29,6 @@ import { readProtocolStream } from './crProtocolHelper';
 import { Events } from './events';
 import { Protocol } from './protocol';
 import { CRExecutionContext } from './crExecutionContext';
-import { logError } from '../logger';
 import { CRDevTools } from './crDevTools';
 
 export class CRBrowser extends BrowserBase {
@@ -47,7 +46,7 @@ export class CRBrowser extends BrowserBase {
   private _tracingClient: CRSession | undefined;
 
   static async connect(transport: ConnectionTransport, options: BrowserOptions, devtools?: CRDevTools): Promise<CRBrowser> {
-    const connection = new CRConnection(SlowMoTransport.wrap(transport, options.slowMo), options.logger);
+    const connection = new CRConnection(SlowMoTransport.wrap(transport, options.slowMo), options.loggers);
     const browser = new CRBrowser(connection, options);
     browser._devtools = devtools;
     const session = connection.rootSession;
@@ -55,7 +54,6 @@ export class CRBrowser extends BrowserBase {
       await session.send('Target.setAutoAttach', { autoAttach: true, waitForDebuggerOnStart: true, flatten: true });
       return browser;
     }
-
     browser._defaultContext = new CRBrowserContext(browser, null, options.persistent);
 
     const existingTargetAttachPromises: Promise<any>[] = [];
@@ -133,8 +131,8 @@ export class CRBrowser extends BrowserBase {
     if (targetInfo.type === 'other' || !context) {
       if (waitingForDebugger) {
         // Ideally, detaching should resume any target, but there is a bug in the backend.
-        session.send('Runtime.runIfWaitingForDebugger').catch(logError(this)).then(() => {
-          this._session.send('Target.detachFromTarget', { sessionId }).catch(logError(this));
+        session._sendMayFail('Runtime.runIfWaitingForDebugger').then(() => {
+          this._session._sendMayFail('Target.detachFromTarget', { sessionId });
         });
       }
       return;
@@ -266,7 +264,7 @@ class CRServiceWorker extends Worker {
   readonly _browserContext: CRBrowserContext;
 
   constructor(browserContext: CRBrowserContext, session: CRSession, url: string) {
-    super(browserContext, url);
+    super(url);
     this._browserContext = browserContext;
     session.once('Runtime.executionContextCreated', event => {
       this._createExecutionContext(new CRExecutionContext(session, event.context));
@@ -282,16 +280,17 @@ export class CRBrowserContext extends BrowserContextBase {
   readonly _browserContextId: string | null;
   readonly _evaluateOnNewDocumentSources: string[];
 
-  constructor(browser: CRBrowser, browserContextId: string | null, options: BrowserContextOptions) {
+  constructor(browser: CRBrowser, browserContextId: string | null, options: types.BrowserContextOptions) {
     super(browser, options);
     this._browser = browser;
     this._browserContextId = browserContextId;
     this._evaluateOnNewDocumentSources = [];
+    this._authenticateProxyViaCredentials();
   }
 
   async _initialize() {
     assert(!Array.from(this._browser._crPages.values()).some(page => page._browserContext === this));
-    const promises: Promise<any>[] = [];
+    const promises: Promise<any>[] = [ super._initialize() ];
     if (this._browser._options.downloadsPath) {
       promises.push(this._browser._session.send('Browser.setDownloadBehavior', {
         behavior: this._options.acceptDownloads ? 'allowAndName' : 'deny',
@@ -326,18 +325,18 @@ export class CRBrowserContext extends BrowserContextBase {
     throw result;
   }
 
-  async cookies(urls?: string | string[]): Promise<network.NetworkCookie[]> {
+  async _doCookies(urls: string[]): Promise<types.NetworkCookie[]> {
     const { cookies } = await this._browser._session.send('Storage.getCookies', { browserContextId: this._browserContextId || undefined });
     return network.filterCookies(cookies.map(c => {
       const copy: any = { sameSite: 'None', ...c };
       delete copy.size;
       delete copy.priority;
       delete copy.session;
-      return copy as network.NetworkCookie;
+      return copy as types.NetworkCookie;
     }), urls);
   }
 
-  async addCookies(cookies: network.SetNetworkCookieParam[]) {
+  async addCookies(cookies: types.SetNetworkCookieParam[]) {
     await this._browser._session.send('Storage.setCookies', { cookies: network.rewriteCookies(cookies), browserContextId: this._browserContextId || undefined });
   }
 
@@ -385,7 +384,7 @@ export class CRBrowserContext extends BrowserContextBase {
       await (page._delegate as CRPage).updateGeolocation();
   }
 
-  async setExtraHTTPHeaders(headers: network.Headers): Promise<void> {
+  async setExtraHTTPHeaders(headers: types.Headers): Promise<void> {
     this._options.extraHTTPHeaders = network.verifyHeaders(headers);
     for (const page of this.pages())
       await (page._delegate as CRPage).updateExtraHTTPHeaders();
@@ -403,8 +402,7 @@ export class CRBrowserContext extends BrowserContextBase {
       await (page._delegate as CRPage).updateHttpCredentials();
   }
 
-  async addInitScript(script: Function | string | { path?: string, content?: string }, arg?: any) {
-    const source = await helper.evaluationScript(script, arg);
+  async _doAddInitScript(source: string) {
     this._evaluateOnNewDocumentSources.push(source);
     for (const page of this.pages())
       await (page._delegate as CRPage).evaluateOnNewDocument(source);

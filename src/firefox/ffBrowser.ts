@@ -15,8 +15,8 @@
  * limitations under the License.
  */
 
-import { BrowserBase, BrowserOptions } from '../browser';
-import { assertBrowserContextIsNotOwned, BrowserContext, BrowserContextBase, BrowserContextOptions, validateBrowserContextOptions, verifyGeolocation } from '../browserContext';
+import { BrowserBase, BrowserOptions, BrowserContextOptions } from '../browser';
+import { assertBrowserContextIsNotOwned, BrowserContext, BrowserContextBase, validateBrowserContextOptions, verifyGeolocation } from '../browserContext';
 import { Events } from '../events';
 import { assert, helper, RegisteredListener } from '../helper';
 import * as network from '../network';
@@ -35,7 +35,7 @@ export class FFBrowser extends BrowserBase {
   private _eventListeners: RegisteredListener[];
 
   static async connect(transport: ConnectionTransport, options: BrowserOptions): Promise<FFBrowser> {
-    const connection = new FFConnection(SlowMoTransport.wrap(transport, options.slowMo), options.logger);
+    const connection = new FFConnection(SlowMoTransport.wrap(transport, options.slowMo), options.loggers);
     const browser = new FFBrowser(connection, options);
     const promises: Promise<any>[] = [
       connection.send('Browser.enable', { attachToDefaultContext: !!options.persistent }),
@@ -145,19 +145,18 @@ export class FFBrowser extends BrowserBase {
 export class FFBrowserContext extends BrowserContextBase {
   readonly _browser: FFBrowser;
   readonly _browserContextId: string | null;
-  private readonly _evaluateOnNewDocumentSources: string[];
 
-  constructor(browser: FFBrowser, browserContextId: string | null, options: BrowserContextOptions) {
+  constructor(browser: FFBrowser, browserContextId: string | null, options: types.BrowserContextOptions) {
     super(browser, options);
     this._browser = browser;
     this._browserContextId = browserContextId;
-    this._evaluateOnNewDocumentSources = [];
+    this._authenticateProxyViaHeader();
   }
 
   async _initialize() {
     assert(!this._ffPages().length);
     const browserContextId = this._browserContextId || undefined;
-    const promises: Promise<any>[] = [];
+    const promises: Promise<any>[] = [ super._initialize() ];
     if (this._browser._options.downloadsPath) {
       promises.push(this._browser._connection.send('Browser.setDownloadOptions', {
         browserContextId,
@@ -238,17 +237,17 @@ export class FFBrowserContext extends BrowserContextBase {
     throw pageOrError;
   }
 
-  async cookies(urls?: string | string[]): Promise<network.NetworkCookie[]> {
+  async _doCookies(urls: string[]): Promise<types.NetworkCookie[]> {
     const { cookies } = await this._browser._connection.send('Browser.getCookies', { browserContextId: this._browserContextId || undefined });
     return network.filterCookies(cookies.map(c => {
       const copy: any = { ... c };
       delete copy.size;
       delete copy.session;
-      return copy as network.NetworkCookie;
+      return copy as types.NetworkCookie;
     }), urls);
   }
 
-  async addCookies(cookies: network.SetNetworkCookieParam[]) {
+  async addCookies(cookies: types.SetNetworkCookieParam[]) {
     await this._browser._connection.send('Browser.setCookies', { browserContextId: this._browserContextId || undefined, cookies: network.rewriteCookies(cookies) });
   }
 
@@ -283,7 +282,7 @@ export class FFBrowserContext extends BrowserContextBase {
     await this._browser._connection.send('Browser.setGeolocationOverride', { browserContextId: this._browserContextId || undefined, geolocation });
   }
 
-  async setExtraHTTPHeaders(headers: network.Headers): Promise<void> {
+  async setExtraHTTPHeaders(headers: types.Headers): Promise<void> {
     this._options.extraHTTPHeaders = network.verifyHeaders(headers);
     const allHeaders = { ...this._options.extraHTTPHeaders };
     if (this._options.locale)
@@ -301,9 +300,7 @@ export class FFBrowserContext extends BrowserContextBase {
     await this._browser._connection.send('Browser.setHTTPCredentials', { browserContextId: this._browserContextId || undefined, credentials: httpCredentials });
   }
 
-  async addInitScript(script: Function | string | { path?: string, content?: string }, arg?: any) {
-    const source = await helper.evaluationScript(script, arg);
-    this._evaluateOnNewDocumentSources.push(source);
+  async _doAddInitScript(source: string) {
     await this._browser._connection.send('Browser.addScriptToEvaluateOnNewDocument', { browserContextId: this._browserContextId || undefined, script: source });
   }
 

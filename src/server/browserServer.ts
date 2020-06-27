@@ -16,47 +16,19 @@
 
 import { ChildProcess } from 'child_process';
 import { EventEmitter } from 'events';
-import { helper } from '../helper';
-
-export class WebSocketWrapper {
-  readonly wsEndpoint: string;
-  private _bindings: (Map<any, any> | Set<any>)[];
-
-  constructor(wsEndpoint: string, bindings: (Map<any, any>|Set<any>)[]) {
-    this.wsEndpoint = wsEndpoint;
-    this._bindings = bindings;
-  }
-
-  async checkLeaks() {
-    let counter = 0;
-    return new Promise((fulfill, reject) => {
-      const check = () => {
-        const filtered = this._bindings.filter(entry => entry.size);
-        if (!filtered.length) {
-          fulfill();
-          return;
-        }
-
-        if (++counter >= 50) {
-          reject(new Error('Web socket leak ' + filtered.map(entry => [...entry.keys()].join(':')).join('|')));
-          return;
-        }
-        setTimeout(check, 100);
-      };
-      check();
-    });
-  }
-}
+import { WebSocketServer } from './webSocketServer';
 
 export class BrowserServer extends EventEmitter {
   private _process: ChildProcess;
-  private _gracefullyClose: (() => Promise<void>);
-  _webSocketWrapper: WebSocketWrapper | null = null;
+  private _gracefullyClose: () => Promise<void>;
+  private _kill: () => Promise<void>;
+  _webSocketServer: WebSocketServer | null = null;
 
-  constructor(process: ChildProcess, gracefullyClose: () => Promise<void>) {
+  constructor(process: ChildProcess, gracefullyClose: () => Promise<void>, kill: () => Promise<void>) {
     super();
     this._process = process;
     this._gracefullyClose = gracefullyClose;
+    this._kill = kill;
   }
 
   process(): ChildProcess {
@@ -64,11 +36,11 @@ export class BrowserServer extends EventEmitter {
   }
 
   wsEndpoint(): string {
-    return this._webSocketWrapper ? this._webSocketWrapper.wsEndpoint : '';
+    return this._webSocketServer ? this._webSocketServer.wsEndpoint : '';
   }
 
-  kill() {
-    helper.killProcess(this._process);
+  async kill(): Promise<void> {
+    await this._kill();
   }
 
   async close(): Promise<void> {
@@ -76,15 +48,21 @@ export class BrowserServer extends EventEmitter {
   }
 
   async _checkLeaks(): Promise<void> {
-    if (this._webSocketWrapper)
-      await this._webSocketWrapper.checkLeaks();
+    if (this._webSocketServer)
+      await this._webSocketServer.checkLeaks();
   }
 
-  async _closeOrKill(deadline: number): Promise<void> {
+  async _closeOrKill(timeout: number): Promise<void> {
+    let timer: NodeJS.Timer;
     try {
-      await helper.waitWithDeadline(this.close(), '', deadline, ''); // The error message is ignored.
+      await Promise.race([
+        this.close(),
+        new Promise((resolve, reject) => timer = setTimeout(reject, timeout)),
+      ]);
     } catch (ignored) {
-      this.kill();
+      await this.kill().catch(ignored => {}); // Make sure to await actual process exit.
+    } finally {
+      clearTimeout(timer!);
     }
   }
 }

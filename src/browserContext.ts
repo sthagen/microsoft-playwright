@@ -15,58 +15,38 @@
  * limitations under the License.
  */
 
+import { Writable } from 'stream';
 import { helper } from './helper';
 import * as network from './network';
 import { Page, PageBinding } from './page';
 import { TimeoutSettings } from './timeoutSettings';
+import * as frames from './frames';
 import * as types from './types';
 import { Events } from './events';
-import { ExtendedEventEmitter } from './extendedEventEmitter';
 import { Download } from './download';
 import { BrowserBase } from './browser';
-import { Log, InnerLogger, Logger, RootLogger } from './logger';
-import { FunctionWithSource } from './frames';
+import { Loggers, Logger } from './logger';
+import { EventEmitter } from 'events';
+import { ProgressController } from './progress';
+import { DebugController } from './debug/debugController';
+import { LoggerSink } from './loggerSink';
 
-export type PersistentContextOptions = {
-  viewport?: types.Size | null,
-  ignoreHTTPSErrors?: boolean,
-  javaScriptEnabled?: boolean,
-  bypassCSP?: boolean,
-  userAgent?: string,
-  locale?: string,
-  timezoneId?: string,
-  geolocation?: types.Geolocation,
-  permissions?: string[],
-  extraHTTPHeaders?: network.Headers,
-  offline?: boolean,
-  httpCredentials?: types.Credentials,
-  deviceScaleFactor?: number,
-  isMobile?: boolean,
-  hasTouch?: boolean,
-  colorScheme?: types.ColorScheme,
-};
-
-export type BrowserContextOptions = PersistentContextOptions & {
-  acceptDownloads?: boolean,
-  logger?: Logger,
-};
-
-export interface BrowserContext extends InnerLogger {
+export interface BrowserContext {
   setDefaultNavigationTimeout(timeout: number): void;
   setDefaultTimeout(timeout: number): void;
   pages(): Page[];
   newPage(): Promise<Page>;
-  cookies(urls?: string | string[]): Promise<network.NetworkCookie[]>;
-  addCookies(cookies: network.SetNetworkCookieParam[]): Promise<void>;
+  cookies(urls?: string | string[]): Promise<types.NetworkCookie[]>;
+  addCookies(cookies: types.SetNetworkCookieParam[]): Promise<void>;
   clearCookies(): Promise<void>;
   grantPermissions(permissions: string[], options?: { origin?: string }): Promise<void>;
   clearPermissions(): Promise<void>;
   setGeolocation(geolocation: types.Geolocation | null): Promise<void>;
-  setExtraHTTPHeaders(headers: network.Headers): Promise<void>;
+  setExtraHTTPHeaders(headers: types.Headers): Promise<void>;
   setOffline(offline: boolean): Promise<void>;
   setHTTPCredentials(httpCredentials: types.Credentials | null): Promise<void>;
   addInitScript(script: Function | string | { path?: string, content?: string }, arg?: any): Promise<void>;
-  exposeBinding(name: string, playwrightBinding: FunctionWithSource): Promise<void>;
+  exposeBinding(name: string, playwrightBinding: frames.FunctionWithSource): Promise<void>;
   exposeFunction(name: string, playwrightFunction: Function): Promise<void>;
   route(url: types.URLMatch, handler: network.RouteHandler): Promise<void>;
   unroute(url: types.URLMatch, handler?: network.RouteHandler): Promise<void>;
@@ -74,33 +54,50 @@ export interface BrowserContext extends InnerLogger {
   close(): Promise<void>;
 }
 
-export abstract class BrowserContextBase extends ExtendedEventEmitter implements BrowserContext {
+type BrowserContextOptions = types.BrowserContextOptions & { logger?: LoggerSink };
+
+export abstract class BrowserContextBase extends EventEmitter implements BrowserContext {
   readonly _timeoutSettings = new TimeoutSettings();
   readonly _pageBindings = new Map<string, PageBinding>();
   readonly _options: BrowserContextOptions;
   _routes: { url: types.URLMatch, handler: network.RouteHandler }[] = [];
   _closed = false;
-  private readonly _closePromise: Promise<Error>;
+  readonly _closePromise: Promise<Error>;
   private _closePromiseFulfill: ((error: Error) => void) | undefined;
   readonly _permissions = new Map<string, string[]>();
   readonly _downloads = new Set<Download>();
   readonly _browserBase: BrowserBase;
-  private _logger: InnerLogger;
+  readonly _apiLogger: Logger;
+  private _debugController: DebugController | undefined;
 
   constructor(browserBase: BrowserBase, options: BrowserContextOptions) {
     super();
     this._browserBase = browserBase;
     this._options = options;
-    this._logger = options.logger ? new RootLogger(options.logger) : browserBase;
+    const loggers = options.logger ? new Loggers(options.logger) : browserBase._options.loggers;
+    this._apiLogger = loggers.api;
     this._closePromise = new Promise(fulfill => this._closePromiseFulfill = fulfill);
   }
 
-  protected _abortPromiseForEvent(event: string) {
-    return event === Events.BrowserContext.Close ? super._abortPromiseForEvent(event) : this._closePromise;
+  async _initialize() {
+    if (helper.isDebugMode() || helper.isRecordMode()) {
+      this._debugController = new DebugController(this, {
+        recorderOutput: helper.isRecordMode() ? process.stdout : undefined
+      });
+    }
   }
 
-  protected _computeDeadline(options?: types.TimeoutOptions): number {
-    return this._timeoutSettings.computeDeadline(options);
+  _initDebugModeForTest(options: { recorderOutput: Writable }): DebugController {
+    this._debugController = new DebugController(this, options);
+    return this._debugController;
+  }
+
+  async waitForEvent(event: string, optionsOrPredicate: types.WaitForEventOptions = {}): Promise<any> {
+    const options = typeof optionsOrPredicate === 'function' ? { predicate: optionsOrPredicate } : optionsOrPredicate;
+    const progressController = new ProgressController(this._apiLogger, this._timeoutSettings.timeout(options), 'browserContext.waitForEvent');
+    if (event !== Events.BrowserContext.Close)
+      this._closePromise.then(error => progressController.abort(error));
+    return progressController.run(progress => helper.waitForEvent(progress, this, event, options.predicate));
   }
 
   _browserClosed() {
@@ -121,26 +118,32 @@ export abstract class BrowserContextBase extends ExtendedEventEmitter implements
   // BrowserContext methods.
   abstract pages(): Page[];
   abstract newPage(): Promise<Page>;
-  abstract cookies(...urls: string[]): Promise<network.NetworkCookie[]>;
-  abstract addCookies(cookies: network.SetNetworkCookieParam[]): Promise<void>;
+  abstract _doCookies(urls: string[]): Promise<types.NetworkCookie[]>;
+  abstract addCookies(cookies: types.SetNetworkCookieParam[]): Promise<void>;
   abstract clearCookies(): Promise<void>;
   abstract _doGrantPermissions(origin: string, permissions: string[]): Promise<void>;
   abstract _doClearPermissions(): Promise<void>;
   abstract setGeolocation(geolocation: types.Geolocation | null): Promise<void>;
   abstract setHTTPCredentials(httpCredentials: types.Credentials | null): Promise<void>;
-  abstract setExtraHTTPHeaders(headers: network.Headers): Promise<void>;
+  abstract setExtraHTTPHeaders(headers: types.Headers): Promise<void>;
   abstract setOffline(offline: boolean): Promise<void>;
-  abstract addInitScript(script: string | Function | { path?: string | undefined; content?: string | undefined; }, arg?: any): Promise<void>;
+  abstract _doAddInitScript(expression: string): Promise<void>;
   abstract _doExposeBinding(binding: PageBinding): Promise<void>;
   abstract route(url: types.URLMatch, handler: network.RouteHandler): Promise<void>;
   abstract unroute(url: types.URLMatch, handler?: network.RouteHandler): Promise<void>;
   abstract close(): Promise<void>;
 
+  async cookies(urls: string | string[] | undefined = []): Promise<types.NetworkCookie[]> {
+    if (urls && !Array.isArray(urls))
+      urls = [ urls ];
+    return await this._doCookies(urls as string[]);
+  }
+
   async exposeFunction(name: string, playwrightFunction: Function): Promise<void> {
     await this.exposeBinding(name, (options, ...args: any) => playwrightFunction(...args));
   }
 
-  async exposeBinding(name: string, playwrightBinding: FunctionWithSource): Promise<void> {
+  async exposeBinding(name: string, playwrightBinding: frames.FunctionWithSource): Promise<void> {
     for (const page of this.pages()) {
       if (page._pageBindings.has(name))
         throw new Error(`Function "${name}" has been already registered in one of the pages`);
@@ -150,6 +153,11 @@ export abstract class BrowserContextBase extends ExtendedEventEmitter implements
     const binding = new PageBinding(name, playwrightBinding);
     this._pageBindings.set(name, binding);
     this._doExposeBinding(binding);
+  }
+
+  async addInitScript(script: string | Function | { path?: string | undefined; content?: string | undefined; }, arg?: any): Promise<void> {
+    const source = await helper.evaluationScript(script, arg);
+    await this._doAddInitScript(source);
   }
 
   async grantPermissions(permissions: string[], options?: { origin?: string }) {
@@ -178,14 +186,6 @@ export abstract class BrowserContextBase extends ExtendedEventEmitter implements
     this._timeoutSettings.setDefaultTimeout(timeout);
   }
 
-  _isLogEnabled(log: Log): boolean {
-    return this._logger._isLogEnabled(log);
-  }
-
-  _log(log: Log, message: string | Error, ...args: any[]) {
-    return this._logger._log(log, message, ...args);
-  }
-
   async _loadDefaultContext() {
     if (!this.pages().length)
       await this.waitForEvent('page');
@@ -201,6 +201,26 @@ export abstract class BrowserContextBase extends ExtendedEventEmitter implements
       await this.newPage();
       await oldPage.close();
     }
+  }
+
+  protected _authenticateProxyViaHeader() {
+    const proxy = this._browserBase._options.proxy || { username: undefined, password: undefined };
+    const { username, password } = proxy;
+    if (username) {
+      this._options.httpCredentials = { username, password: password! };
+      this._options.extraHTTPHeaders = this._options.extraHTTPHeaders || {};
+      const token = Buffer.from(`${username}:${password}`).toString('base64');
+      this._options.extraHTTPHeaders['Proxy-Authorization'] = `Basic ${token}`;
+    }
+  }
+
+  protected _authenticateProxyViaCredentials() {
+    const proxy = this._browserBase._options.proxy;
+    if (!proxy)
+      return;
+    const { username, password } = proxy;
+    if (username && password)
+      this._options.httpCredentials = { username, password };
   }
 }
 
@@ -249,12 +269,6 @@ export function validateBrowserContextOptions(options: BrowserContextOptions): B
   return result;
 }
 
-export function validatePersistentContextOptions(options: PersistentContextOptions): PersistentContextOptions {
-  if ((options as any).acceptDownloads !== undefined)
-    throw new Error(`Option "acceptDownloads" is not supported for persistent context`);
-  return validateBrowserContextOptions(options);
-}
-
 export function verifyGeolocation(geolocation: types.Geolocation): types.Geolocation {
   const result = { ...geolocation };
   result.accuracy = result.accuracy || 0;
@@ -266,4 +280,18 @@ export function verifyGeolocation(geolocation: types.Geolocation): types.Geoloca
   if (!helper.isNumber(accuracy) || accuracy < 0)
     throw new Error(`Invalid accuracy "${accuracy}": precondition 0 <= ACCURACY failed.`);
   return result;
+}
+
+export function verifyProxySettings(proxy: types.ProxySettings): types.ProxySettings {
+  let { server, bypass } = proxy;
+  if (!helper.isString(server))
+    throw new Error(`Invalid proxy.server: ` + server);
+  let url = new URL(server);
+  if (!['http:', 'https:', 'socks5:'].includes(url.protocol)) {
+    url = new URL('http://' + server);
+    server = `${url.protocol}//${url.host}`;
+  }
+  if (bypass)
+    bypass = bypass.split(',').map(t => t.trim()).join(',');
+  return { ...proxy, server, bypass };
 }

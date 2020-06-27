@@ -17,9 +17,10 @@
 
 import { EventEmitter } from 'events';
 import { assert } from '../helper';
-import { ConnectionTransport, ProtocolRequest, ProtocolResponse, protocolLog } from '../transport';
+import { ConnectionTransport, ProtocolRequest, ProtocolResponse } from '../transport';
 import { Protocol } from './protocol';
-import { InnerLogger } from '../logger';
+import { Loggers, Logger } from '../logger';
+import { rewriteErrorMessage } from '../utils/stackTrace';
 
 // WKPlaywright uses this special id to issue Browser.close command which we
 // should ignore.
@@ -35,13 +36,12 @@ export class WKConnection {
   private readonly _onDisconnect: () => void;
   private _lastId = 0;
   private _closed = false;
-
   readonly browserSession: WKSession;
-  private _logger: InnerLogger;
+  readonly _logger: Logger;
 
-  constructor(transport: ConnectionTransport, logger: InnerLogger, onDisconnect: () => void) {
+  constructor(transport: ConnectionTransport, loggers: Loggers, onDisconnect: () => void) {
     this._transport = transport;
-    this._logger = logger;
+    this._logger = loggers.protocol;
     this._transport.onmessage = this._dispatchMessage.bind(this);
     this._transport.onclose = this._onClose.bind(this);
     this._onDisconnect = onDisconnect;
@@ -55,14 +55,14 @@ export class WKConnection {
   }
 
   rawSend(message: ProtocolRequest) {
-    if (this._logger._isLogEnabled(protocolLog))
-      this._logger._log(protocolLog, 'SEND ► ' + rewriteInjectedScriptEvaluationLog(message));
+    if (this._logger.isEnabled())
+      this._logger.info('SEND ► ' + rewriteInjectedScriptEvaluationLog(message));
     this._transport.send(message);
   }
 
   private _dispatchMessage(message: ProtocolResponse) {
-    if (this._logger._isLogEnabled(protocolLog))
-      this._logger._log(protocolLog, '◀ RECV ' + JSON.stringify(message));
+    if (this._logger.isEnabled())
+      this._logger.info('◀ RECV ' + JSON.stringify(message));
     if (message.id === kBrowserCloseMessageId)
       return;
     if (message.pageProxyId) {
@@ -137,6 +137,12 @@ export class WKSession extends EventEmitter {
     });
   }
 
+  sendMayFail<T extends keyof Protocol.CommandParameters>(method: T, params?: Protocol.CommandParameters[T]): Promise<Protocol.CommandReturnValues[T] | void> {
+    return this.send(method, params).catch(error => {
+      this.connection._logger.error(error);
+    });
+  }
+
   markAsCrashed() {
     this._crashed = true;
   }
@@ -147,7 +153,7 @@ export class WKSession extends EventEmitter {
 
   dispose() {
     for (const callback of this._callbacks.values())
-      callback.reject(rewriteError(callback.error, `Protocol error (${callback.method}): ${this.errorText}`));
+      callback.reject(rewriteErrorMessage(callback.error, `Protocol error (${callback.method}): ${this.errorText}`));
     this._callbacks.clear();
     this._disposed = true;
   }
@@ -160,7 +166,7 @@ export class WKSession extends EventEmitter {
         callback.reject(createProtocolError(callback.error, callback.method, object.error));
       else
         callback.resolve(object.result);
-    } else if (object.id) {
+    } else if (object.id && !object.error) {
       // Response might come after session has been disposed and rejected all callbacks.
       assert(this.isDisposed());
     } else {
@@ -173,12 +179,7 @@ export function createProtocolError(error: Error, method: string, protocolError:
   let message = `Protocol error (${method}): ${protocolError.message}`;
   if ('data' in protocolError)
     message += ` ${JSON.stringify(protocolError.data)}`;
-  return rewriteError(error, message);
-}
-
-export function rewriteError(error: Error, message: string): Error {
-  error.message = message;
-  return error;
+  return rewriteErrorMessage(error, message);
 }
 
 export function isSwappedOutError(e: Error) {

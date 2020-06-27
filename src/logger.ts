@@ -15,83 +15,96 @@
  */
 
 import * as debug from 'debug';
+import { helper } from './helper';
+import { LoggerSink, LoggerSeverity } from './loggerSink';
 
-export type LoggerSeverity = 'verbose' | 'info' | 'warning' | 'error';
-
-export type Log = {
-  name: string;
-  severity?: LoggerSeverity;
-  color?: string | undefined;
-};
-
-export interface Logger {
-  isEnabled(name: string, severity: LoggerSeverity): boolean;
-  log(name: string, severity: LoggerSeverity, message: string | Error, args: any[], hints: { color?: string }): void;
+export function logError(logger: Logger): (error: Error) => void {
+  return error => logger.error(error);
 }
 
-export interface InnerLogger {
-  _isLogEnabled(log: Log): boolean;
-  _log(log: Log, message: string | Error, ...args: any[]): void;
+export class Logger {
+  private _loggerSink: LoggerSink;
+  private _name: string;
+  private _hints: { color?: string; };
+  private _scopeName: string | undefined;
+  private _recording: string[] | undefined;
+
+  constructor(loggerSink: LoggerSink, name: string, hints: { color?: string }, scopeName?: string, record?: boolean) {
+    this._loggerSink = loggerSink;
+    this._name = name;
+    this._hints = hints;
+    this._scopeName = scopeName;
+    if (record)
+      this._recording = [];
+  }
+
+  isEnabled(severity?: LoggerSeverity): boolean {
+    return this._loggerSink.isEnabled(this._name, severity || 'info');
+  }
+
+  verbose(message: string, ...args: any[]) {
+    return this._innerLog('verbose', message, args);
+  }
+
+  info(message: string, ...args: any[]) {
+    return this._innerLog('info', message, args);
+  }
+
+  warn(message: string, ...args: any[]) {
+    return this._innerLog('warning', message, args);
+  }
+
+  error(message: string | Error, ...args: any[]) {
+    return this._innerLog('error', message, args);
+  }
+
+  createScope(scopeName: string, record?: boolean): Logger {
+    this._loggerSink.log(this._name, 'info', `=> ${scopeName} started`, [], this._hints);
+    return new Logger(this._loggerSink, this._name, this._hints, scopeName, record);
+  }
+
+  endScope(status: string) {
+    this._loggerSink.log(this._name, 'info', `<= ${this._scopeName} ${status}`, [], this._hints);
+  }
+
+  private _innerLog(severity: LoggerSeverity, message: string | Error, ...args: any[]) {
+    if (this._recording)
+      this._recording.push(`[${this._name}] ${message}`);
+    this._loggerSink.log(this._name, severity, message, args, this._hints);
+  }
+
+  recording(): string[] {
+    return this._recording ? this._recording.slice() : [];
+  }
 }
 
-export const errorLog: Log = { name: 'generic', severity: 'error' };
+export class Loggers {
+  readonly api: Logger;
+  readonly browser: Logger;
+  readonly protocol: Logger;
 
-export function logError(logger: InnerLogger): (error: Error) => void {
-  return error => logger._log(errorLog, error, []);
-}
-
-export class RootLogger implements InnerLogger {
-  private _logger = new MultiplexingLogger();
-
-  constructor(userSink: Logger | undefined) {
+  constructor(userSink: LoggerSink | undefined) {
+    const loggerSink = new MultiplexingLoggerSink();
     if (userSink)
-      this._logger.add('user', userSink);
-    this._logger.add('debug', new DebugLogger());
-  }
+      loggerSink.add('user', userSink);
+    if (helper.isDebugMode())
+      loggerSink.add('pwdebug', new PwDebugLoggerSink());
+    loggerSink.add('debug', new DebugLoggerSink());
 
-  _isLogEnabled(log: Log): boolean {
-    return this._logger.isEnabled(log.name, log.severity || 'info');
-  }
-
-  _log(log: Log, message: string | Error, ...args: any[]) {
-    if (this._logger.isEnabled(log.name, log.severity || 'info'))
-      this._logger.log(log.name, log.severity || 'info', message, args, log.color ? { color: log.color } : {});
-  }
-
-  startLaunchRecording() {
-    this._logger.add(`launch`, new RecordingLogger('browser'));
-  }
-
-  launchRecording(): string {
-    const logger = this._logger.get(`launch`) as RecordingLogger;
-    if (logger)
-      return logger.recording();
-    return '';
-  }
-
-  stopLaunchRecording() {
-    this._logger.remove(`launch`);
+    this.api = new Logger(loggerSink, 'api', { color: 'cyan' });
+    this.browser = new Logger(loggerSink, 'browser', {});
+    this.protocol = new Logger(loggerSink, 'protocol', { color: 'green' });
   }
 }
 
-const colorMap = new Map<string, number>([
-  ['red', 160],
-  ['green', 34],
-  ['yellow', 172],
-  ['blue', 33],
-  ['magenta', 207],
-  ['cyan', 45],
-  ['reset', 0],
-]);
+class MultiplexingLoggerSink implements LoggerSink {
+  private _loggers = new Map<string, LoggerSink>();
 
-class MultiplexingLogger implements Logger {
-  private _loggers = new Map<string, Logger>();
-
-  add(id: string, logger: Logger) {
+  add(id: string, logger: LoggerSink) {
     this._loggers.set(id, logger);
   }
 
-  get(id: string): Logger | undefined {
+  get(id: string): LoggerSink | undefined {
     return this._loggers.get(id);
   }
 
@@ -108,33 +121,24 @@ class MultiplexingLogger implements Logger {
   }
 
   log(name: string, severity: LoggerSeverity, message: string | Error, args: any[], hints: { color?: string }) {
-    for (const logger of this._loggers.values())
-      logger.log(name, severity, message, args, hints);
+    for (const logger of this._loggers.values()) {
+      if (logger.isEnabled(name, severity))
+        logger.log(name, severity, message, args, hints);
+    }
   }
 }
 
-export class RecordingLogger implements Logger {
-  private _prefix: string;
-  private _recording: string[] = [];
+const colorMap = new Map<string, number>([
+  ['red', 160],
+  ['green', 34],
+  ['yellow', 172],
+  ['blue', 33],
+  ['magenta', 207],
+  ['cyan', 45],
+  ['reset', 0],
+]);
 
-  constructor(prefix: string) {
-    this._prefix = prefix;
-  }
-
-  isEnabled(name: string, severity: LoggerSeverity): boolean {
-    return name.startsWith(this._prefix);
-  }
-
-  log(name: string, severity: LoggerSeverity, message: string | Error, args: any[], hints: { color?: string }) {
-    this._recording.push(String(message));
-  }
-
-  recording(): string {
-    return this._recording.join('\n');
-  }
-}
-
-class DebugLogger implements Logger {
+class DebugLoggerSink {
   private _debuggers = new Map<string, debug.IDebugger>();
 
   isEnabled(name: string, severity: LoggerSeverity): boolean {
@@ -157,5 +161,14 @@ class DebugLogger implements Logger {
         (cachedDebugger as any).color = String(escaped);
     }
     cachedDebugger(message, ...args);
+  }
+}
+
+class PwDebugLoggerSink {
+  isEnabled(name: string, severity: LoggerSeverity): boolean {
+    return false;
+  }
+
+  log(name: string, severity: LoggerSeverity, message: string | Error, args: any[], hints: { color?: string }) {
   }
 }

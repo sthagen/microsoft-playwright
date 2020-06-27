@@ -259,20 +259,34 @@ describe('ElementHandle.click', function() {
     const button = await page.$('button');
     await page.evaluate(button => button.style.display = 'none', button);
     const error = await button.click({ force: true }).catch(err => err);
-    expect(error.message).toBe('Element is not visible');
+    expect(error.message).toContain('Element is not visible');
   });
   it('should throw for recursively hidden nodes with force', async({page, server}) => {
     await page.goto(server.PREFIX + '/input/button.html');
     const button = await page.$('button');
     await page.evaluate(button => button.parentElement.style.display = 'none', button);
     const error = await button.click({ force: true }).catch(err => err);
-    expect(error.message).toBe('Element is not visible');
+    expect(error.message).toContain('Element is not visible');
   });
   it('should throw for <br> elements with force', async({page, server}) => {
     await page.setContent('hello<br>goodbye');
     const br = await page.$('br');
     const error = await br.click({ force: true }).catch(err => err);
-    expect(error.message).toBe('Element is outside of the viewport');
+    expect(error.message).toContain('Element is outside of the viewport');
+  });
+  it('should double click the button', async({page, server}) => {
+    await page.goto(server.PREFIX + '/input/button.html');
+    await page.evaluate(() => {
+      window.double = false;
+      const button = document.querySelector('button');
+      button.addEventListener('dblclick', event => {
+        window.double = true;
+      });
+    });
+    const button = await page.$('button');
+    await button.dblclick();
+    expect(await page.evaluate('double')).toBe(true);
+    expect(await page.evaluate('result')).toBe('Clicked');
   });
 });
 
@@ -308,6 +322,51 @@ describe('ElementHandle.scrollIntoViewIfNeeded', function() {
       expect(after <= 0).toBe(true);
       await page.evaluate(() => window.scrollTo(0, 0));
     }
+  });
+  it('should throw for detached element', async({page, server}) => {
+    await page.setContent('<div>Hello</div>');
+    const div = await page.$('div');
+    await div.evaluate(div => div.remove());
+    const error = await div.scrollIntoViewIfNeeded().catch(e => e);
+    expect(error.message).toContain('Element is not attached to the DOM');
+  });
+
+  async function testWaiting(page, after) {
+    const div = await page.$('div');
+    let done = false;
+    const promise = div.scrollIntoViewIfNeeded().then(() => done = true);
+    await page.evaluate(() => new Promise(f => setTimeout(f, 1000)));
+    expect(done).toBe(false);
+    await div.evaluate(after);
+    await promise;
+    expect(done).toBe(true);
+  }
+  it('should wait for display:none to become visible', async({page, server}) => {
+    await page.setContent('<div style="display:none">Hello</div>');
+    await testWaiting(page, div => div.style.display = 'block');
+  });
+  it('should wait for display:contents to become visible', async({page, server}) => {
+    await page.setContent('<div style="display:contents">Hello</div>');
+    await testWaiting(page, div => div.style.display = 'block');
+  });
+  it('should wait for visibility:hidden to become visible', async({page, server}) => {
+    await page.setContent('<div style="visibility:hidden">Hello</div>');
+    await testWaiting(page, div => div.style.visibility = 'visible');
+  });
+  it('should wait for zero-sized element to become visible', async({page, server}) => {
+    await page.setContent('<div style="height:0">Hello</div>');
+    await testWaiting(page, div => div.style.height = '100px');
+  });
+  it('should wait for nested display:none to become visible', async({page, server}) => {
+    await page.setContent('<span style="display:none"><div>Hello</div></span>');
+    await testWaiting(page, div => div.parentElement.style.display = 'block');
+  });
+
+  it('should timeout waiting for visible', async({page, server}) => {
+    await page.setContent('<div style="display:none">Hello</div>');
+    const div = await page.$('div');
+    const error = await div.scrollIntoViewIfNeeded({ timeout: 3000 }).catch(e => e);
+    expect(error.message).toContain('element is not visible');
   });
 });
 
@@ -358,10 +417,41 @@ describe('ElementHandle.selectText', function() {
     await div.selectText();
     expect(await page.evaluate(() => window.getSelection().toString())).toBe('Plain div');
   });
+  it('should timeout waiting for invisible element', async({page, server}) => {
+    await page.goto(server.PREFIX + '/input/textarea.html');
+    const textarea = await page.$('textarea');
+    await textarea.evaluate(e => e.style.display = 'none');
+    const error = await textarea.selectText({ timeout: 3000 }).catch(e => e);
+    expect(error.message).toContain('element is not visible');
+  });
+  it('should wait for visible', async({page, server}) => {
+    await page.goto(server.PREFIX + '/input/textarea.html');
+    const textarea = await page.$('textarea');
+    await textarea.evaluate(textarea => textarea.value = 'some value');
+    await textarea.evaluate(e => e.style.display = 'none');
+    let done = false;
+    const promise = textarea.selectText({ timeout: 3000 }).then(() => done = true);
+    await page.evaluate(() => new Promise(f => setTimeout(f, 1000)));
+    expect(done).toBe(false);
+    await textarea.evaluate(e => e.style.display = 'block');
+    await promise;
+  });
 });
 
 
 describe('ElementHandle convenience API', function() {
+  it('should have a nice preview', async({page, server}) => {
+    await page.goto(`${server.PREFIX}/dom.html`);
+    const outer = await page.$('#outer');
+    const inner = await page.$('#inner');
+    const check = await page.$('#check');
+    const text = await inner.evaluateHandle(e => e.firstChild);
+    await page.evaluate(() => 1);  // Give them a chance to calculate the preview.
+    expect(String(outer)).toBe('JSHandle@<div id="outer" name="value">…</div>');
+    expect(String(inner)).toBe('JSHandle@<div id="inner">Text,↵more text</div>');
+    expect(String(text)).toBe('JSHandle@#text=Text,↵more text');
+    expect(String(check)).toBe('JSHandle@<input checked id="check" foo="bar"" type="checkbox"/>');
+  });
   it('getAttribute should work', async({page, server}) => {
     await page.goto(`${server.PREFIX}/dom.html`);
     const handle = await page.$('#outer');
@@ -385,5 +475,62 @@ describe('ElementHandle convenience API', function() {
     const handle = await page.$('#inner');
     expect(await handle.textContent()).toBe('Text,\nmore text');
     expect(await page.textContent('#inner')).toBe('Text,\nmore text');
+  });
+  it('textContent should be atomic', async({page}) => {
+    const createDummySelector = () => ({
+      create(root, target) {},
+      query(root, selector) {
+        const result = root.querySelector(selector);
+        if (result)
+          Promise.resolve().then(() => result.textContent = 'modified');
+        return result;
+      },
+      queryAll(root, selector) {
+        const result = Array.from(root.querySelectorAll(selector));
+        for (const e of result)
+          Promise.resolve().then(() => result.textContent = 'modified');
+        return result;
+      }
+    });
+    await utils.registerEngine('textContent', createDummySelector);
+    await page.setContent(`<div>Hello</div>`);
+    const tc = await page.textContent('textContent=div');
+    expect(tc).toBe('Hello');
+    expect(await page.evaluate(() => document.querySelector('div').textContent)).toBe('modified');
+  });
+});
+
+describe('ElementHandle.check', () => {
+  it('should check the box', async({page}) => {
+    await page.setContent(`<input id='checkbox' type='checkbox'></input>`);
+    const input = await page.$('input');
+    await input.check();
+    expect(await page.evaluate(() => checkbox.checked)).toBe(true);
+  });
+  it('should uncheck the box', async({page}) => {
+    await page.setContent(`<input id='checkbox' type='checkbox' checked></input>`);
+    const input = await page.$('input');
+    await input.uncheck();
+    expect(await page.evaluate(() => checkbox.checked)).toBe(false);
+  });
+});
+
+describe('ElementHandle.selectOption', function() {
+  it('should select single option', async({page, server}) => {
+    await page.goto(server.PREFIX + '/input/select.html');
+    const select = await page.$('select');
+    await select.selectOption('blue');
+    expect(await page.evaluate(() => result.onInput)).toEqual(['blue']);
+    expect(await page.evaluate(() => result.onChange)).toEqual(['blue']);
+  });
+});
+
+describe('ElementHandle.focus', function() {
+  it('should focus a button', async({page, server}) => {
+    await page.goto(server.PREFIX + '/input/button.html');
+    const button = await page.$('button');
+    expect(await button.evaluate(button => document.activeElement === button)).toBe(false);
+    await button.focus();
+    expect(await button.evaluate(button => document.activeElement === button)).toBe(true);
   });
 });

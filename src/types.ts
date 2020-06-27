@@ -1,5 +1,6 @@
 /**
- * Copyright (c) Microsoft Corporation.
+ * Copyright 2018 Google Inc. All rights reserved.
+ * Modifications copyright (c) Microsoft Corporation.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,21 +15,7 @@
  * limitations under the License.
  */
 
-import * as js from './javascript';
-import * as dom from './dom';
-
-type NoHandles<Arg> = Arg extends js.JSHandle ? never : (Arg extends object ? { [Key in keyof Arg]: NoHandles<Arg[Key]> } : Arg);
-type Unboxed<Arg> =
-  Arg extends dom.ElementHandle<infer T> ? T :
-  Arg extends js.JSHandle<infer T> ? T :
-  Arg extends NoHandles<Arg> ? Arg :
-  Arg extends Array<infer T> ? Array<Unboxed<T>> :
-  Arg extends object ? { [Key in keyof Arg]: Unboxed<Arg[Key]> } :
-  Arg;
-export type Func0<R> = string | (() => R | Promise<R>);
-export type Func1<Arg, R> = string | ((arg: Unboxed<Arg>) => R | Promise<R>);
-export type FuncOn<On, Arg2, R> = string | ((on: On, arg2: Unboxed<Arg2>) => R | Promise<R>);
-export type SmartHandle<T> = T extends Node ? dom.ElementHandle<T> : js.JSHandle<T>;
+// NOTE: No imports allowed - only primitive, self-contained types are allowed here.
 
 export type Size = { width: number, height: number };
 export type Point = { x: number, y: number };
@@ -62,12 +49,7 @@ export type WaitForNavigationOptions = TimeoutOptions & {
   url?: URLMatch
 };
 
-export type ExtendedWaitForNavigationOptions = TimeoutOptions & {
-  waitUntil?: LifecycleEvent | 'commit',
-  url?: URLMatch
-};
-
-export type ElementScreenshotOptions = {
+export type ElementScreenshotOptions = TimeoutOptions & {
   type?: 'png' | 'jpeg',
   path?: string,
   quality?: number,
@@ -156,16 +138,177 @@ export type JSCoverageOptions = {
   reportAnonymousScripts?: boolean,
 };
 
-export type ParsedSelector = {
-  parts: {
-    name: string,
-    body: string,
-  }[],
-  capture?: number,
+export type InjectedScriptProgress = {
+  aborted: boolean,
+  log: (message: string) => void,
+  logRepeating: (message: string) => void,
 };
 
-export type InjectedScriptResult<T = undefined> =
-  (T extends undefined ? { status: 'success', value?: T} : { status: 'success', value: T }) |
-  { status: 'notconnected' } |
-  { status: 'timeout' } |
-  { status: 'error', error: string };
+export type InjectedScriptPoll<T> = {
+  result: Promise<T>,
+  // Takes more logs, waiting until at least one message is available.
+  takeNextLogs: () => Promise<string[]>,
+  // Takes all current logs without waiting.
+  takeLastLogs: () => string[],
+  cancel: () => void,
+};
+
+export type ProxySettings = {
+  server: string,
+  bypass?: string,
+  username?: string,
+  password?: string
+};
+
+export type WaitForEventOptions = Function | { predicate?: Function, timeout?: number };
+
+export type KeyboardModifier = 'Alt' | 'Control' | 'Meta' | 'Shift';
+export type MouseButton = 'left' | 'right' | 'middle';
+
+export type PointerActionOptions = {
+  modifiers?: KeyboardModifier[];
+  position?: Point;
+};
+
+export type MouseClickOptions = PointerActionOptions & {
+  delay?: number;
+  button?: MouseButton;
+  clickCount?: number;
+};
+
+export type MouseMultiClickOptions = PointerActionOptions & {
+  delay?: number;
+  button?: MouseButton;
+};
+
+export type World = 'main' | 'utility';
+
+export type Headers = { [key: string]: string };
+
+export type GotoOptions = NavigateOptions & {
+  referer?: string,
+};
+
+export type FulfillResponse = {
+  status?: number,
+  headers?: Headers,
+  contentType?: string,
+  body?: string | Buffer,
+};
+
+export type NetworkCookie = {
+  name: string,
+  value: string,
+  domain: string,
+  path: string,
+  expires: number,
+  httpOnly: boolean,
+  secure: boolean,
+  sameSite: 'Strict' | 'Lax' | 'None'
+};
+
+export type SetNetworkCookieParam = {
+  name: string,
+  value: string,
+  url?: string,
+  domain?: string,
+  path?: string,
+  expires?: number,
+  httpOnly?: boolean,
+  secure?: boolean,
+  sameSite?: 'Strict' | 'Lax' | 'None'
+};
+
+export type BrowserContextOptions = {
+  viewport?: Size | null,
+  ignoreHTTPSErrors?: boolean,
+  javaScriptEnabled?: boolean,
+  bypassCSP?: boolean,
+  userAgent?: string,
+  locale?: string,
+  timezoneId?: string,
+  geolocation?: Geolocation,
+  permissions?: string[],
+  extraHTTPHeaders?: Headers,
+  offline?: boolean,
+  httpCredentials?: Credentials,
+  deviceScaleFactor?: number,
+  isMobile?: boolean,
+  hasTouch?: boolean,
+  colorScheme?: ColorScheme,
+  acceptDownloads?: boolean,
+};
+
+export type Env = {[key: string]: string | number | boolean | undefined};
+
+export type LaunchOptionsBase = {
+  executablePath?: string,
+  args?: string[],
+  ignoreDefaultArgs?: boolean | string[],
+  handleSIGINT?: boolean,
+  handleSIGTERM?: boolean,
+  handleSIGHUP?: boolean,
+  timeout?: number,
+  env?: Env,
+  headless?: boolean,
+  devtools?: boolean,
+  proxy?: ProxySettings,
+  downloadsPath?: string,
+};
+
+export type LaunchOptions = LaunchOptionsBase & { slowMo?: number };
+export type LaunchServerOptions = LaunchOptionsBase & { port?: number };
+
+export type ConnectOptions = {
+  wsEndpoint: string,
+  slowMo?: number,
+  timeout?: number,
+};
+
+export type SerializedAXNode = {
+  role: string,
+  name: string,
+  value?: string|number,
+  description?: string,
+
+  keyshortcuts?: string,
+  roledescription?: string,
+  valuetext?: string,
+
+  disabled?: boolean,
+  expanded?: boolean,
+  focused?: boolean,
+  modal?: boolean,
+  multiline?: boolean,
+  multiselectable?: boolean,
+  readonly?: boolean,
+  required?: boolean,
+  selected?: boolean,
+
+  checked?: boolean | 'mixed',
+  pressed?: boolean | 'mixed',
+
+  level?: number,
+  valuemin?: number,
+  valuemax?: number,
+
+  autocomplete?: string,
+  haspopup?: string,
+  invalid?: string,
+  orientation?: string,
+
+  children?: SerializedAXNode[]
+};
+
+export type ConsoleMessageLocation = {
+  url?: string,
+  lineNumber?: number,
+  columnNumber?: number,
+};
+
+export type Error = {
+  message?: string,
+  name?: string,
+  stack?: string,
+  value?: any
+};

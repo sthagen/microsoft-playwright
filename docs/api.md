@@ -593,7 +593,7 @@ The extra HTTP headers will be sent with every request initiated by any page in 
   - `accuracy` <[number]> Non-negative accuracy value. Defaults to `0`.
 - returns: <[Promise]>
 
-Sets the contexts's geolocation. Passing `null` or `undefined` emulates position unavailable.
+Sets the context's geolocation. Passing `null` or `undefined` emulates position unavailable.
 
 ```js
 await browserContext.setGeolocation({latitude: 59.95, longitude: 30.31667});
@@ -783,7 +783,31 @@ page.evaluate(() => console.log('hello', 5, {foo: 'bar'}));
 
 #### event: 'crash'
 
-Emitted when the page crashes. Browser pages might crash if they try to allocate too much memory.
+Emitted when the page crashes. Browser pages might crash if they try to allocate too much memory. When the page crashes, ongoing and subsequent operations will throw.
+
+The most common way to deal with crashes is to catch an exception:
+```js
+try {
+  // Crash might happen during a click.
+  await page.click('button');
+  // Or while waiting for an event.
+  await page.waitForEvent('popup');
+} catch (e) {
+  // When the page crashes, exception message contains 'crash'.
+}
+```
+
+However, when manually listening to events, it might be useful to avoid stalling when the page crashes. In this case, handling `crash` event helps:
+
+```js
+await new Promise((resolve, reject) => {
+  page.on('requestfinished', async request => {
+    if (await someProcessing(request))
+      resolve(request);
+  });
+  page.on('crash', error => reject(error));
+});
+```
 
 #### event: 'dialog'
 - <[Dialog]>
@@ -986,17 +1010,13 @@ Shortcut for [page.mainFrame().addStyleTag(options)](#frameaddstyletagoptions).
 #### page.check(selector, [options])
 - `selector` <[string]> A selector to search for checkbox or radio button to check. If there are multiple elements satisfying the selector, the first will be checked. See [working with selectors](#working-with-selectors) for more details.
 - `options` <[Object]>
-  - `force` <[boolean]> Whether to bypass the actionability checks. By default actions wait until the element is:
-    - displayed: has non-empty bounding box and no `visibility:hidden` (note that elements of zero size or with `display:none` are considered not displayed),
-    - is not moving (for example, css transition has finished),
-    - receives pointer events at the action point (for example, element is not covered by other elements).
-    Even if the action is forced, it will wait for the element matching selector to be in the DOM. Defaults to `false`.
+  - `force` <[boolean]> Whether to bypass the [actionability](./actionability.md) checks. Defaults to `false`.
   - `noWaitAfter` <[boolean]> Actions that initiate navigations are waiting for these navigations to happen and for pages to start loading. You can opt out of waiting via setting this flag. You would only need this option in the exceptional cases such as navigating to inaccessible pages. Defaults to `false`.
   - `timeout` <[number]> Maximum time in milliseconds, defaults to 30 seconds, pass `0` to disable timeout. The default value can be changed by using the [browserContext.setDefaultTimeout(timeout)](#browsercontextsetdefaulttimeouttimeout) or [page.setDefaultTimeout(timeout)](#pagesetdefaulttimeouttimeout) methods.
 - returns: <[Promise]> Promise which resolves when the element matching `selector` is successfully checked. The Promise will be rejected if there is no element matching `selector`.
 
 This method fetches an element with `selector`, if element is not already checked, it scrolls it into view if needed, and then uses [page.click](#pageclickselector-options) to click in the center of the element.
-If there's no element matching `selector`, the method waits until a matching element appears in the DOM. If the element is detached during the actionability checks, the action is retried.
+If there's no element matching `selector`, the method waits until a matching element appears in the DOM. If the element is detached during the [actionability](./actionability.md) checks, the action is retried.
 
 Shortcut for [page.mainFrame().check(selector[, options])](#framecheckselector-options).
 
@@ -1010,17 +1030,13 @@ Shortcut for [page.mainFrame().check(selector[, options])](#framecheckselector-o
     - x <[number]>
     - y <[number]>
   - `modifiers` <[Array]<"Alt"|"Control"|"Meta"|"Shift">> Modifier keys to press. Ensures that only these modifiers are pressed during the click, and then restores current modifiers back. If not specified, currently pressed modifiers are used.
-  - `force` <[boolean]> Whether to bypass the actionability checks. By default actions wait until the element is:
-    - displayed: has non-empty bounding box and no `visibility:hidden` (note that elements of zero size or with `display:none` are considered not displayed),
-    - is not moving (for example, css transition has finished),
-    - receives pointer events at the action point (for example, element is not covered by other elements).
-    Even if the action is forced, it will wait for the element matching selector to be in the DOM. Defaults to `false`.
+  - `force` <[boolean]> Whether to bypass the [actionability](./actionability.md) checks. Defaults to `false`.
   - `noWaitAfter` <[boolean]> Actions that initiate navigations are waiting for these navigations to happen and for pages to start loading. You can opt out of waiting via setting this flag. You would only need this option in the exceptional cases such as navigating to inaccessible pages. Defaults to `false`.
   - `timeout` <[number]> Maximum time in milliseconds, defaults to 30 seconds, pass `0` to disable timeout. The default value can be changed by using the [browserContext.setDefaultTimeout(timeout)](#browsercontextsetdefaulttimeouttimeout) or [page.setDefaultTimeout(timeout)](#pagesetdefaulttimeouttimeout) methods.
 - returns: <[Promise]> Promise which resolves when the element matching `selector` is successfully clicked. The Promise will be rejected if there is no element matching `selector`.
 
 This method fetches an element with `selector`, scrolls it into view if needed, and then uses [page.mouse](#pagemouse) to click in the center of the element.
-If there's no element matching `selector`, the method waits until a matching element appears in the DOM. If the element is detached during the actionability checks, the action is retried.
+If there's no element matching `selector`, the method waits until a matching element appears in the DOM. If the element is detached during the [actionability](./actionability.md) checks, the action is retried.
 
 
 Shortcut for [page.mainFrame().click(selector[, options])](#frameclickselector-options).
@@ -1063,17 +1079,13 @@ Browser-specific Coverage implementation, only available for Chromium atm. See [
     - x <[number]>
     - y <[number]>
   - `modifiers` <[Array]<"Alt"|"Control"|"Meta"|"Shift">> Modifier keys to press. Ensures that only these modifiers are pressed during the double click, and then restores current modifiers back. If not specified, currently pressed modifiers are used.
-  - `force` <[boolean]> Whether to bypass the actionability checks. By default actions wait until the element is:
-    - displayed: has non-empty bounding box and no `visibility:hidden` (note that elements of zero size or with `display:none` are considered not displayed),
-    - is not moving (for example, css transition has finished),
-    - receives pointer events at the action point (for example, element is not covered by other elements).
-    Even if the action is forced, it will wait for the element matching selector to be in the DOM. Defaults to `false`.
+  - `force` <[boolean]> Whether to bypass the [actionability](./actionability.md) checks. Defaults to `false`.
   - `noWaitAfter` <[boolean]> Actions that initiate navigations are waiting for these navigations to happen and for pages to start loading. You can opt out of waiting via setting this flag. You would only need this option in the exceptional cases such as navigating to inaccessible pages. Defaults to `false`.
   - `timeout` <[number]> Maximum time in milliseconds, defaults to 30 seconds, pass `0` to disable timeout. The default value can be changed by using the [browserContext.setDefaultTimeout(timeout)](#browsercontextsetdefaulttimeouttimeout) or [page.setDefaultTimeout(timeout)](#pagesetdefaulttimeouttimeout) methods.
 - returns: <[Promise]> Promise which resolves when the element matching `selector` is successfully double clicked. The Promise will be rejected if there is no element matching `selector`.
 
 This method fetches an element with `selector`, scrolls it into view if needed, and then uses [page.mouse](#pagemouse) to double click in the center of the element.
-If there's no element matching `selector`, the method waits until a matching element appears in the DOM. If the element is detached during the actionability checks, the action is retried.
+If there's no element matching `selector`, the method waits until a matching element appears in the DOM. If the element is detached during the [actionability](./actionability.md) checks, the action is retried.
 
 Bear in mind that if the first click of the `dblclick()` triggers a navigation event, there will be an exception.
 
@@ -1314,10 +1326,11 @@ const fs = require('fs');
 - `options` <[Object]>
   - `noWaitAfter` <[boolean]> Actions that initiate navigations are waiting for these navigations to happen and for pages to start loading. You can opt out of waiting via setting this flag. You would only need this option in the exceptional cases such as navigating to inaccessible pages. Defaults to `false`.
   - `timeout` <[number]> Maximum time in milliseconds, defaults to 30 seconds, pass `0` to disable timeout. The default value can be changed by using the [browserContext.setDefaultTimeout(timeout)](#browsercontextsetdefaulttimeouttimeout) or [page.setDefaultTimeout(timeout)](#pagesetdefaulttimeouttimeout) methods.
-- returns: <[Promise]> Promise which resolves when the element matching `selector` is successfully filled. The promise will be rejected if there is no element matching `selector`.
+- returns: <[Promise]>
 
-This method focuses the element and triggers an `input` event after filling.
-If there's no text `<input>`, `<textarea>` or `[contenteditable]` element matching `selector`, the method throws an error. Note that you can pass an empty string to clear the input field.
+This method waits for an element matching `selector`, waits for [actionability](./actionability.md) checks, focuses the element, fills it and triggers an `input` event after filling.
+If the element matching `selector` is not an `<input>`, `<textarea>` or `[contenteditable]` element, this method throws an error.
+Note that you can pass an empty string to clear the input field.
 
 To send fine-grained keyboard events, use [`page.type`](#pagetypeselector-text-options).
 
@@ -1419,16 +1432,12 @@ Shortcut for [page.mainFrame().goto(url[, options])](#framegotourl-options)
     - x <[number]>
     - y <[number]>
   - `modifiers` <[Array]<"Alt"|"Control"|"Meta"|"Shift">> Modifier keys to press. Ensures that only these modifiers are pressed during the hover, and then restores current modifiers back. If not specified, currently pressed modifiers are used.
-  - `force` <[boolean]> Whether to bypass the actionability checks. By default actions wait until the element is:
-    - displayed: has non-empty bounding box and no `visibility:hidden` (note that elements of zero size or with `display:none` are considered not displayed),
-    - is not moving (for example, css transition has finished),
-    - receives pointer events at the action point (for example, element is not covered by other elements).
-    Even if the action is forced, it will wait for the element matching selector to be in the DOM. Defaults to `false`.
+  - `force` <[boolean]> Whether to bypass the [actionability](./actionability.md) checks. Defaults to `false`.
   - `timeout` <[number]> Maximum time in milliseconds, defaults to 30 seconds, pass `0` to disable timeout. The default value can be changed by using the [browserContext.setDefaultTimeout(timeout)](#browsercontextsetdefaulttimeouttimeout) or [page.setDefaultTimeout(timeout)](#pagesetdefaulttimeouttimeout) methods.
 - returns: <[Promise]> Promise which resolves when the element matching `selector` is successfully hovered. Promise gets rejected if there's no element matching `selector`.
 
 This method fetches an element with `selector`, scrolls it into view if needed, and then uses [page.mouse](#pagemouse) to hover over the center of the element.
-If there's no element matching `selector`, the method waits until a matching element appears in the DOM. If the element is detached during the actionability checks, the action is retried.
+If there's no element matching `selector`, the method waits until a matching element appears in the DOM. If the element is detached during the [actionability](./actionability.md) checks, the action is retried.
 
 Shortcut for [page.mainFrame().hover(selector[, options])](#framehoverselector-options).
 
@@ -1612,7 +1621,7 @@ await browser.close();
 
 Page routes take precedence over browser context routes (set up with [browserContext.route(url, handler)](#browsercontextrouteurl-handler)) when request matches both handlers.
 
-> **NOTE** Enabling rouing disables http cache.
+> **NOTE** Enabling routing disables http cache.
 
 #### page.screenshot([options])
 - `options` <[Object]> Options object which might have the following properties:
@@ -1626,13 +1635,14 @@ Page routes take precedence over browser context routes (set up with [browserCon
     - `width` <[number]> width of clipping area
     - `height` <[number]> height of clipping area
   - `omitBackground` <[boolean]> Hides default white background and allows capturing screenshots with transparency. Not applicable to `jpeg` images. Defaults to `false`.
+  - `timeout` <[number]> Maximum time in milliseconds, defaults to 30 seconds, pass `0` to disable timeout. The default value can be changed by using the [browserContext.setDefaultTimeout(timeout)](#browsercontextsetdefaulttimeouttimeout) or [page.setDefaultTimeout(timeout)](#pagesetdefaulttimeouttimeout) methods.
 - returns: <[Promise]<[Buffer]>> Promise which resolves to buffer with the captured screenshot.
 
 > **NOTE** Screenshots take at least 1/6 second on Chromium OS X and Chromium Windows. See https://crbug.com/741689 for discussion.
 
 #### page.selectOption(selector, values[, options])
 - `selector` <[string]> A selector to query page for. See [working with selectors](#working-with-selectors) for more details.
-- `values` <[string]|[ElementHandle]|[Array]<[string]>|[Object]|[Array]<[ElementHandle]>|[Array]<[Object]>> Options to select. If the `<select>` has the `multiple` attribute, all matching options are selected, otherwise only the first option matching one of the passed options is selected. String values are equivalent to `{value:'string'}`. Option is considered matching if all specified properties match.
+- `values` <null|[string]|[ElementHandle]|[Array]<[string]>|[Object]|[Array]<[ElementHandle]>|[Array]<[Object]>> Options to select. If the `<select>` has the `multiple` attribute, all matching options are selected, otherwise only the first option matching one of the passed options is selected. String values are equivalent to `{value:'string'}`. Option is considered matching if all specified properties match.
   - `value` <[string]> Matches by `option.value`.
   - `label` <[string]> Matches by `option.label`.
   - `index` <[number]> Matches by the index.
@@ -1771,17 +1781,13 @@ Shortcut for [page.mainFrame().type(selector, text[, options])](#frametypeselect
 #### page.uncheck(selector, [options])
 - `selector` <[string]> A selector to search for uncheckbox to check. If there are multiple elements satisfying the selector, the first will be checked. See [working with selectors](#working-with-selectors) for more details.
 - `options` <[Object]>
-  - `force` <[boolean]> Whether to bypass the actionability checks. By default actions wait until the element is:
-    - displayed: has non-empty bounding box and no `visibility:hidden` (note that elements of zero size or with `display:none` are considered not displayed),
-    - is not moving (for example, css transition has finished),
-    - receives pointer events at the action point (for example, element is not covered by other elements).
-    Even if the action is forced, it will wait for the element matching selector to be in the DOM. Defaults to `false`.
+  - `force` <[boolean]> Whether to bypass the [actionability](./actionability.md) checks. Defaults to `false`.
   - `noWaitAfter` <[boolean]> Actions that initiate navigations are waiting for these navigations to happen and for pages to start loading. You can opt out of waiting via setting this flag. You would only need this option in the exceptional cases such as navigating to inaccessible pages. Defaults to `false`.
   - `timeout` <[number]> Maximum time in milliseconds, defaults to 30 seconds, pass `0` to disable timeout. The default value can be changed by using the [browserContext.setDefaultTimeout(timeout)](#browsercontextsetdefaulttimeouttimeout) or [page.setDefaultTimeout(timeout)](#pagesetdefaulttimeouttimeout) methods.
 - returns: <[Promise]> Promise which resolves when the element matching `selector` is successfully unchecked. The Promise will be rejected if there is no element matching `selector`.
 
 This method fetches an element with `selector`, if element is not already unchecked, it scrolls it into view if needed, and then uses [page.click](#pageclickselector-options) to click in the center of the element.
-If there's no element matching `selector`, the method waits until a matching element appears in the DOM. If the element is detached during the actionability checks, the action is retried.
+If there's no element matching `selector`, the method waits until a matching element appears in the DOM. If the element is detached during the [actionability](./actionability.md) checks, the action is retried.
 
 Shortcut for [page.mainFrame().uncheck(selector[, options])](#frameuncheckselector-options).
 
@@ -2121,17 +2127,13 @@ Adds a `<link rel="stylesheet">` tag into the page with the desired url or a `<s
 #### frame.check(selector, [options])
 - `selector` <[string]> A selector to search for checkbox to check. If there are multiple elements satisfying the selector, the first will be checked. See [working with selectors](#working-with-selectors) for more details.
 - `options` <[Object]>
-  - `force` <[boolean]> Whether to bypass the actionability checks. By default actions wait until the element is:
-    - displayed: has non-empty bounding box and no `visibility:hidden` (note that elements of zero size or with `display:none` are considered not displayed),
-    - is not moving (for example, css transition has finished),
-    - receives pointer events at the action point (for example, element is not covered by other elements).
-    Even if the action is forced, it will wait for the element matching selector to be in the DOM. Defaults to `false`.
+  - `force` <[boolean]> Whether to bypass the [actionability](./actionability.md) checks. Defaults to `false`.
   - `noWaitAfter` <[boolean]> Actions that initiate navigations are waiting for these navigations to happen and for pages to start loading. You can opt out of waiting via setting this flag. You would only need this option in the exceptional cases such as navigating to inaccessible pages. Defaults to `false`.
   - `timeout` <[number]> Maximum time in milliseconds, defaults to 30 seconds, pass `0` to disable timeout. The default value can be changed by using the [browserContext.setDefaultTimeout(timeout)](#browsercontextsetdefaulttimeouttimeout) or [page.setDefaultTimeout(timeout)](#pagesetdefaulttimeouttimeout) methods.
 - returns: <[Promise]> Promise which resolves when the element matching `selector` is successfully checked. The Promise will be rejected if there is no element matching `selector`.
 
 This method fetches an element with `selector`, if element is not already checked, it scrolls it into view if needed, and then uses [frame.click](#frameclickselector-options) to click in the center of the element.
-If there's no element matching `selector`, the method waits until a matching element appears in the DOM. If the element is detached during the actionability checks, the action is retried.
+If there's no element matching `selector`, the method waits until a matching element appears in the DOM. If the element is detached during the [actionability](./actionability.md) checks, the action is retried.
 
 #### frame.childFrames()
 - returns: <[Array]<[Frame]>>
@@ -2146,17 +2148,13 @@ If there's no element matching `selector`, the method waits until a matching ele
     - x <[number]>
     - y <[number]>
   - `modifiers` <[Array]<"Alt"|"Control"|"Meta"|"Shift">> Modifier keys to press. Ensures that only these modifiers are pressed during the click, and then restores current modifiers back. If not specified, currently pressed modifiers are used.
-  - `force` <[boolean]> Whether to bypass the actionability checks. By default actions wait until the element is:
-    - displayed: has non-empty bounding box and no `visibility:hidden` (note that elements of zero size or with `display:none` are considered not displayed),
-    - is not moving (for example, css transition has finished),
-    - receives pointer events at the action point (for example, element is not covered by other elements).
-    Even if the action is forced, it will wait for the element matching selector to be in the DOM. Defaults to `false`.
+  - `force` <[boolean]> Whether to bypass the [actionability](./actionability.md) checks. Defaults to `false`.
   - `noWaitAfter` <[boolean]> Actions that initiate navigations are waiting for these navigations to happen and for pages to start loading. You can opt out of waiting via setting this flag. You would only need this option in the exceptional cases such as navigating to inaccessible pages. Defaults to `false`.
   - `timeout` <[number]> Maximum time in milliseconds, defaults to 30 seconds, pass `0` to disable timeout. The default value can be changed by using the [browserContext.setDefaultTimeout(timeout)](#browsercontextsetdefaulttimeouttimeout) or [page.setDefaultTimeout(timeout)](#pagesetdefaulttimeouttimeout) methods.
 - returns: <[Promise]> Promise which resolves when the element matching `selector` is successfully clicked. The Promise will be rejected if there is no element matching `selector`.
 
 This method fetches an element with `selector`, scrolls it into view if needed, and then uses [page.mouse](#pagemouse) to click in the center of the element.
-If there's no element matching `selector`, the method waits until a matching element appears in the DOM. If the element is detached during the actionability checks, the action is retried.
+If there's no element matching `selector`, the method waits until a matching element appears in the DOM. If the element is detached during the [actionability](./actionability.md) checks, the action is retried.
 
 #### frame.content()
 - returns: <[Promise]<[string]>>
@@ -2172,11 +2170,7 @@ Gets the full HTML contents of the frame, including the doctype.
     - x <[number]>
     - y <[number]>
   - `modifiers` <[Array]<"Alt"|"Control"|"Meta"|"Shift">> Modifier keys to press. Ensures that only these modifiers are pressed during the double click, and then restores current modifiers back. If not specified, currently pressed modifiers are used.
-  - `force` <[boolean]> Whether to bypass the actionability checks. By default actions wait until the element is:
-    - displayed: has non-empty bounding box and no `visibility:hidden` (note that elements of zero size or with `display:none` are considered not displayed),
-    - is not moving (for example, css transition has finished),
-    - receives pointer events at the action point (for example, element is not covered by other elements).
-    Even if the action is forced, it will wait for the element matching selector to be in the DOM. Defaults to `false`.
+  - `force` <[boolean]> Whether to bypass the [actionability](./actionability.md) checks. Defaults to `false`.
   - `noWaitAfter` <[boolean]> Actions that initiate navigations are waiting for these navigations to happen and for pages to start loading. You can opt out of waiting via setting this flag. You would only need this option in the exceptional cases such as navigating to inaccessible pages. Defaults to `false`.
   - `timeout` <[number]> Maximum time in milliseconds, defaults to 30 seconds, pass `0` to disable timeout. The default value can be changed by using the [browserContext.setDefaultTimeout(timeout)](#browsercontextsetdefaulttimeouttimeout) or [page.setDefaultTimeout(timeout)](#pagesetdefaulttimeouttimeout) methods.
 - returns: <[Promise]> Promise which resolves when the element matching `selector` is successfully double clicked. The Promise will be rejected if there is no element matching `selector`.
@@ -2284,10 +2278,11 @@ await resultHandle.dispose();
 - `options` <[Object]>
   - `noWaitAfter` <[boolean]> Actions that initiate navigations are waiting for these navigations to happen and for pages to start loading. You can opt out of waiting via setting this flag. You would only need this option in the exceptional cases such as navigating to inaccessible pages. Defaults to `false`.
   - `timeout` <[number]> Maximum time in milliseconds, defaults to 30 seconds, pass `0` to disable timeout. The default value can be changed by using the [browserContext.setDefaultTimeout(timeout)](#browsercontextsetdefaulttimeouttimeout) or [page.setDefaultTimeout(timeout)](#pagesetdefaulttimeouttimeout) methods.
-- returns: <[Promise]> Promise which resolves when the element matching `selector` is successfully filled. The promise will be rejected if there is no element matching `selector`.
+- returns: <[Promise]>
 
-This method focuses the element and triggers an `input` event after filling.
-If there's no text `<input>`, `<textarea>` or `[contenteditable]` element matching `selector`, the method throws an error.
+This method waits for an element matching `selector`, waits for [actionability](./actionability.md) checks, focuses the element, fills it and triggers an `input` event after filling.
+If the element matching `selector` is not an `<input>`, `<textarea>` or `[contenteditable]` element, this method throws an error.
+Note that you can pass an empty string to clear the input field.
 
 To send fine-grained keyboard events, use [`frame.type`](#frametypeselector-text-options).
 
@@ -2354,16 +2349,12 @@ Returns element attribute value.
     - x <[number]>
     - y <[number]>
   - `modifiers` <[Array]<"Alt"|"Control"|"Meta"|"Shift">> Modifier keys to press. Ensures that only these modifiers are pressed during the hover, and then restores current modifiers back. If not specified, currently pressed modifiers are used.
-  - `force` <[boolean]> Whether to bypass the actionability checks. By default actions wait until the element is:
-    - displayed: has non-empty bounding box and no `visibility:hidden` (note that elements of zero size or with `display:none` are considered not displayed),
-    - is not moving (for example, css transition has finished),
-    - receives pointer events at the action point (for example, element is not covered by other elements).
-    Even if the action is forced, it will wait for the element matching selector to be in the DOM. Defaults to `false`.
+  - `force` <[boolean]> Whether to bypass the [actionability](./actionability.md) checks. Defaults to `false`.
   - `timeout` <[number]> Maximum time in milliseconds, defaults to 30 seconds, pass `0` to disable timeout. The default value can be changed by using the [browserContext.setDefaultTimeout(timeout)](#browsercontextsetdefaulttimeouttimeout) or [page.setDefaultTimeout(timeout)](#pagesetdefaulttimeouttimeout) methods.
 - returns: <[Promise]> Promise which resolves when the element matching `selector` is successfully hovered. Promise gets rejected if there's no element matching `selector`.
 
 This method fetches an element with `selector`, scrolls it into view if needed, and then uses [page.mouse](#pagemouse) to hover over the center of the element.
-If there's no element matching `selector`, the method waits until a matching element appears in the DOM. If the element is detached during the actionability checks, the action is retried.
+If there's no element matching `selector`, the method waits until a matching element appears in the DOM. If the element is detached during the [actionability](./actionability.md) checks, the action is retried.
 
 #### frame.innerHTML(selector[, options])
 - `selector` <[string]> A selector to search for an element. If there are multiple elements satisfying the selector, the first will be picked. See [working with selectors](#working-with-selectors) for more details.
@@ -2421,7 +2412,7 @@ Shortcuts such as `key: "Control+o"` or `key: "Control+Shift+T"` are supported a
 
 #### frame.selectOption(selector, values[, options])
 - `selector` <[string]> A selector to query frame for. See [working with selectors](#working-with-selectors) for more details.
-- `values` <[string]|[ElementHandle]|[Array]<[string]>|[Object]|[Array]<[ElementHandle]>|[Array]<[Object]>> Options to select. If the `<select>` has the `multiple` attribute, all matching options are selected, otherwise only the first option matching one of the passed options is selected. String values are equivalent to `{value:'string'}`. Option is considered matching if all specified properties match.
+- `values` <null|[string]|[ElementHandle]|[Array]<[string]>|[Object]|[Array]<[ElementHandle]>|[Array]<[Object]>> Options to select. If the `<select>` has the `multiple` attribute, all matching options are selected, otherwise only the first option matching one of the passed options is selected. String values are equivalent to `{value:'string'}`. Option is considered matching if all specified properties match.
   - `value` <[string]> Matches by `option.value`.
   - `label` <[string]> Matches by `option.label`.
   - `index` <[number]> Matches by the index.
@@ -2502,17 +2493,13 @@ await frame.type('#mytextarea', 'World', {delay: 100}); // Types slower, like a 
 #### frame.uncheck(selector, [options])
 - `selector` <[string]> A selector to search for uncheckbox to check. If there are multiple elements satisfying the selector, the first will be checked. See [working with selectors](#working-with-selectors) for more details.
 - `options` <[Object]>
-  - `force` <[boolean]> Whether to bypass the actionability checks. By default actions wait until the element is:
-    - displayed: has non-empty bounding box and no `visibility:hidden` (note that elements of zero size or with `display:none` are considered not displayed),
-    - is not moving (for example, css transition has finished),
-    - receives pointer events at the action point (for example, element is not covered by other elements).
-    Even if the action is forced, it will wait for the element matching selector to be in the DOM. Defaults to `false`.
+  - `force` <[boolean]> Whether to bypass the [actionability](./actionability.md) checks. Defaults to `false`.
   - `noWaitAfter` <[boolean]> Actions that initiate navigations are waiting for these navigations to happen and for pages to start loading. You can opt out of waiting via setting this flag. You would only need this option in the exceptional cases such as navigating to inaccessible pages. Defaults to `false`.
   - `timeout` <[number]> Maximum time in milliseconds, defaults to 30 seconds, pass `0` to disable timeout. The default value can be changed by using the [browserContext.setDefaultTimeout(timeout)](#browsercontextsetdefaulttimeouttimeout) or [page.setDefaultTimeout(timeout)](#pagesetdefaulttimeouttimeout) methods.
 - returns: <[Promise]> Promise which resolves when the element matching `selector` is successfully unchecked. The Promise will be rejected if there is no element matching `selector`.
 
 This method fetches an element with `selector`, if element is not already unchecked, it scrolls it into view if needed, and then uses [frame.click](#frameclickselector-options) to click in the center of the element.
-If there's no element matching `selector`, the method waits until a matching element appears in the DOM. If the element is detached during the actionability checks, the action is retried.
+If there's no element matching `selector`, the method waits until a matching element appears in the DOM. If the element is detached during the [actionability](./actionability.md) checks, the action is retried.
 
 #### frame.url()
 - returns: <[string]>
@@ -2667,9 +2654,9 @@ ElementHandle instances can be used as an argument in [`page.$eval()`](#pageeval
 - [elementHandle.ownerFrame()](#elementhandleownerframe)
 - [elementHandle.press(key[, options])](#elementhandlepresskey-options)
 - [elementHandle.screenshot([options])](#elementhandlescreenshotoptions)
-- [elementHandle.scrollIntoViewIfNeeded()](#elementhandlescrollintoviewifneeded)
+- [elementHandle.scrollIntoViewIfNeeded([options])](#elementhandlescrollintoviewifneededoptions)
 - [elementHandle.selectOption(values[, options])](#elementhandleselectoptionvalues-options)
-- [elementHandle.selectText()](#elementhandleselecttext)
+- [elementHandle.selectText([options])](#elementhandleselecttextoptions)
 - [elementHandle.setInputFiles(files[, options])](#elementhandlesetinputfilesfiles-options)
 - [elementHandle.textContent()](#elementhandletextcontent)
 - [elementHandle.toString()](#elementhandletostring)
@@ -2748,11 +2735,7 @@ This method returns the bounding box of the element (relative to the main frame)
 
 #### elementHandle.check([options])
 - `options` <[Object]>
-  - `force` <[boolean]> Whether to bypass the actionability checks. By default actions wait until the element is:
-    - displayed: has non-empty bounding box and no `visibility:hidden` (note that elements of zero size or with `display:none` are considered not displayed),
-    - is not moving (for example, css transition has finished),
-    - receives pointer events at the action point (for example, element is not covered by other elements).
-    Even if the action is forced, it will wait for the element matching selector to be in the DOM. Defaults to `false`.
+  - `force` <[boolean]> Whether to bypass the [actionability](./actionability.md) checks. Defaults to `false`.
   - `noWaitAfter` <[boolean]> Actions that initiate navigations are waiting for these navigations to happen and for pages to start loading. You can opt out of waiting via setting this flag. You would only need this option in the exceptional cases such as navigating to inaccessible pages. Defaults to `false`.
   - `timeout` <[number]> Maximum time in milliseconds, defaults to 30 seconds, pass `0` to disable timeout. The default value can be changed by using the [browserContext.setDefaultTimeout(timeout)](#browsercontextsetdefaulttimeouttimeout) or [page.setDefaultTimeout(timeout)](#pagesetdefaulttimeouttimeout) methods.
 - returns: <[Promise]> Promise which resolves when the element is successfully checked. Promise gets rejected if the operation fails.
@@ -2768,11 +2751,7 @@ If element is not already checked, it scrolls it into view if needed, and then u
     - x <[number]>
     - y <[number]>
   - `modifiers` <[Array]<"Alt"|"Control"|"Meta"|"Shift">> Modifier keys to press. Ensures that only these modifiers are pressed during the click, and then restores current modifiers back. If not specified, currently pressed modifiers are used.
-  - `force` <[boolean]> Whether to bypass the actionability checks. By default actions wait until the element is:
-    - displayed: has non-empty bounding box and no `visibility:hidden` (note that elements of zero size or with `display:none` are considered not displayed),
-    - is not moving (for example, css transition has finished),
-    - receives pointer events at the action point (for example, element is not covered by other elements).
-    Even if the action is forced, it will wait for the element matching selector to be in the DOM. Defaults to `false`.
+  - `force` <[boolean]> Whether to bypass the [actionability](./actionability.md) checks. Defaults to `false`.
   - `noWaitAfter` <[boolean]> Actions that initiate navigations are waiting for these navigations to happen and for pages to start loading. You can opt out of waiting via setting this flag. You would only need this option in the exceptional cases such as navigating to inaccessible pages. Defaults to `false`.
   - `timeout` <[number]> Maximum time in milliseconds, defaults to 30 seconds, pass `0` to disable timeout. The default value can be changed by using the [browserContext.setDefaultTimeout(timeout)](#browsercontextsetdefaulttimeouttimeout) or [page.setDefaultTimeout(timeout)](#pagesetdefaulttimeouttimeout) methods.
 - returns: <[Promise]> Promise which resolves when the element is successfully clicked. Promise gets rejected if the element is detached from DOM.
@@ -2791,11 +2770,7 @@ If the element is detached from DOM, the method throws an error.
     - x <[number]>
     - y <[number]>
   - `modifiers` <[Array]<"Alt"|"Control"|"Meta"|"Shift">> Modifier keys to press. Ensures that only these modifiers are pressed during the double click, and then restores current modifiers back. If not specified, currently pressed modifiers are used.
-  - `force` <[boolean]> Whether to bypass the actionability checks. By default actions wait until the element is:
-    - displayed: has non-empty bounding box and no `visibility:hidden` (note that elements of zero size or with `display:none` are considered not displayed),
-    - is not moving (for example, css transition has finished),
-    - receives pointer events at the action point (for example, element is not covered by other elements).
-    Even if the action is forced, it will wait for the element matching selector to be in the DOM. Defaults to `false`.
+  - `force` <[boolean]> Whether to bypass the [actionability](./actionability.md) checks. Defaults to `false`.
   - `noWaitAfter` <[boolean]> Actions that initiate navigations are waiting for these navigations to happen and for pages to start loading. You can opt out of waiting via setting this flag. You would only need this option in the exceptional cases such as navigating to inaccessible pages. Defaults to `false`.
   - `timeout` <[number]> Maximum time in milliseconds, defaults to 30 seconds, pass `0` to disable timeout. The default value can be changed by using the [browserContext.setDefaultTimeout(timeout)](#browsercontextsetdefaulttimeouttimeout) or [page.setDefaultTimeout(timeout)](#pagesetdefaulttimeouttimeout) methods.
 - returns: <[Promise]> Promise which resolves when the element is successfully double clicked. Promise gets rejected if the element is detached from DOM.
@@ -2842,10 +2817,11 @@ await elementHandle.dispatchEvent('dragstart', { dataTransfer });
 - `options` <[Object]>
   - `noWaitAfter` <[boolean]> Actions that initiate navigations are waiting for these navigations to happen and for pages to start loading. You can opt out of waiting via setting this flag. You would only need this option in the exceptional cases such as navigating to inaccessible pages. Defaults to `false`.
   - `timeout` <[number]> Maximum time in milliseconds, defaults to 30 seconds, pass `0` to disable timeout. The default value can be changed by using the [browserContext.setDefaultTimeout(timeout)](#browsercontextsetdefaulttimeouttimeout) or [page.setDefaultTimeout(timeout)](#pagesetdefaulttimeouttimeout) methods.
-- returns: <[Promise]> Promise which resolves when the element is successfully filled.
+- returns: <[Promise]>
 
-This method focuses the element and triggers an `input` event after filling.
-If element is not a text `<input>`, `<textarea>` or `[contenteditable]` element, the method throws an error.
+This method waits for [actionability](./actionability.md) checks, focuses the element, fills it and triggers an `input` event after filling.
+If the element is not an `<input>`, `<textarea>` or `[contenteditable]` element, this method throws an error.
+Note that you can pass an empty string to clear the input field.
 
 #### elementHandle.focus()
 - returns: <[Promise]>
@@ -2864,11 +2840,7 @@ Returns element attribute value.
     - x <[number]>
     - y <[number]>
   - `modifiers` <[Array]<"Alt"|"Control"|"Meta"|"Shift">> Modifier keys to press. Ensures that only these modifiers are pressed during the hover, and then restores current modifiers back. If not specified, currently pressed modifiers are used.
-  - `force` <[boolean]> Whether to bypass the actionability checks. By default actions wait until the element is:
-    - displayed: has non-empty bounding box and no `visibility:hidden` (note that elements of zero size or with `display:none` are considered not displayed),
-    - is not moving (for example, css transition has finished),
-    - receives pointer events at the action point (for example, element is not covered by other elements).
-    Even if the action is forced, it will wait for the element matching selector to be in the DOM. Defaults to `false`.
+  - `force` <[boolean]> Whether to bypass the [actionability](./actionability.md) checks. Defaults to `false`.
   - `timeout` <[number]> Maximum time in milliseconds, defaults to 30 seconds, pass `0` to disable timeout. The default value can be changed by using the [browserContext.setDefaultTimeout(timeout)](#browsercontextsetdefaulttimeouttimeout) or [page.setDefaultTimeout(timeout)](#pagesetdefaulttimeouttimeout) methods.
 - returns: <[Promise]> Promise which resolves when the element is successfully hovered.
 
@@ -2912,21 +2884,22 @@ Shortcuts such as `key: "Control+o"` or `key: "Control+Shift+T"` are supported a
   - `type` <"png"|"jpeg"> Specify screenshot type, defaults to `png`.
   - `quality` <[number]> The quality of the image, between 0-100. Not applicable to `png` images.
   - `omitBackground` <[boolean]> Hides default white background and allows capturing screenshots with transparency. Not applicable to `jpeg` images. Defaults to `false`.
+  - `timeout` <[number]> Maximum time in milliseconds, defaults to 30 seconds, pass `0` to disable timeout. The default value can be changed by using the [browserContext.setDefaultTimeout(timeout)](#browsercontextsetdefaulttimeouttimeout) or [page.setDefaultTimeout(timeout)](#pagesetdefaulttimeouttimeout) methods.
 - returns: <[Promise]<[Buffer]>> Promise which resolves to buffer with the captured screenshot.
 
-This method scrolls element into view if needed before taking a screenshot. If the element is detached from DOM, the method throws an error.
+This method waits for the [actionability](./actionability.md) checks, then scrolls element into view before taking a screenshot. If the element is detached from DOM, the method throws an error.
 
-#### elementHandle.scrollIntoViewIfNeeded()
-- returns: <[Promise]> Resolves after the element has been scrolled into view.
+#### elementHandle.scrollIntoViewIfNeeded([options])
+- `options` <[Object]>
+  - `timeout` <[number]> Maximum time in milliseconds, defaults to 30 seconds, pass `0` to disable timeout. The default value can be changed by using the [browserContext.setDefaultTimeout(timeout)](#browsercontextsetdefaulttimeouttimeout) or [page.setDefaultTimeout(timeout)](#pagesetdefaulttimeouttimeout) methods.
+- returns: <[Promise]>
 
-This method tries to scroll element into view, unless it is completely visible as defined by [IntersectionObserver](https://developer.mozilla.org/en-US/docs/Web/API/Intersection_Observer_API)'s ```ratio```.
+This method waits for [actionability](./actionability.md) checks, then tries to scroll element into view, unless it is completely visible as defined by [IntersectionObserver](https://developer.mozilla.org/en-US/docs/Web/API/Intersection_Observer_API)'s ```ratio```.
 
 Throws when ```elementHandle``` does not point to an element [connected](https://developer.mozilla.org/en-US/docs/Web/API/Node/isConnected) to a Document or a ShadowRoot.
 
-> **NOTE** If javascript is disabled, element is scrolled into view even when already completely visible.
-
 #### elementHandle.selectOption(values[, options])
-- `values` <[string]|[ElementHandle]|[Array]<[string]>|[Object]|[Array]<[ElementHandle]>|[Array]<[Object]>> Options to select. If the `<select>` has the `multiple` attribute, all matching options are selected, otherwise only the first option matching one of the passed options is selected. String values are equivalent to `{value:'string'}`. Option is considered matching if all specified properties match.
+- `values` <null|[string]|[ElementHandle]|[Array]<[string]>|[Object]|[Array]<[ElementHandle]>|[Array]<[Object]>> Options to select. If the `<select>` has the `multiple` attribute, all matching options are selected, otherwise only the first option matching one of the passed options is selected. String values are equivalent to `{value:'string'}`. Option is considered matching if all specified properties match.
   - `value` <[string]> Matches by `option.value`.
   - `label` <[string]> Matches by `option.label`.
   - `index` <[number]> Matches by the index.
@@ -2952,10 +2925,12 @@ handle.selectOption('red', 'green', 'blue');
 handle.selectOption({ value: 'blue' }, { index: 2 }, 'red');
 ```
 
-#### elementHandle.selectText()
-- returns: <[Promise]> Promise which resolves when the element is successfully selected.
+#### elementHandle.selectText([options])
+- `options` <[Object]>
+  - `timeout` <[number]> Maximum time in milliseconds, defaults to 30 seconds, pass `0` to disable timeout. The default value can be changed by using the [browserContext.setDefaultTimeout(timeout)](#browsercontextsetdefaulttimeouttimeout) or [page.setDefaultTimeout(timeout)](#pagesetdefaulttimeouttimeout) methods.
+- returns: <[Promise]>
 
-This method focuses the element and selects all its text content.
+This method waits for [actionability](./actionability.md) checks, then focuses the element and selects all its text content.
 
 #### elementHandle.setInputFiles(files[, options])
 - `files` <[string]|[Array]<[string]>|[Object]|[Array]<[Object]>>
@@ -3003,11 +2978,7 @@ await elementHandle.press('Enter');
 
 #### elementHandle.uncheck([options])
 - `options` <[Object]>
-  - `force` <[boolean]> Whether to bypass the actionability checks. By default actions wait until the element is:
-    - displayed: has non-empty bounding box and no `visibility:hidden` (note that elements of zero size or with `display:none` are considered not displayed),
-    - is not moving (for example, css transition has finished),
-    - receives pointer events at the action point (for example, element is not covered by other elements).
-    Even if the action is forced, it will wait for the element matching selector to be in the DOM. Defaults to `false`.
+  - `force` <[boolean]> Whether to bypass the [actionability](./actionability.md) checks. Defaults to `false`.
   - `noWaitAfter` <[boolean]> Actions that initiate navigations are waiting for these navigations to happen and for pages to start loading. You can opt out of waiting via setting this flag. You would only need this option in the exceptional cases such as navigating to inaccessible pages. Defaults to `false`.
   - `timeout` <[number]> Maximum time in milliseconds, defaults to 30 seconds, pass `0` to disable timeout. The default value can be changed by using the [browserContext.setDefaultTimeout(timeout)](#browsercontextsetdefaulttimeouttimeout) or [page.setDefaultTimeout(timeout)](#pagesetdefaulttimeouttimeout) methods.
 - returns: <[Promise]> Promise which resolves when the element is successfully unchecked. Promise gets rejected if the operation fails.
@@ -3499,6 +3470,7 @@ If request gets a 'redirect' response, the request is successfully finished with
 - [request.isNavigationRequest()](#requestisnavigationrequest)
 - [request.method()](#requestmethod)
 - [request.postData()](#requestpostdata)
+- [request.postDataJSON()](#requestpostdatajson)
 - [request.redirectedFrom()](#requestredirectedfrom)
 - [request.redirectedTo()](#requestredirectedto)
 - [request.resourceType()](#requestresourcetype)
@@ -3537,6 +3509,11 @@ Whether this request is driving frame's navigation.
 
 #### request.postData()
 - returns: <?[string]> Request's post body, if any.
+
+#### request.postDataJSON()
+- returns: <?[Object]> Parsed request's body for `form-urlencoded` and JSON as a fallback if any.
+
+When the response is `application/x-www-form-urlencoded` then a key/value object of the values will be returned. Otherwise it will be parsed as JSON.
 
 #### request.redirectedFrom()
 - returns: <?[Request]> Request that was redirected by the server to this one, if any.
@@ -3935,8 +3912,9 @@ Emitted when the browser server closes.
 Closes the browser gracefully and makes sure the process is terminated.
 
 #### browserServer.kill()
+- returns: <[Promise]>
 
-Kills the browser process.
+Kills the browser process and waits for the process to exit.
 
 #### browserServer.process()
 - returns: <[ChildProcess]> Spawned browser application process.
@@ -3990,6 +3968,13 @@ This methods attaches Playwright to an existing browser instance.
   - `executablePath` <[string]> Path to a browser executable to run instead of the bundled one. If `executablePath` is a relative path, then it is resolved relative to [current working directory](https://nodejs.org/api/process.html#process_process_cwd). Note that Playwright only works with the bundled Chromium, Firefox or WebKit, use at your own risk.
   - `args` <[Array]<[string]>> Additional arguments to pass to the browser instance. The list of Chromium flags can be found [here](http://peter.sh/experiments/chromium-command-line-switches/).
   - `ignoreDefaultArgs` <[boolean]|[Array]<[string]>> If `true`, Playwright does not pass its own configurations args and only uses the ones from `args`. If an array is given, then filters out the given default arguments. Dangerous option; use with care. Defaults to `false`.
+  - `proxy` <[Object]> Network proxy settings.
+    - `server` <[string]> Proxy to be used for all requests. HTTP and SOCKS proxies are supported, for example `http://myproxy.com:3128` or `socks5://myproxy.com:3128`. Short form `myproxy.com:3128` is considered an HTTP proxy.
+    - `bypass` <[string]> Optional coma-separated domains to bypass proxy, for example `".com, chromium.org, .domain.com"`.
+    - `username` <[string]> Optional username to use if HTTP proxy requires authentication.
+    - `password` <[string]> Optional password to use if HTTP proxy requires authentication.
+  - `downloadsPath` <[string]> If specified, accepted downloads are downloaded into this folder. Otherwise, temporary folder is created and is deleted when browser is closed.
+  - `firefoxUserPrefs` <[Object]> Firefox user preferences. Learn more about the Firefox user preferences at [`about:config`](https://support.mozilla.org/en-US/kb/about-config-editor-firefox).
   - `handleSIGINT` <[boolean]> Close the browser process on Ctrl-C. Defaults to `true`.
   - `handleSIGTERM` <[boolean]> Close the browser process on SIGTERM. Defaults to `true`.
   - `handleSIGHUP` <[boolean]> Close the browser process on SIGHUP. Defaults to `true`.
@@ -4023,6 +4008,13 @@ const browser = await chromium.launch({  // Or 'firefox' or 'webkit'.
   - `executablePath` <[string]> Path to a browser executable to run instead of the bundled one. If `executablePath` is a relative path, then it is resolved relative to [current working directory](https://nodejs.org/api/process.html#process_process_cwd). **BEWARE**: Playwright is only guaranteed to work with the bundled Chromium, Firefox or WebKit, use at your own risk.
   - `args` <[Array]<[string]>> Additional arguments to pass to the browser instance. The list of Chromium flags can be found [here](http://peter.sh/experiments/chromium-command-line-switches/).
   - `ignoreDefaultArgs` <[boolean]|[Array]<[string]>> If `true`, then do not use any of the default arguments. If an array is given, then filter out the given default arguments. Dangerous option; use with care. Defaults to `false`.
+  - `proxy` <[Object]> Network proxy settings.
+    - `server` <[string]> Proxy to be used for all requests. HTTP and SOCKS proxies are supported, for example `http://myproxy.com:3128` or `socks5://myproxy.com:3128`. Short form `myproxy.com:3128` is considered an HTTP proxy.
+    - `bypass` <[string]> Optional coma-separated domains to bypass proxy, for example `".com, chromium.org, .domain.com"`.
+    - `username` <[string]> Optional username to use if HTTP proxy requires authentication.
+    - `password` <[string]> Optional password to use if HTTP proxy requires authentication.
+  - `acceptDownloads` <[boolean]> Whether to automatically download all the attachments. Defaults to `false` where all the downloads are canceled.
+  - `downloadsPath` <[string]> If specified, accepted downloads are downloaded into this folder. Otherwise, temporary folder is created and is deleted when browser is closed.
   - `handleSIGINT` <[boolean]> Close the browser process on Ctrl-C. Defaults to `true`.
   - `handleSIGTERM` <[boolean]> Close the browser process on SIGTERM. Defaults to `true`.
   - `handleSIGHUP` <[boolean]> Close the browser process on SIGHUP. Defaults to `true`.
@@ -4065,6 +4057,13 @@ Launches browser that uses persistent storage located at `userDataDir` and retur
   - `executablePath` <[string]> Path to a browser executable to run instead of the bundled one. If `executablePath` is a relative path, then it is resolved relative to [current working directory](https://nodejs.org/api/process.html#process_process_cwd). **BEWARE**: Playwright is only guaranteed to work with the bundled Chromium, Firefox or WebKit, use at your own risk.
   - `args` <[Array]<[string]>> Additional arguments to pass to the browser instance. The list of Chromium flags can be found [here](http://peter.sh/experiments/chromium-command-line-switches/).
   - `ignoreDefaultArgs` <[boolean]|[Array]<[string]>> If `true`, then do not use any of the default arguments. If an array is given, then filter out the given default arguments. Dangerous option; use with care. Defaults to `false`.
+  - `proxy` <[Object]> Network proxy settings.
+    - `server` <[string]> Proxy to be used for all requests. HTTP and SOCKS proxies are supported, for example `http://myproxy.com:3128` or `socks5://myproxy.com:3128`. Short form `myproxy.com:3128` is considered an HTTP proxy.
+    - `bypass` <[string]> Optional coma-separated domains to bypass proxy, for example `".com, chromium.org, .domain.com"`.
+    - `username` <[string]> Optional username to use if HTTP proxy requires authentication.
+    - `password` <[string]> Optional password to use if HTTP proxy requires authentication.
+  - `downloadsPath` <[string]> If specified, accepted downloads are downloaded into this folder. Otherwise, temporary folder is created and is deleted when browser is closed.
+  - `firefoxUserPrefs` <[Object]> Firefox user preferences. Learn more about the Firefox user preferences at [`about:config`](https://support.mozilla.org/en-US/kb/about-config-editor-firefox).
   - `handleSIGINT` <[boolean]> Close the browser process on Ctrl-C. Defaults to `true`.
   - `handleSIGTERM` <[boolean]> Close the browser process on SIGTERM. Defaults to `true`.
   - `handleSIGHUP` <[boolean]> Close the browser process on SIGHUP. Defaults to `true`.
@@ -4248,7 +4247,7 @@ Coverage gathers information about parts of JavaScript and CSS that were used by
 An example of using JavaScript coverage to produce Istambul report for page load:
 
 ```js
-const { chromium } = require('.');
+const { chromium } = require('playwright');
 const v8toIstanbul = require('v8-to-istanbul');
 
 (async() => {
@@ -4387,15 +4386,27 @@ WebKit browser instance does not expose WebKit-specific features.
 Playwright looks for certain [environment variables](https://en.wikipedia.org/wiki/Environment_variable) to aid its operations.
 If Playwright doesn't find them in the environment, a lowercased variant of these variables will be used from the [npm config](https://docs.npmjs.com/cli/config).
 
-- `PLAYWRIGHT_DOWNLOAD_HOST` - overwrite URL prefix that is used to download browsers. Note: this includes protocol and might even include path prefix. By default, Playwright uses `https://storage.googleapis.com` to download Chromium and `https://playwright.azureedge.net` to download Webkit & Firefox.
+- `PLAYWRIGHT_DOWNLOAD_HOST` - overwrite URL prefix that is used to download browsers. Note: this includes protocol and might even include path prefix. By default, Playwright uses `https://storage.googleapis.com` to download Chromium and `https://playwright.azureedge.net` to download Webkit & Firefox. You can also use browser-specific download hosts that superceed the `PLAYWRIGHT_DOWNLOAD_HOST` variable:
+  - `PLAYWRIGHT_CHROMIUM_DOWNLOAD_HOST` - host to specify Chromium downloads
+  - `PLAYWRIGHT_FIREFOX_DOWNLOAD_HOST` - host to specify Firefox downloads
+  - `PLAYWRIGHT_WEBKIT_DOWNLOAD_HOST` - host to specify Webkit downloads
 - `PLAYWRIGHT_BROWSERS_PATH` - specify a shared folder that playwright will use to download browsers and to look for browsers when launching browser instances.
 - `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD` - set to non-empty value to skip browser downloads altogether.
 
 ```sh
+# Linux/macOS
 # Install browsers to the shared location.
-$ PLAYWRIGHT_BROWSERS_PATH=$HOME/playwright-browsers npm install playwright
+$ PLAYWRIGHT_BROWSERS_PATH=$HOME/playwright-browsers npm install --save-dev playwright
 # Use shared location to find browsers.
 $ PLAYWRIGHT_BROWSERS_PATH=$HOME/playwright-browsers node playwright-script.js
+
+# Windows
+# Install browsers to the shared location.
+$ set PLAYWRIGHT_BROWSERS_PATH=%USERPROFILE%\playwright-browsers
+$ npm install --save-dev playwright
+# Use shared location to find browsers.
+$ set PLAYWRIGHT_BROWSERS_PATH=%USERPROFILE%\playwright-browsers
+$ node playwright-script.js
 ```
 
 

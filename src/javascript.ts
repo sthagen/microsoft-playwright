@@ -14,94 +14,99 @@
  * limitations under the License.
  */
 
-import * as types from './types';
 import * as dom from './dom';
-import * as fs from 'fs';
-import * as util from 'util';
-import * as js from './javascript';
 import * as utilityScriptSource from './generated/utilityScriptSource';
-import { helper, getCallerFilePath, isDebugMode } from './helper';
-import { InnerLogger } from './logger';
+import * as sourceMap from './utils/sourceMap';
+import { serializeAsCallArgument } from './common/utilityScriptSerializers';
+import UtilityScript from './injected/utilityScript';
+
+type ObjectId = string;
+export type RemoteObject = {
+  objectId?: ObjectId,
+  value?: any
+};
+
+type NoHandles<Arg> = Arg extends JSHandle ? never : (Arg extends object ? { [Key in keyof Arg]: NoHandles<Arg[Key]> } : Arg);
+type Unboxed<Arg> =
+  Arg extends dom.ElementHandle<infer T> ? T :
+  Arg extends JSHandle<infer T> ? T :
+  Arg extends NoHandles<Arg> ? Arg :
+  Arg extends [infer A0] ? [Unboxed<A0>] :
+  Arg extends [infer A0, infer A1] ? [Unboxed<A0>, Unboxed<A1>] :
+  Arg extends [infer A0, infer A1, infer A2] ? [Unboxed<A0>, Unboxed<A1>, Unboxed<A2>] :
+  Arg extends Array<infer T> ? Array<Unboxed<T>> :
+  Arg extends object ? { [Key in keyof Arg]: Unboxed<Arg[Key]> } :
+  Arg;
+export type Func0<R> = string | (() => R | Promise<R>);
+export type Func1<Arg, R> = string | ((arg: Unboxed<Arg>) => R | Promise<R>);
+export type FuncOn<On, Arg2, R> = string | ((on: On, arg2: Unboxed<Arg2>) => R | Promise<R>);
+export type SmartHandle<T> = T extends Node ? dom.ElementHandle<T> : JSHandle<T>;
 
 export interface ExecutionContextDelegate {
-  evaluate(context: ExecutionContext, returnByValue: boolean, pageFunction: string | Function, ...args: any[]): Promise<any>;
-  rawEvaluate(pageFunction: string): Promise<RemoteObject>;
+  rawEvaluate(expression: string): Promise<ObjectId>;
+  evaluateWithArguments(expression: string, returnByValue: boolean, utilityScript: JSHandle<any>, values: any[], objectIds: ObjectId[]): Promise<any>;
   getProperties(handle: JSHandle): Promise<Map<string, JSHandle>>;
+  createHandle(context: ExecutionContext, remoteObject: RemoteObject): JSHandle;
   releaseHandle(handle: JSHandle): Promise<void>;
-  handleToString(handle: JSHandle, includeType: boolean): string;
-  handleJSONValue<T>(handle: JSHandle<T>): Promise<T>;
 }
 
 export class ExecutionContext {
   readonly _delegate: ExecutionContextDelegate;
-  readonly _logger: InnerLogger;
-  private _utilityScriptPromise: Promise<js.JSHandle> | undefined;
+  private _utilityScriptPromise: Promise<JSHandle> | undefined;
 
-  constructor(delegate: ExecutionContextDelegate, logger: InnerLogger) {
+  constructor(delegate: ExecutionContextDelegate) {
     this._delegate = delegate;
-    this._logger = logger;
-  }
-
-  doEvaluateInternal(returnByValue: boolean, waitForNavigations: boolean, pageFunction: string | Function, ...args: any[]): Promise<any> {
-    return this._delegate.evaluate(this, returnByValue, pageFunction, ...args);
   }
 
   adoptIfNeeded(handle: JSHandle): Promise<JSHandle> | null {
     return null;
   }
 
-  async evaluateInternal<R>(pageFunction: types.Func0<R>): Promise<R>;
-  async evaluateInternal<Arg, R>(pageFunction: types.Func1<Arg, R>, arg: Arg): Promise<R>;
-  async evaluateInternal(pageFunction: never, ...args: never[]): Promise<any> {
-    return this.doEvaluateInternal(true /* returnByValue */, true /* waitForNavigations */, pageFunction, ...args);
-  }
-
-  async evaluateHandleInternal<R>(pageFunction: types.Func0<R>): Promise<types.SmartHandle<R>>;
-  async evaluateHandleInternal<Arg, R>(pageFunction: types.Func1<Arg, R>, arg: Arg): Promise<types.SmartHandle<R>>;
-  async evaluateHandleInternal(pageFunction: never, ...args: never[]): Promise<any> {
-    return this.doEvaluateInternal(false /* returnByValue */, true /* waitForNavigations */, pageFunction, ...args);
-  }
-
-  utilityScript(): Promise<js.JSHandle> {
+  utilityScript(): Promise<JSHandle<UtilityScript>> {
     if (!this._utilityScriptPromise) {
       const source = `new (${utilityScriptSource.source})()`;
-      this._utilityScriptPromise = this._delegate.rawEvaluate(source).then(object => this.createHandle(object));
+      this._utilityScriptPromise = this._delegate.rawEvaluate(source).then(objectId => new JSHandle(this, 'object', objectId));
     }
     return this._utilityScriptPromise;
   }
 
-  createHandle(remoteObject: any): JSHandle {
-    return new JSHandle(this, remoteObject);
+  createHandle(remoteObject: RemoteObject): JSHandle {
+    return this._delegate.createHandle(this, remoteObject);
   }
 }
 
-export type RemoteObject = {
-  type?: string,
-  subtype?: string,
-  objectId?: string,
-  value?: any
-};
-
 export class JSHandle<T = any> {
   readonly _context: ExecutionContext;
-  readonly _remoteObject: RemoteObject;
   _disposed = false;
+  readonly _objectId: ObjectId | undefined;
+  readonly _value: any;
+  private _objectType: string;
+  protected _preview: string;
 
-  constructor(context: ExecutionContext, remoteObject: RemoteObject) {
+  constructor(context: ExecutionContext, type: string, objectId?: ObjectId, value?: any) {
     this._context = context;
-    this._remoteObject = remoteObject;
+    this._objectId = objectId;
+    this._value = value;
+    this._objectType = type;
+    if (this._objectId)
+      this._value = 'JSHandle@' + this._objectType;
+    this._preview = 'JSHandle@' + String(this._objectId ? this._objectType : this._value);
   }
 
-  async evaluate<R, Arg>(pageFunction: types.FuncOn<T, Arg, R>, arg: Arg): Promise<R>;
-  async evaluate<R>(pageFunction: types.FuncOn<T, void, R>, arg?: any): Promise<R>;
-  async evaluate<R, Arg>(pageFunction: types.FuncOn<T, Arg, R>, arg: Arg): Promise<R> {
-    return this._context.doEvaluateInternal(true /* returnByValue */, true /* waitForNavigations */, pageFunction, this, arg);
+  async evaluate<R, Arg>(pageFunction: FuncOn<T, Arg, R>, arg: Arg): Promise<R>;
+  async evaluate<R>(pageFunction: FuncOn<T, void, R>, arg?: any): Promise<R>;
+  async evaluate<R, Arg>(pageFunction: FuncOn<T, Arg, R>, arg: Arg): Promise<R> {
+    return evaluate(this._context, true /* returnByValue */, pageFunction, this, arg);
   }
 
-  async evaluateHandle<R, Arg>(pageFunction: types.FuncOn<T, Arg, R>, arg: Arg): Promise<types.SmartHandle<R>>;
-  async evaluateHandle<R>(pageFunction: types.FuncOn<T, void, R>, arg?: any): Promise<types.SmartHandle<R>>;
-  async evaluateHandle<R, Arg>(pageFunction: types.FuncOn<T, Arg, R>, arg: Arg): Promise<types.SmartHandle<R>> {
-    return this._context.doEvaluateInternal(false /* returnByValue */, true /* waitForNavigations */, pageFunction, this, arg);
+  async evaluateHandle<R, Arg>(pageFunction: FuncOn<T, Arg, R>, arg: Arg): Promise<SmartHandle<R>>;
+  async evaluateHandle<R>(pageFunction: FuncOn<T, void, R>, arg?: any): Promise<SmartHandle<R>>;
+  async evaluateHandle<R, Arg>(pageFunction: FuncOn<T, Arg, R>, arg: Arg): Promise<SmartHandle<R>> {
+    return evaluate(this._context, false /* returnByValue */, pageFunction, this, arg);
+  }
+
+  _evaluateExpression(expression: string, isFunction: boolean, returnByValue: boolean, arg: any) {
+    return evaluateExpression(this._context, returnByValue, expression, isFunction, this, arg);
   }
 
   async getProperty(propertyName: string): Promise<JSHandle> {
@@ -120,8 +125,12 @@ export class JSHandle<T = any> {
     return this._context._delegate.getProperties(this);
   }
 
-  jsonValue(): Promise<T> {
-    return this._context._delegate.handleJSONValue(this);
+  async jsonValue(): Promise<T> {
+    if (!this._objectId)
+      return this._value;
+    const utilityScript = await this._context.utilityScript();
+    const script = `(utilityScript, ...args) => utilityScript.jsonValue(...args)` + sourceMap.generateSourceUrl();
+    return this._context._delegate.evaluateWithArguments(script, true, utilityScript, [true], [this._objectId]);
   }
 
   asElement(): dom.ElementHandle | null {
@@ -136,18 +145,22 @@ export class JSHandle<T = any> {
   }
 
   toString(): string {
-    return this._context._delegate.handleToString(this, true /* includeType */);
+    return this._preview;
   }
 }
 
-export async function prepareFunctionCall<T>(
-  pageFunction: Function,
-  context: ExecutionContext,
-  args: any[],
-  toCallArgumentIfNeeded: (value: any) => { handle?: T, value?: any }): Promise<{ functionText: string, values: any[], handles: T[], dispose: () => void }> {
+export async function evaluate(context: ExecutionContext, returnByValue: boolean, pageFunction: Function | string, ...args: any[]): Promise<any> {
+  return evaluateExpression(context, returnByValue, String(pageFunction), typeof pageFunction === 'function', ...args);
+}
 
-  const originalText = pageFunction.toString();
-  let functionText = originalText;
+export async function evaluateExpression(context: ExecutionContext, returnByValue: boolean, expression: string, isFunction: boolean, ...args: any[]): Promise<any> {
+  const utilityScript = await context.utilityScript();
+  if (!isFunction) {
+    const script = `(utilityScript, ...args) => utilityScript.evaluate(...args)` + sourceMap.generateSourceUrl();
+    return context._delegate.evaluateWithArguments(script, returnByValue, utilityScript, [returnByValue, sourceMap.ensureSourceUrl(expression)], []);
+  }
+
+  let functionText = expression;
   try {
     new Function('(' + functionText + ')');
   } catch (e1) {
@@ -165,191 +178,54 @@ export async function prepareFunctionCall<T>(
     }
   }
 
-  const guids: string[] = [];
-  const handles: (Promise<JSHandle | T>)[] = [];
+  const handles: (Promise<JSHandle>)[] = [];
   const toDispose: Promise<JSHandle>[] = [];
-  const pushHandle = (handle: Promise<JSHandle | T>): string => {
-    const guid = helper.guid();
-    guids.push(guid);
+  const pushHandle = (handle: Promise<JSHandle>): number => {
     handles.push(handle);
-    return guid;
+    return handles.length - 1;
   };
 
-  const visited = new Set<any>();
-  let error: string | undefined;
-  const visit = (arg: any, depth: number): any => {
-    if (!depth) {
-      error = 'Argument nesting is too deep';
-      return;
-    }
-    if (visited.has(arg)) {
-      error = 'Argument is a circular structure';
-      return;
-    }
-    if (Array.isArray(arg)) {
-      visited.add(arg);
-      const result = [];
-      for (let i = 0; i < arg.length; ++i)
-        result.push(visit(arg[i], depth - 1));
-      visited.delete(arg);
-      return result;
-    }
-    if (arg && (typeof arg === 'object') && !(arg instanceof JSHandle)) {
-      visited.add(arg);
-      const result: any = {};
-      for (const name of Object.keys(arg))
-        result[name] = visit(arg[name], depth - 1);
-      visited.delete(arg);
-      return result;
-    }
-    if (arg && (arg instanceof JSHandle)) {
-      if (arg._disposed)
-        throw new Error('JSHandle is disposed!');
-      const adopted = context.adoptIfNeeded(arg);
-      if (adopted === null)
-        return pushHandle(Promise.resolve(arg));
-      toDispose.push(adopted);
-      return pushHandle(adopted);
-    }
-    const { handle, value } = toCallArgumentIfNeeded(arg);
-    if (handle)
-      return pushHandle(Promise.resolve(handle));
-    return value;
-  };
-
-  args = args.map(arg => visit(arg, 100));
-  if (error)
-    throw new Error(error);
-
-  const resolved = await Promise.all(handles);
-  const resultHandles: T[] = [];
-  for (let i = 0; i < resolved.length; i++) {
-    const handle = resolved[i];
+  args = args.map(arg => serializeAsCallArgument(arg, (handle: any): { h?: number, fallThrough?: any } => {
     if (handle instanceof JSHandle) {
-      if (handle._context !== context)
-        throw new Error('JSHandles can be evaluated only in the context they were created!');
-      resultHandles.push(toCallArgumentIfNeeded(handle).handle!);
-    } else {
-      resultHandles.push(handle);
+      if (!handle._objectId)
+        return { fallThrough: handle._value };
+      if (handle._disposed)
+        throw new Error('JSHandle is disposed!');
+      const adopted = context.adoptIfNeeded(handle);
+      if (adopted === null)
+        return { h: pushHandle(Promise.resolve(handle)) };
+      toDispose.push(adopted);
+      return { h: pushHandle(adopted) };
     }
+    return { fallThrough: handle };
+  }));
+
+  const utilityScriptObjectIds: ObjectId[] = [];
+  for (const handle of await Promise.all(handles)) {
+    if (handle._context !== context)
+      throw new Error('JSHandles can be evaluated only in the context they were created!');
+    utilityScriptObjectIds.push(handle._objectId!);
   }
-  const dispose = () => {
-    toDispose.map(handlePromise => handlePromise.then(handle => handle.dispose()));
-  };
 
-  const sourceMapUrl = await generateSourceMapUrl(originalText);
-  functionText += sourceMapUrl;
-  return { functionText, values: [ args.length, ...args, guids.length, ...guids ], handles: resultHandles, dispose };
-}
+  functionText += await sourceMap.generateSourceMapUrl(expression, functionText);
+  // See UtilityScript for arguments.
+  const utilityScriptValues = [returnByValue, functionText, args.length, ...args];
 
-let sourceUrlCounter = 0;
-const playwrightSourceUrlPrefix = '__playwright_evaluation_script__';
-const sourceUrlRegex = /^[\040\t]*\/\/[@#] sourceURL=\s*(\S*?)\s*$/m;
-export function generateSourceUrl(): string {
-  return `\n//# sourceURL=${playwrightSourceUrlPrefix}${sourceUrlCounter++}\n`;
-}
-
-export function isPlaywrightSourceUrl(s: string): boolean {
-  return s.startsWith(playwrightSourceUrlPrefix);
-}
-
-export function ensureSourceUrl(expression: string): string {
-  return sourceUrlRegex.test(expression) ? expression : expression + generateSourceUrl();
-}
-
-type Position = {
-  line: number;
-  column: number;
-};
-
-async function generateSourceMapUrl(functionText: string): Promise<string> {
-  if (!isDebugMode())
-    return generateSourceUrl();
-  const filePath = getCallerFilePath();
-  if (!filePath)
-    return generateSourceUrl();
+  const script = `(utilityScript, ...args) => utilityScript.callFunction(...args)` + sourceMap.generateSourceUrl();
   try {
-    const source = await util.promisify(fs.readFile)(filePath, 'utf8');
-    const index = source.indexOf(functionText);
-    if (index === -1)
-      return generateSourceUrl();
-    const sourcePosition = findPosition(source, index);
-    const delta = findPosition(functionText, functionText.length);
-    const sourceMap = generateSourceMap(filePath, sourcePosition, { line: 0, column: 0 }, delta);
-    return `\n//# sourceMappingURL=data:application/json;base64,${Buffer.from(sourceMap).toString('base64')}\n`;
-  } catch (e) {
-    return generateSourceUrl();
+    return await context._delegate.evaluateWithArguments(script, returnByValue, utilityScript, utilityScriptValues, utilityScriptObjectIds);
+  } finally {
+    toDispose.map(handlePromise => handlePromise.then(handle => handle.dispose()));
   }
 }
 
-const VLQ_BASE_SHIFT = 5;
-const VLQ_BASE = 1 << VLQ_BASE_SHIFT;
-const VLQ_BASE_MASK = VLQ_BASE - 1;
-const VLQ_CONTINUATION_BIT = VLQ_BASE;
-const BASE64_DIGITS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
-
-function base64VLQ(value: number): string {
-  if (value < 0)
-    value = ((-value) << 1) | 1;
-  else
-    value <<= 1;
-  let result = '';
-  do {
-    let digit = value & VLQ_BASE_MASK;
-    value >>>= VLQ_BASE_SHIFT;
-    if (value > 0)
-      digit |= VLQ_CONTINUATION_BIT;
-    result += BASE64_DIGITS[digit];
-  } while (value > 0);
-  return result;
-}
-
-function generateSourceMap(filePath: string, sourcePosition: Position, compiledPosition: Position, delta: Position): any {
-  const mappings = [];
-  let lastCompiled = { line: 0, column: 0 };
-  let lastSource = { line: 0, column: 0 };
-  for (let line = 0; line < delta.line; line++) {
-    // We need at least a mapping per line. This will yield an execution line at the start of each line.
-    // Note: for more granular mapping, we can do word-by-word.
-    const source = advancePosition(sourcePosition, { line, column: 0 });
-    const compiled = advancePosition(compiledPosition, { line, column: 0 });
-    while (lastCompiled.line < compiled.line) {
-      mappings.push(';');
-      lastCompiled.line++;
-      lastCompiled.column = 0;
-    }
-    mappings.push(base64VLQ(compiled.column - lastCompiled.column));
-    mappings.push(base64VLQ(0)); // Source index.
-    mappings.push(base64VLQ(source.line - lastSource.line));
-    mappings.push(base64VLQ(source.column - lastSource.column));
-    lastCompiled = compiled;
-    lastSource = source;
-  }
-  return JSON.stringify({
-    version: 3,
-    sources: ['file://' + filePath],
-    names: [],
-    mappings: mappings.join(''),
-  });
-}
-
-function findPosition(source: string, offset: number): Position {
-  const result: Position = { line: 0, column: 0 };
-  let index = 0;
-  while (true) {
-    const newline = source.indexOf('\n', index);
-    if (newline === -1 || newline >= offset)
-      break;
-    result.line++;
-    index = newline + 1;
-  }
-  result.column = offset - index;
-  return result;
-}
-
-function advancePosition(position: Position, delta: Position) {
-  return {
-    line: position.line + delta.line,
-    column: delta.column + (delta.line ? 0 : position.column),
-  };
+export function parseUnserializableValue(unserializableValue: string): any {
+  if (unserializableValue === 'NaN')
+    return NaN;
+  if (unserializableValue === 'Infinity')
+    return Infinity;
+  if (unserializableValue === '-Infinity')
+    return -Infinity;
+  if (unserializableValue === '-0')
+    return -0;
 }

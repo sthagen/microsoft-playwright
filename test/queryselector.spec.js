@@ -16,16 +16,8 @@
  */
 
 const path = require('path');
-const {FFOX, CHROMIUM, WEBKIT} = require('./utils').testOptions(browserType);
-
-async function registerEngine(name, script, options) {
-  try {
-    await playwright.selectors.register(name, script, options);
-  } catch (e) {
-    if (!e.message.includes('has been already registered'))
-      throw e;
-  }
-}
+const utils = require('./utils');
+const {FFOX, CHROMIUM, WEBKIT} = utils.testOptions(browserType);
 
 describe('Page.$eval', function() {
   it('should work with css selector', async({page, server}) => {
@@ -494,6 +486,14 @@ describe('text selector', () => {
     expect(await page.$eval(`text="`, e => e.outerHTML)).toBe('<div> " </div>');
     expect(await page.$eval(`text='`, e => e.outerHTML)).toBe('<div> \' </div>');
 
+    await page.setContent(`<div>Hi''&gt;&gt;foo=bar</div>`);
+    expect(await page.$eval(`text="Hi''>>foo=bar"`, e => e.outerHTML)).toBe(`<div>Hi''&gt;&gt;foo=bar</div>`);
+    await page.setContent(`<div>Hi'"&gt;&gt;foo=bar</div>`);
+    expect(await page.$eval(`text="Hi'\\">>foo=bar"`, e => e.outerHTML)).toBe(`<div>Hi'"&gt;&gt;foo=bar</div>`);
+
+    await page.setContent(`<div>Hi&gt;&gt;<span></span></div>`);
+    expect(await page.$eval(`text="Hi>>">>span`, e => e.outerHTML)).toBe(`<span></span>`);
+
     await page.setContent(`<div>a<br>b</div><div>a</div>`);
     expect(await page.$eval(`text=a`, e => e.outerHTML)).toBe('<div>a<br>b</div>');
     expect(await page.$eval(`text=b`, e => e.outerHTML)).toBe('<div>a<br>b</div>');
@@ -543,6 +543,32 @@ describe('text selector', () => {
     expect(await page.$(`text="with"`)).toBe(null);
   });
 
+  it('should skip head, script and style', async({page}) => {
+    await page.setContent(`
+      <head>
+        <title>title</title>
+        <script>var script</script>
+        <style>.style {}</style>
+      </head>
+      <body>
+        <script>var script</script>
+        <style>.style {}</style>
+        <div>title script style</div>
+      </body>`);
+    const head = await page.$('head');
+    const title = await page.$('title');
+    const script = await page.$('body script');
+    const style = await page.$('body style');
+    for (const text of ['title', 'script', 'style']) {
+      expect(await page.$eval(`text=${text}`, e => e.nodeName)).toBe('DIV');
+      expect(await page.$$eval(`text=${text}`, els => els.map(e => e.nodeName).join('|'))).toBe('DIV');
+      for (const root of [head, title, script, style]) {
+        expect(await root.$(`text=${text}`)).toBe(null);
+        expect(await root.$$eval(`text=${text}`, els => els.length)).toBe(0);
+      }
+    }
+  });
+
   it('should match input[type=button|submit]', async({page}) => {
     await page.setContent(`<input type="submit" value="hello"><input type="button" value="world">`);
     expect(await page.$eval(`text=hello`, e => e.outerHTML)).toBe('<input type="submit" value="hello">');
@@ -554,9 +580,48 @@ describe('text selector', () => {
     expect(await page.$eval(`text=root1`, e => e.textContent)).toBe('Hello from root1');
     expect(await page.$eval(`text=root2`, e => e.textContent)).toBe('Hello from root2');
     expect(await page.$eval(`text=root3`, e => e.textContent)).toBe('Hello from root3');
+    expect(await page.$eval(`#root1 >> text=from root3`, e => e.textContent)).toBe('Hello from root3');
+    expect(await page.$eval(`#target >> text=from root2`, e => e.textContent)).toBe('Hello from root2');
     expect(await page.$(`text:light=root1`)).toBe(null);
     expect(await page.$(`text:light=root2`)).toBe(null);
     expect(await page.$(`text:light=root3`)).toBe(null);
+  });
+
+  it('should prioritize light dom over shadow dom in the same parent', async({page, server}) => {
+    await page.evaluate(() => {
+      const div = document.createElement('div');
+      document.body.appendChild(div);
+
+      div.attachShadow({ mode: 'open' });
+      const shadowSpan = document.createElement('span');
+      shadowSpan.textContent = 'Hello from shadow';
+      div.shadowRoot.appendChild(shadowSpan);
+
+      const lightSpan = document.createElement('span');
+      lightSpan.textContent = 'Hello from light';
+      div.appendChild(lightSpan);
+    });
+    expect(await page.$eval(`div >> text=Hello`, e => e.textContent)).toBe('Hello from light');
+  });
+
+  it('should waitForSelector with distributed elements', async({page, server}) => {
+    const promise = page.waitForSelector(`div >> text=Hello`);
+    await page.evaluate(() => {
+      const div = document.createElement('div');
+      document.body.appendChild(div);
+
+      div.attachShadow({ mode: 'open' });
+      const shadowSpan = document.createElement('span');
+      shadowSpan.textContent = 'Hello from shadow';
+      div.shadowRoot.appendChild(shadowSpan);
+      div.shadowRoot.appendChild(document.createElement('slot'));
+
+      const lightSpan = document.createElement('span');
+      lightSpan.textContent = 'Hello from light';
+      div.appendChild(lightSpan);
+    });
+    const handle = await promise;
+    expect(await handle.textContent()).toBe('Hello from light');
   });
 });
 
@@ -587,6 +652,24 @@ describe('css selector', () => {
     expect(await root3.$eval(`text=root3`, e => e.textContent)).toBe('Hello from root3');
     expect(await root3.$eval(`css=[attr*="value"]`, e => e.textContent)).toBe('Hello from root3 #2');
     expect(await root3.$(`css:light=[attr*="value"]`)).toBe(null);
+  });
+
+  it('should work with > combinator and spaces', async({page, server}) => {
+    await page.setContent(`<div foo="bar" bar="baz"><span></span></div>`);
+    expect(await page.$eval(`div[foo="bar"] > span`, e => e.outerHTML)).toBe(`<span></span>`);
+    expect(await page.$eval(`div[foo="bar"]> span`, e => e.outerHTML)).toBe(`<span></span>`);
+    expect(await page.$eval(`div[foo="bar"] >span`, e => e.outerHTML)).toBe(`<span></span>`);
+    expect(await page.$eval(`div[foo="bar"]>span`, e => e.outerHTML)).toBe(`<span></span>`);
+    expect(await page.$eval(`div[foo="bar"]   >    span`, e => e.outerHTML)).toBe(`<span></span>`);
+    expect(await page.$eval(`div[foo="bar"]>    span`, e => e.outerHTML)).toBe(`<span></span>`);
+    expect(await page.$eval(`div[foo="bar"]     >span`, e => e.outerHTML)).toBe(`<span></span>`);
+    expect(await page.$eval(`div[foo="bar"][bar="baz"] > span`, e => e.outerHTML)).toBe(`<span></span>`);
+    expect(await page.$eval(`div[foo="bar"][bar="baz"]> span`, e => e.outerHTML)).toBe(`<span></span>`);
+    expect(await page.$eval(`div[foo="bar"][bar="baz"] >span`, e => e.outerHTML)).toBe(`<span></span>`);
+    expect(await page.$eval(`div[foo="bar"][bar="baz"]>span`, e => e.outerHTML)).toBe(`<span></span>`);
+    expect(await page.$eval(`div[foo="bar"][bar="baz"]   >    span`, e => e.outerHTML)).toBe(`<span></span>`);
+    expect(await page.$eval(`div[foo="bar"][bar="baz"]>    span`, e => e.outerHTML)).toBe(`<span></span>`);
+    expect(await page.$eval(`div[foo="bar"][bar="baz"]     >span`, e => e.outerHTML)).toBe(`<span></span>`);
   });
 
   it('should work with comma separated list', async({page, server}) => {
@@ -622,6 +705,30 @@ describe('css selector', () => {
     expect(await page.$eval(`css=[attr='hello,world!']`, e => e.outerHTML)).toBe('<div attr="hello,world!"></div>');
     expect(await page.$eval(`css=div[attr="hello,world!"],span`, e => e.outerHTML)).toBe('<span></span>');
   });
+
+  it('should work with attribute selectors', async({page}) => {
+    await page.setContent(`<div attr="hello world" attr2="hello-''>>foo=bar[]" attr3="] span"><span></span></div>`);
+    await page.evaluate(() => window.div = document.querySelector('div'));
+    const selectors = [
+      `[attr="hello world"]`,
+      `[attr = "hello world"]`,
+      `[attr ~= world]`,
+      `[attr ^=hello ]`,
+      `[attr $= world ]`,
+      `[attr *= "llo wor" ]`,
+      `[attr2 |= hello]`,
+      `[attr = "Hello World" i ]`,
+      `[attr *= "llo WOR"i]`,
+      `[attr $= woRLD i]`,
+      `[attr2 = "hello-''>>foo=bar[]"]`,
+      `[attr2 $="foo=bar[]"]`,
+    ];
+    for (const selector of selectors)
+      expect(await page.$eval(selector, e => e === div)).toBe(true);
+    expect(await page.$eval(`[attr*=hello] span`, e => e.parentNode === div)).toBe(true);
+    expect(await page.$eval(`[attr*=hello] >> span`, e => e.parentNode === div)).toBe(true);
+    expect(await page.$eval(`[attr3="] span"] >> span`, e => e.parentNode === div)).toBe(true);
+  });
 });
 
 describe('attribute selector', () => {
@@ -649,15 +756,19 @@ describe('selectors.register', () => {
         return Array.from(root.querySelectorAll(selector));
       }
     });
-    await registerEngine('tag', `(${createTagSelector.toString()})()`);
+    await utils.registerEngine('tag', `(${createTagSelector.toString()})()`);
     await page.setContent('<div><span></span></div><div></div>');
     expect(await playwright.selectors._createSelector('tag', await page.$('div'))).toBe('DIV');
     expect(await page.$eval('tag=DIV', e => e.nodeName)).toBe('DIV');
     expect(await page.$eval('tag=SPAN', e => e.nodeName)).toBe('SPAN');
     expect(await page.$$eval('tag=DIV', es => es.length)).toBe(2);
+
+    // Selector names are case-sensitive.
+    const error = await page.$('tAG=DIV').catch(e => e);
+    expect(error.message).toBe('Unknown engine "tAG" while parsing selector tAG=DIV');
   });
   it('should work with path', async ({page}) => {
-    await registerEngine('foo', { path: path.join(__dirname, 'assets/sectionselectorengine.js') });
+    await utils.registerEngine('foo', { path: path.join(__dirname, 'assets/sectionselectorengine.js') });
     await page.setContent('<section></section>');
     expect(await page.$eval('foo=whatever', e => e.nodeName)).toBe('SECTION');
   });
@@ -671,8 +782,8 @@ describe('selectors.register', () => {
         return [document.body, document.documentElement, window.__answer];
       }
     });
-    await registerEngine('main', createDummySelector);
-    await registerEngine('isolated', createDummySelector, { contentScript: true });
+    await utils.registerEngine('main', createDummySelector);
+    await utils.registerEngine('isolated', createDummySelector, { contentScript: true });
     await page.setContent('<div><span><section></section></span></div>');
     await page.evaluate(() => window.__answer = document.querySelector('span'));
     // Works in main if asked.
@@ -692,10 +803,7 @@ describe('selectors.register', () => {
     // Can be chained to css.
     expect(await page.$eval('main=ignored >> css=section', e => e.nodeName)).toBe('SECTION');
   });
-  it('should update', async ({page}) => {
-    await page.setContent('<div><dummy id=d1></dummy></div><span><dummy id=d2></dummy></span>');
-    expect(await page.$eval('div', e => e.nodeName)).toBe('DIV');
-
+  it('should handle errors', async ({page}) => {
     let error = await page.$('neverregister=ignored').catch(e => e);
     expect(error.message).toBe('Unknown engine "neverregister" while parsing selector neverregister=ignored');
 
@@ -714,9 +822,9 @@ describe('selectors.register', () => {
     error = await playwright.selectors.register('$', createDummySelector).catch(e => e);
     expect(error.message).toBe('Selector engine name may only contain [a-zA-Z0-9_] characters');
 
-    await registerEngine('dummy', createDummySelector);
-    expect(await page.$eval('dummy=ignored', e => e.id)).toBe('d1');
-    expect(await page.$eval('css=span >> dummy=ignored', e => e.id)).toBe('d2');
+    // Selector names are case-sensitive.
+    await utils.registerEngine('dummy', createDummySelector);
+    await utils.registerEngine('duMMy', createDummySelector);
 
     error = await playwright.selectors.register('dummy', createDummySelector).catch(e => e);
     expect(error.message).toBe('"dummy" selector engine has been already registered');

@@ -17,9 +17,10 @@
 
 import { EventEmitter } from 'events';
 import { assert } from '../helper';
-import { ConnectionTransport, ProtocolRequest, ProtocolResponse, protocolLog } from '../transport';
+import { ConnectionTransport, ProtocolRequest, ProtocolResponse } from '../transport';
 import { Protocol } from './protocol';
-import { InnerLogger } from '../logger';
+import { Loggers, Logger } from '../logger';
+import { rewriteErrorMessage } from '../utils/stackTrace';
 
 export const ConnectionEvents = {
   Disconnected: Symbol('Disconnected'),
@@ -33,7 +34,7 @@ export class FFConnection extends EventEmitter {
   private _lastId: number;
   private _callbacks: Map<number, {resolve: Function, reject: Function, error: Error, method: string}>;
   private _transport: ConnectionTransport;
-  private _logger: InnerLogger;
+  readonly _logger: Logger;
   readonly _sessions: Map<string, FFSession>;
   _closed: boolean;
 
@@ -43,10 +44,10 @@ export class FFConnection extends EventEmitter {
   removeListener: <T extends keyof Protocol.Events | symbol>(event: T, listener: (payload: T extends symbol ? any : Protocol.Events[T extends keyof Protocol.Events ? T : never]) => void) => this;
   once: <T extends keyof Protocol.Events | symbol>(event: T, listener: (payload: T extends symbol ? any : Protocol.Events[T extends keyof Protocol.Events ? T : never]) => void) => this;
 
-  constructor(transport: ConnectionTransport, logger: InnerLogger) {
+  constructor(transport: ConnectionTransport, loggers: Loggers) {
     super();
     this._transport = transport;
-    this._logger = logger;
+    this._logger = loggers.protocol;
     this._lastId = 0;
     this._callbacks = new Map();
 
@@ -78,14 +79,14 @@ export class FFConnection extends EventEmitter {
   }
 
   _rawSend(message: ProtocolRequest) {
-    if (this._logger._isLogEnabled(protocolLog))
-      this._logger._log(protocolLog, 'SEND ► ' + rewriteInjectedScriptEvaluationLog(message));
+    if (this._logger.isEnabled())
+      this._logger.info('SEND ► ' + rewriteInjectedScriptEvaluationLog(message));
     this._transport.send(message);
   }
 
   async _onMessage(message: ProtocolResponse) {
-    if (this._logger._isLogEnabled(protocolLog))
-      this._logger._log(protocolLog, '◀ RECV ' + JSON.stringify(message));
+    if (this._logger.isEnabled())
+      this._logger.info('◀ RECV ' + JSON.stringify(message));
     if (message.id === kBrowserCloseMessageId)
       return;
     if (message.sessionId) {
@@ -112,7 +113,7 @@ export class FFConnection extends EventEmitter {
     this._transport.onmessage = undefined;
     this._transport.onclose = undefined;
     for (const callback of this._callbacks.values())
-      callback.reject(rewriteError(callback.error, `Protocol error (${callback.method}): Target closed.`));
+      callback.reject(rewriteErrorMessage(callback.error, `Protocol error (${callback.method}): Target closed.`));
     this._callbacks.clear();
     for (const session of this._sessions.values())
       session.dispose();
@@ -184,6 +185,12 @@ export class FFSession extends EventEmitter {
     });
   }
 
+  sendMayFail<T extends keyof Protocol.CommandParameters>(method: T, params?: Protocol.CommandParameters[T]): Promise<Protocol.CommandReturnValues[T] | void> {
+    return this.send(method, params).catch(error => {
+      this._connection._logger.error(error);
+    });
+  }
+
   dispatchMessage(object: ProtocolResponse) {
     if (object.id && this._callbacks.has(object.id)) {
       const callback = this._callbacks.get(object.id)!;
@@ -200,7 +207,7 @@ export class FFSession extends EventEmitter {
 
   dispose() {
     for (const callback of this._callbacks.values())
-      callback.reject(rewriteError(callback.error, `Protocol error (${callback.method}): Target closed.`));
+      callback.reject(rewriteErrorMessage(callback.error, `Protocol error (${callback.method}): Target closed.`));
     this._callbacks.clear();
     this._disposed = true;
     this._connection._sessions.delete(this._sessionId);
@@ -212,12 +219,7 @@ function createProtocolError(error: Error, method: string, protocolError: { mess
   let message = `Protocol error (${method}): ${protocolError.message}`;
   if ('data' in protocolError)
     message += ` ${protocolError.data}`;
-  return rewriteError(error, message);
-}
-
-function rewriteError(error: Error, message: string): Error {
-  error.message = message;
-  return error;
+  return rewriteErrorMessage(error, message);
 }
 
 function rewriteInjectedScriptEvaluationLog(message: ProtocolRequest): string {
