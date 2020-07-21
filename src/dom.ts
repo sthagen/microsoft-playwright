@@ -93,7 +93,7 @@ export class FrameExecutionContext extends js.ExecutionContext {
     return this._injectedScriptPromise;
   }
 
-  createDebugScript(options: { record?: boolean, console?: boolean }): Promise<js.JSHandle<DebugScript> | undefined> {
+  createDebugScript(options: { console?: boolean }): Promise<js.JSHandle<DebugScript> | undefined> {
     if (!this._debugScriptPromise) {
       const source = `new (${debugScriptSource.source})()`;
       this._debugScriptPromise = this._delegate.rawEvaluate(source).then(objectId => new js.JSHandle(this, 'object', objectId)).then(async debugScript => {
@@ -121,7 +121,7 @@ export class ElementHandle<T extends Node = Node> extends js.JSHandle<T> {
 
   async _initializePreview() {
     const utility = await this._context.injectedScript();
-    this._preview = await utility.evaluate((injected, e) => 'JSHandle@' + injected.previewNode(e), this);
+    this._setPreview(await utility.evaluate((injected, e) => 'JSHandle@' + injected.previewNode(e), this));
   }
 
   asElement(): ElementHandle<T> | null {
@@ -287,11 +287,11 @@ export class ElementHandle<T extends Node = Node> extends js.JSHandle<T> {
     };
   }
 
-  async _retryPointerAction(progress: Progress, action: (point: types.Point) => Promise<void>, options: types.PointerActionOptions & types.PointerActionWaitOptions & types.NavigatingActionWaitOptions): Promise<'error:notconnected' | 'done'> {
+  async _retryPointerAction(progress: Progress, actionName: string, action: (point: types.Point) => Promise<void>, options: types.PointerActionOptions & types.PointerActionWaitOptions & types.NavigatingActionWaitOptions): Promise<'error:notconnected' | 'done'> {
     let first = true;
     while (progress.isRunning()) {
-      progress.logger.info(`${first ? 'attempting' : 'retrying'} ${progress.apiName} action`);
-      const result = await this._performPointerAction(progress, action, options);
+      progress.logger.info(`${first ? 'attempting' : 'retrying'} ${actionName} action`);
+      const result = await this._performPointerAction(progress, actionName, action, options);
       first = false;
       if (result === 'error:notvisible') {
         if (options.force)
@@ -316,7 +316,7 @@ export class ElementHandle<T extends Node = Node> extends js.JSHandle<T> {
     return 'done';
   }
 
-  async _performPointerAction(progress: Progress, action: (point: types.Point) => Promise<void>, options: types.PointerActionOptions & types.PointerActionWaitOptions & types.NavigatingActionWaitOptions): Promise<'error:notvisible' | 'error:notconnected' | 'error:notinviewport' | 'error:nothittarget' | 'done'> {
+  async _performPointerAction(progress: Progress, actionName: string, action: (point: types.Point) => Promise<void>, options: types.PointerActionOptions & types.PointerActionWaitOptions & types.NavigatingActionWaitOptions): Promise<'error:notvisible' | 'error:notconnected' | 'error:notinviewport' | 'error:nothittarget' | 'done'> {
     const { force = false, position } = options;
     if ((options as any).__testHookBeforeStable)
       await (options as any).__testHookBeforeStable();
@@ -357,9 +357,9 @@ export class ElementHandle<T extends Node = Node> extends js.JSHandle<T> {
       let restoreModifiers: types.KeyboardModifier[] | undefined;
       if (options && options.modifiers)
         restoreModifiers = await this._page.keyboard._ensureModifiers(options.modifiers);
-      progress.logger.info(`  performing ${progress.apiName} action`);
+      progress.logger.info(`  performing ${actionName} action`);
       await action(point);
-      progress.logger.info(`  ${progress.apiName} action done`);
+      progress.logger.info(`  ${actionName} action done`);
       progress.logger.info('  waiting for scheduled navigations to finish');
       if ((options as any).__testHookAfterPointerAction)
         await (options as any).__testHookAfterPointerAction();
@@ -379,7 +379,7 @@ export class ElementHandle<T extends Node = Node> extends js.JSHandle<T> {
   }
 
   _hover(progress: Progress, options: types.PointerActionOptions & types.PointerActionWaitOptions): Promise<'error:notconnected' | 'done'> {
-    return this._retryPointerAction(progress, point => this._page.mouse.move(point.x, point.y), options);
+    return this._retryPointerAction(progress, 'hover', point => this._page.mouse.move(point.x, point.y), options);
   }
 
   click(options: types.MouseClickOptions & types.PointerActionWaitOptions & types.NavigatingActionWaitOptions = {}): Promise<void> {
@@ -390,7 +390,7 @@ export class ElementHandle<T extends Node = Node> extends js.JSHandle<T> {
   }
 
   _click(progress: Progress, options: types.MouseClickOptions & types.PointerActionWaitOptions & types.NavigatingActionWaitOptions): Promise<'error:notconnected' | 'done'> {
-    return this._retryPointerAction(progress, point => this._page.mouse.click(point.x, point.y, options), options);
+    return this._retryPointerAction(progress, 'click', point => this._page.mouse.click(point.x, point.y, options), options);
   }
 
   dblclick(options: types.MouseMultiClickOptions & types.PointerActionWaitOptions & types.NavigatingActionWaitOptions = {}): Promise<void> {
@@ -401,7 +401,7 @@ export class ElementHandle<T extends Node = Node> extends js.JSHandle<T> {
   }
 
   _dblclick(progress: Progress, options: types.MouseMultiClickOptions & types.PointerActionWaitOptions & types.NavigatingActionWaitOptions): Promise<'error:notconnected' | 'done'> {
-    return this._retryPointerAction(progress, point => this._page.mouse.dblclick(point.x, point.y, options), options);
+    return this._retryPointerAction(progress, 'dblclick', point => this._page.mouse.dblclick(point.x, point.y, options), options);
   }
 
   async selectOption(values: string | ElementHandle | types.SelectOption | string[] | ElementHandle[] | types.SelectOption[] | null, options: types.NavigatingActionWaitOptions = {}): Promise<string[]> {
@@ -734,7 +734,7 @@ export function toFileTransferPayload(files: types.FilePayload[]): types.FileTra
   }));
 }
 
-function throwFatalDOMError<T>(result: T | FatalDOMError): T {
+export function throwFatalDOMError<T>(result: T | FatalDOMError): T {
   if (result === 'error:notelement')
     throw new Error('Node is not an element');
   if (result === 'error:nothtmlelement')
@@ -807,9 +807,10 @@ export function dispatchEventTask(selector: SelectorInfo, type: string, eventIni
   return injectedScript => injectedScript.evaluateHandle((injected, { parsed, type, eventInit }) => {
     return injected.pollRaf((progress, continuePolling) => {
       const element = injected.querySelector(parsed, document);
-      if (element)
-        injected.dispatchEvent(element, type, eventInit);
-      return element ? undefined : continuePolling;
+      if (!element)
+        return continuePolling;
+      progress.log(`  selector resolved to ${injected.previewNode(element)}`);
+      injected.dispatchEvent(element, type, eventInit);
     });
   }, { parsed: selector.parsed, type, eventInit });
 }
@@ -818,7 +819,48 @@ export function textContentTask(selector: SelectorInfo): SchedulableTask<string 
   return injectedScript => injectedScript.evaluateHandle((injected, parsed) => {
     return injected.pollRaf((progress, continuePolling) => {
       const element = injected.querySelector(parsed, document);
-      return element ? element.textContent : continuePolling;
+      if (!element)
+        return continuePolling;
+      progress.log(`  selector resolved to ${injected.previewNode(element)}`);
+      return element.textContent;
     });
   }, selector.parsed);
+}
+
+export function innerTextTask(selector: SelectorInfo): SchedulableTask<'error:nothtmlelement' | { innerText: string }> {
+  return injectedScript => injectedScript.evaluateHandle((injected, parsed) => {
+    return injected.pollRaf((progress, continuePolling) => {
+      const element = injected.querySelector(parsed, document);
+      if (!element)
+        return continuePolling;
+      progress.log(`  selector resolved to ${injected.previewNode(element)}`);
+      if (element.namespaceURI !== 'http://www.w3.org/1999/xhtml')
+        return 'error:nothtmlelement';
+      return { innerText: (element as HTMLElement).innerText };
+    });
+  }, selector.parsed);
+}
+
+export function innerHTMLTask(selector: SelectorInfo): SchedulableTask<string> {
+  return injectedScript => injectedScript.evaluateHandle((injected, parsed) => {
+    return injected.pollRaf((progress, continuePolling) => {
+      const element = injected.querySelector(parsed, document);
+      if (!element)
+        return continuePolling;
+      progress.log(`  selector resolved to ${injected.previewNode(element)}`);
+      return element.innerHTML;
+    });
+  }, selector.parsed);
+}
+
+export function getAttributeTask(selector: SelectorInfo, name: string): SchedulableTask<string | null> {
+  return injectedScript => injectedScript.evaluateHandle((injected, { parsed, name }) => {
+    return injected.pollRaf((progress, continuePolling) => {
+      const element = injected.querySelector(parsed, document);
+      if (!element)
+        return continuePolling;
+      progress.log(`  selector resolved to ${injected.previewNode(element)}`);
+      return element.getAttribute(name);
+    });
+  }, { parsed: selector.parsed, name });
 }

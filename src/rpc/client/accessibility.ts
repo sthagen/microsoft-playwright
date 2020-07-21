@@ -18,6 +18,7 @@
 import { PageChannel } from '../channels';
 import { ElementHandle } from './elementHandle';
 import * as types from '../../types';
+import { axNodeFromProtocol } from '../serializers';
 
 export class Accessibility {
   private _channel: PageChannel;
@@ -26,8 +27,9 @@ export class Accessibility {
     this._channel = channel;
   }
 
-  snapshot(options: { interestingOnly?: boolean; root?: ElementHandle } = {}): Promise<types.SerializedAXNode | null> {
+  async snapshot(options: { interestingOnly?: boolean; root?: ElementHandle } = {}): Promise<types.SerializedAXNode | null> {
     const root = options.root ? options.root._elementChannel : undefined;
-    return this._channel.accessibilitySnapshot({ options: { interestingOnly: options.interestingOnly, root } });
+    const result = await this._channel.accessibilitySnapshot({ interestingOnly: options.interestingOnly, root });
+    return result.rootAXNode ? axNodeFromProtocol(result.rootAXNode) : null;
   }
 }

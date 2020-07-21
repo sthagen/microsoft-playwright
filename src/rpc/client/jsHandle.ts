@@ -14,10 +14,9 @@
  * limitations under the License.
  */
 
-import { JSHandleChannel, JSHandleInitializer } from '../channels';
+import { JSHandleChannel, JSHandleInitializer, SerializedArgument, SerializedValue, Channel } from '../channels';
 import { ElementHandle } from './elementHandle';
 import { ChannelOwner } from './channelOwner';
-import { Connection } from '../connection';
 import { serializeAsCallArgument, parseEvaluationResultValue } from '../../common/utilityScriptSerializers';
 
 type NoHandles<Arg> = Arg extends JSHandle ? never : (Arg extends object ? { [Key in keyof Arg]: NoHandles<Arg[Key]> } : Arg);
@@ -37,52 +36,46 @@ export type FuncOn<On, Arg2, R> = string | ((on: On, arg2: Unboxed<Arg2>) => R |
 export type SmartHandle<T> = T extends Node ? ElementHandle<T> : JSHandle<T>;
 
 export class JSHandle<T = any> extends ChannelOwner<JSHandleChannel, JSHandleInitializer> {
+  private _preview: string;
+
   static from(handle: JSHandleChannel): JSHandle {
-    return handle._object;
+    return (handle as any)._object;
   }
 
-  static fromNullable(handle: JSHandleChannel | null): JSHandle | null {
-    return handle ? JSHandle.from(handle) : null;
-  }
-
-  constructor(conection: Connection, channel: JSHandleChannel, initializer: JSHandleInitializer) {
-    super(conection, channel, initializer);
+  constructor(parent: ChannelOwner, type: string, guid: string, initializer: JSHandleInitializer) {
+    super(parent, type, guid, initializer);
+    this._preview = this._initializer.preview;
+    this._channel.on('previewUpdated', ({preview}) => this._preview = preview);
   }
 
   async evaluate<R, Arg>(pageFunction: FuncOn<T, Arg, R>, arg: Arg): Promise<R>;
   async evaluate<R>(pageFunction: FuncOn<T, void, R>, arg?: any): Promise<R>;
   async evaluate<R, Arg>(pageFunction: FuncOn<T, Arg, R>, arg: Arg): Promise<R> {
-    return parseResult(await this._channel.evaluateExpression({ expression: String(pageFunction), isFunction: typeof pageFunction === 'function', arg: serializeArgument(arg) }));
+    const result = await this._channel.evaluateExpression({ expression: String(pageFunction), isFunction: typeof pageFunction === 'function', arg: serializeArgument(arg) });
+    return parseResult(result.value);
   }
 
   async evaluateHandle<R, Arg>(pageFunction: FuncOn<T, Arg, R>, arg: Arg): Promise<SmartHandle<R>>;
   async evaluateHandle<R>(pageFunction: FuncOn<T, void, R>, arg?: any): Promise<SmartHandle<R>>;
   async evaluateHandle<R, Arg>(pageFunction: FuncOn<T, Arg, R>, arg: Arg): Promise<SmartHandle<R>> {
-    const handleChannel = await this._channel.evaluateExpressionHandle({  expression: String(pageFunction), isFunction: typeof pageFunction === 'function', arg: serializeArgument(arg) });
-    return JSHandle.from(handleChannel) as SmartHandle<R>;
+    const result = await this._channel.evaluateExpressionHandle({ expression: String(pageFunction), isFunction: typeof pageFunction === 'function', arg: serializeArgument(arg) });
+    return JSHandle.from(result.handle) as SmartHandle<R>;
   }
 
-  async getProperty(propertyName: string): Promise<JSHandle> {
-    const objectHandle = await this.evaluateHandle((object: any, propertyName: string) => {
-      const result: any = {__proto__: null};
-      result[propertyName] = object[propertyName];
-      return result;
-    }, propertyName);
-    const properties = await objectHandle.getProperties();
-    const result = properties.get(propertyName)!;
-    objectHandle.dispose();
-    return result;
+  async getProperty(name: string): Promise<JSHandle> {
+    const result = await this._channel.getProperty({ name });
+    return JSHandle.from(result.handle);
   }
 
   async getProperties(): Promise<Map<string, JSHandle>> {
     const map = new Map<string, JSHandle>();
-    for (const { name, value } of await this._channel.getPropertyList())
+    for (const { name, value } of (await this._channel.getPropertyList()).properties)
       map.set(name, JSHandle.from(value));
     return map;
   }
 
   async jsonValue(): Promise<T> {
-    return await this._channel.jsonValue();
+    return parseResult((await this._channel.jsonValue()).value);
   }
 
   asElement(): ElementHandle | null {
@@ -94,24 +87,26 @@ export class JSHandle<T = any> extends ChannelOwner<JSHandleChannel, JSHandleIni
   }
 
   toString(): string {
-    return this._initializer.preview;
+    return this._preview;
   }
 }
 
-export function serializeArgument(arg: any): any {
-  const guids: { guid: string }[] = [];
-  const pushHandle = (guid: string): number => {
-    guids.push({ guid });
-    return guids.length - 1;
+// This function takes care of converting all JSHandles to their channels,
+// so that generic channel serializer converts them to guids.
+export function serializeArgument(arg: any): SerializedArgument {
+  const handles: Channel[] = [];
+  const pushHandle = (channel: Channel): number => {
+    handles.push(channel);
+    return handles.length - 1;
   };
   const value = serializeAsCallArgument(arg, value => {
-    if (value instanceof ChannelOwner)
-      return { h: pushHandle(value._channel._guid) };
+    if (value instanceof JSHandle)
+      return { h: pushHandle(value._channel) };
     return { fallThrough: value };
   });
-  return { value, guids };
+  return { value, handles };
 }
 
-export function parseResult(arg: any): any {
-  return parseEvaluationResultValue(arg, []);
+export function parseResult(arg: SerializedValue): any {
+  return parseEvaluationResultValue(arg as any, []);
 }

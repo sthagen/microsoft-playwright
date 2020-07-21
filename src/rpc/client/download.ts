@@ -14,19 +14,18 @@
  * limitations under the License.
  */
 
-import * as fs from 'fs';
 import { DownloadChannel, DownloadInitializer } from '../channels';
-import { Connection } from '../connection';
 import { ChannelOwner } from './channelOwner';
 import { Readable } from 'stream';
+import { Stream } from './stream';
 
 export class Download extends ChannelOwner<DownloadChannel, DownloadInitializer> {
-  static from(request: DownloadChannel): Download {
-    return request._object;
+  static from(download: DownloadChannel): Download {
+    return (download as any)._object;
   }
 
-  constructor(connection: Connection, channel: DownloadChannel, initializer: DownloadInitializer) {
-    super(connection, channel, initializer);
+  constructor(parent: ChannelOwner, type: string, guid: string, initializer: DownloadInitializer) {
+    super(parent, type, guid, initializer);
   }
 
   url(): string {
@@ -38,16 +37,19 @@ export class Download extends ChannelOwner<DownloadChannel, DownloadInitializer>
   }
 
   async path(): Promise<string | null> {
-    return this._channel.path();
+    return (await this._channel.path()).value || null;
   }
 
   async failure(): Promise<string | null> {
-    return this._channel.failure();
+    return (await this._channel.failure()).error || null;
   }
 
   async createReadStream(): Promise<Readable | null> {
-    const fileName = await this.path();
-    return fileName ? fs.createReadStream(fileName) : null;
+    const result = await this._channel.stream();
+    if (!result.stream)
+      return null;
+    const stream = Stream.from(result.stream);
+    return stream.stream();
   }
 
   async delete(): Promise<void> {

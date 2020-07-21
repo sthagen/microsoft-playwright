@@ -15,95 +15,88 @@
  */
 
 import { Request, Response, Route } from '../../network';
-import * as types from '../../types';
-import { RequestChannel, ResponseChannel, RouteChannel, ResponseInitializer, RequestInitializer, RouteInitializer } from '../channels';
-import { Dispatcher, DispatcherScope } from '../dispatcher';
+import { RequestChannel, ResponseChannel, RouteChannel, ResponseInitializer, RequestInitializer, RouteInitializer, Binary, SerializedError } from '../channels';
+import { Dispatcher, DispatcherScope, lookupNullableDispatcher, existingDispatcher } from './dispatcher';
 import { FrameDispatcher } from './frameDispatcher';
+import { headersObjectToArray, headersArrayToObject, serializeError } from '../serializers';
+import * as types from '../../types';
 
 export class RequestDispatcher extends Dispatcher<Request, RequestInitializer> implements RequestChannel {
+
   static from(scope: DispatcherScope, request: Request): RequestDispatcher {
-    if ((request as any)[scope.dispatcherSymbol])
-      return (request as any)[scope.dispatcherSymbol];
-    return new RequestDispatcher(scope, request);
+    const result = existingDispatcher<RequestDispatcher>(request);
+    return result || new RequestDispatcher(scope, request);
   }
 
-  static fromNullable(scope: DispatcherScope, request: Request | null): RequestDispatcher | null {
-    return request ? RequestDispatcher.from(scope, request) : null;
+  static fromNullable(scope: DispatcherScope, request: Request | null): RequestDispatcher | undefined {
+    return request ? RequestDispatcher.from(scope, request) : undefined;
   }
 
-  constructor(scope: DispatcherScope, request: Request) {
+  private constructor(scope: DispatcherScope, request: Request) {
+    const postData = request.postData();
     super(scope, request, 'request', {
       frame: FrameDispatcher.from(scope, request.frame()),
       url: request.url(),
       resourceType: request.resourceType(),
       method: request.method(),
-      postData: request.postData(),
-      headers: request.headers(),
+      postData: postData === null ? undefined : postData,
+      headers: headersObjectToArray(request.headers()),
       isNavigationRequest: request.isNavigationRequest(),
       redirectedFrom: RequestDispatcher.fromNullable(scope, request.redirectedFrom()),
     });
   }
 
-  async response(): Promise<ResponseChannel | null> {
-    return ResponseDispatcher.fromNullable(this._scope, await this._object.response());
+  async response(): Promise<{ response?: ResponseChannel }> {
+    return { response: lookupNullableDispatcher<ResponseDispatcher>(await this._object.response()) };
   }
 }
 
 export class ResponseDispatcher extends Dispatcher<Response, ResponseInitializer> implements ResponseChannel {
 
-  static from(scope: DispatcherScope, response: Response): ResponseDispatcher {
-    if ((response as any)[scope.dispatcherSymbol])
-      return (response as any)[scope.dispatcherSymbol];
-    return new ResponseDispatcher(scope, response);
-  }
-
-  static fromNullable(scope: DispatcherScope, response: Response | null): ResponseDispatcher | null {
-    return response ? ResponseDispatcher.from(scope, response) : null;
-  }
-
   constructor(scope: DispatcherScope, response: Response) {
     super(scope, response, 'response', {
-      request: RequestDispatcher.from(scope, response.request())!,
+      // TODO: responses in popups can point to non-reported requests.
+      request: RequestDispatcher.from(scope, response.request()),
       url: response.url(),
       status: response.status(),
       statusText: response.statusText(),
-      headers: response.headers(),
+      headers: headersObjectToArray(response.headers()),
     });
   }
 
-  async finished(): Promise<Error | null> {
-    return await this._object.finished();
+  async finished(): Promise<{ error?: SerializedError }> {
+    const error = await this._object.finished();
+    return { error: error ? serializeError(error) : undefined };
   }
 
-  async body(): Promise<Buffer> {
-    return await this._object.body();
+  async body(): Promise<{ binary: Binary }> {
+    return { binary: (await this._object.body()).toString('base64') };
   }
 }
 
 export class RouteDispatcher extends Dispatcher<Route, RouteInitializer> implements RouteChannel {
 
-  static from(scope: DispatcherScope, route: Route): RouteDispatcher {
-    if ((route as any)[scope.dispatcherSymbol])
-      return (route as any)[scope.dispatcherSymbol];
-    return new RouteDispatcher(scope, route);
-  }
-
-  static fromNullable(scope: DispatcherScope, route: Route | null): RouteDispatcher | null {
-    return route ? RouteDispatcher.from(scope, route) : null;
-  }
-
   constructor(scope: DispatcherScope, route: Route) {
     super(scope, route, 'route', {
+      // Context route can point to a non-reported request.
       request: RequestDispatcher.from(scope, route.request())
     });
   }
 
-  async continue(params: { overrides: { method?: string, headers?: types.Headers, postData?: string } }): Promise<void> {
-    await this._object.continue(params.overrides);
+  async continue(params: types.NormalizedContinueOverrides): Promise<void> {
+    await this._object.continue({
+      method: params.method,
+      headers: params.headers ? headersArrayToObject(params.headers) : undefined,
+      postData: params.postData,
+    });
   }
 
-  async fulfill(params: { response: types.FulfillResponse & { path?: string } }): Promise<void> {
-    await this._object.fulfill(params.response);
+  async fulfill(params: types.NormalizedFulfillResponse): Promise<void> {
+    await this._object.fulfill({
+      status: params.status,
+      headers: params.headers ? headersArrayToObject(params.headers) : undefined,
+      body: params.isBase64 ? Buffer.from(params.body, 'base64') : params.body,
+    });
   }
 
   async abort(params: { errorCode: string }): Promise<void> {

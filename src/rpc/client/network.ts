@@ -19,7 +19,7 @@ import * as types from '../../types';
 import { RequestChannel, ResponseChannel, RouteChannel, RequestInitializer, ResponseInitializer, RouteInitializer } from '../channels';
 import { ChannelOwner } from './channelOwner';
 import { Frame } from './frame';
-import { Connection } from '../connection';
+import { normalizeFulfillParameters, headersArrayToObject, normalizeContinueOverrides, parseError } from '../serializers';
 
 export type NetworkCookie = {
   name: string,
@@ -48,20 +48,22 @@ export class Request extends ChannelOwner<RequestChannel, RequestInitializer> {
   private _redirectedFrom: Request | null = null;
   private _redirectedTo: Request | null = null;
   _failureText: string | null = null;
+  private _headers: types.Headers;
 
   static from(request: RequestChannel): Request {
-    return request._object;
+    return (request as any)._object;
   }
 
-  static fromNullable(request: RequestChannel | null): Request | null {
+  static fromNullable(request: RequestChannel | undefined): Request | null {
     return request ? Request.from(request) : null;
   }
 
-  constructor(connection: Connection, channel: RequestChannel, initializer: RequestInitializer) {
-    super(connection, channel, initializer);
+  constructor(parent: ChannelOwner, type: string, guid: string, initializer: RequestInitializer) {
+    super(parent, type, guid, initializer);
     this._redirectedFrom = Request.fromNullable(initializer.redirectedFrom);
     if (this._redirectedFrom)
       this._redirectedFrom._redirectedTo = this;
+    this._headers = headersArrayToObject(initializer.headers);
   }
 
   url(): string {
@@ -77,7 +79,7 @@ export class Request extends ChannelOwner<RequestChannel, RequestInitializer> {
   }
 
   postData(): string | null {
-    return this._initializer.postData;
+    return this._initializer.postData || null;
   }
 
   postDataJSON(): Object | null {
@@ -99,12 +101,12 @@ export class Request extends ChannelOwner<RequestChannel, RequestInitializer> {
     return JSON.parse(this._initializer.postData);
   }
 
-  headers(): {[key: string]: string} {
-    return { ...this._initializer.headers };
+  headers(): types.Headers {
+    return { ...this._headers };
   }
 
   async response(): Promise<Response | null> {
-    return Response.fromNullable(await this._channel.response());
+    return Response.fromNullable((await this._channel.response()).response);
   }
 
   frame(): Frame {
@@ -130,15 +132,19 @@ export class Request extends ChannelOwner<RequestChannel, RequestInitializer> {
       errorText: this._failureText
     };
   }
+
+  _finalRequest(): Request {
+    return this._redirectedTo ? this._redirectedTo._finalRequest() : this;
+  }
 }
 
 export class Route extends ChannelOwner<RouteChannel, RouteInitializer> {
   static from(route: RouteChannel): Route {
-    return route._object;
+    return (route as any)._object;
   }
 
-  constructor(connection: Connection, channel: RouteChannel, initializer: RouteInitializer) {
-    super(connection, channel, initializer);
+  constructor(parent: ChannelOwner, type: string, guid: string, initializer: RouteInitializer) {
+    super(parent, type, guid, initializer);
   }
 
   request(): Request {
@@ -150,27 +156,31 @@ export class Route extends ChannelOwner<RouteChannel, RouteInitializer> {
   }
 
   async fulfill(response: types.FulfillResponse & { path?: string }) {
-    await this._channel.fulfill({ response });
+    const normalized = await normalizeFulfillParameters(response);
+    await this._channel.fulfill(normalized);
   }
 
-  async continue(overrides: { method?: string; headers?: types.Headers; postData?: string } = {}) {
-    await this._channel.continue({ overrides });
+  async continue(overrides: types.ContinueOverrides = {}) {
+    await this._channel.continue(normalizeContinueOverrides(overrides));
   }
 }
 
 export type RouteHandler = (route: Route, request: Request) => void;
 
 export class Response extends ChannelOwner<ResponseChannel, ResponseInitializer> {
+  private _headers: types.Headers;
+
   static from(response: ResponseChannel): Response {
-    return response._object;
+    return (response as any)._object;
   }
 
-  static fromNullable(response: ResponseChannel | null): Response | null {
+  static fromNullable(response: ResponseChannel | undefined): Response | null {
     return response ? Response.from(response) : null;
   }
 
-  constructor(connection: Connection, channel: ResponseChannel, initializer: ResponseInitializer) {
-    super(connection, channel, initializer);
+  constructor(parent: ChannelOwner, type: string, guid: string, initializer: ResponseInitializer) {
+    super(parent, type, guid, initializer);
+    this._headers = headersArrayToObject(initializer.headers);
   }
 
   url(): string {
@@ -189,16 +199,19 @@ export class Response extends ChannelOwner<ResponseChannel, ResponseInitializer>
     return this._initializer.statusText;
   }
 
-  headers(): object {
-    return { ...this._initializer.headers };
+  headers(): types.Headers {
+    return { ...this._headers };
   }
 
   async finished(): Promise<Error | null> {
-    return await this._channel.finished();
+    const result = await this._channel.finished();
+    if (result.error)
+      return parseError(result.error);
+    return null;
   }
 
   async body(): Promise<Buffer> {
-    return await this._channel.body();
+    return Buffer.from((await this._channel.body()).binary, 'base64');
   }
 
   async text(): Promise<string> {

@@ -22,60 +22,6 @@ const TestExpectation = {
   Fail: 'fail',
 };
 
-function createHook(callback, name) {
-  const location = Location.getCallerLocation();
-  return { name, body: callback, location };
-}
-
-class Environment {
-  constructor(name) {
-    this._name = name;
-    this._hooks = [];
-  }
-
-  name() {
-    return this._name;
-  }
-
-  beforeEach(callback) {
-    this._hooks.push(createHook(callback, 'beforeEach'));
-    return this;
-  }
-
-  afterEach(callback) {
-    this._hooks.push(createHook(callback, 'afterEach'));
-    return this;
-  }
-
-  beforeAll(callback) {
-    this._hooks.push(createHook(callback, 'beforeAll'));
-    return this;
-  }
-
-  afterAll(callback) {
-    this._hooks.push(createHook(callback, 'afterAll'));
-    return this;
-  }
-
-  globalSetup(callback) {
-    this._hooks.push(createHook(callback, 'globalSetup'));
-    return this;
-  }
-
-  globalTeardown(callback) {
-    this._hooks.push(createHook(callback, 'globalTeardown'));
-    return this;
-  }
-
-  hooks(name) {
-    return this._hooks.filter(hook => !name || hook.name === name);
-  }
-
-  isEmpty() {
-    return !this._hooks.length;
-  }
-}
-
 class Test {
   constructor(suite, name, callback, location) {
     this._suite = suite;
@@ -86,9 +32,14 @@ class Test {
     this._body = callback;
     this._location = location;
     this._timeout = 100000000;
-    this._defaultEnvironment = new Environment(this._fullName);
-    this._environments = [this._defaultEnvironment];
+    this._environments = [];
     this.Expectations = { ...TestExpectation };
+  }
+
+  titles() {
+    if (!this._name)
+      return this._suite.titles();
+    return [...this._suite.titles(), this._name];
   }
 
   suite() {
@@ -138,10 +89,6 @@ class Test {
     return this;
   }
 
-  environment() {
-    return this._defaultEnvironment;
-  }
-
   addEnvironment(environment) {
     this._environments.push(environment);
     return this;
@@ -160,51 +107,59 @@ class Suite {
   constructor(parentSuite, name, location) {
     this._parentSuite = parentSuite;
     this._name = name;
-    this._fullName = (parentSuite ? parentSuite.fullName() + ' ' + name : name).trim();
+    const fullName = (parentSuite ? parentSuite.fullName() + ' ' + name : name).trim();
+    this._fullName = fullName;
     this._location = location;
     this._skipped = false;
     this._expectation = TestExpectation.Ok;
-    this._defaultEnvironment = new Environment(this._fullName);
+
+    this._defaultEnvironment = {
+      name() { return fullName; },
+    };
+
     this._environments = [this._defaultEnvironment];
     this.Expectations = { ...TestExpectation };
   }
 
-  parentSuite() {
-    return this._parentSuite;
+  _addHook(name, callback) {
+    if (this._defaultEnvironment[name])
+      throw new Error(`ERROR: cannot re-assign hook "${name}" for suite "${this._fullName}"`);
+    this._defaultEnvironment[name] = callback;
   }
 
-  name() {
-    return this._name;
+  beforeEach(callback) { this._addHook('beforeEach', callback); }
+  afterEach(callback) { this._addHook('afterEach', callback); }
+  beforeAll(callback) { this._addHook('beforeAll', callback); }
+  afterAll(callback) { this._addHook('afterAll', callback); }
+  globalSetup(callback) { this._addHook('globalSetup', callback); }
+  globalTeardown(callback) { this._addHook('globalTeardown', callback); }
+
+  titles() {
+    if (!this._parentSuite)
+      return this._name ? [this._name] : [];
+    return this._name ? [...this._parentSuite.titles(), this._name] : this._parentSuite.titles();
   }
 
-  fullName() {
-    return this._fullName;
-  }
+  parentSuite() { return this._parentSuite; }
 
-  skipped() {
-    return this._skipped;
-  }
+  name() { return this._name; }
+
+  fullName() { return this._fullName; }
+
+  skipped() { return this._skipped; }
 
   setSkipped(skipped) {
     this._skipped = skipped;
     return this;
   }
 
-  location() {
-    return this._location;
-  }
+  location() { return this._location; }
 
-  expectation() {
-    return this._expectation;
-  }
+  expectation() { return this._expectation; }
 
   setExpectation(expectation) {
     this._expectation = expectation;
     return this;
-  }
-
-  environment() {
-    return this._defaultEnvironment;
   }
 
   addEnvironment(environment) {
@@ -221,4 +176,4 @@ class Suite {
   }
 }
 
-module.exports = { TestExpectation, Environment, Test, Suite };
+module.exports = { TestExpectation, Test, Suite };

@@ -27,7 +27,7 @@ import { Protocol } from './protocol';
 import { kPageProxyMessageReceived, PageProxyMessageReceivedPayload, WKConnection, WKSession } from './wkConnection';
 import { WKPage } from './wkPage';
 
-const DEFAULT_USER_AGENT = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_4) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/13.2 Safari/605.1.15';
+const DEFAULT_USER_AGENT = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_5) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.0 Safari/605.1.15';
 
 export class WKBrowser extends BrowserBase {
   private readonly _connection: WKConnection;
@@ -68,11 +68,7 @@ export class WKBrowser extends BrowserBase {
   _onDisconnect() {
     for (const wkPage of this._wkPages.values())
       wkPage.dispose();
-    for (const context of this._contexts.values())
-      context._browserClosed();
-    // Note: previous method uses pages to issue 'close' event on them, so we clear them after.
-    this._wkPages.clear();
-    this.emit(Events.Browser.Disconnected);
+    this._didClose();
   }
 
   async newContext(options: BrowserContextOptions = {}): Promise<BrowserContext> {
@@ -93,14 +89,14 @@ export class WKBrowser extends BrowserBase {
     const page = this._wkPages.get(payload.pageProxyId);
     if (!page)
       return;
-    const frameManager = page._page._frameManager;
-    const frame = frameManager.frame(payload.frameId);
-    if (frame) {
-      // In some cases, e.g. blob url download, we receive only frameScheduledNavigation
-      // but no signals that the navigation was canceled and replaced by download. Fix it
-      // here by simulating cancelled provisional load which matches downloads from network.
-      frameManager.provisionalLoadFailed(frame, '', 'Download is starting');
-    }
+    // In some cases, e.g. blob url download, we receive only frameScheduledNavigation
+    // but no signals that the navigation was canceled and replaced by download. Fix it
+    // here by simulating cancelled provisional load which matches downloads from network.
+    //
+    // TODO: this is racy, because download might be unrelated any navigation, and we will
+    // abort navgitation that is still running. We should be able to fix this by
+    // instrumenting policy decision start/proceed/cancel.
+    page._page._frameManager.frameAbortedNavigation(payload.frameId, 'Download is starting');
     let originPage = page._initializedPage;
     // If it's a new window download, report it on the opener page.
     if (!originPage) {
@@ -144,8 +140,10 @@ export class WKBrowser extends BrowserBase {
     const wkPage = new WKPage(context, pageProxySession, opener || null);
     this._wkPages.set(pageProxyId, wkPage);
 
-    wkPage.pageOrError().then(async () => {
+    wkPage.pageOrError().then(async pageOrError => {
       const page = wkPage._page;
+      if (pageOrError instanceof Error)
+        page._setIsError();
       context!.emit(Events.BrowserContext.Page, page);
       if (!opener)
         return;
@@ -203,7 +201,7 @@ export class WKBrowserContext extends BrowserContextBase {
   readonly _evaluateOnNewDocumentSources: string[];
 
   constructor(browser: WKBrowser, browserContextId: string | undefined, options: types.BrowserContextOptions) {
-    super(browser, options);
+    super(browser, options, !browserContextId);
     this._browser = browser;
     this._browserContextId = browserContextId;
     this._evaluateOnNewDocumentSources = [];
@@ -308,7 +306,7 @@ export class WKBrowserContext extends BrowserContextBase {
       await (page._delegate as WKPage).updateOffline();
   }
 
-  async setHTTPCredentials(httpCredentials: types.Credentials | null): Promise<void> {
+  async _doSetHTTPCredentials(httpCredentials: types.Credentials | null): Promise<void> {
     this._options.httpCredentials = httpCredentials || undefined;
     for (const page of this.pages())
       await (page._delegate as WKPage).updateHttpCredentials();
@@ -337,17 +335,9 @@ export class WKBrowserContext extends BrowserContextBase {
       await (page._delegate as WKPage).updateRequestInterception();
   }
 
-  async close() {
-    if (this._closed)
-      return;
-    if (!this._browserContextId) {
-      // Default context is only created in 'persistent' mode and closing it should close
-      // the browser.
-      await this._browser.close();
-      return;
-    }
+  async _doClose() {
+    assert(this._browserContextId);
     await this._browser._browserSession.send('Playwright.deleteContext', { browserContextId: this._browserContextId });
     this._browser._contexts.delete(this._browserContextId);
-    await this._didCloseInternal();
   }
 }

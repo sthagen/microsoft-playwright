@@ -20,24 +20,26 @@ import * as path from 'path';
 import * as util from 'util';
 import { TimeoutError } from '../errors';
 import * as types from '../types';
+import { helper, assert } from '../helper';
+import { SerializedError, AXNode } from './channels';
+import { serializeAsCallArgument, parseEvaluationResultValue } from '../common/utilityScriptSerializers';
 
-
-export function serializeError(e: any): types.Error {
-  if (e instanceof Error)
-    return { message: e.message, stack: e.stack, name: e.name };
-  return { value: e };
+export function serializeError(e: any): SerializedError {
+  if (helper.isError(e))
+    return { error: { message: e.message, stack: e.stack, name: e.name } };
+  return { value: serializeAsCallArgument(e, value => ({ fallThrough: value })) };
 }
 
-export function parseError(error: types.Error): any {
-  if (error.message === undefined)
-    return error.value;
-  if (error.name === 'TimeoutError') {
-    const e = new TimeoutError(error.message);
-    e.stack = error.stack;
+export function parseError(error: SerializedError): Error {
+  if (!error.error)
+    return parseEvaluationResultValue(error.value as any, []);
+  if (error.error.name === 'TimeoutError') {
+    const e = new TimeoutError(error.error.message);
+    e.stack = error.error.stack || '';
     return e;
   }
-  const e = new Error(error.message);
-  e.stack = error.stack;
+  const e = new Error(error.error.message);
+  e.stack = error.error.stack || '';
   return e;
 }
 
@@ -61,4 +63,109 @@ export async function normalizeFilePayloads(files: string | types.FilePayload | 
     }
   }
   return filePayloads;
+}
+
+export async function normalizeFulfillParameters(params: types.FulfillResponse & { path?: string }): Promise<types.NormalizedFulfillResponse> {
+  let body = '';
+  let isBase64 = false;
+  let length = 0;
+  if (params.path) {
+    const buffer = await util.promisify(fs.readFile)(params.path);
+    body = buffer.toString('base64');
+    isBase64 = true;
+    length = buffer.length;
+  } else if (helper.isString(params.body)) {
+    body = params.body;
+    isBase64 = false;
+    length = Buffer.byteLength(body);
+  } else if (params.body) {
+    body = params.body.toString('base64');
+    isBase64 = true;
+    length = params.body.length;
+  }
+  const headers: types.Headers = {};
+  for (const header of Object.keys(params.headers || {}))
+    headers[header.toLowerCase()] = String(params.headers![header]);
+  if (params.contentType)
+    headers['content-type'] = String(params.contentType);
+  else if (params.path)
+    headers['content-type'] = mime.getType(params.path) || 'application/octet-stream';
+  if (length && !('content-length' in headers))
+    headers['content-length'] = String(length);
+
+  return {
+    status: params.status || 200,
+    headers: headersObjectToArray(headers),
+    body,
+    isBase64
+  };
+}
+
+export function normalizeContinueOverrides(overrides: types.ContinueOverrides): types.NormalizedContinueOverrides {
+  return {
+    method: overrides.method,
+    headers: overrides.headers ? headersObjectToArray(overrides.headers) : undefined,
+    postData: overrides.postData,
+  };
+}
+
+export function headersObjectToArray(headers: types.Headers): types.HeadersArray {
+  const result: types.HeadersArray = [];
+  for (const name in headers) {
+    if (!Object.is(headers[name], undefined)) {
+      const value = headers[name];
+      assert(helper.isString(value), `Expected value of header "${name}" to be String, but "${typeof value}" is found.`);
+      result.push({ name, value });
+    }
+  }
+  return result;
+}
+
+export function headersArrayToObject(headers: types.HeadersArray): types.Headers {
+  const result: types.Headers = {};
+  for (const { name, value } of headers)
+    result[name] = value;
+  return result;
+}
+
+export function envObjectToArray(env: types.Env): types.EnvArray {
+  const result: types.EnvArray = [];
+  for (const name in env) {
+    if (!Object.is(env[name], undefined))
+      result.push({ name, value: String(env[name]) });
+  }
+  return result;
+}
+
+export function envArrayToObject(env: types.EnvArray): types.Env {
+  const result: types.Env = {};
+  for (const { name, value } of env)
+    result[name] = value;
+  return result;
+}
+
+export function axNodeToProtocol(axNode: types.SerializedAXNode): AXNode {
+  const result: AXNode = {
+    ...axNode,
+    valueNumber: typeof axNode.value === 'number' ? axNode.value : undefined,
+    valueString: typeof axNode.value === 'string' ? axNode.value : undefined,
+    checked: axNode.checked === true ? 'checked' : axNode.checked === false ? 'unchecked' : axNode.checked,
+    pressed: axNode.pressed === true ? 'pressed' : axNode.pressed === false ? 'released' : axNode.pressed,
+    children: axNode.children ? axNode.children.map(axNodeToProtocol) : undefined,
+  };
+  delete (result as any).value;
+  return result;
+}
+
+export function axNodeFromProtocol(axNode: AXNode): types.SerializedAXNode {
+  const result: types.SerializedAXNode = {
+    ...axNode,
+    value: axNode.valueNumber !== undefined ? axNode.valueNumber : axNode.valueString,
+    checked: axNode.checked === 'checked' ? true : axNode.checked === 'unchecked' ? false : axNode.checked,
+    pressed: axNode.pressed === 'pressed' ? true : axNode.pressed === 'released' ? false : axNode.pressed,
+    children: axNode.children ? axNode.children.map(axNodeFromProtocol) : undefined,
+  };
+  delete (result as any).valueNumber;
+  delete (result as any).valueString;
+  return result;
 }

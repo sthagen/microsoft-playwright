@@ -22,10 +22,10 @@ export default class UtilityScript {
     return returnByValue ? this._promiseAwareJsonValueNoThrow(result) : result;
   }
 
-  callFunction(returnByValue: boolean, functionText: string, ...args: any[]) {
-    const argCount = args[0] as number;
-    const handles = args.slice(argCount + 1);
-    const parameters = args.slice(1, argCount + 1).map(a => parseEvaluationResultValue(a, handles));
+  callFunction(returnByValue: boolean, functionText: string, argCount: number, ...argsAndHandles: any[]) {
+    const args = argsAndHandles.slice(0, argCount);
+    const handles = argsAndHandles.slice(argCount);
+    const parameters = args.map(a => parseEvaluationResultValue(a, handles));
     const func = global.eval('(' + functionText + ')');
     const result = func(...parameters);
     return returnByValue ? this._promiseAwareJsonValueNoThrow(result) : result;
@@ -47,8 +47,16 @@ export default class UtilityScript {
       }
     };
 
-    if (value && typeof value === 'object' && typeof value.then === 'function')
-      return value.then(safeJson);
+    if (value && typeof value === 'object' && typeof value.then === 'function') {
+      return (async () => {
+        // By using async function we ensure that return value is a native Promise,
+        // and not some overriden Promise in the page.
+        // This makes Firefox and WebKit debugging protocols recognize it as a Promise,
+        // properly await and return the value.
+        const promiseValue = await value;
+        return safeJson(promiseValue);
+      })();
+    }
     return safeJson(value);
   }
 }

@@ -16,11 +16,12 @@
  */
 
 import * as frames from '../frames';
-import { assert, helper } from '../helper';
+import { assert } from '../helper';
 import * as network from '../network';
 import * as types from '../types';
 import { Protocol } from './protocol';
 import { WKSession } from './wkConnection';
+import { headersArrayToObject } from '../rpc/serializers';
 
 const errorReasons: { [reason: string]: Protocol.Network.ResourceErrorType } = {
   'aborted': 'Cancellation',
@@ -66,50 +67,35 @@ export class WKInterceptableRequest implements network.RouteDelegate {
     await this._session.sendMayFail('Network.interceptRequestWithError', { requestId: this._requestId, errorType });
   }
 
-  async fulfill(response: types.FulfillResponse) {
+  async fulfill(response: types.NormalizedFulfillResponse) {
     await this._interceptedPromise;
-
-    const base64Encoded = !!response.body && !helper.isString(response.body);
-    const responseBody = response.body ? (base64Encoded ? response.body.toString('base64') : response.body as string) : '';
-
-    const responseHeaders: { [s: string]: string; } = {};
-    if (response.headers) {
-      for (const header of Object.keys(response.headers))
-        responseHeaders[header.toLowerCase()] = String(response.headers[header]);
-    }
-    let mimeType = base64Encoded ? 'application/octet-stream' : 'text/plain';
-    if (response.contentType) {
-      responseHeaders['content-type'] = response.contentType;
-      const index = response.contentType.indexOf(';');
-      if (index !== -1)
-        mimeType = response.contentType.substring(0, index).trimEnd();
-      else
-        mimeType = response.contentType.trim();
-    }
-    if (responseBody && !('content-length' in responseHeaders))
-      responseHeaders['content-length'] = String(Buffer.byteLength(responseBody));
 
     // In certain cases, protocol will return error if the request was already canceled
     // or the page was closed. We should tolerate these errors.
+    let mimeType = response.isBase64 ? 'application/octet-stream' : 'text/plain';
+    const headers = headersArrayToObject(response.headers);
+    const contentType = headers['content-type'];
+    if (contentType)
+      mimeType = contentType.split(';')[0].trim();
     await this._session.sendMayFail('Network.interceptRequestWithResponse', {
       requestId: this._requestId,
-      status: response.status || 200,
-      statusText: network.STATUS_TEXTS[String(response.status || 200)],
+      status: response.status,
+      statusText: network.STATUS_TEXTS[String(response.status)],
       mimeType,
-      headers: responseHeaders,
-      base64Encoded,
-      content: responseBody
+      headers,
+      base64Encoded: response.isBase64,
+      content: response.body
     });
   }
 
-  async continue(overrides: { method?: string; headers?: types.Headers; postData?: string }) {
+  async continue(overrides: types.NormalizedContinueOverrides) {
     await this._interceptedPromise;
     // In certain cases, protocol will return error if the request was already canceled
     // or the page was closed. We should tolerate these errors.
     await this._session.sendMayFail('Network.interceptWithRequest', {
       requestId: this._requestId,
       method: overrides.method,
-      headers: overrides.headers,
+      headers: overrides.headers ? headersArrayToObject(overrides.headers) : undefined,
       postData: overrides.postData ? Buffer.from(overrides.postData).toString('base64') : undefined
     });
   }

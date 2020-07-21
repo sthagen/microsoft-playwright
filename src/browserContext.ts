@@ -15,8 +15,7 @@
  * limitations under the License.
  */
 
-import { Writable } from 'stream';
-import { helper } from './helper';
+import { isUnderTest, helper, deprecate} from './helper';
 import * as network from './network';
 import { Page, PageBinding } from './page';
 import { TimeoutSettings } from './timeoutSettings';
@@ -61,35 +60,28 @@ export abstract class BrowserContextBase extends EventEmitter implements Browser
   readonly _pageBindings = new Map<string, PageBinding>();
   readonly _options: BrowserContextOptions;
   _routes: { url: types.URLMatch, handler: network.RouteHandler }[] = [];
-  _closed = false;
+  private _isPersistentContext: boolean;
+  private _closedStatus: 'open' | 'closing' | 'closed' = 'open';
   readonly _closePromise: Promise<Error>;
   private _closePromiseFulfill: ((error: Error) => void) | undefined;
   readonly _permissions = new Map<string, string[]>();
   readonly _downloads = new Set<Download>();
   readonly _browserBase: BrowserBase;
   readonly _apiLogger: Logger;
-  private _debugController: DebugController | undefined;
 
-  constructor(browserBase: BrowserBase, options: BrowserContextOptions) {
+  constructor(browserBase: BrowserBase, options: BrowserContextOptions, isPersistentContext: boolean) {
     super();
     this._browserBase = browserBase;
     this._options = options;
     const loggers = options.logger ? new Loggers(options.logger) : browserBase._options.loggers;
     this._apiLogger = loggers.api;
+    this._isPersistentContext = isPersistentContext;
     this._closePromise = new Promise(fulfill => this._closePromiseFulfill = fulfill);
   }
 
   async _initialize() {
-    if (helper.isDebugMode() || helper.isRecordMode()) {
-      this._debugController = new DebugController(this, {
-        recorderOutput: helper.isRecordMode() ? process.stdout : undefined
-      });
-    }
-  }
-
-  _initDebugModeForTest(options: { recorderOutput: Writable }): DebugController {
-    this._debugController = new DebugController(this, options);
-    return this._debugController;
+    if (helper.isDebugMode())
+      new DebugController(this);
   }
 
   async waitForEvent(event: string, optionsOrPredicate: types.WaitForEventOptions = {}): Promise<any> {
@@ -97,22 +89,25 @@ export abstract class BrowserContextBase extends EventEmitter implements Browser
     const progressController = new ProgressController(this._apiLogger, this._timeoutSettings.timeout(options), 'browserContext.waitForEvent');
     if (event !== Events.BrowserContext.Close)
       this._closePromise.then(error => progressController.abort(error));
-    return progressController.run(progress => helper.waitForEvent(progress, this, event, options.predicate));
+    return progressController.run(progress => helper.waitForEvent(progress, this, event, options.predicate).promise);
   }
 
   _browserClosed() {
     for (const page of this.pages())
       page._didClose();
-    this._didCloseInternal(true);
+    this._didCloseInternal();
   }
 
-  async _didCloseInternal(omitDeleteDownloads = false) {
-    this._closed = true;
-    this.emit(Events.BrowserContext.Close);
-    this._closePromiseFulfill!(new Error('Context closed'));
-    if (!omitDeleteDownloads)
-      await Promise.all([...this._downloads].map(d => d.delete()));
+  private _didCloseInternal() {
+    if (this._closedStatus === 'closed') {
+      // We can come here twice if we close browser context and browser
+      // at the same time.
+      return;
+    }
+    this._closedStatus = 'closed';
     this._downloads.clear();
+    this._closePromiseFulfill!(new Error('Context closed'));
+    this.emit(Events.BrowserContext.Close);
   }
 
   // BrowserContext methods.
@@ -124,14 +119,14 @@ export abstract class BrowserContextBase extends EventEmitter implements Browser
   abstract _doGrantPermissions(origin: string, permissions: string[]): Promise<void>;
   abstract _doClearPermissions(): Promise<void>;
   abstract setGeolocation(geolocation: types.Geolocation | null): Promise<void>;
-  abstract setHTTPCredentials(httpCredentials: types.Credentials | null): Promise<void>;
+  abstract _doSetHTTPCredentials(httpCredentials: types.Credentials | null): Promise<void>;
   abstract setExtraHTTPHeaders(headers: types.Headers): Promise<void>;
   abstract setOffline(offline: boolean): Promise<void>;
   abstract _doAddInitScript(expression: string): Promise<void>;
   abstract _doExposeBinding(binding: PageBinding): Promise<void>;
   abstract route(url: types.URLMatch, handler: network.RouteHandler): Promise<void>;
   abstract unroute(url: types.URLMatch, handler?: network.RouteHandler): Promise<void>;
-  abstract close(): Promise<void>;
+  abstract _doClose(): Promise<void>;
 
   async cookies(urls: string | string[] | undefined = []): Promise<types.NetworkCookie[]> {
     if (urls && !Array.isArray(urls))
@@ -141,6 +136,12 @@ export abstract class BrowserContextBase extends EventEmitter implements Browser
 
   async exposeFunction(name: string, playwrightFunction: Function): Promise<void> {
     await this.exposeBinding(name, (options, ...args: any) => playwrightFunction(...args));
+  }
+
+  setHTTPCredentials(httpCredentials: types.Credentials | null): Promise<void> {
+    if (!isUnderTest())
+      deprecate(`context.setHTTPCredentials`, `warning: method |context.setHTTPCredentials()| is deprecated. Instead of changing credentials, create another browser context with new credentials.`);
+    return this._doSetHTTPCredentials(httpCredentials);
   }
 
   async exposeBinding(name: string, playwrightBinding: frames.FunctionWithSource): Promise<void> {
@@ -221,6 +222,22 @@ export abstract class BrowserContextBase extends EventEmitter implements Browser
     const { username, password } = proxy;
     if (username && password)
       this._options.httpCredentials = { username, password };
+  }
+
+  async close() {
+    if (this._isPersistentContext) {
+      // Default context is only created in 'persistent' mode and closing it should close
+      // the browser.
+      await this._browserBase.close();
+      return;
+    }
+    if (this._closedStatus === 'open') {
+      this._closedStatus = 'closing';
+      await this._doClose();
+      await Promise.all([...this._downloads].map(d => d.delete()));
+      this._didCloseInternal();
+    }
+    await this._closePromise;
   }
 }
 

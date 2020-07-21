@@ -220,8 +220,6 @@ export class CRNetworkManager {
     }
     const isNavigationRequest = requestWillBeSentEvent.requestId === requestWillBeSentEvent.loaderId && requestWillBeSentEvent.type === 'Document';
     const documentId = isNavigationRequest ? requestWillBeSentEvent.loaderId : undefined;
-    if (isNavigationRequest)
-      this._page._frameManager.frameUpdatedDocumentIdForNavigation(requestWillBeSentEvent.frameId!, documentId!);
     const request = new InterceptableRequest({
       client: this._client,
       frame,
@@ -350,38 +348,28 @@ class InterceptableRequest implements network.RouteDelegate {
     this.request = new network.Request(allowInterception ? this : null, frame, redirectedFrom, documentId, url, type, method, postData, headersObject(headers));
   }
 
-  async continue(overrides: { method?: string; headers?: types.Headers; postData?: string } = {}) {
+  async continue(overrides: types.NormalizedContinueOverrides) {
     // In certain cases, protocol will return error if the request was already canceled
     // or the page was closed. We should tolerate these errors.
     await this._client._sendMayFail('Fetch.continueRequest', {
       requestId: this._interceptionId!,
-      headers: overrides.headers ? headersArray(overrides.headers) : undefined,
+      headers: overrides.headers,
       method: overrides.method,
       postData: overrides.postData
     });
   }
 
-  async fulfill(response: types.FulfillResponse) {
-    const responseBody = response.body && helper.isString(response.body) ? Buffer.from(response.body) : (response.body || null);
-
-    const responseHeaders: { [s: string]: string; } = {};
-    if (response.headers) {
-      for (const header of Object.keys(response.headers))
-        responseHeaders[header.toLowerCase()] = response.headers[header];
-    }
-    if (response.contentType)
-      responseHeaders['content-type'] = response.contentType;
-    if (responseBody && !('content-length' in responseHeaders))
-      responseHeaders['content-length'] = String(Buffer.byteLength(responseBody));
+  async fulfill(response: types.NormalizedFulfillResponse) {
+    const body = response.isBase64 ? response.body : Buffer.from(response.body).toString('base64');
 
     // In certain cases, protocol will return error if the request was already canceled
     // or the page was closed. We should tolerate these errors.
     await this._client._sendMayFail('Fetch.fulfillRequest', {
       requestId: this._interceptionId!,
-      responseCode: response.status || 200,
-      responsePhrase: network.STATUS_TEXTS[String(response.status || 200)],
-      responseHeaders: headersArray(responseHeaders),
-      body: responseBody ? responseBody.toString('base64') : undefined,
+      responseCode: response.status,
+      responsePhrase: network.STATUS_TEXTS[String(response.status)],
+      responseHeaders: response.headers,
+      body,
     });
   }
 
@@ -413,15 +401,6 @@ const errorReasons: { [reason: string]: Protocol.Network.ErrorReason } = {
   'timedout': 'TimedOut',
   'failed': 'Failed',
 };
-
-function headersArray(headers: { [s: string]: string; }): { name: string; value: string; }[] {
-  const result = [];
-  for (const name in headers) {
-    if (!Object.is(headers[name], undefined))
-      result.push({name, value: headers[name] + ''});
-  }
-  return result;
-}
 
 function headersObject(headers: Protocol.Network.Headers): types.Headers {
   const result: types.Headers = {};

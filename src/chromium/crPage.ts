@@ -498,7 +498,7 @@ class FrameSession {
 
   _onFrameRequestedNavigation(payload: Protocol.Page.frameRequestedNavigationPayload) {
     if (payload.disposition === 'currentTab')
-      this._page._frameManager.frameRequestedNavigation(payload.frameId, '');
+      this._page._frameManager.frameRequestedNavigation(payload.frameId);
   }
 
   _onFrameNavigatedWithinDocument(frameId: string, url: string) {
@@ -643,13 +643,16 @@ class FrameSession {
     ]);
   }
 
-  _onBindingCalled(event: Protocol.Runtime.bindingCalledPayload) {
+  async _onBindingCalled(event: Protocol.Runtime.bindingCalledPayload) {
     const context = this._contextIdToContext.get(event.executionContextId)!;
-    this._page._onBindingCalled(event.payload, context);
+    const pageOrError = await this._crPage.pageOrError();
+    if (!(pageOrError instanceof Error))
+      this._page._onBindingCalled(event.payload, context);
   }
 
   _onDialog(event: Protocol.Page.javascriptDialogOpeningPayload) {
     this._page.emit(Events.Page.Dialog, new dialog.Dialog(
+        this._page._logger,
         event.type,
         event.message,
         async (accept: boolean, promptText?: string) => {

@@ -33,6 +33,7 @@ import * as types from '../types';
 import { TimeoutSettings } from '../timeoutSettings';
 import { WebSocketServer } from './webSocketServer';
 import { LoggerSink } from '../loggerSink';
+import { validateDependencies } from './validateDependencies';
 
 type FirefoxPrefsOptions = { firefoxUserPrefs?: { [key: string]: string | number | boolean } };
 type LaunchOptions = types.LaunchOptions & { logger?: LoggerSink };
@@ -62,11 +63,13 @@ export abstract class BrowserTypeBase implements BrowserType {
   private _name: string;
   private _executablePath: string | undefined;
   private _webSocketNotPipe: WebSocketNotPipe | null;
+  private _browserDescriptor: browserPaths.BrowserDescriptor;
   readonly _browserPath: string;
 
   constructor(packagePath: string, browser: browserPaths.BrowserDescriptor, webSocketOrPipe: WebSocketNotPipe | null) {
     this._name = browser.name;
     const browsersPath = browserPaths.browsersPath(packagePath);
+    this._browserDescriptor = browser;
     this._browserPath = browserPaths.browserDirectory(browsersPath, browser);
     this._executablePath = browserPaths.executablePath(this._browserPath, browser);
     this._webSocketNotPipe = webSocketOrPipe;
@@ -106,6 +109,7 @@ export abstract class BrowserTypeBase implements BrowserType {
     if ((options as any).__testHookBeforeCreateBrowser)
       await (options as any).__testHookBeforeCreateBrowser();
     const browserOptions: BrowserOptions = {
+      name: this._name,
       slowMo: options.slowMo,
       persistent,
       headful: !options.headless,
@@ -142,7 +146,7 @@ export abstract class BrowserTypeBase implements BrowserType {
       progress.cleanupWhenAborted(() => transport.closeAndWait());
       if ((options as any).__testHookBeforeCreateBrowser)
         await (options as any).__testHookBeforeCreateBrowser();
-      const browser = await this._connectToTransport(transport, { slowMo: options.slowMo, loggers });
+      const browser = await this._connectToTransport(transport, { name: this._name, slowMo: options.slowMo, loggers });
       return browser;
     }, loggers.browser, TimeoutSettings.timeout(options), 'browserType.connect');
   }
@@ -184,6 +188,11 @@ export abstract class BrowserTypeBase implements BrowserType {
     const executable = executablePath || this.executablePath();
     if (!executable)
       throw new Error(`No executable path is specified. Pass "executablePath" option directly.`);
+
+    if (!executablePath) {
+      // We can only validate dependencies for bundled browsers.
+      await validateDependencies(this._browserPath, this._browserDescriptor);
+    }
 
     // Note: it is important to define these variables before launchProcess, so that we don't get
     // "Cannot access 'browserServer' before initialization" if something went wrong.

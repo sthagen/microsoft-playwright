@@ -18,37 +18,54 @@ import { BrowserBase } from '../../browser';
 import { BrowserTypeBase, BrowserType } from '../../server/browserType';
 import * as types from '../../types';
 import { BrowserDispatcher } from './browserDispatcher';
-import { BrowserChannel, BrowserTypeChannel, BrowserContextChannel, BrowserTypeInitializer } from '../channels';
-import { Dispatcher, DispatcherScope } from '../dispatcher';
+import { BrowserChannel, BrowserTypeChannel, BrowserContextChannel, BrowserTypeInitializer, BrowserServerChannel, BrowserTypeLaunchParams, BrowserTypeLaunchPersistentContextParams, BrowserTypeLaunchServerParams } from '../channels';
+import { Dispatcher, DispatcherScope } from './dispatcher';
 import { BrowserContextBase } from '../../browserContext';
 import { BrowserContextDispatcher } from './browserContextDispatcher';
+import { BrowserServerDispatcher } from './browserServerDispatcher';
+import { headersArrayToObject, envArrayToObject } from '../serializers';
 
 export class BrowserTypeDispatcher extends Dispatcher<BrowserType, BrowserTypeInitializer> implements BrowserTypeChannel {
-  static from(scope: DispatcherScope, browserType: BrowserTypeBase): BrowserTypeDispatcher {
-    if ((browserType as any)[scope.dispatcherSymbol])
-      return (browserType as any)[scope.dispatcherSymbol];
-    return new BrowserTypeDispatcher(scope, browserType);
-  }
-
   constructor(scope: DispatcherScope, browserType: BrowserTypeBase) {
     super(scope, browserType, 'browserType', {
       executablePath: browserType.executablePath(),
       name: browserType.name()
-    }, browserType.name());
+    }, true, browserType.name());
   }
 
-  async launch(params: { options?: types.LaunchOptions }): Promise<BrowserChannel> {
-    const browser = await this._object.launch(params.options || undefined);
-    return BrowserDispatcher.from(this._scope, browser as BrowserBase);
+  async launch(params: BrowserTypeLaunchParams): Promise<{ browser: BrowserChannel }> {
+    const options = {
+      ...params,
+      ignoreDefaultArgs: params.ignoreAllDefaultArgs ? true : params.ignoreDefaultArgs,
+      env: params.env ? envArrayToObject(params.env) : undefined,
+    };
+    const browser = await this._object.launch(options);
+    return { browser: new BrowserDispatcher(this._scope, browser as BrowserBase) };
   }
 
-  async launchPersistentContext(params: { userDataDir: string, options?: types.LaunchOptions & types.BrowserContextOptions }): Promise<BrowserContextChannel> {
-    const browserContext = await this._object.launchPersistentContext(params.userDataDir, params.options);
-    return BrowserContextDispatcher.from(this._scope, browserContext as BrowserContextBase);
+  async launchPersistentContext(params: BrowserTypeLaunchPersistentContextParams): Promise<{ context: BrowserContextChannel }> {
+    const options = {
+      ...params,
+      viewport: params.viewport || (params.noDefaultViewport ? null : undefined),
+      ignoreDefaultArgs: params.ignoreAllDefaultArgs ? true : params.ignoreDefaultArgs,
+      env: params.env ? envArrayToObject(params.env) : undefined,
+      extraHTTPHeaders: params.extraHTTPHeaders ? headersArrayToObject(params.extraHTTPHeaders) : undefined,
+    };
+    const browserContext = await this._object.launchPersistentContext(params.userDataDir, options);
+    return { context: new BrowserContextDispatcher(this._scope, browserContext as BrowserContextBase) };
   }
 
-  async connect(params: { options: types.ConnectOptions }): Promise<BrowserChannel> {
-    const browser = await this._object.connect(params.options);
-    return BrowserDispatcher.from(this._scope, browser as BrowserBase);
+  async launchServer(params: BrowserTypeLaunchServerParams): Promise<{ server: BrowserServerChannel }> {
+    const options = {
+      ...params,
+      ignoreDefaultArgs: params.ignoreAllDefaultArgs ? true : params.ignoreDefaultArgs,
+      env: params.env ? envArrayToObject(params.env) : undefined,
+    };
+    return { server: new BrowserServerDispatcher(this._scope, await this._object.launchServer(options)) };
+  }
+
+  async connect(params: types.ConnectOptions): Promise<{ browser: BrowserChannel }> {
+    const browser = await this._object.connect(params);
+    return { browser: new BrowserDispatcher(this._scope, browser as BrowserBase) };
   }
 }

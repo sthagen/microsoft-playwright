@@ -89,7 +89,7 @@ type PageState = {
 };
 
 export class Page extends EventEmitter {
-  private _closed = false;
+  private _closedState: 'open' | 'closing' | 'closed' = 'open';
   private _closedCallback: () => void;
   private _closedPromise: Promise<void>;
   private _disconnected = false;
@@ -145,18 +145,21 @@ export class Page extends EventEmitter {
   }
 
   _didClose() {
-    assert(!this._closed, 'Page closed twice');
-    this._closed = true;
+    this._frameManager.dispose();
+    assert(this._closedState !== 'closed', 'Page closed twice');
+    this._closedState = 'closed';
     this.emit(Events.Page.Close);
     this._closedCallback();
   }
 
   _didCrash() {
+    this._frameManager.dispose();
     this.emit(Events.Page.Crash);
     this._crashedCallback(new Error('Page crashed'));
   }
 
   _didDisconnect() {
+    this._frameManager.dispose();
     assert(!this._disconnected, 'Page disconnected twice');
     this._disconnected = true;
     this._disconnectedCallback(new Error('Page closed'));
@@ -232,6 +235,10 @@ export class Page extends EventEmitter {
     return this._attributeToPage(() => this.mainFrame().evaluateHandle(pageFunction, arg));
   }
 
+  async _evaluateExpressionHandle(expression: string, isFunction: boolean, arg: any): Promise<any> {
+    return this._attributeToPage(() => this.mainFrame()._evaluateExpressionHandle(expression, isFunction, arg));
+  }
+
   async $eval<R, Arg>(selector: string, pageFunction: js.FuncOn<Element, Arg, R>, arg: Arg): Promise<R>;
   async $eval<R>(selector: string, pageFunction: js.FuncOn<Element, void, R>, arg?: any): Promise<R>;
   async $eval<R, Arg>(selector: string, pageFunction: js.FuncOn<Element, Arg, R>, arg: Arg): Promise<R> {
@@ -239,11 +246,19 @@ export class Page extends EventEmitter {
     return this._attributeToPage(() => this.mainFrame().$eval(selector, pageFunction, arg));
   }
 
+  async _$evalExpression(selector: string, expression: string, isFunction: boolean, arg: any): Promise<any> {
+    return this._attributeToPage(() => this.mainFrame()._$evalExpression(selector, expression, isFunction, arg));
+  }
+
   async $$eval<R, Arg>(selector: string, pageFunction: js.FuncOn<Element[], Arg, R>, arg: Arg): Promise<R>;
   async $$eval<R>(selector: string, pageFunction: js.FuncOn<Element[], void, R>, arg?: any): Promise<R>;
   async $$eval<R, Arg>(selector: string, pageFunction: js.FuncOn<Element[], Arg, R>, arg: Arg): Promise<R> {
     assertMaxArguments(arguments.length, 3);
     return this._attributeToPage(() => this.mainFrame().$$eval(selector, pageFunction, arg));
+  }
+
+  async _$$evalExpression(selector: string, expression: string, isFunction: boolean, arg: any): Promise<any> {
+    return this._attributeToPage(() => this.mainFrame()._$$evalExpression(selector, expression, isFunction, arg));
   }
 
   async $$(selector: string): Promise<dom.ElementHandle<Element>[]> {
@@ -278,6 +293,8 @@ export class Page extends EventEmitter {
   }
 
   async _onBindingCalled(payload: string, context: dom.FrameExecutionContext) {
+    if (this._disconnected || this._closedState === 'closed')
+      return;
     await PageBinding.dispatch(this, payload, context);
   }
 
@@ -344,7 +361,7 @@ export class Page extends EventEmitter {
     this._disconnectedPromise.then(error => progressController.abort(error));
     if (event !== Events.Page.Crash)
       this._crashedPromise.then(error => progressController.abort(error));
-    return progressController.run(progress => helper.waitForEvent(progress, this, event, options.predicate));
+    return progressController.run(progress => helper.waitForEvent(progress, this, event, options.predicate).promise);
   }
 
   async goBack(options?: types.NavigateOptions): Promise<network.Response | null> {
@@ -391,6 +408,10 @@ export class Page extends EventEmitter {
   async evaluate<R, Arg>(pageFunction: js.Func1<Arg, R>, arg: Arg): Promise<R> {
     assertMaxArguments(arguments.length, 2);
     return this._attributeToPage(() => this.mainFrame().evaluate(pageFunction, arg));
+  }
+
+  async _evaluateExpression(expression: string, isFunction: boolean, arg: any): Promise<any> {
+    return this._attributeToPage(() => this.mainFrame()._evaluateExpression(expression, isFunction, arg));
   }
 
   async addInitScript(script: Function | string | { path?: string, content?: string }, arg?: any) {
@@ -460,19 +481,27 @@ export class Page extends EventEmitter {
   }
 
   async close(options?: { runBeforeUnload?: boolean }) {
-    if (this._closed)
+    if (this._closedState === 'closed')
       return;
-    assert(!this._disconnected, 'Protocol error: Connection closed. Most likely the page has been closed.');
     const runBeforeUnload = !!options && !!options.runBeforeUnload;
-    await this._delegate.closePage(runBeforeUnload);
+    if (this._closedState !== 'closing') {
+      this._closedState = 'closing';
+      assert(!this._disconnected, 'Protocol error: Connection closed. Most likely the page has been closed.');
+      await this._delegate.closePage(runBeforeUnload);
+    }
     if (!runBeforeUnload)
       await this._closedPromise;
     if (this._ownedContext)
       await this._ownedContext.close();
   }
 
+  _setIsError() {
+    if (!this._frameManager.mainFrame())
+      this._frameManager.frameAttached('<dummy>', null);
+  }
+
   isClosed(): boolean {
-    return this._closed;
+    return this._closedState === 'closed';
   }
 
   private _attributeToPage<T>(func: () => T): T {
@@ -554,6 +583,10 @@ export class Page extends EventEmitter {
     return this._attributeToPage(() => this.mainFrame().waitForFunction(pageFunction, arg, options));
   }
 
+  async _waitForFunctionExpression<R>(expression: string, isFunction: boolean, arg: any, options: types.WaitForFunctionOptions = {}): Promise<js.SmartHandle<R>> {
+    return this._attributeToPage(() => this.mainFrame()._waitForFunctionExpression(expression, isFunction, arg, options));
+  }
+
   workers(): Worker[] {
     return [...this._workers.values()];
   }
@@ -624,11 +657,19 @@ export class Worker extends EventEmitter {
     return js.evaluate(await this._executionContextPromise, true /* returnByValue */, pageFunction, arg);
   }
 
+  async _evaluateExpression(expression: string, isFunction: boolean, arg: any): Promise<any> {
+    return js.evaluateExpression(await this._executionContextPromise, true /* returnByValue */, expression, isFunction, arg);
+  }
+
   async evaluateHandle<R, Arg>(pageFunction: js.Func1<Arg, R>, arg: Arg): Promise<js.SmartHandle<R>>;
   async evaluateHandle<R>(pageFunction: js.Func1<void, R>, arg?: any): Promise<js.SmartHandle<R>>;
   async evaluateHandle<R, Arg>(pageFunction: js.Func1<Arg, R>, arg: Arg): Promise<js.SmartHandle<R>> {
     assertMaxArguments(arguments.length, 2);
     return js.evaluate(await this._executionContextPromise, false /* returnByValue */, pageFunction, arg);
+  }
+
+  async _evaluateExpressionHandle(expression: string, isFunction: boolean, arg: any): Promise<any> {
+    return js.evaluateExpression(await this._executionContextPromise, false /* returnByValue */, expression, isFunction, arg);
   }
 }
 
@@ -645,36 +686,34 @@ export class PageBinding {
 
   static async dispatch(page: Page, payload: string, context: dom.FrameExecutionContext) {
     const {name, seq, args} = JSON.parse(payload);
-    let expression = null;
     try {
       let binding = page._pageBindings.get(name);
       if (!binding)
         binding = page._browserContext._pageBindings.get(name);
       const result = await binding!.playwrightFunction({ frame: context.frame, page, context: page._browserContext }, ...args);
-      expression = helper.evaluationString(deliverResult, name, seq, result);
+      context.evaluateInternal(deliverResult, { name, seq, result }).catch(logError(page._logger));
     } catch (error) {
-      if (error instanceof Error)
-        expression = helper.evaluationString(deliverError, name, seq, error.message, error.stack);
+      if (helper.isError(error))
+        context.evaluateInternal(deliverError, { name, seq, message: error.message, stack: error.stack }).catch(logError(page._logger));
       else
-        expression = helper.evaluationString(deliverErrorValue, name, seq, error);
-    }
-    context.evaluateInternal(expression).catch(logError(page._logger));
-
-    function deliverResult(name: string, seq: number, result: any) {
-      (window as any)[name]['callbacks'].get(seq).resolve(result);
-      (window as any)[name]['callbacks'].delete(seq);
+        context.evaluateInternal(deliverErrorValue, { name, seq, error }).catch(logError(page._logger));
     }
 
-    function deliverError(name: string, seq: number, message: string, stack: string) {
-      const error = new Error(message);
-      error.stack = stack;
-      (window as any)[name]['callbacks'].get(seq).reject(error);
-      (window as any)[name]['callbacks'].delete(seq);
+    function deliverResult(arg: { name: string, seq: number, result: any }) {
+      (window as any)[arg.name]['callbacks'].get(arg.seq).resolve(arg.result);
+      (window as any)[arg.name]['callbacks'].delete(arg.seq);
     }
 
-    function deliverErrorValue(name: string, seq: number, value: any) {
-      (window as any)[name]['callbacks'].get(seq).reject(value);
-      (window as any)[name]['callbacks'].delete(seq);
+    function deliverError(arg: { name: string, seq: number, message: string, stack: string | undefined }) {
+      const error = new Error(arg.message);
+      error.stack = arg.stack;
+      (window as any)[arg.name]['callbacks'].get(arg.seq).reject(error);
+      (window as any)[arg.name]['callbacks'].delete(arg.seq);
+    }
+
+    function deliverErrorValue(arg: { name: string, seq: number, error: any }) {
+      (window as any)[arg.name]['callbacks'].get(arg.seq).reject(arg.error);
+      (window as any)[arg.name]['callbacks'].delete(arg.seq);
     }
   }
 }

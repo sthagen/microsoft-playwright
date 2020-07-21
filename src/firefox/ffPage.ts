@@ -140,9 +140,7 @@ export class FFPage implements PageDelegate {
   }
 
   _onNavigationAborted(params: Protocol.Page.navigationAbortedPayload) {
-    const frame = this._page._frameManager.frame(params.frameId)!;
-    for (const task of frame._frameTasks)
-      task.onNewDocument(params.navigationId, new Error(params.errorText));
+    this._page._frameManager.frameAbortedNavigation(params.frameId, params.errorText, params.navigationId);
   }
 
   _onNavigationCommitted(params: Protocol.Page.navigationCommittedPayload) {
@@ -188,6 +186,7 @@ export class FFPage implements PageDelegate {
 
   _onDialogOpened(params: Protocol.Page.dialogOpenedPayload) {
     this._page.emit(Events.Page.Dialog, new dialog.Dialog(
+        this._page._logger,
         params.type,
         params.message,
         async (accept: boolean, promptText?: string) => {
@@ -196,9 +195,11 @@ export class FFPage implements PageDelegate {
         params.defaultValue));
   }
 
-  _onBindingCalled(event: Protocol.Page.bindingCalledPayload) {
+  async _onBindingCalled(event: Protocol.Page.bindingCalledPayload) {
     const context = this._contextIdToContext.get(event.executionContextId)!;
-    this._page._onBindingCalled(event.payload, context);
+    const pageOrError = await this.pageOrError();
+    if (!(pageOrError instanceof Error))
+      this._page._onBindingCalled(event.payload, context);
   }
 
   async _onFileChooserOpened(payload: Protocol.Page.fileChooserOpenedPayload) {
@@ -315,13 +316,13 @@ export class FFPage implements PageDelegate {
   }
 
   async goBack(): Promise<boolean> {
-    const { navigationId } = await this._session.send('Page.goBack', { frameId: this._page.mainFrame()._id });
-    return navigationId !== null;
+    const { success } = await this._session.send('Page.goBack', { frameId: this._page.mainFrame()._id });
+    return success;
   }
 
   async goForward(): Promise<boolean> {
-    const { navigationId } = await this._session.send('Page.goForward', { frameId: this._page.mainFrame()._id });
-    return navigationId !== null;
+    const { success } = await this._session.send('Page.goForward', { frameId: this._page.mainFrame()._id });
+    return success;
   }
 
   async evaluateOnNewDocument(source: string): Promise<void> {

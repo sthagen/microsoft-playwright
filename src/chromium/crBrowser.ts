@@ -89,11 +89,7 @@ export class CRBrowser extends BrowserBase {
     super(options);
     this._connection = connection;
     this._session = this._connection.rootSession;
-    this._connection.on(ConnectionEvents.Disconnected, () => {
-      for (const context of this._contexts.values())
-        context._browserClosed();
-      this.emit(CommonEvents.Browser.Disconnected);
-    });
+    this._connection.on(ConnectionEvents.Disconnected, () => this._didClose());
     this._session.on('Target.attachedToTarget', this._onAttachedToTarget.bind(this));
     this._session.on('Target.detachedFromTarget', this._onDetachedFromTarget.bind(this));
   }
@@ -155,12 +151,15 @@ export class CRBrowser extends BrowserBase {
       const opener = targetInfo.openerId ? this._crPages.get(targetInfo.openerId) || null : null;
       const crPage = new CRPage(session, targetInfo.targetId, context, opener, !!this._options.headful);
       this._crPages.set(targetInfo.targetId, crPage);
-      crPage.pageOrError().then(() => {
-        context!.emit(CommonEvents.BrowserContext.Page, crPage._page);
+      crPage.pageOrError().then(pageOrError => {
+        const page = crPage._page;
+        if (pageOrError instanceof Error)
+          page._setIsError();
+        context!.emit(CommonEvents.BrowserContext.Page, page);
         if (opener) {
           opener.pageOrError().then(openerPage => {
             if (openerPage instanceof Page && !openerPage.isClosed())
-              openerPage.emit(CommonEvents.Page.Popup, crPage._page);
+              openerPage.emit(CommonEvents.Page.Popup, page);
           });
         }
       });
@@ -281,7 +280,7 @@ export class CRBrowserContext extends BrowserContextBase {
   readonly _evaluateOnNewDocumentSources: string[];
 
   constructor(browser: CRBrowser, browserContextId: string | null, options: types.BrowserContextOptions) {
-    super(browser, options);
+    super(browser, options, !browserContextId);
     this._browser = browser;
     this._browserContextId = browserContextId;
     this._evaluateOnNewDocumentSources = [];
@@ -396,7 +395,7 @@ export class CRBrowserContext extends BrowserContextBase {
       await (page._delegate as CRPage).updateOffline();
   }
 
-  async setHTTPCredentials(httpCredentials: types.Credentials | null): Promise<void> {
+  async _doSetHTTPCredentials(httpCredentials: types.Credentials | null): Promise<void> {
     this._options.httpCredentials = httpCredentials || undefined;
     for (const page of this.pages())
       await (page._delegate as CRPage).updateHttpCredentials();
@@ -425,18 +424,20 @@ export class CRBrowserContext extends BrowserContextBase {
       await (page._delegate as CRPage).updateRequestInterception();
   }
 
-  async close() {
-    if (this._closed)
-      return;
-    if (!this._browserContextId) {
-      // Default context is only created in 'persistent' mode and closing it should close
-      // the browser.
-      await this._browser.close();
-      return;
-    }
+  async _doClose() {
+    assert(this._browserContextId);
     await this._browser._session.send('Target.disposeBrowserContext', { browserContextId: this._browserContextId });
     this._browser._contexts.delete(this._browserContextId);
-    await this._didCloseInternal();
+    for (const [targetId, serviceWorker] of this._browser._serviceWorkers) {
+      if (serviceWorker._browserContext !== this)
+        continue;
+      // When closing a browser context, service workers are shutdown
+      // asynchronously and we get detached from them later.
+      // To avoid the wrong order of notifications, we manually fire
+      // "close" event here and forget about the serivce worker.
+      serviceWorker.emit(CommonEvents.Worker.Close);
+      this._browser._serviceWorkers.delete(targetId);
+    }
   }
 
   backgroundPages(): Page[] {

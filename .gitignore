@@ -12,8 +12,6 @@
 yarn.lock
 /node6
 /src/generated/*
-/src/chromium/protocol.ts
-/src/firefox/protocol.ts
-/src/webkit/protocol.ts
 lib/
 /types/*
+jest-report.json

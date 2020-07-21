@@ -654,6 +654,10 @@ const Page = {
         viewportSize: t.Nullable(pageTypes.Size),
       },
     },
+    'bringToFront': {
+      params: {
+      },
+    },
     'setEmulatedMedia': {
       params: {
         type: t.Optional(t.Enum(['screen', 'print', ''])),
@@ -712,27 +716,21 @@ const Page = {
         frameId: t.String,
       },
       returns: {
-        navigationId: t.Nullable(t.String),
-        navigationURL: t.Nullable(t.String),
-      }
+        success: t.Boolean,
+      },
     },
     'goForward': {
       params: {
         frameId: t.String,
       },
       returns: {
-        navigationId: t.Nullable(t.String),
-        navigationURL: t.Nullable(t.String),
-      }
+        success: t.Boolean,
+      },
     },
     'reload': {
       params: {
         frameId: t.String,
       },
-      returns: {
-        navigationId: t.String,
-        navigationURL: t.String,
-      }
     },
     'getBoundingBox': {
       params: {
@@ -830,6 +828,16 @@ const Page = {
         workerId: t.String,
         message: t.String,
       },
+    },
+    'startVideoRecording': {
+      params: {
+        file: t.String,
+        width: t.Number,
+        height: t.Number,
+        scale: t.Optional(t.Number),
+      },
+    },
+    'stopVideoRecording': {
     },
   },
 };

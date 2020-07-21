@@ -17,12 +17,13 @@
 
 const fs = require('fs');
 const utils = require('./utils');
+const path = require('path');
+const pirates = require('pirates');
+const babel = require('@babel/core');
 const TestRunner = require('../utils/testrunner/');
-const {Environment} = require('../utils/testrunner/Test');
-const { DispatcherScope } = require('../lib/rpc/dispatcher');
-const { Connection } = require('../lib/rpc/connection');
-const { helper } = require('../lib/helper');
-const { BrowserTypeDispatcher } = require('../lib/rpc/server/browserTypeDispatcher');
+const { PlaywrightEnvironment, BrowserTypeEnvironment, BrowserEnvironment, PageEnvironment} = require('./environments.js');
+
+Error.stackTraceLimit = 15;
 
 function getCLIArgument(argName) {
   for (let i = 0; i < process.argv.length; ++i) {
@@ -81,46 +82,17 @@ function collect(browserNames) {
   const { setUnderTest } = require(require('path').join(playwrightPath, 'lib/helper.js'));
   setUnderTest();
 
-  const playwrightEnvironment = new Environment('Playwright');
-  playwrightEnvironment.beforeAll(async state => {
-    state.playwright = playwright;
-  });
-  playwrightEnvironment.afterAll(async state => {
-    delete state.playwright;
-  });
-
+  const playwrightEnvironment = new PlaywrightEnvironment(playwright);
   testRunner.collector().useEnvironment(playwrightEnvironment);
   for (const e of config.globalEnvironments || [])
     testRunner.collector().useEnvironment(e);
 
+  // TODO(rpc): do not use global playwright and browserType, rely solely on environments.
   global.playwright = playwright;
 
   for (const browserName of browserNames) {
     const browserType = playwright[browserName];
-
-    const browserTypeEnvironment = new Environment('BrowserType');
-    browserTypeEnvironment.beforeAll(async state => {
-      // Channel substitute
-      let overridenBrowserType = browserType;
-      if (process.env.PWCHANNEL) {
-        const dispatcherScope = new DispatcherScope();
-        const connection = new Connection();
-        dispatcherScope.onmessage = async message => {
-          setImmediate(() => connection.send(message));
-        };
-        connection.onmessage = async message => {
-          const result = await dispatcherScope.send(message);
-          await new Promise(f => setImmediate(f));
-          return result;
-        };
-        BrowserTypeDispatcher.from(dispatcherScope, browserType);
-        overridenBrowserType = await connection.waitForObjectWithKnownName(browserType.name());
-      }
-      state.browserType = overridenBrowserType;
-    });
-    browserTypeEnvironment.afterAll(async state => {
-      delete state.browserType;
-    });
+    const browserTypeEnvironment = new BrowserTypeEnvironment(browserName);
 
     // TODO: maybe launch options per browser?
     const launchOptions = {
@@ -140,33 +112,8 @@ function collect(browserNames) {
         throw new Error(`Browser is not downloaded. Run 'npm install' and try to re-run tests`);
     }
 
-    const browserEnvironment = new Environment(browserName);
-    browserEnvironment.beforeAll(async state => {
-      state._logger = utils.createTestLogger(config.dumpLogOnFailure);
-      state.browser = await state.browserType.launch({...launchOptions, logger: state._logger});
-    });
-    browserEnvironment.afterAll(async state => {
-      await state.browser.close();
-      delete state.browser;
-      delete state._logger;
-    });
-    browserEnvironment.beforeEach(async(state, testRun) => {
-      state._logger.setTestRun(testRun);
-    });
-    browserEnvironment.afterEach(async (state, testRun) => {
-      state._logger.setTestRun(null);
-    });
-
-    const pageEnvironment = new Environment('Page');
-    pageEnvironment.beforeEach(async state => {
-      state.context = await state.browser.newContext();
-      state.page = await state.context.newPage();
-    });
-    pageEnvironment.afterEach(async state => {
-      await state.context.close();
-      state.context = null;
-      state.page = null;
-    });
+    const browserEnvironment = new BrowserEnvironment(launchOptions, config.dumpLogOnFailure);
+    const pageEnvironment = new PageEnvironment();
 
     const suiteName = { 'chromium': 'Chromium', 'firefox': 'Firefox', 'webkit': 'WebKit' }[browserName];
     describe(suiteName, () => {
@@ -180,9 +127,7 @@ function collect(browserNames) {
         const skip = spec.browsers && !spec.browsers.includes(browserName);
         (skip ? xdescribe : describe)(spec.title || '', () => {
           for (const e of spec.environments || ['page']) {
-            if (e === 'browser') {
-              testRunner.collector().useEnvironment(browserEnvironment);
-            } else if (e === 'page') {
+            if (e === 'page') {
               testRunner.collector().useEnvironment(browserEnvironment);
               testRunner.collector().useEnvironment(pageEnvironment);
             } else {
@@ -190,7 +135,18 @@ function collect(browserNames) {
             }
           }
           for (const file of spec.files || []) {
+            const revert = pirates.addHook((code, filename) => {
+              const result = babel.transformFileSync(filename, {
+                presets: [
+                  ['@babel/preset-env', {targets: {node: 'current'}}],
+                  '@babel/preset-typescript']
+              });
+              return result.code;
+            }, {
+              exts: ['.ts']
+            });
             require(file);
+            revert();
             delete require.cache[require.resolve(file)];
           }
         });
@@ -214,7 +170,7 @@ module.exports = collect;
 if (require.main === module) {
   console.log('Testing on Node', process.version);
   const browserNames = ['chromium', 'firefox', 'webkit'].filter(name => {
-    return process.env.BROWSER === name || process.env.BROWSER === 'all';
+    return process.env.BROWSER === name || !process.env.BROWSER;
   });
   const testRunner = collect(browserNames);
 

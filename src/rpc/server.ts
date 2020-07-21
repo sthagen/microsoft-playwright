@@ -15,16 +15,27 @@
  */
 
 import { Transport } from './transport';
-import { DispatcherScope } from './dispatcher';
+import { DispatcherConnection } from './server/dispatcher';
 import { Playwright } from '../server/playwright';
-import { BrowserTypeDispatcher } from './server/browserTypeDispatcher';
+import { PlaywrightDispatcher } from './server/playwrightDispatcher';
+import { Electron } from '../server/electron';
+import { setUseApiName } from '../progress';
+import { gracefullyCloseAll } from '../server/processLauncher';
 
-const dispatcherScope = new DispatcherScope();
+setUseApiName(false);
+
+const dispatcherConnection = new DispatcherConnection();
 const transport = new Transport(process.stdout, process.stdin);
-transport.onmessage = message => dispatcherScope.send(message);
-dispatcherScope.onmessage = message => transport.send(message);
+transport.onclose = async () => {
+  // Force exit after 30 seconds.
+  setTimeout(() => process.exit(0), 30000);
+  // Meanwhile, try to gracefully close all browsers.
+  await gracefullyCloseAll();
+  process.exit(0);
+};
+transport.onmessage = message => dispatcherConnection.dispatch(JSON.parse(message));
+dispatcherConnection.onmessage = message => transport.send(JSON.stringify(message));
 
 const playwright = new Playwright(__dirname, require('../../browsers.json')['browsers']);
-BrowserTypeDispatcher.from(dispatcherScope, playwright.chromium!);
-BrowserTypeDispatcher.from(dispatcherScope, playwright.firefox!);
-BrowserTypeDispatcher.from(dispatcherScope, playwright.webkit!);
+(playwright as any).electron = new Electron();
+new PlaywrightDispatcher(dispatcherConnection.rootDispatcher(), playwright);

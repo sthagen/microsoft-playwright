@@ -15,46 +15,68 @@
  */
 
 import * as types from '../../types';
-import { BrowserChannel, BrowserInitializer } from '../channels';
+import { BrowserChannel, BrowserInitializer, BrowserNewContextParams } from '../channels';
 import { BrowserContext } from './browserContext';
 import { Page } from './page';
 import { ChannelOwner } from './channelOwner';
-import { Connection } from '../connection';
+import { Events } from '../../events';
+import { LoggerSink } from '../../loggerSink';
+import { BrowserType } from './browserType';
+import { headersObjectToArray } from '../serializers';
 
 export class Browser extends ChannelOwner<BrowserChannel, BrowserInitializer> {
   readonly _contexts = new Set<BrowserContext>();
   private _isConnected = true;
-
+  private _isClosedOrClosing = false;
+  private _closedPromise: Promise<void>;
+  readonly _browserType: BrowserType;
 
   static from(browser: BrowserChannel): Browser {
-    return browser._object;
+    return (browser as any)._object;
   }
 
   static fromNullable(browser: BrowserChannel | null): Browser | null {
     return browser ? Browser.from(browser) : null;
   }
 
-  constructor(connection: Connection, channel: BrowserChannel, initializer: BrowserInitializer) {
-    super(connection, channel, initializer);
+  constructor(parent: ChannelOwner, type: string, guid: string, initializer: BrowserInitializer) {
+    super(parent, type, guid, initializer, true);
+    this._browserType = parent as BrowserType;
+    this._channel.on('close', () => {
+      this._isConnected = false;
+      this.emit(Events.Browser.Disconnected);
+      this._isClosedOrClosing = true;
+      this._dispose();
+    });
+    this._closedPromise = new Promise(f => this.once(Events.Browser.Disconnected, f));
   }
 
-  async newContext(options: types.BrowserContextOptions = {}): Promise<BrowserContext> {
-    delete (options as any).logger;
-    const context = BrowserContext.from(await this._channel.newContext({ options }));
-    this._contexts.add(context);
-    context._browser = this;
-    return context;
+  async newContext(options: types.BrowserContextOptions & { logger?: LoggerSink } = {}): Promise<BrowserContext> {
+    const logger = options.logger;
+    options = { ...options, logger: undefined };
+    return this._wrapApiCall('browser.newContext', async () => {
+      const contextOptions: BrowserNewContextParams = {
+        ...options,
+        viewport: options.viewport === null ? undefined : options.viewport,
+        noDefaultViewport: options.viewport === null,
+        extraHTTPHeaders: options.extraHTTPHeaders ? headersObjectToArray(options.extraHTTPHeaders) : undefined,
+      };
+      const context = BrowserContext.from((await this._channel.newContext(contextOptions)).context);
+      this._contexts.add(context);
+      context._logger = logger || this._logger;
+      return context;
+    });
   }
 
   contexts(): BrowserContext[] {
     return [...this._contexts];
   }
 
-  async newPage(options: types.BrowserContextOptions = {}): Promise<Page> {
-    delete (options as any).logger;
+  async newPage(options: types.BrowserContextOptions & { logger?: LoggerSink } = {}): Promise<Page> {
     const context = await this.newContext(options);
     const page = await context.newPage();
     page._ownedContext = context;
+    context._ownerPage = page;
     return page;
   }
 
@@ -63,6 +85,12 @@ export class Browser extends ChannelOwner<BrowserChannel, BrowserInitializer> {
   }
 
   async close(): Promise<void> {
-    await this._channel.close();
+    return this._wrapApiCall('browser.close', async () => {
+      if (!this._isClosedOrClosing) {
+        this._isClosedOrClosing = true;
+        await this._channel.close();
+      }
+      await this._closedPromise;
+    });
   }
 }

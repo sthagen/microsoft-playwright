@@ -158,39 +158,24 @@ class InterceptableRequest implements network.RouteDelegate {
         payload.url, internalCauseToResourceType[payload.internalCause] || causeToResourceType[payload.cause] || 'other', payload.method, payload.postData || null, headers);
   }
 
-  async continue(overrides: { method?: string; headers?: types.Headers; postData?: string }) {
-    const {
-      method,
-      headers,
-      postData
-    } = overrides;
+  async continue(overrides: types.NormalizedContinueOverrides) {
     await this._session.sendMayFail('Network.resumeInterceptedRequest', {
       requestId: this._id,
-      method,
-      headers: headers ? headersArray(headers) : undefined,
-      postData: postData ? Buffer.from(postData).toString('base64') : undefined
+      method: overrides.method,
+      headers: overrides.headers,
+      postData: overrides.postData ? Buffer.from(overrides.postData).toString('base64') : undefined
     });
   }
 
-  async fulfill(response: types.FulfillResponse) {
-    const responseBody = response.body && helper.isString(response.body) ? Buffer.from(response.body) : (response.body || null);
-
-    const responseHeaders: { [s: string]: string; } = {};
-    if (response.headers) {
-      for (const header of Object.keys(response.headers))
-        responseHeaders[header.toLowerCase()] = response.headers[header];
-    }
-    if (response.contentType)
-      responseHeaders['content-type'] = response.contentType;
-    if (responseBody && !('content-length' in responseHeaders))
-      responseHeaders['content-length'] = String(Buffer.byteLength(responseBody));
+  async fulfill(response: types.NormalizedFulfillResponse) {
+    const base64body = response.isBase64 ? response.body : Buffer.from(response.body).toString('base64');
 
     await this._session.sendMayFail('Network.fulfillInterceptedRequest', {
       requestId: this._id,
-      status: response.status || 200,
-      statusText: network.STATUS_TEXTS[String(response.status || 200)] || '',
-      headers: headersArray(responseHeaders),
-      base64body: responseBody ? responseBody.toString('base64') : undefined,
+      status: response.status,
+      statusText: network.STATUS_TEXTS[String(response.status)] || '',
+      headers: response.headers,
+      base64body,
     });
   }
 

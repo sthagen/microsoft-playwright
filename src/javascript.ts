@@ -82,6 +82,7 @@ export class JSHandle<T = any> {
   readonly _value: any;
   private _objectType: string;
   protected _preview: string;
+  private _previewCallback: ((preview: string) => void) | undefined;
 
   constructor(context: ExecutionContext, type: string, objectId?: ObjectId, value?: any) {
     this._context = context;
@@ -147,6 +148,16 @@ export class JSHandle<T = any> {
   toString(): string {
     return this._preview;
   }
+
+  _setPreviewCallback(callback: (preview: string) => void) {
+    this._previewCallback = callback;
+  }
+
+  _setPreview(preview: string) {
+    this._preview = preview;
+    if (this._previewCallback)
+      this._previewCallback(preview);
+  }
 }
 
 export async function evaluate(context: ExecutionContext, returnByValue: boolean, pageFunction: Function | string, ...args: any[]): Promise<any> {
@@ -185,7 +196,7 @@ export async function evaluateExpression(context: ExecutionContext, returnByValu
     return handles.length - 1;
   };
 
-  args = args.map(arg => serializeAsCallArgument(arg, (handle: any): { h?: number, fallThrough?: any } => {
+  args = args.map(arg => serializeAsCallArgument(arg, handle => {
     if (handle instanceof JSHandle) {
       if (!handle._objectId)
         return { fallThrough: handle._value };

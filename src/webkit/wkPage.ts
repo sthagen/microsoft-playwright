@@ -248,7 +248,7 @@ export class WKPage implements PageDelegate {
     let errorText = event.error;
     if (errorText.includes('cancelled'))
       errorText += '; maybe frame was detached?';
-    this._page._frameManager.provisionalLoadFailed(this._page.mainFrame(), event.loaderId, errorText);
+    this._page._frameManager.frameAbortedNavigation(this._page.mainFrame()._id, errorText, event.loaderId);
   }
 
   handleWindowOpen(event: Protocol.Playwright.windowOpenPayload) {
@@ -366,7 +366,7 @@ export class WKPage implements PageDelegate {
   }
 
   private _onFrameScheduledNavigation(frameId: string) {
-    this._page._frameManager.frameRequestedNavigation(frameId, '');
+    this._page._frameManager.frameRequestedNavigation(frameId);
   }
 
   private _onFrameStoppedLoading(frameId: string) {
@@ -455,7 +455,10 @@ export class WKPage implements PageDelegate {
     if (level === 'debug' && parameters && parameters[0].value === BINDING_CALL_MESSAGE) {
       const parsedObjectId = JSON.parse(parameters[1].objectId!);
       const context = this._contextIdToContext.get(parsedObjectId.injectedScriptId)!;
-      this._page._onBindingCalled(parameters[2].value, context);
+      this.pageOrError().then(pageOrError => {
+        if (!(pageOrError instanceof Error))
+          this._page._onBindingCalled(parameters[2].value, context);
+      });
       return;
     }
     if (level === 'error' && source === 'javascript') {
@@ -519,12 +522,13 @@ export class WKPage implements PageDelegate {
 
   _onDialog(event: Protocol.Dialog.javascriptDialogOpeningPayload) {
     this._page.emit(Events.Page.Dialog, new dialog.Dialog(
-      event.type as dialog.DialogType,
-      event.message,
-      async (accept: boolean, promptText?: string) => {
-        await this._pageProxySession.send('Dialog.handleJavaScriptDialog', { accept, promptText });
-      },
-      event.defaultPrompt));
+        this._page._logger,
+        event.type as dialog.DialogType,
+        event.message,
+        async (accept: boolean, promptText?: string) => {
+          await this._pageProxySession.send('Dialog.handleJavaScriptDialog', { accept, promptText });
+        },
+        event.defaultPrompt));
   }
 
   private async _onFileChooserOpened(event: {frameId: Protocol.Network.FrameId, element: Protocol.Runtime.RemoteObject}) {
@@ -834,8 +838,6 @@ export class WKPage implements PageDelegate {
     // TODO(einbinder) this will fail if we are an XHR document request
     const isNavigationRequest = event.type === 'Document';
     const documentId = isNavigationRequest ? event.loaderId : undefined;
-    if (isNavigationRequest)
-      this._page._frameManager.frameUpdatedDocumentIdForNavigation(event.frameId, documentId!);
     // We do not support intercepting redirects.
     const allowInterception = this._page._needsRequestInterception() && !redirectedFrom;
     const request = new WKInterceptableRequest(session, allowInterception, frame, event, redirectedFrom, documentId);

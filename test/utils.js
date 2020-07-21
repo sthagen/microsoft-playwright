@@ -94,7 +94,7 @@ const utils = module.exports = {
     expect(await page.evaluate('window.innerHeight')).toBe(height);
   },
 
-  registerEngine: async (name, script, options) => {
+  registerEngine: async (playwright, name, script, options) => {
     try {
       await playwright.selectors.register(name, script, options);
     } catch (e) {
@@ -190,6 +190,7 @@ const utils = module.exports = {
   testOptions(browserType) {
     const GOLDEN_DIR = path.join(__dirname, 'golden-' + browserType.name());
     const OUTPUT_DIR = path.join(__dirname, 'output-' + browserType.name());
+    const ASSETS_DIR = path.join(__dirname, 'assets');
     return {
       FFOX: browserType.name() === 'firefox',
       WEBKIT: browserType.name() === 'webkit',
@@ -200,6 +201,10 @@ const utils = module.exports = {
       browserType,
       GOLDEN_DIR,
       OUTPUT_DIR,
+      ASSETS_DIR,
+      USES_HOOKS: process.env.PWCHANNEL === 'wire',
+      CHANNEL: !!process.env.PWCHANNEL,
+      HEADLESS: !!valueFromEnv('HEADLESS', true),
     };
   },
 
@@ -241,3 +246,9 @@ const utils = module.exports = {
     return logger;
   },
 };
+
+function valueFromEnv(name, defaultValue) {
+  if (!(name in process.env))
+    return defaultValue;
+  return JSON.parse(process.env[name]);
+}

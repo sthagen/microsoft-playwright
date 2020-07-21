@@ -53,11 +53,7 @@ export class FFBrowser extends BrowserBase {
     this._connection = connection;
     this._ffPages = new Map();
     this._contexts = new Map();
-    this._connection.on(ConnectionEvents.Disconnected, () => {
-      for (const context of this._contexts.values())
-        context._browserClosed();
-      this.emit(Events.Browser.Disconnected);
-    });
+    this._connection.on(ConnectionEvents.Disconnected, () => this._didClose());
     this._eventListeners = [
       helper.addEventListener(this._connection, 'Browser.attachedToTarget', this._onAttachedToTarget.bind(this)),
       helper.addEventListener(this._connection, 'Browser.detachedFromTarget', this._onDetachedFromTarget.bind(this)),
@@ -101,8 +97,10 @@ export class FFBrowser extends BrowserBase {
     const ffPage = new FFPage(session, context, opener);
     this._ffPages.set(targetId, ffPage);
 
-    ffPage.pageOrError().then(async () => {
+    ffPage.pageOrError().then(async pageOrError => {
       const page = ffPage._page;
+      if (pageOrError instanceof Error)
+        page._setIsError();
       context.emit(Events.BrowserContext.Page, page);
       if (!opener)
         return;
@@ -147,7 +145,7 @@ export class FFBrowserContext extends BrowserContextBase {
   readonly _browserContextId: string | null;
 
   constructor(browser: FFBrowser, browserContextId: string | null, options: types.BrowserContextOptions) {
-    super(browser, options);
+    super(browser, options, !browserContextId);
     this._browser = browser;
     this._browserContextId = browserContextId;
     this._authenticateProxyViaHeader();
@@ -204,14 +202,6 @@ export class FFBrowserContext extends BrowserContextBase {
 
   _ffPages(): FFPage[] {
     return Array.from(this._browser._ffPages.values()).filter(ffPage => ffPage._browserContext === this);
-  }
-
-  setDefaultNavigationTimeout(timeout: number) {
-    this._timeoutSettings.setDefaultNavigationTimeout(timeout);
-  }
-
-  setDefaultTimeout(timeout: number) {
-    this._timeoutSettings.setDefaultTimeout(timeout);
   }
 
   pages(): Page[] {
@@ -295,7 +285,7 @@ export class FFBrowserContext extends BrowserContextBase {
     await this._browser._connection.send('Browser.setOnlineOverride', { browserContextId: this._browserContextId || undefined, override: offline ? 'offline' : 'online' });
   }
 
-  async setHTTPCredentials(httpCredentials: types.Credentials | null): Promise<void> {
+  async _doSetHTTPCredentials(httpCredentials: types.Credentials | null): Promise<void> {
     this._options.httpCredentials = httpCredentials || undefined;
     await this._browser._connection.send('Browser.setHTTPCredentials', { browserContextId: this._browserContextId || undefined, credentials: httpCredentials });
   }
@@ -320,17 +310,9 @@ export class FFBrowserContext extends BrowserContextBase {
       await this._browser._connection.send('Browser.setRequestInterception', { browserContextId: this._browserContextId || undefined, enabled: false });
   }
 
-  async close() {
-    if (this._closed)
-      return;
-    if (!this._browserContextId) {
-      // Default context is only created in 'persistent' mode and closing it should close
-      // the browser.
-      await this._browser.close();
-      return;
-    }
+  async _doClose() {
+    assert(this._browserContextId);
     await this._browser._connection.send('Browser.removeBrowserContext', { browserContextId: this._browserContextId });
     this._browser._contexts.delete(this._browserContextId);
-    await this._didCloseInternal();
   }
 }

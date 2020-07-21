@@ -14,40 +14,52 @@
  * limitations under the License.
  */
 
-import { BrowserBase, Browser } from '../../browser';
+import { Browser, BrowserBase } from '../../browser';
 import { BrowserContextBase } from '../../browserContext';
-import * as types from '../../types';
+import { Events } from '../../events';
+import { BrowserChannel, BrowserContextChannel, BrowserInitializer, CDPSessionChannel, Binary, BrowserNewContextParams } from '../channels';
 import { BrowserContextDispatcher } from './browserContextDispatcher';
-import { BrowserChannel, BrowserContextChannel, PageChannel, BrowserInitializer } from '../channels';
-import { Dispatcher, DispatcherScope } from '../dispatcher';
+import { CDPSessionDispatcher } from './cdpSessionDispatcher';
+import { Dispatcher, DispatcherScope } from './dispatcher';
+import { CRBrowser } from '../../chromium/crBrowser';
 import { PageDispatcher } from './pageDispatcher';
+import { headersArrayToObject } from '../serializers';
 
 export class BrowserDispatcher extends Dispatcher<Browser, BrowserInitializer> implements BrowserChannel {
-  static from(scope: DispatcherScope, browser: BrowserBase): BrowserDispatcher {
-    if ((browser as any)[scope.dispatcherSymbol])
-      return (browser as any)[scope.dispatcherSymbol];
-    return new BrowserDispatcher(scope, browser);
-  }
-
-  static fromNullable(scope: DispatcherScope, browser: BrowserBase | null): BrowserDispatcher | null {
-    if (!browser)
-      return null;
-    return BrowserDispatcher.from(scope, browser);
-  }
-
   constructor(scope: DispatcherScope, browser: BrowserBase) {
-    super(scope, browser, 'browser', {});
+    super(scope, browser, 'browser', {}, true);
+    browser.on(Events.Browser.Disconnected, () => {
+      this._dispatchEvent('close');
+      this._dispose();
+    });
   }
 
-  async newContext(params: { options?: types.BrowserContextOptions }): Promise<BrowserContextChannel> {
-    return BrowserContextDispatcher.from(this._scope, await this._object.newContext(params.options) as BrowserContextBase);
-  }
-
-  async newPage(params: { options?: types.BrowserContextOptions }): Promise<PageChannel> {
-    return PageDispatcher.from(this._scope, await this._object.newPage(params.options));
+  async newContext(params: BrowserNewContextParams): Promise<{ context: BrowserContextChannel }> {
+    const options = {
+      ...params,
+      viewport: params.viewport || (params.noDefaultViewport ? null : undefined),
+      extraHTTPHeaders: params.extraHTTPHeaders ? headersArrayToObject(params.extraHTTPHeaders) : undefined,
+    };
+    return { context: new BrowserContextDispatcher(this._scope, await this._object.newContext(options) as BrowserContextBase) };
   }
 
   async close(): Promise<void> {
     await this._object.close();
+  }
+
+  async crNewBrowserCDPSession(): Promise<{ session: CDPSessionChannel }> {
+    const crBrowser = this._object as CRBrowser;
+    return { session: new CDPSessionDispatcher(this._scope, await crBrowser.newBrowserCDPSession()) };
+  }
+
+  async crStartTracing(params: { page?: PageDispatcher, path?: string, screenshots?: boolean, categories?: string[] }): Promise<void> {
+    const crBrowser = this._object as CRBrowser;
+    await crBrowser.startTracing(params.page ? params.page._object : undefined, params);
+  }
+
+  async crStopTracing(): Promise<{ binary: Binary }> {
+    const crBrowser = this._object as CRBrowser;
+    const buffer = await crBrowser.stopTracing();
+    return { binary: buffer.toString('base64') };
   }
 }
