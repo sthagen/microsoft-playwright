@@ -90,7 +90,7 @@ export class FFNetworkManager {
     // Keep redirected requests in the map for future reference as redirectedFrom.
     const isRedirected = response.status() >= 300 && response.status() <= 399;
     if (isRedirected) {
-      response._requestFinished(new Error('Response body is unavailable for redirect responses'));
+      response._requestFinished('Response body is unavailable for redirect responses');
     } else {
       this._requests.delete(request._id);
       response._requestFinished();
@@ -153,9 +153,11 @@ class InterceptableRequest implements network.RouteDelegate {
     const headers: types.Headers = {};
     for (const {name, value} of payload.headers)
       headers[name.toLowerCase()] = value;
-
+    let postDataBuffer = null;
+    if (payload.postData)
+      postDataBuffer = Buffer.from(payload.postData, 'base64');
     this.request = new network.Request(payload.isIntercepted ? this : null, frame, redirectedFrom ? redirectedFrom.request : null, payload.navigationId,
-        payload.url, internalCauseToResourceType[payload.internalCause] || causeToResourceType[payload.cause] || 'other', payload.method, payload.postData || null, headers);
+        payload.url, internalCauseToResourceType[payload.internalCause] || causeToResourceType[payload.cause] || 'other', payload.method, postDataBuffer, headers);
   }
 
   async continue(overrides: types.NormalizedContinueOverrides) {

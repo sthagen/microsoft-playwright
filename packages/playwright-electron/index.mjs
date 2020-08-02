@@ -14,9 +14,10 @@
  * limitations under the License.
  */
 
-import * as types from './types/types';
+import playwright from './index.js';
 
-export * from './types/types';
-export const webkit: types.BrowserType<types.WebKitBrowser>;
-export const chromium: types.BrowserType<types.ChromiumBrowser>;
-export const firefox: types.BrowserType<types.FirefoxBrowser>;
+export const electron = playwright.electron;
+export const selectors = playwright.selectors;
+export const devices = playwright.devices;
+export const errors = playwright.errors;
+export default playwright;

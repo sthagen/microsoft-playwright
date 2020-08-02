@@ -107,12 +107,11 @@ describe('Auto waiting', () => {
     const messages = [];
     server.setRoute('/empty.html?cancel', async (req, res) => { res.end('done'); });
     server.setRoute('/empty.html?override', async (req, res) => { messages.push('routeoverride'); res.end('done'); });
-    await Promise.all([
-      page.evaluate(`
+    await page.evaluate(`
         window.location.href = "${server.EMPTY_PAGE}?cancel";
         window.location.href = "${server.EMPTY_PAGE}?override";
-      `).then(() => messages.push('evaluate')),
-    ]);
+      `);
+    messages.push('evaluate');
     expect(messages.join('|')).toBe('routeoverride|evaluate');
   });
   it('should await navigation when evaluating reload', async({page, server}) => {
@@ -155,6 +154,11 @@ describe('Auto waiting', () => {
     await page.setContent(`<a href="${server.EMPTY_PAGE}">empty.html</a>`);
     await page.click('a', { noWaitAfter: true });
   });
+  it('should work with dblclick noWaitAfter: true', async({page, server}) => {
+    server.setRoute('/empty.html', async () => {});
+    await page.setContent(`<a href="${server.EMPTY_PAGE}">empty.html</a>`);
+    await page.dblclick('a', { noWaitAfter: true });
+  });
   it('should work with waitForLoadState(load)', async({page, server}) => {
     const messages = [];
     server.setRoute('/empty.html', async (req, res) => {
@@ -172,7 +176,6 @@ describe('Auto waiting', () => {
   });
   it('should work with goto following click', async({page, server}) => {
     server.setRoute('/login.html', async (req, res) => {
-      messages.push('route');
       res.setHeader('Content-Type', 'text/html');
       res.end(`You are logged in`);
     });

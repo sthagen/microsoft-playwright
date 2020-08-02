@@ -576,6 +576,12 @@ export class WKPage implements PageDelegate {
     await this._updateViewport();
   }
 
+  async bringToFront(): Promise<void> {
+    this._pageProxySession.send('Target.activate', {
+      targetId: this._session.sessionId
+    });
+  }
+
   async _updateViewport(): Promise<void> {
     const options = this._browserContext._options;
     const viewportSize = this._page._state.viewportSize;
@@ -847,7 +853,7 @@ export class WKPage implements PageDelegate {
 
   private _handleRequestRedirect(request: WKInterceptableRequest, responsePayload: Protocol.Network.Response) {
     const response = request.createResponse(responsePayload);
-    response._requestFinished(new Error('Response body is unavailable for redirect responses'));
+    response._requestFinished('Response body is unavailable for redirect responses');
     this._requestIdToRequest.delete(request._requestId);
     this._page._frameManager.requestReceivedResponse(response);
     this._page._frameManager.requestFinished(request.request);

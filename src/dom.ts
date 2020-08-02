@@ -26,7 +26,7 @@ import * as types from './types';
 import { Progress } from './progress';
 import DebugScript from './debug/injected/debugScript';
 import { FatalDOMError, RetargetableDOMError } from './common/domErrors';
-import { normalizeFilePayloads } from './rpc/serializers';
+import { normalizeFilePayloads } from './converters';
 
 export class FrameExecutionContext extends js.ExecutionContext {
   readonly frame: frames.Frame;
@@ -209,7 +209,7 @@ export class ElementHandle<T extends Node = Node> extends js.JSHandle<T> {
 
   async _waitAndScrollIntoViewIfNeeded(progress: Progress): Promise<void> {
     while (progress.isRunning()) {
-      assertDone(throwRetargetableDOMError(await this._waitForVisible(progress)));
+      assertDone(throwRetargetableDOMError(await this._waitForDisplayedAtStablePosition(progress, false /* waitForEnabled */)));
 
       progress.throwIfAborted();  // Avoid action that has side-effects.
       const result = throwRetargetableDOMError(await this._scrollRectIntoViewIfNeeded());
@@ -321,7 +321,7 @@ export class ElementHandle<T extends Node = Node> extends js.JSHandle<T> {
     if ((options as any).__testHookBeforeStable)
       await (options as any).__testHookBeforeStable();
     if (!force) {
-      const result = await this._waitForDisplayedAtStablePositionAndEnabled(progress);
+      const result = await this._waitForDisplayedAtStablePosition(progress, true /* waitForEnabled */);
       if (result !== 'done')
         return result;
     }
@@ -419,17 +419,19 @@ export class ElementHandle<T extends Node = Node> extends js.JSHandle<T> {
       vals = [ values ] as (string[] | ElementHandle[] | types.SelectOption[]);
     else
       vals = values;
-    const selectOptions = (vals as any).map((value: any) => typeof value === 'object' ? value : { value });
-    for (const option of selectOptions) {
-      assert(option !== null, 'Value items must not be null');
+    const selectOptions = (vals as any).map((value: any) => helper.isString(value) ? { value } : value);
+    for (let i = 0; i < selectOptions.length; i++) {
+      const option = selectOptions[i];
+      assert(option !== null, `options[${i}]: expected object, got null`);
+      assert(typeof option === 'object', `options[${i}]: expected object, got ${typeof option}`);
       if (option instanceof ElementHandle)
         continue;
       if (option.value !== undefined)
-        assert(helper.isString(option.value), 'Values must be strings. Found value "' + option.value + '" of type "' + (typeof option.value) + '"');
+        assert(helper.isString(option.value), `options[${i}].value: expected string, got ${typeof option.value}`);
       if (option.label !== undefined)
-        assert(helper.isString(option.label), 'Labels must be strings. Found label "' + option.label + '" of type "' + (typeof option.label) + '"');
+        assert(helper.isString(option.label), `options[${i}].label: expected string, got ${typeof option.label}`);
       if (option.index !== undefined)
-        assert(helper.isNumber(option.index), 'Indices must be numbers. Found index "' + option.index + '" of type "' + (typeof option.index) + '"');
+        assert(helper.isNumber(option.index), `options[${i}].index: expected number, got ${typeof option.index}`);
     }
     return this._page._frameManager.waitForSignalsCreatedBy(progress, options.noWaitAfter, async () => {
       progress.throwIfAborted();  // Avoid action that has side-effects.
@@ -446,7 +448,7 @@ export class ElementHandle<T extends Node = Node> extends js.JSHandle<T> {
 
   async _fill(progress: Progress, value: string, options: types.NavigatingActionWaitOptions): Promise<'error:notconnected' | 'done'> {
     progress.logger.info(`elementHandle.fill("${value}")`);
-    assert(helper.isString(value), 'Value must be string. Found value "' + value + '" of type "' + (typeof value) + '"');
+    assert(helper.isString(value), `value: expected string, got ${typeof value}`);
     return this._page._frameManager.waitForSignalsCreatedBy(progress, options.noWaitAfter, async () => {
       progress.logger.info('  waiting for element to be visible, enabled and editable');
       const poll = await this._evaluateHandleInUtility(([injected, node, value]) => {
@@ -517,9 +519,9 @@ export class ElementHandle<T extends Node = Node> extends js.JSHandle<T> {
     }, 0, 'elementHandle.focus');
   }
 
-  async _focus(progress: Progress): Promise<'error:notconnected' | 'done'> {
+  async _focus(progress: Progress, resetSelectionIfNotFocused?: boolean): Promise<'error:notconnected' | 'done'> {
     progress.throwIfAborted();  // Avoid action that has side-effects.
-    const result = await this._evaluateInUtility(([injected, node]) => injected.focusNode(node), {});
+    const result = await this._evaluateInUtility(([injected, node, resetSelectionIfNotFocused]) => injected.focusNode(node, resetSelectionIfNotFocused), resetSelectionIfNotFocused);
     return throwFatalDOMError(result);
   }
 
@@ -533,7 +535,7 @@ export class ElementHandle<T extends Node = Node> extends js.JSHandle<T> {
   async _type(progress: Progress, text: string, options: { delay?: number } & types.NavigatingActionWaitOptions): Promise<'error:notconnected' | 'done'> {
     progress.logger.info(`elementHandle.type("${text}")`);
     return this._page._frameManager.waitForSignalsCreatedBy(progress, options.noWaitAfter, async () => {
-      const result = await this._focus(progress);
+      const result = await this._focus(progress, true /* resetSelectionIfNotFocused */);
       if (result !== 'done')
         return result;
       progress.throwIfAborted();  // Avoid action that has side-effects.
@@ -552,7 +554,7 @@ export class ElementHandle<T extends Node = Node> extends js.JSHandle<T> {
   async _press(progress: Progress, key: string, options: { delay?: number } & types.NavigatingActionWaitOptions): Promise<'error:notconnected' | 'done'> {
     progress.logger.info(`elementHandle.press("${key}")`);
     return this._page._frameManager.waitForSignalsCreatedBy(progress, options.noWaitAfter, async () => {
-      const result = await this._focus(progress);
+      const result = await this._focus(progress, true /* resetSelectionIfNotFocused */);
       if (result !== 'done')
         return result;
       progress.throwIfAborted();  // Avoid action that has side-effects.
@@ -634,15 +636,21 @@ export class ElementHandle<T extends Node = Node> extends js.JSHandle<T> {
     return result;
   }
 
-  async _waitForDisplayedAtStablePositionAndEnabled(progress: Progress): Promise<'error:notconnected' | 'done'> {
-    progress.logger.info('  waiting for element to be visible, enabled and not moving');
+  async _waitForDisplayedAtStablePosition(progress: Progress, waitForEnabled: boolean): Promise<'error:notconnected' | 'done'> {
+    if (waitForEnabled)
+      progress.logger.info(`  waiting for element to be visible, enabled and not moving`);
+    else
+      progress.logger.info(`  waiting for element to be visible and not moving`);
     const rafCount =  this._page._delegate.rafCountForStablePosition();
-    const poll = this._evaluateHandleInUtility(([injected, node, rafCount]) => {
-      return injected.waitForDisplayedAtStablePositionAndEnabled(node, rafCount);
-    }, rafCount);
+    const poll = this._evaluateHandleInUtility(([injected, node, { rafCount, waitForEnabled }]) => {
+      return injected.waitForDisplayedAtStablePosition(node, rafCount, waitForEnabled);
+    }, { rafCount, waitForEnabled });
     const pollHandler = new InjectedScriptPollHandler(progress, await poll);
     const result = await pollHandler.finish();
-    progress.logger.info('  element is visible, enabled and does not move');
+    if (waitForEnabled)
+      progress.logger.info('  element is visible, enabled and does not move');
+    else
+      progress.logger.info('  element is visible and does not move');
     return result;
   }
 

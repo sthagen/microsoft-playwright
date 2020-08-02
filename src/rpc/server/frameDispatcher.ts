@@ -16,12 +16,11 @@
 
 import { Frame, kAddLifecycleEvent, kRemoveLifecycleEvent, kNavigationEvent, NavigationEvent } from '../../frames';
 import * as types from '../../types';
-import { ElementHandleChannel, FrameChannel, FrameInitializer, JSHandleChannel, ResponseChannel, SerializedArgument, FrameWaitForFunctionParams } from '../channels';
+import { ElementHandleChannel, FrameChannel, FrameInitializer, JSHandleChannel, ResponseChannel, SerializedArgument, FrameWaitForFunctionParams, SerializedValue } from '../channels';
 import { Dispatcher, DispatcherScope, lookupNullableDispatcher, existingDispatcher } from './dispatcher';
 import { convertSelectOptionValues, ElementHandleDispatcher, createHandle, convertInputFiles } from './elementHandlerDispatcher';
 import { parseArgument, serializeResult } from './jsHandleDispatcher';
 import { ResponseDispatcher, RequestDispatcher } from './networkDispatchers';
-import { SerializedValue } from '../../common/utilityScriptSerializers';
 
 export class FrameDispatcher extends Dispatcher<Frame, FrameInitializer> implements FrameChannel {
   private _frame: Frame;
@@ -32,7 +31,7 @@ export class FrameDispatcher extends Dispatcher<Frame, FrameInitializer> impleme
   }
 
   private constructor(scope: DispatcherScope, frame: Frame) {
-    super(scope, frame, 'frame', {
+    super(scope, frame, 'Frame', {
       url: frame.url(),
       name: frame.name(),
       parentFrame: lookupNullableDispatcher<FrameDispatcher>(frame.parentFrame()),

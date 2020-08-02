@@ -14,6 +14,12 @@
  * limitations under the License.
  */
 
-const { installBrowsersWithProgressBar } = require('./lib/install/installer');
+import playwright from './index.js';
 
-installBrowsersWithProgressBar(__dirname);
+export const chromium = playwright.chromium;
+export const firefox = playwright.firefox;
+export const webkit = playwright.webkit;
+export const selectors = playwright.selectors;
+export const devices = playwright.devices;
+export const errors = playwright.errors;
+export default playwright;

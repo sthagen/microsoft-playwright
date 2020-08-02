@@ -15,11 +15,11 @@
  */
 
 import { URLSearchParams } from 'url';
-import * as types from '../../types';
 import { RequestChannel, ResponseChannel, RouteChannel, RequestInitializer, ResponseInitializer, RouteInitializer } from '../channels';
 import { ChannelOwner } from './channelOwner';
 import { Frame } from './frame';
-import { normalizeFulfillParameters, headersArrayToObject, normalizeContinueOverrides, parseError } from '../serializers';
+import { normalizeFulfillParameters, headersArrayToObject, normalizeContinueOverrides } from '../../converters';
+import { Headers } from './types';
 
 export type NetworkCookie = {
   name: string,
@@ -44,11 +44,25 @@ export type SetNetworkCookieParam = {
   sameSite?: 'Strict' | 'Lax' | 'None'
 };
 
+type FulfillResponse = {
+  status?: number,
+  headers?: Headers,
+  contentType?: string,
+  body?: string | Buffer,
+};
+
+type ContinueOverrides = {
+  method?: string,
+  headers?: Headers,
+  postData?: string | Buffer,
+};
+
 export class Request extends ChannelOwner<RequestChannel, RequestInitializer> {
   private _redirectedFrom: Request | null = null;
   private _redirectedTo: Request | null = null;
   _failureText: string | null = null;
-  private _headers: types.Headers;
+  private _headers: Headers;
+  private _postData: Buffer | null;
 
   static from(request: RequestChannel): Request {
     return (request as any)._object;
@@ -64,6 +78,7 @@ export class Request extends ChannelOwner<RequestChannel, RequestInitializer> {
     if (this._redirectedFrom)
       this._redirectedFrom._redirectedTo = this;
     this._headers = headersArrayToObject(initializer.headers);
+    this._postData = initializer.postData ? Buffer.from(initializer.postData, 'base64') : null;
   }
 
   url(): string {
@@ -79,11 +94,16 @@ export class Request extends ChannelOwner<RequestChannel, RequestInitializer> {
   }
 
   postData(): string | null {
-    return this._initializer.postData || null;
+    return this._postData ? this._postData.toString('utf8') : null;
+  }
+
+  postDataBuffer(): Buffer | null {
+    return this._postData;
   }
 
   postDataJSON(): Object | null {
-    if (!this._initializer.postData)
+    const postData = this.postData();
+    if (!postData)
       return null;
 
     const contentType = this.headers()['content-type'];
@@ -92,16 +112,16 @@ export class Request extends ChannelOwner<RequestChannel, RequestInitializer> {
 
     if (contentType === 'application/x-www-form-urlencoded') {
       const entries: Record<string, string> = {};
-      const parsed = new URLSearchParams(this._initializer.postData);
+      const parsed = new URLSearchParams(postData);
       for (const [k, v] of parsed.entries())
         entries[k] = v;
       return entries;
     }
 
-    return JSON.parse(this._initializer.postData);
+    return JSON.parse(postData);
   }
 
-  headers(): types.Headers {
+  headers(): Headers {
     return { ...this._headers };
   }
 
@@ -151,24 +171,29 @@ export class Route extends ChannelOwner<RouteChannel, RouteInitializer> {
     return Request.from(this._initializer.request);
   }
 
-  async abort(errorCode: string = 'failed') {
+  async abort(errorCode?: string) {
     await this._channel.abort({ errorCode });
   }
 
-  async fulfill(response: types.FulfillResponse & { path?: string }) {
+  async fulfill(response: FulfillResponse & { path?: string }) {
     const normalized = await normalizeFulfillParameters(response);
     await this._channel.fulfill(normalized);
   }
 
-  async continue(overrides: types.ContinueOverrides = {}) {
-    await this._channel.continue(normalizeContinueOverrides(overrides));
+  async continue(overrides: ContinueOverrides = {}) {
+    const normalized = normalizeContinueOverrides(overrides);
+    await this._channel.continue({
+      method: normalized.method,
+      headers: normalized.headers,
+      postData: normalized.postData ? normalized.postData.toString('base64') : undefined
+    });
   }
 }
 
 export type RouteHandler = (route: Route, request: Request) => void;
 
 export class Response extends ChannelOwner<ResponseChannel, ResponseInitializer> {
-  private _headers: types.Headers;
+  private _headers: Headers;
 
   static from(response: ResponseChannel): Response {
     return (response as any)._object;
@@ -199,14 +224,14 @@ export class Response extends ChannelOwner<ResponseChannel, ResponseInitializer>
     return this._initializer.statusText;
   }
 
-  headers(): types.Headers {
+  headers(): Headers {
     return { ...this._headers };
   }
 
   async finished(): Promise<Error | null> {
     const result = await this._channel.finished();
     if (result.error)
-      return parseError(result.error);
+      return new Error(result.error);
     return null;
   }
 

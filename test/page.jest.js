@@ -113,7 +113,8 @@ describe('Async stacks', () => {
   });
 });
 
-describe.fail(FFOX && WIN || USES_HOOKS)('Page.Events.Crash', function() {
+const CRASH_FAIL = (FFOX && WIN) || USES_HOOKS;
+describe('Page.Events.Crash', function() {
   // Firefox Win: it just doesn't crash sometimes.
 
   function crash(pageImpl) {
@@ -125,12 +126,12 @@ describe.fail(FFOX && WIN || USES_HOOKS)('Page.Events.Crash', function() {
       pageImpl._delegate._session.send('Page.crash', {}).catch(e => {});
   }
 
-  it('should emit crash event when page crashes', async({page, toImpl}) => {
+  it.fail(CRASH_FAIL)('should emit crash event when page crashes', async({page, toImpl}) => {
     await page.setContent(`<div>This page should crash</div>`);
     crash(toImpl(page));
     await new Promise(f => page.on('crash', f));
   });
-  it('should throw on any action after page crashes', async({page, toImpl}) => {
+  it.fail(CRASH_FAIL)('should throw on any action after page crashes', async({page, toImpl}) => {
     await page.setContent(`<div>This page should crash</div>`);
     crash(toImpl(page));
     await page.waitForEvent('crash');
@@ -138,14 +139,14 @@ describe.fail(FFOX && WIN || USES_HOOKS)('Page.Events.Crash', function() {
     expect(err).toBeTruthy();
     expect(err.message).toContain('crash');
   });
-  it('should cancel waitForEvent when page crashes', async({page, toImpl}) => {
+  it.fail(CRASH_FAIL)('should cancel waitForEvent when page crashes', async({page, toImpl}) => {
     await page.setContent(`<div>This page should crash</div>`);
     const promise = page.waitForEvent('response').catch(e => e);
     crash(toImpl(page));
     const error = await promise;
     expect(error.message).toContain('Page crashed');
   });
-  it('should cancel navigation when page crashes', async({page, toImpl, server}) => {
+  it.fail(CRASH_FAIL)('should cancel navigation when page crashes', async({page, toImpl, server}) => {
     await page.setContent(`<div>This page should crash</div>`);
     server.setRoute('/one-style.css', () => {});
     const promise = page.goto(server.PREFIX + '/one-style.html').catch(e => e);
@@ -154,7 +155,7 @@ describe.fail(FFOX && WIN || USES_HOOKS)('Page.Events.Crash', function() {
     const error = await promise;
     expect(error.message).toContain('Navigation failed because page crashed');
   });
-  it('should be able to close context when page crashes', async({page, toImpl}) => {
+  it.fail(CRASH_FAIL)('should be able to close context when page crashes', async({page, toImpl}) => {
     await page.setContent(`<div>This page should crash</div>`);
     crash(toImpl(page));
     await page.waitForEvent('crash');
@@ -979,13 +980,13 @@ describe('Page.selectOption', function() {
   });
   it('should return [] on no matched values', async({page, server}) => {
     await page.goto(server.PREFIX + '/input/select.html');
-    const result = await page.selectOption('select','42','abc');
+    const result = await page.selectOption('select', ['42','abc']);
     expect(result).toEqual([]);
   });
   it('should return an array of matched values', async({page, server}) => {
     await page.goto(server.PREFIX + '/input/select.html');
     await page.evaluate(() => makeMultiple());
-    const result = await page.selectOption('select','blue','black','magenta');
+    const result = await page.selectOption('select', ['blue','black','magenta']);
     expect(result.reduce((accumulator,current) => ['blue', 'black', 'magenta'].includes(current) && accumulator, true)).toEqual(true);
   });
   it('should return an array of one element when multiple is not set', async({page, server}) => {
@@ -1003,7 +1004,7 @@ describe('Page.selectOption', function() {
     await page.evaluate(() => makeMultiple());
     let error = null
     await page.selectOption('select', ['blue', null, 'black','magenta']).catch(e => error = e);
-    expect(error.message).toContain('Value items must not be null');
+    expect(error.message).toContain('options[1]: expected object, got null');
   });
   it('should unselect with null',async({page, server}) => {
     await page.goto(server.PREFIX + '/input/select.html');
@@ -1036,7 +1037,7 @@ describe('Page.selectOption', function() {
     } catch (e) {
       error = e;
     }
-    expect(error.message).toContain('Values must be strings');
+    expect(error.message).toContain('options[0]: expected object, got number');
 
     error = null;
     try {
@@ -1044,7 +1045,7 @@ describe('Page.selectOption', function() {
     } catch (e) {
       error = e;
     }
-    expect(error.message).toContain('Values must be strings');
+    expect(error.message).toContain('options[0].value: expected string, got number');
 
     error = null;
     try {
@@ -1052,7 +1053,7 @@ describe('Page.selectOption', function() {
     } catch (e) {
       error = e;
     }
-    expect(error.message).toContain('Labels must be strings');
+    expect(error.message).toContain('options[0].label: expected string, got number');
 
     error = null;
     try {
@@ -1060,7 +1061,7 @@ describe('Page.selectOption', function() {
     } catch (e) {
       error = e;
     }
-    expect(error.message).toContain('Indices must be numbers');
+    expect(error.message).toContain('options[0].index: expected number, got string');
   });
   // @see https://github.com/GoogleChrome/puppeteer/issues/3327
   it('should work when re-defining top-level Event class', async({page, server}) => {
@@ -1176,7 +1177,7 @@ describe('Page.fill', function() {
     let error = null;
     await page.goto(server.PREFIX + '/input/textarea.html');
     await page.fill('textarea', 123).catch(e => error = e);
-    expect(error.message).toContain('Value must be string.');
+    expect(error.message).toContain('value: expected string, got number');
   });
   it('should retry on disabled element', async({page, server}) => {
     await page.goto(server.PREFIX + '/input/textarea.html');

@@ -21,7 +21,7 @@ import { StreamDispatcher } from './streamDispatcher';
 
 export class DownloadDispatcher extends Dispatcher<Download, DownloadInitializer> implements DownloadChannel {
   constructor(scope: DispatcherScope, download: Download) {
-    super(scope, download, 'download', {
+    super(scope, download, 'Download', {
       url: download.url(),
       suggestedFilename: download.suggestedFilename(),
     });
@@ -30,6 +30,10 @@ export class DownloadDispatcher extends Dispatcher<Download, DownloadInitializer
   async path(): Promise<{ value?: string }> {
     const path = await this._object.path();
     return { value: path || undefined };
+  }
+
+  async saveAs(params: { path: string }): Promise<void> {
+    await this._object.saveAs(params.path);
   }
 
   async stream(): Promise<{ stream?: StreamChannel }> {

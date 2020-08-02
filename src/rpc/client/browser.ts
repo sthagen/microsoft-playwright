@@ -14,15 +14,14 @@
  * limitations under the License.
  */
 
-import * as types from '../../types';
 import { BrowserChannel, BrowserInitializer, BrowserNewContextParams } from '../channels';
 import { BrowserContext } from './browserContext';
 import { Page } from './page';
 import { ChannelOwner } from './channelOwner';
-import { Events } from '../../events';
-import { LoggerSink } from '../../loggerSink';
+import { Events } from './events';
 import { BrowserType } from './browserType';
-import { headersObjectToArray } from '../serializers';
+import { headersObjectToArray } from '../../converters';
+import { BrowserContextOptions } from './types';
 
 export class Browser extends ChannelOwner<BrowserChannel, BrowserInitializer> {
   readonly _contexts = new Set<BrowserContext>();
@@ -40,18 +39,17 @@ export class Browser extends ChannelOwner<BrowserChannel, BrowserInitializer> {
   }
 
   constructor(parent: ChannelOwner, type: string, guid: string, initializer: BrowserInitializer) {
-    super(parent, type, guid, initializer, true);
+    super(parent, type, guid, initializer);
     this._browserType = parent as BrowserType;
     this._channel.on('close', () => {
       this._isConnected = false;
       this.emit(Events.Browser.Disconnected);
       this._isClosedOrClosing = true;
-      this._dispose();
     });
     this._closedPromise = new Promise(f => this.once(Events.Browser.Disconnected, f));
   }
 
-  async newContext(options: types.BrowserContextOptions & { logger?: LoggerSink } = {}): Promise<BrowserContext> {
+  async newContext(options: BrowserContextOptions = {}): Promise<BrowserContext> {
     const logger = options.logger;
     options = { ...options, logger: undefined };
     return this._wrapApiCall('browser.newContext', async () => {
@@ -72,7 +70,11 @@ export class Browser extends ChannelOwner<BrowserChannel, BrowserInitializer> {
     return [...this._contexts];
   }
 
-  async newPage(options: types.BrowserContextOptions & { logger?: LoggerSink } = {}): Promise<Page> {
+  version(): string {
+    return this._initializer.version;
+  }
+
+  async newPage(options: BrowserContextOptions = {}): Promise<Page> {
     const context = await this.newContext(options);
     const page = await context.newPage();
     page._ownedContext = context;

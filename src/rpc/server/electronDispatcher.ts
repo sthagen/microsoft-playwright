@@ -16,18 +16,17 @@
 
 import { Dispatcher, DispatcherScope, lookupDispatcher } from './dispatcher';
 import { Electron, ElectronApplication, ElectronEvents, ElectronPage } from '../../server/electron';
-import { ElectronApplicationChannel, ElectronApplicationInitializer, PageChannel, JSHandleChannel, ElectronInitializer, ElectronChannel, SerializedArgument, ElectronLaunchParams } from '../channels';
+import { ElectronApplicationChannel, ElectronApplicationInitializer, PageChannel, JSHandleChannel, ElectronInitializer, ElectronChannel, SerializedArgument, ElectronLaunchParams, SerializedValue } from '../channels';
 import { BrowserContextDispatcher } from './browserContextDispatcher';
 import { BrowserContextBase } from '../../browserContext';
 import { PageDispatcher } from './pageDispatcher';
 import { parseArgument, serializeResult } from './jsHandleDispatcher';
 import { createHandle } from './elementHandlerDispatcher';
-import { SerializedValue } from '../../common/utilityScriptSerializers';
-import { envArrayToObject } from '../serializers';
+import { envArrayToObject } from '../../converters';
 
 export class ElectronDispatcher extends Dispatcher<Electron, ElectronInitializer> implements ElectronChannel {
   constructor(scope: DispatcherScope, electron: Electron) {
-    super(scope, electron, 'electron', {}, true);
+    super(scope, electron, 'Electron', {}, true);
   }
 
   async launch(params: ElectronLaunchParams): Promise<{ electronApplication: ElectronApplicationChannel }> {
@@ -42,11 +41,12 @@ export class ElectronDispatcher extends Dispatcher<Electron, ElectronInitializer
 
 export class ElectronApplicationDispatcher extends Dispatcher<ElectronApplication, ElectronApplicationInitializer> implements ElectronApplicationChannel {
   constructor(scope: DispatcherScope, electronApplication: ElectronApplication) {
-    super(scope, electronApplication, 'electronApplication', {
-      context: new BrowserContextDispatcher(scope, electronApplication.context() as BrowserContextBase),
+    super(scope, electronApplication, 'ElectronApplication', {}, true);
+    this._dispatchEvent('context', { context: new BrowserContextDispatcher(this._scope, electronApplication.context() as BrowserContextBase) });
+    electronApplication.on(ElectronEvents.ElectronApplication.Close, () => {
+      this._dispatchEvent('close');
+      this._dispose();
     });
-
-    electronApplication.on(ElectronEvents.ElectronApplication.Close, () => this._dispatchEvent('close'));
     electronApplication.on(ElectronEvents.ElectronApplication.Window, (page: ElectronPage) => {
       this._dispatchEvent('window', {
         page: lookupDispatcher<PageDispatcher>(page),

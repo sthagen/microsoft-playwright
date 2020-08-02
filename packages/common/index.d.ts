@@ -14,6 +14,9 @@
  * limitations under the License.
  */
 
-const { Playwright } = require('./lib/server/playwright');
+import * as types from './types/types';
 
-module.exports = new Playwright(__dirname, require('./browsers.json')['browsers']);
+export * from './types/types';
+export const chromium: types.BrowserType<types.ChromiumBrowser>;
+export const firefox: types.BrowserType<types.FirefoxBrowser>;
+export const webkit: types.BrowserType<types.WebKitBrowser>;

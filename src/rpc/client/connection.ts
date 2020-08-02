@@ -38,10 +38,13 @@ import { ChromiumBrowser } from './chromiumBrowser';
 import { ChromiumBrowserContext } from './chromiumBrowserContext';
 import { Selectors } from './selectors';
 import { Stream } from './stream';
+import { createScheme, Validator, ValidationError } from '../validator';
+import { WebKitBrowser } from './webkitBrowser';
+import { FirefoxBrowser } from './firefoxBrowser';
 
 class Root extends ChannelOwner<Channel, {}> {
   constructor(connection: Connection) {
-    super(connection, '', '', {}, true);
+    super(connection, '', '', {});
   }
 }
 
@@ -63,9 +66,14 @@ export class Connection {
     return new Promise(f => this._waitingForObject.set(guid, f));
   }
 
-  async sendMessageToServer(message: { guid: string, method: string, params: any }): Promise<any> {
+  getObjectWithKnownName(guid: string): any {
+    return this._objects.get(guid)!;
+  }
+
+  async sendMessageToServer(type: string, guid: string, method: string, params: any): Promise<any> {
     const id = ++this._lastId;
-    const converted = { id, ...message, params: this._replaceChannelsWithGuids(message.params) };
+    const validated = method === 'debugScopeState' ? params : validateParams(type, method, params);
+    const converted = { id, guid, method, params: validated };
     debug('pw:channel:command')(converted);
     this.onmessage(converted);
     return new Promise((resolve, reject) => this._callbacks.set(id, { resolve, reject }));
@@ -93,24 +101,12 @@ export class Connection {
       this._createRemoteObject(guid, params.type, params.guid, params.initializer);
       return;
     }
+    if (method === '__dispose__') {
+      this._objects.get(guid)!._dispose();
+      return;
+    }
     const object = this._objects.get(guid)!;
     object._channel.emit(method, this._replaceGuidsWithChannels(params));
-  }
-
-  private _replaceChannelsWithGuids(payload: any): any {
-    if (!payload)
-      return payload;
-    if (Array.isArray(payload))
-      return payload.map(p => this._replaceChannelsWithGuids(p));
-    if (payload._object instanceof ChannelOwner)
-      return { guid: payload._object._guid };
-    if (typeof payload === 'object') {
-      const result: any = {};
-      for (const key of Object.keys(payload))
-        result[key] = this._replaceChannelsWithGuids(payload[key]);
-      return result;
-    }
-    return payload;
   }
 
   private _replaceGuidsWithChannels(payload: any): any {
@@ -134,28 +130,23 @@ export class Connection {
     let result: ChannelOwner<any, any>;
     initializer = this._replaceGuidsWithChannels(initializer);
     switch (type) {
-      case 'bindingCall':
+      case 'BindingCall':
         result = new BindingCall(parent, type, guid, initializer);
         break;
-      case 'browser':
+      case 'Browser':
         if ((parent as BrowserType).name() === 'chromium')
           result = new ChromiumBrowser(parent, type, guid, initializer);
+        else if ((parent as BrowserType).name() === 'webkit')
+          result = new WebKitBrowser(parent, type, guid, initializer);
+        else if ((parent as BrowserType).name() === 'firefox')
+          result = new FirefoxBrowser(parent, type, guid, initializer);
         else
           result = new Browser(parent, type, guid, initializer);
         break;
-      case 'browserServer':
-        result = new BrowserServer(parent, type, guid, initializer);
-        break;
-      case 'browserType':
-        result = new BrowserType(parent, type, guid, initializer);
-        break;
-      case 'cdpSession':
-        result = new CDPSession(parent, type, guid, initializer);
-        break;
-      case 'context':
+      case 'BrowserContext':
         let browserName = '';
-        if (parent instanceof Electron) {
-          // Launching electron produces Electron parent for BrowserContext.
+        if (parent instanceof ElectronApplication) {
+          // Launching electron produces ElectronApplication parent for BrowserContext.
           browserName = 'electron';
         } else if (parent instanceof Browser) {
           // Launching a browser produces Browser parent for BrowserContext.
@@ -169,52 +160,61 @@ export class Connection {
         else
           result = new BrowserContext(parent, type, guid, initializer, browserName);
         break;
-      case 'consoleMessage':
+      case 'BrowserServer':
+        result = new BrowserServer(parent, type, guid, initializer);
+        break;
+      case 'BrowserType':
+        result = new BrowserType(parent, type, guid, initializer);
+        break;
+      case 'CDPSession':
+        result = new CDPSession(parent, type, guid, initializer);
+        break;
+      case 'ConsoleMessage':
         result = new ConsoleMessage(parent, type, guid, initializer);
         break;
-      case 'dialog':
+      case 'Dialog':
         result = new Dialog(parent, type, guid, initializer);
         break;
-      case 'download':
+      case 'Download':
         result = new Download(parent, type, guid, initializer);
         break;
-      case 'electron':
+      case 'Electron':
         result = new Electron(parent, type, guid, initializer);
         break;
-      case 'electronApplication':
+      case 'ElectronApplication':
         result = new ElectronApplication(parent, type, guid, initializer);
         break;
-      case 'elementHandle':
+      case 'ElementHandle':
         result = new ElementHandle(parent, type, guid, initializer);
         break;
-      case 'frame':
+      case 'Frame':
         result = new Frame(parent, type, guid, initializer);
         break;
-      case 'jsHandle':
+      case 'JSHandle':
         result = new JSHandle(parent, type, guid, initializer);
         break;
-      case 'page':
+      case 'Page':
         result = new Page(parent, type, guid, initializer);
         break;
-      case 'playwright':
+      case 'Playwright':
         result = new Playwright(parent, type, guid, initializer);
         break;
-      case 'request':
+      case 'Request':
         result = new Request(parent, type, guid, initializer);
         break;
-      case 'stream':
+      case 'Stream':
         result = new Stream(parent, type, guid, initializer);
         break;
-      case 'response':
+      case 'Response':
         result = new Response(parent, type, guid, initializer);
         break;
-      case 'route':
+      case 'Route':
         result = new Route(parent, type, guid, initializer);
         break;
-      case 'selectors':
+      case 'Selectors':
         result = new Selectors(parent, type, guid, initializer);
         break;
-      case 'worker':
+      case 'Worker':
         result = new Worker(parent, type, guid, initializer);
         break;
       default:
@@ -227,4 +227,21 @@ export class Connection {
     }
     return result;
   }
+}
+
+const tChannel = (name: string): Validator => {
+  return (arg: any, path: string) => {
+    if (arg._object instanceof ChannelOwner && (name === '*' || arg._object._type === name))
+      return { guid: arg._object._guid };
+    throw new ValidationError(`${path}: expected ${name}`);
+  };
+};
+
+const scheme = createScheme(tChannel);
+
+function validateParams(type: string, method: string, params: any): any {
+  const name = type + method[0].toUpperCase() + method.substring(1) + 'Params';
+  if (!scheme[name])
+    throw new ValidationError(`Uknown scheme for ${type}.${method}`);
+  return scheme[name](params, '');
 }

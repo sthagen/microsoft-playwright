@@ -14,9 +14,9 @@
  * limitations under the License.
  */
 
-import * as types from './types/types';
+import { chromium, firefox, webkit, selectors, devices, errors } from 'playwright-webkit';
+import playwright from 'playwright-webkit';
+import errorsFile from 'playwright-webkit/lib/errors.js';
 
-export * from './types/types';
-export const webkit: types.BrowserType<types.WebKitBrowser>;
-export const chromium: types.BrowserType<types.ChromiumBrowser>;
-export const firefox: types.BrowserType<types.FirefoxBrowser>;
+import testESM from './esm.mjs';
+testESM({ chromium, firefox, webkit, selectors, devices, errors, playwright, errorsFile }, [webkit]);

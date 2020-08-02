@@ -21,7 +21,7 @@ import * as network from '../network';
 import * as types from '../types';
 import { Protocol } from './protocol';
 import { WKSession } from './wkConnection';
-import { headersArrayToObject } from '../rpc/serializers';
+import { headersArrayToObject } from '../converters';
 
 const errorReasons: { [reason: string]: Protocol.Network.ResourceErrorType } = {
   'aborted': 'Cancellation',
@@ -53,8 +53,11 @@ export class WKInterceptableRequest implements network.RouteDelegate {
     this._requestId = event.requestId;
     this._allowInterception = allowInterception;
     const resourceType = event.type ? event.type.toLowerCase() : (redirectedFrom ? redirectedFrom.resourceType() : 'other');
+    let postDataBuffer = null;
+    if (event.request.postData)
+      postDataBuffer = Buffer.from(event.request.postData, 'binary');
     this.request = new network.Request(allowInterception ? this : null, frame, redirectedFrom, documentId, event.request.url,
-        resourceType, event.request.method, event.request.postData || null, headersObject(event.request.headers));
+        resourceType, event.request.method, postDataBuffer, headersObject(event.request.headers));
     this._interceptedPromise = new Promise(f => this._interceptedCallback = f);
   }
 

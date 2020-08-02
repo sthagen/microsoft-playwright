@@ -14,4 +14,7 @@
  * limitations under the License.
  */
 
-/* NOTE: playwright-core does not install browsers by design. */
+import { Browser } from './browser';
+
+export class FirefoxBrowser extends Browser {
+}

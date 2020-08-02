@@ -243,7 +243,7 @@ export class CRNetworkManager {
 
   _handleRequestRedirect(request: InterceptableRequest, responsePayload: Protocol.Network.Response) {
     const response = this._createResponse(request, responsePayload);
-    response._requestFinished(new Error('Response body is unavailable for redirect responses'));
+    response._requestFinished('Response body is unavailable for redirect responses');
     this._requestIdToRequest.delete(request._requestId);
     if (request._interceptionId)
       this._attemptedAuthentications.delete(request._interceptionId);
@@ -342,10 +342,14 @@ class InterceptableRequest implements network.RouteDelegate {
       headers,
       method,
       url,
-      postData = null,
+      postDataEntries = null,
     } = requestPausedEvent ? requestPausedEvent.request : requestWillBeSentEvent.request;
     const type = (requestWillBeSentEvent.type || '').toLowerCase();
-    this.request = new network.Request(allowInterception ? this : null, frame, redirectedFrom, documentId, url, type, method, postData, headersObject(headers));
+    let postDataBuffer = null;
+    if (postDataEntries && postDataEntries.length && postDataEntries[0].bytes)
+      postDataBuffer = Buffer.from(postDataEntries[0].bytes, 'base64');
+
+    this.request = new network.Request(allowInterception ? this : null, frame, redirectedFrom, documentId, url, type, method, postDataBuffer, headersObject(headers));
   }
 
   async continue(overrides: types.NormalizedContinueOverrides) {
@@ -355,7 +359,7 @@ class InterceptableRequest implements network.RouteDelegate {
       requestId: this._interceptionId!,
       headers: overrides.headers,
       method: overrides.method,
-      postData: overrides.postData
+      postData: overrides.postData ? overrides.postData.toString('base64') : undefined
     });
   }
 

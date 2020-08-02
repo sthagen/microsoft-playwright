@@ -15,10 +15,10 @@
  */
 
 import { Request, Response, Route } from '../../network';
-import { RequestChannel, ResponseChannel, RouteChannel, ResponseInitializer, RequestInitializer, RouteInitializer, Binary, SerializedError } from '../channels';
+import { RequestChannel, ResponseChannel, RouteChannel, ResponseInitializer, RequestInitializer, RouteInitializer, Binary } from '../channels';
 import { Dispatcher, DispatcherScope, lookupNullableDispatcher, existingDispatcher } from './dispatcher';
 import { FrameDispatcher } from './frameDispatcher';
-import { headersObjectToArray, headersArrayToObject, serializeError } from '../serializers';
+import { headersObjectToArray, headersArrayToObject } from '../../converters';
 import * as types from '../../types';
 
 export class RequestDispatcher extends Dispatcher<Request, RequestInitializer> implements RequestChannel {
@@ -33,13 +33,13 @@ export class RequestDispatcher extends Dispatcher<Request, RequestInitializer> i
   }
 
   private constructor(scope: DispatcherScope, request: Request) {
-    const postData = request.postData();
-    super(scope, request, 'request', {
+    const postData = request.postDataBuffer();
+    super(scope, request, 'Request', {
       frame: FrameDispatcher.from(scope, request.frame()),
       url: request.url(),
       resourceType: request.resourceType(),
       method: request.method(),
-      postData: postData === null ? undefined : postData,
+      postData: postData === null ? undefined : postData.toString('base64'),
       headers: headersObjectToArray(request.headers()),
       isNavigationRequest: request.isNavigationRequest(),
       redirectedFrom: RequestDispatcher.fromNullable(scope, request.redirectedFrom()),
@@ -54,7 +54,7 @@ export class RequestDispatcher extends Dispatcher<Request, RequestInitializer> i
 export class ResponseDispatcher extends Dispatcher<Response, ResponseInitializer> implements ResponseChannel {
 
   constructor(scope: DispatcherScope, response: Response) {
-    super(scope, response, 'response', {
+    super(scope, response, 'Response', {
       // TODO: responses in popups can point to non-reported requests.
       request: RequestDispatcher.from(scope, response.request()),
       url: response.url(),
@@ -64,9 +64,8 @@ export class ResponseDispatcher extends Dispatcher<Response, ResponseInitializer
     });
   }
 
-  async finished(): Promise<{ error?: SerializedError }> {
-    const error = await this._object.finished();
-    return { error: error ? serializeError(error) : undefined };
+  async finished(): Promise<{ error?: string }> {
+    return await this._object._finishedPromise;
   }
 
   async body(): Promise<{ binary: Binary }> {
@@ -77,17 +76,17 @@ export class ResponseDispatcher extends Dispatcher<Response, ResponseInitializer
 export class RouteDispatcher extends Dispatcher<Route, RouteInitializer> implements RouteChannel {
 
   constructor(scope: DispatcherScope, route: Route) {
-    super(scope, route, 'route', {
+    super(scope, route, 'Route', {
       // Context route can point to a non-reported request.
       request: RequestDispatcher.from(scope, route.request())
     });
   }
 
-  async continue(params: types.NormalizedContinueOverrides): Promise<void> {
+  async continue(params: { method?: string, headers?: types.HeadersArray, postData?: string }): Promise<void> {
     await this._object.continue({
       method: params.method,
       headers: params.headers ? headersArrayToObject(params.headers) : undefined,
-      postData: params.postData,
+      postData: params.postData ? Buffer.from(params.postData, 'base64') : undefined,
     });
   }
 
@@ -99,7 +98,7 @@ export class RouteDispatcher extends Dispatcher<Route, RouteInitializer> impleme
     });
   }
 
-  async abort(params: { errorCode: string }): Promise<void> {
-    await this._object.abort(params.errorCode);
+  async abort(params: { errorCode?: string }): Promise<void> {
+    await this._object.abort(params.errorCode || 'failed');
   }
 }

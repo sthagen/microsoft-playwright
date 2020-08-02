@@ -20,9 +20,10 @@ import { Frame } from '../../frames';
 import { Request } from '../../network';
 import { Page, Worker } from '../../page';
 import * as types from '../../types';
-import { BindingCallChannel, BindingCallInitializer, ElementHandleChannel, PageChannel, PageInitializer, ResponseChannel, WorkerInitializer, WorkerChannel, JSHandleChannel, Binary, SerializedArgument, PagePdfParams, SerializedError, PageAccessibilitySnapshotResult } from '../channels';
+import { BindingCallChannel, BindingCallInitializer, ElementHandleChannel, PageChannel, PageInitializer, ResponseChannel, WorkerInitializer, WorkerChannel, JSHandleChannel, Binary, SerializedArgument, PagePdfParams, SerializedError, PageAccessibilitySnapshotResult, SerializedValue, PageEmulateMediaParams, AXNode } from '../channels';
 import { Dispatcher, DispatcherScope, lookupDispatcher, lookupNullableDispatcher } from './dispatcher';
-import { parseError, serializeError, headersArrayToObject, axNodeToProtocol } from '../serializers';
+import { parseError, serializeError } from '../serializers';
+import { headersArrayToObject } from '../../converters';
 import { ConsoleMessageDispatcher } from './consoleMessageDispatcher';
 import { DialogDispatcher } from './dialogDispatcher';
 import { DownloadDispatcher } from './downloadDispatcher';
@@ -32,7 +33,6 @@ import { serializeResult, parseArgument } from './jsHandleDispatcher';
 import { ElementHandleDispatcher, createHandle } from './elementHandlerDispatcher';
 import { FileChooser } from '../../fileChooser';
 import { CRCoverage } from '../../chromium/crCoverage';
-import { SerializedValue } from '../../common/utilityScriptSerializers';
 
 export class PageDispatcher extends Dispatcher<Page, PageInitializer> implements PageChannel {
   private _page: Page;
@@ -40,7 +40,7 @@ export class PageDispatcher extends Dispatcher<Page, PageInitializer> implements
   constructor(scope: DispatcherScope, page: Page) {
     // TODO: theoretically, there could be more than one frame already.
     // If we split pageCreated and pageReady, there should be no main frame during pageCreated.
-    super(scope, page, 'page', {
+    super(scope, page, 'Page', {
       mainFrame: FrameDispatcher.from(scope, page.mainFrame()),
       viewportSize: page.viewportSize() || undefined,
       isClosed: page.isClosed()
@@ -107,8 +107,11 @@ export class PageDispatcher extends Dispatcher<Page, PageInitializer> implements
     return { response: lookupNullableDispatcher<ResponseDispatcher>(await this._page.goForward(params)) };
   }
 
-  async emulateMedia(params: { media?: 'screen' | 'print', colorScheme?: 'dark' | 'light' | 'no-preference' }): Promise<void> {
-    await this._page.emulateMedia(params);
+  async emulateMedia(params: PageEmulateMediaParams): Promise<void> {
+    await this._page.emulateMedia({
+      media: params.media === 'null' ? null : params.media,
+      colorScheme: params.colorScheme === 'null' ? null : params.colorScheme,
+    });
   }
 
   async setViewportSize(params: { viewportSize: types.Size }): Promise<void> {
@@ -195,6 +198,10 @@ export class PageDispatcher extends Dispatcher<Page, PageInitializer> implements
     return { pdf: buffer.toString('base64') };
   }
 
+  async bringToFront(): Promise<void> {
+    await this._page.bringToFront();
+  }
+
   async crStartJSCoverage(params: types.JSCoverageOptions): Promise<void> {
     const coverage = this._page.coverage as CRCoverage;
     await coverage.startJSCoverage(params);
@@ -227,7 +234,7 @@ export class PageDispatcher extends Dispatcher<Page, PageInitializer> implements
 
 export class WorkerDispatcher extends Dispatcher<Worker, WorkerInitializer> implements WorkerChannel {
   constructor(scope: DispatcherScope, worker: Worker) {
-    super(scope, worker, 'worker', {
+    super(scope, worker, 'Worker', {
       url: worker.url()
     });
     worker.on(Events.Worker.Close, () => this._dispatchEvent('close'));
@@ -248,7 +255,7 @@ export class BindingCallDispatcher extends Dispatcher<{}, BindingCallInitializer
   private _promise: Promise<any>;
 
   constructor(scope: DispatcherScope, name: string, source: { context: BrowserContext, page: Page, frame: Frame }, args: any[]) {
-    super(scope, {}, 'bindingCall', {
+    super(scope, {}, 'BindingCall', {
       frame: lookupDispatcher<FrameDispatcher>(source.frame),
       name,
       args: args.map(serializeResult),
@@ -270,4 +277,17 @@ export class BindingCallDispatcher extends Dispatcher<{}, BindingCallInitializer
   async reject(params: { error: SerializedError }) {
     this._reject!(parseError(params.error));
   }
+}
+
+function axNodeToProtocol(axNode: types.SerializedAXNode): AXNode {
+  const result: AXNode = {
+    ...axNode,
+    valueNumber: typeof axNode.value === 'number' ? axNode.value : undefined,
+    valueString: typeof axNode.value === 'string' ? axNode.value : undefined,
+    checked: axNode.checked === true ? 'checked' : axNode.checked === false ? 'unchecked' : axNode.checked,
+    pressed: axNode.pressed === true ? 'pressed' : axNode.pressed === false ? 'released' : axNode.pressed,
+    children: axNode.children ? axNode.children.map(axNodeToProtocol) : undefined,
+  };
+  delete (result as any).value;
+  return result;
 }

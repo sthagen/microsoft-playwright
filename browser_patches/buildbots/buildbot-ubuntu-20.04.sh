@@ -7,6 +7,14 @@ if [[ $(uname) != "Linux" ]]; then
   exit 1
 fi
 
+CURRENT_HOST_OS="$(bash -c 'source /etc/os-release && echo $NAME')"
+CURRENT_HOST_OS_VERSION="$(bash -c 'source /etc/os-release && echo $VERSION_ID')"
+
+if [[ "$CURRENT_HOST_OS" != "Ubuntu" || "$CURRENT_HOST_OS_VERSION" != "20.04" ]]; then
+  echo "ERROR: this script is designed to be run on Ubuntu 20.04. Can't run on $CURRENT_HOST_OS $CURRENT_HOST_OS_VERSION"
+  exit 1
+fi
+
 if [[ ($1 == '--help') || ($1 == '-h') ]]; then
   echo "usage: $(basename $0)"
   echo
@@ -41,23 +49,18 @@ mkdir -p $LOCKDIR
 trap "rm -rf ${LOCKDIR}; cd $(pwd -P); exit" INT TERM EXIT
 cd "$(dirname "$0")"
 
-IS_FIRST_RUN_FILE="/tmp/pw-buildbot-first-run.txt";
-if ! [[ -f $IS_FIRST_RUN_FILE ]]; then
-  source ./send_telegram_message.sh
-  send_telegram_message '**Linux Buildbot Is Active**'
-fi
-touch "$IS_FIRST_RUN_FILE"
-
 # Check if git repo is dirty.
 if [[ -n $(git status -s) ]]; then
   echo "ERROR: dirty GIT state - commit everything and re-run the script."
   exit 1
 fi
 
-git pull origin master
-../checkout_build_archive_upload.sh firefox-linux >/tmp/$(basename $0)--firefox-linux.log || true
+IS_FIRST_RUN_FILE="/tmp/pw-buildbot-first-run.txt";
+if ! [[ -f $IS_FIRST_RUN_FILE ]]; then
+  source ./send_telegram_message.sh
+  send_telegram_message '**Ubuntu 20.04 Buildbot Is Active**'
+fi
+touch "$IS_FIRST_RUN_FILE"
 
 git pull origin master
-../checkout_build_archive_upload.sh webkit-gtk >/tmp/$(basename $0)--webkit-gtk.log || true
-../checkout_build_archive_upload.sh webkit-wpe >/tmp/$(basename $0)--webkit-wpe.log || true
-../checkout_build_archive_upload.sh webkit-gtk-wpe >/tmp/$(basename $0)--webkit-gtk-wpe.log || true
+../checkout_build_archive_upload.sh webkit-ubuntu-20.04 >/tmp/$(basename $0)--webkit.log || true

@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
-const { installBrowsersWithProgressBar } = require('./lib/install/installer');
+import { Browser } from './browser';
 
-installBrowsersWithProgressBar(__dirname);
+export class WebKitBrowser extends Browser {
+}

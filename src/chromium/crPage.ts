@@ -65,7 +65,7 @@ export class CRPage implements PageDelegate {
   constructor(client: CRSession, targetId: string, browserContext: CRBrowserContext, opener: CRPage | null, hasUIWindow: boolean) {
     this._targetId = targetId;
     this._opener = opener;
-    this.rawKeyboard = new RawKeyboardImpl(client);
+    this.rawKeyboard = new RawKeyboardImpl(client, browserContext._browser._isMac);
     this.rawMouse = new RawMouseImpl(client);
     this._pdf = new CRPDF(client);
     this._coverage = new CRCoverage(client);
@@ -141,6 +141,10 @@ export class CRPage implements PageDelegate {
   async setViewportSize(viewportSize: types.Size): Promise<void> {
     assert(this._page._state.viewportSize === viewportSize);
     await this._mainFrameSession._updateViewport();
+  }
+
+  async bringToFront(): Promise<void> {
+    await this._mainFrameSession._client.send('Page.bringToFront');
   }
 
   async updateEmulateMedia(): Promise<void> {
@@ -825,7 +829,21 @@ class FrameSession {
     const y = Math.min(quad[1], quad[3], quad[5], quad[7]);
     const width = Math.max(quad[0], quad[2], quad[4], quad[6]) - x;
     const height = Math.max(quad[1], quad[3], quad[5], quad[7]) - y;
-    return {x, y, width, height};
+    const position = await this._framePosition();
+    if (!position)
+      return null;
+    return { x: x + position.x, y: y + position.y, width, height };
+  }
+
+  private async _framePosition(): Promise<types.Point | null> {
+    const frame = this._page._frameManager.frame(this._targetId);
+    if (!frame)
+      return null;
+    if (frame === this._page.mainFrame())
+      return { x: 0, y: 0 };
+    const element = await frame.frameElement();
+    const box = await element.boundingBox();
+    return box;
   }
 
   async _scrollRectIntoViewIfNeeded(handle: dom.ElementHandle, rect?: types.Rect): Promise<'error:notvisible' | 'error:notconnected' | 'done'> {
@@ -847,11 +865,14 @@ class FrameSession {
     });
     if (!result)
       return null;
+    const position = await this._framePosition();
+    if (!position)
+      return null;
     return result.quads.map(quad => [
-      { x: quad[0], y: quad[1] },
-      { x: quad[2], y: quad[3] },
-      { x: quad[4], y: quad[5] },
-      { x: quad[6], y: quad[7] }
+      { x: quad[0] + position.x, y: quad[1] + position.y },
+      { x: quad[2] + position.x, y: quad[3] + position.y },
+      { x: quad[4] + position.x, y: quad[5] + position.y },
+      { x: quad[6] + position.x, y: quad[7] + position.y }
     ]);
   }
 

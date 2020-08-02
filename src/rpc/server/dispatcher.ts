@@ -18,6 +18,7 @@ import { EventEmitter } from 'events';
 import { helper, debugAssert, assert } from '../../helper';
 import { Channel } from '../channels';
 import { serializeError } from '../serializers';
+import { createScheme, Validator, ValidationError } from '../validator';
 
 export const dispatcherSymbol = Symbol('dispatcher');
 
@@ -42,6 +43,7 @@ export class Dispatcher<Type, Initializer> extends EventEmitter implements Chann
   private _parent: Dispatcher<any, any> | undefined;
   // Only "isScope" channel owners have registered dispatchers inside.
   private _dispatchers = new Map<string, Dispatcher<any, any>>();
+  private _disposed = false;
 
   readonly _guid: string;
   readonly _type: string;
@@ -69,7 +71,7 @@ export class Dispatcher<Type, Initializer> extends EventEmitter implements Chann
 
     (object as any)[dispatcherSymbol] = this;
     if (this._parent)
-      this._connection.sendMessageToClient(this._parent._guid, '__create__', { type, initializer, guid });
+      this._connection.sendMessageToClient(this._parent._guid, '__create__', { type, initializer, guid }, !!isScope);
   }
 
   _dispatchEvent(method: string, params: Dispatcher<any, any> | any = {}) {
@@ -77,7 +79,7 @@ export class Dispatcher<Type, Initializer> extends EventEmitter implements Chann
   }
 
   _dispose() {
-    assert(this._isScope);
+    assert(!this._disposed);
 
     // Clean up from parent and connection.
     if (this._parent)
@@ -85,19 +87,18 @@ export class Dispatcher<Type, Initializer> extends EventEmitter implements Chann
     this._connection._dispatchers.delete(this._guid);
 
     // Dispose all children.
-    for (const [guid, dispatcher] of [...this._dispatchers]) {
-      if (dispatcher._isScope)
-        dispatcher._dispose();
-      else
-        this._connection._dispatchers.delete(guid);
-    }
+    for (const dispatcher of [...this._dispatchers.values()])
+      dispatcher._dispose();
     this._dispatchers.clear();
+
+    if (this._isScope)
+      this._connection.sendMessageToClient(this._guid, '__dispose__', {});
   }
 
   _debugScopeState(): any {
     return {
       _guid: this._guid,
-      objects: this._isScope ? Array.from(this._dispatchers.values()).map(o => o._debugScopeState()) : undefined,
+      objects: Array.from(this._dispatchers.values()).map(o => o._debugScopeState()),
     };
   }
 }
@@ -114,13 +115,37 @@ export class DispatcherConnection {
   readonly _dispatchers = new Map<string, Dispatcher<any, any>>();
   private _rootDispatcher: Root;
   onmessage = (message: object) => {};
+  private _validateParams: (type: string, method: string, params: any) => any;
 
-  async sendMessageToClient(guid: string, method: string, params: any): Promise<any> {
-    this.onmessage({ guid, method, params: this._replaceDispatchersWithGuids(params) });
+  async sendMessageToClient(guid: string, method: string, params: any, disallowDispatchers?: boolean): Promise<any> {
+    const allowDispatchers = !disallowDispatchers;
+    this.onmessage({ guid, method, params: this._replaceDispatchersWithGuids(params, allowDispatchers) });
   }
 
   constructor() {
     this._rootDispatcher = new Root(this);
+
+    const tChannel = (name: string): Validator => {
+      return (arg: any, path: string) => {
+        if (arg && typeof arg === 'object' && typeof arg.guid === 'string') {
+          const guid = arg.guid;
+          const dispatcher = this._dispatchers.get(guid);
+          if (!dispatcher)
+            throw new ValidationError(`${path}: no object with guid ${guid}`);
+          if (name !== '*' && dispatcher._type !== name)
+            throw new ValidationError(`${path}: object with guid ${guid} has type ${dispatcher._type}, expected ${name}`);
+          return dispatcher;
+        }
+        throw new ValidationError(`${path}: expected ${name}`);
+      };
+    };
+    const scheme = createScheme(tChannel);
+    this._validateParams = (type: string, method: string, params: any): any => {
+      const name = type + method[0].toUpperCase() + method.substring(1) + 'Params';
+      if (!scheme[name])
+        throw new ValidationError(`Uknown scheme for ${type}.${method}`);
+      return scheme[name](params, '');
+    };
   }
 
   rootDispatcher(): Dispatcher<any, any> {
@@ -139,40 +164,28 @@ export class DispatcherConnection {
       return;
     }
     try {
-      const result = await (dispatcher as any)[method](this._replaceGuidsWithDispatchers(params));
-      this.onmessage({ id, result: this._replaceDispatchersWithGuids(result) });
+      const validated = this._validateParams(dispatcher._type, method, params);
+      const result = await (dispatcher as any)[method](validated);
+      this.onmessage({ id, result: this._replaceDispatchersWithGuids(result, true) });
     } catch (e) {
       this.onmessage({ id, error: serializeError(e) });
     }
   }
 
-  private _replaceDispatchersWithGuids(payload: any): any {
+  private _replaceDispatchersWithGuids(payload: any, allowDispatchers: boolean): any {
     if (!payload)
       return payload;
-    if (payload instanceof Dispatcher)
+    if (payload instanceof Dispatcher) {
+      if (!allowDispatchers)
+        throw new Error(`Channels are not allowed in the scope's initialzier`);
       return { guid: payload._guid };
-    if (Array.isArray(payload))
-      return payload.map(p => this._replaceDispatchersWithGuids(p));
-    if (typeof payload === 'object') {
-      const result: any = {};
-      for (const key of Object.keys(payload))
-        result[key] = this._replaceDispatchersWithGuids(payload[key]);
-      return result;
     }
-    return payload;
-  }
-
-  private _replaceGuidsWithDispatchers(payload: any): any {
-    if (!payload)
-      return payload;
     if (Array.isArray(payload))
-      return payload.map(p => this._replaceGuidsWithDispatchers(p));
-    if (payload.guid && this._dispatchers.has(payload.guid))
-      return this._dispatchers.get(payload.guid);
+      return payload.map(p => this._replaceDispatchersWithGuids(p, allowDispatchers));
     if (typeof payload === 'object') {
       const result: any = {};
       for (const key of Object.keys(payload))
-        result[key] = this._replaceGuidsWithDispatchers(payload[key]);
+        result[key] = this._replaceDispatchersWithGuids(payload[key], allowDispatchers);
       return result;
     }
     return payload;

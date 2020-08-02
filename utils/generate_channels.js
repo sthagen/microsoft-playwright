@@ -17,94 +17,81 @@
 
 const fs = require('fs');
 const path = require('path');
+const yaml = require('yaml');
 
 const channels = new Set();
 
-function tokenize(source) {
-  const lines = source.split('\n').filter(line => {
-    const trimmed = line.trim();
-    return !!trimmed && trimmed[0] != '#';
-  });
-
-  const stack = [{ indent: -1, list: [], words: '' }];
-  for (const line of lines) {
-    const indent = line.length - line.trimLeft().length;
-    const o = { indent, list: [], words: line.split(' ').filter(word => !!word) };
-
-    let current = stack[stack.length - 1];
-    while (indent <= current.indent) {
-      stack.pop();
-      current = stack[stack.length - 1];
-    }
-
-    current.list.push(o);
-    stack.push(o);
-  }
-  return stack[0].list;
-}
-
 function raise(item) {
-  throw new Error(item.words.join(' '));
+  throw new Error('Invalid item: ' + JSON.stringify(item, null, 2));
 }
 
 function titleCase(name) {
   return name[0].toUpperCase() + name.substring(1);
 }
 
-function inlineType(type, item, indent) {
-  const array = type.endsWith('[]');
-  if (array)
-    type = type.substring(0, type.length - 2);
-  let inner = '';
-  if (type === 'enum') {
-    const literals = item.list.map(literal => {
-      if (literal.words.length > 1 || literal.list.length)
-        raise(literal);
-      return literal.words[0];
-    });
-    inner = literals.map(literal => `'${literal}'`).join(' | ');
-    if (array)
-      inner = `(${inner})`;
-  } else if (['string', 'boolean', 'number', 'undefined'].includes(type)) {
-    inner = type;
-  } else if (type === 'object') {
-    inner = `{\n${properties(item, indent + '  ')}\n${indent}}`;
-  } else if (type === 'binary') {
-    inner = 'Binary';
-  } else if (type === 'Error') {
-    inner = 'SerializedError';
-  } else if (channels.has(type)) {
-    inner = type + 'Channel';
-  } else {
-    inner = type;
-  }
-  return inner + (array ? '[]' : '');
-}
-
-function properties(item, indent) {
-  const result = [];
-  for (const prop of item.list) {
-    if (prop.words.length !== 2)
-      raise(prop);
-    let name = prop.words[0];
-    if (!name.endsWith(':'))
-      raise(item);
-    name = name.substring(0, name.length - 1);
-    const optional = name.endsWith('?');
+function inlineType(type, indent, wrapEnums = false) {
+  if (typeof type === 'string') {
+    const optional = type.endsWith('?');
     if (optional)
-      name = name.substring(0, name.length - 1);
-    result.push(`${indent}${name}${optional ? '?' : ''}: ${inlineType(prop.words[1], prop, indent)},`);
+      type = type.substring(0, type.length - 1);
+    if (type === 'binary')
+      return { ts: 'Binary', scheme: 'tBinary', optional };
+    if (['string', 'boolean', 'number', 'undefined'].includes(type))
+      return { ts: type, scheme: `t${titleCase(type)}`, optional };
+    if (channels.has(type))
+      return { ts: `${type}Channel`, scheme: `tChannel('${type}')` , optional };
+    if (type === 'Channel')
+      return { ts: `Channel`, scheme: `tChannel('*')`, optional };
+    return { ts: type, scheme: `tType('${type}')`, optional };
   }
-  return result.join('\n');
+  if (type.type.startsWith('array')) {
+    const optional = type.type.endsWith('?');
+    const inner = inlineType(type.items, indent, true);
+    return { ts: `${inner.ts}[]`, scheme: `tArray(${inner.scheme})`, optional };
+  }
+  if (type.type.startsWith('enum')) {
+    const optional = type.type.endsWith('?');
+    const ts = type.literals.map(literal => `'${literal}'`).join(' | ');
+    return {
+      ts: wrapEnums ? `(${ts})` : ts,
+      scheme: `tEnum([${type.literals.map(literal => `'${literal}'`).join(', ')}])`,
+      optional
+    };
+  }
+  if (type.type.startsWith('object')) {
+    const optional = type.type.endsWith('?');
+    const inner = properties(type.properties, indent + '  ');
+    return {
+      ts: `{\n${inner.ts}\n${indent}}`,
+      scheme: `tObject({\n${inner.scheme}\n${indent}})`,
+      optional
+    };
+  }
+  raise(type);
 }
 
-function objectType(name, item, indent) {
-  if (!item.list.length)
-    return `export type ${name} = {};`;
-  return `export type ${name} = {\n${properties(item, indent)}\n};`
+function properties(props, indent, onlyOptional) {
+  const ts = [];
+  const scheme = [];
+  for (const [name, value] of Object.entries(props)) {
+    const inner = inlineType(value, indent);
+    if (onlyOptional && !inner.optional)
+      continue;
+    ts.push(`${indent}${name}${inner.optional ? '?' : ''}: ${inner.ts},`);
+    const wrapped = inner.optional ? `tOptional(${inner.scheme})` : inner.scheme;
+    scheme.push(`${indent}${name}: ${wrapped},`);
+  }
+  return { ts: ts.join('\n'), scheme: scheme.join('\n') };
 }
 
-const result = [
+function objectType(props, indent, onlyOptional = false) {
+  if (!Object.entries(props).length)
+    return { ts: `{}`, scheme: `tObject({})` };
+  const inner = properties(props, indent + '  ', onlyOptional);
+  return { ts: `{\n${inner.ts}\n${indent}}`, scheme: `tObject({\n${inner.scheme}\n${indent}})` };
+}
+
+const channels_ts = [
 `/**
  * Copyright (c) Microsoft Corporation.
  *
@@ -131,87 +118,129 @@ export interface Channel extends EventEmitter {
 }
 `];
 
-const pdl = fs.readFileSync(path.join(__dirname, '..', 'src', 'rpc', 'protocol.pdl'), 'utf-8');
-const list = tokenize(pdl);
+const validator_ts = [
+`/**
+ * Copyright (c) Microsoft Corporation.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 
-for (const item of list) {
-  if (item.words[0] === 'interface')
-    channels.add(item.words[1]);
+// This file is generated by ${path.basename(__filename)}, do not edit manually.
+
+import { Validator, ValidationError, tOptional, tObject, tBoolean, tNumber, tString, tEnum, tArray, tBinary } from './validatorPrimitives';
+export { Validator, ValidationError } from './validatorPrimitives';
+
+type Scheme = { [key: string]: Validator };
+
+export function createScheme(tChannel: (name: string) => Validator): Scheme {
+  const scheme: Scheme = {};
+
+  const tType = (name: string): Validator => {
+    return (arg: any, path: string) => {
+      const v = scheme[name];
+      if (!v)
+        throw new ValidationError(path + ': unknown type "' + name + '"');
+      return v(arg, path);
+    };
+  };
+`];
+
+const yml = fs.readFileSync(path.join(__dirname, '..', 'src', 'rpc', 'protocol.yml'), 'utf-8');
+const protocol = yaml.parse(yml);
+
+function addScheme(name, s) {
+  const lines = `scheme.${name} = ${s};`.split('\n');
+  validator_ts.push(...lines.map(line => '  ' + line));
 }
 
-for (const item of list) {
-  if (item.words[0] === 'union') {
-    if (item.words.length !== 2)
-      raise(item);
-    result.push(`export type ${item.words[1]} = ${item.list.map(clause => {
-      if (clause.words.length !== 1)
-        raise(clause);
-      return inlineType(clause.words[0], clause, '  ');
-    }).join(' | ')};`);
-  } else if (item.words[0] === 'type') {
-    if (item.words.length !== 2)
-      raise(item);
-    result.push(`export type ${item.words[1]} = {`);
-    result.push(properties(item, '  '));
-    result.push(`};`);
-  } else if (item.words[0] === 'interface') {
-    const channelName = item.words[1];
-    result.push(`// ----------- ${channelName} -----------`);
-    const init = item.list.find(i => i.words[0] === 'initializer');
-    if (init && init.words.length > 1)
-      raise(init);
-    result.push(objectType(channelName + 'Initializer', init || { list: [] }, '  '));
-
-    let extendsName = 'Channel';
-    if (item.words.length === 4 && item.words[2] === 'extends')
-      extendsName = item.words[3] + 'Channel';
-    else if (item.words.length !== 2)
-      raise(item);
-    result.push(`export interface ${channelName}Channel extends ${extendsName} {`);
-
-    const types = new Map();
-    for (const method of item.list) {
-      if (method === init)
-        continue;
-      if (method.words[0] === 'command') {
-        if (method.words.length !== 2)
-          raise(method);
-        const methodName = method.words[1];
-
-        const parameters = method.list.find(i => i.words[0] === 'parameters');
-        const paramsName = `${channelName}${titleCase(methodName)}Params`;
-        types.set(paramsName, parameters || { list: [] });
-
-        const returns = method.list.find(i => i.words[0] === 'returns');
-        const resultName = `${channelName}${titleCase(methodName)}Result`;
-        types.set(resultName, returns);
-
-        result.push(`  ${methodName}(params${parameters ? '' : '?'}: ${paramsName}): Promise<${resultName}>;`);
-      } else if (method.words[0] === 'event') {
-        if (method.words.length !== 2)
-          raise(method);
-        const eventName = method.words[1];
-
-        const parameters = method.list.find(i => i.words[0] === 'parameters');
-        const paramsName = `${channelName}${titleCase(eventName)}Event`;
-        types.set(paramsName, parameters || { list: [] });
-
-        result.push(`  on(event: '${eventName}', callback: (params: ${paramsName}) => void): this;`);
-      } else {
-        raise(method);
-      }
-    }
-    result.push(`}`);
-    for (const [name, item] of types) {
-      if (!item)
-        result.push(`export type ${name} = void;`);
-      else
-        result.push(objectType(name, item, '  '));
-    }
-  } else {
-    raise(item);
+const inherits = new Map();
+for (const [name, value] of Object.entries(protocol)) {
+  if (value.type === 'interface') {
+    channels.add(name);
+    if (value.extends)
+      inherits.set(name, value.extends);
   }
-  result.push(``);
 }
 
-fs.writeFileSync(path.join(__dirname, '..', 'src', 'rpc', 'channels.ts'), result.join('\n'), 'utf-8');
+for (const [name, item] of Object.entries(protocol)) {
+  if (item.type === 'interface') {
+    const channelName = name;
+    channels_ts.push(`// ----------- ${channelName} -----------`);
+    const init = objectType(item.initializer || {}, '');
+    const initializerName = channelName + 'Initializer';
+    channels_ts.push(`export type ${initializerName} = ${init.ts};`);
+
+    channels_ts.push(`export interface ${channelName}Channel extends ${(item.extends || '') + 'Channel'} {`);
+    const ts_types = new Map();
+
+    for (let [eventName, event] of Object.entries(item.events || {})) {
+      if (event === null)
+        event = {};
+      const parameters = objectType(event.parameters || {}, '');
+      const paramsName = `${channelName}${titleCase(eventName)}Event`;
+      ts_types.set(paramsName, parameters.ts);
+      channels_ts.push(`  on(event: '${eventName}', callback: (params: ${paramsName}) => void): this;`);
+    }
+
+    for (let [methodName, method] of Object.entries(item.commands || {})) {
+      if (method === null)
+        method = {};
+      const parameters = objectType(method.parameters || {}, '');
+      const paramsName = `${channelName}${titleCase(methodName)}Params`;
+      const optionsName = `${channelName}${titleCase(methodName)}Options`;
+      ts_types.set(paramsName, parameters.ts);
+      ts_types.set(optionsName, objectType(method.parameters || {}, '', true).ts);
+      addScheme(paramsName, method.parameters ? parameters.scheme : `tOptional(tObject({}))`);
+      for (const key of inherits.keys()) {
+        if (inherits.get(key) === channelName)
+          addScheme(`${key}${titleCase(methodName)}Params`, `tType('${paramsName}')`);
+      }
+
+      const resultName = `${channelName}${titleCase(methodName)}Result`;
+      const returns = objectType(method.returns || {}, '');
+      ts_types.set(resultName, method.returns ? returns.ts : 'void');
+
+      channels_ts.push(`  ${methodName}(params${method.parameters ? '' : '?'}: ${paramsName}): Promise<${resultName}>;`);
+    }
+
+    channels_ts.push(`}`);
+    for (const [typeName, typeValue] of ts_types)
+      channels_ts.push(`export type ${typeName} = ${typeValue};`);
+  } else if (item.type === 'object') {
+    const inner = objectType(item.properties, '');
+    channels_ts.push(`export type ${name} = ${inner.ts};`);
+    addScheme(name, inner.scheme);
+  }
+  channels_ts.push(``);
+}
+
+validator_ts.push(`
+  return scheme;
+}
+`);
+
+let hasChanges = false;
+
+function writeFile(filePath, content) {
+  const existing = fs.readFileSync(filePath, 'utf8');
+  if (existing === content)
+    return;
+  hasChanges = true;
+  const root = path.join(__dirname, '..');
+  console.log(`Writing //${path.relative(root, filePath)}`);
+  fs.writeFileSync(filePath, content, 'utf8');
+}
+
+writeFile(path.join(__dirname, '..', 'src', 'rpc', 'channels.ts'), channels_ts.join('\n'));
+writeFile(path.join(__dirname, '..', 'src', 'rpc', 'validator.ts'), validator_ts.join('\n'));
+process.exit(hasChanges ? 1 : 0);

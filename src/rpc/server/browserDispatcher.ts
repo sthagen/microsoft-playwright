@@ -23,11 +23,11 @@ import { CDPSessionDispatcher } from './cdpSessionDispatcher';
 import { Dispatcher, DispatcherScope } from './dispatcher';
 import { CRBrowser } from '../../chromium/crBrowser';
 import { PageDispatcher } from './pageDispatcher';
-import { headersArrayToObject } from '../serializers';
+import { headersArrayToObject } from '../../converters';
 
 export class BrowserDispatcher extends Dispatcher<Browser, BrowserInitializer> implements BrowserChannel {
   constructor(scope: DispatcherScope, browser: BrowserBase) {
-    super(scope, browser, 'browser', {}, true);
+    super(scope, browser, 'Browser', { version: browser.version() }, true);
     browser.on(Events.Browser.Disconnected, () => {
       this._dispatchEvent('close');
       this._dispose();

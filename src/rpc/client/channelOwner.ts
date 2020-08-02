@@ -15,18 +15,14 @@
  */
 
 import { EventEmitter } from 'events';
-import { Channel } from '../channels';
-import { Connection } from './connection';
-import { assert } from '../../helper';
-import { LoggerSink } from '../../loggerSink';
+import type { Channel } from '../channels';
+import type { Connection } from './connection';
+import type { LoggerSink } from './types';
 import { DebugLoggerSink } from '../../logger';
 
 export abstract class ChannelOwner<T extends Channel = Channel, Initializer = {}> extends EventEmitter {
   private _connection: Connection;
-  private _isScope: boolean;
-  // Parent is always "isScope".
   private _parent: ChannelOwner | undefined;
-  // Only "isScope" channel owners have registered objects inside.
   private _objects = new Map<string, ChannelOwner>();
 
   readonly _type: string;
@@ -35,13 +31,12 @@ export abstract class ChannelOwner<T extends Channel = Channel, Initializer = {}
   readonly _initializer: Initializer;
   _logger: LoggerSink | undefined;
 
-  constructor(parent: ChannelOwner | Connection, type: string, guid: string, initializer: Initializer, isScope?: boolean) {
+  constructor(parent: ChannelOwner | Connection, type: string, guid: string, initializer: Initializer) {
     super();
-    this._connection = parent instanceof Connection ? parent : parent._connection;
+    this._connection = parent instanceof ChannelOwner ? parent._connection : parent;
     this._type = type;
     this._guid = guid;
-    this._isScope = !!isScope;
-    this._parent = parent instanceof Connection ? undefined : parent;
+    this._parent = parent instanceof ChannelOwner ? parent : undefined;
 
     this._connection._objects.set(guid, this);
     if (this._parent) {
@@ -66,7 +61,7 @@ export abstract class ChannelOwner<T extends Channel = Channel, Initializer = {}
           return obj.addListener;
         if (prop === 'removeEventListener')
           return obj.removeListener;
-        return (params: any) => this._connection.sendMessageToServer({ guid, method: String(prop), params });
+        return (params: any) => this._connection.sendMessageToServer(this._type, guid, String(prop), params);
       },
     });
     (this._channel as any)._object = this;
@@ -74,27 +69,21 @@ export abstract class ChannelOwner<T extends Channel = Channel, Initializer = {}
   }
 
   _dispose() {
-    assert(this._isScope);
-
     // Clean up from parent and connection.
     if (this._parent)
       this._parent._objects.delete(this._guid);
     this._connection._objects.delete(this._guid);
 
     // Dispose all children.
-    for (const [guid, object] of [...this._objects]) {
-      if (object._isScope)
-        object._dispose();
-      else
-        this._connection._objects.delete(guid);
-    }
+    for (const object of [...this._objects.values()])
+      object._dispose();
     this._objects.clear();
   }
 
   _debugScopeState(): any {
     return {
       _guid: this._guid,
-      objects: this._isScope ? Array.from(this._objects.values()).map(o => o._debugScopeState()) : undefined,
+      objects: Array.from(this._objects.values()).map(o => o._debugScopeState()),
     };
   }
 

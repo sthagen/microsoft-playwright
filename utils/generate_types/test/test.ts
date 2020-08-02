@@ -63,7 +63,7 @@ playwright.chromium.launch().then(async browser => {
   page.on('console', message => {
     console.log(message.text());
   });
-  page.evaluate(() => console.log(5, 'hello', { foo: 'bar' }));
+  await page.evaluate(() => console.log(5, 'hello', { foo: 'bar' }));
 
   {
     const result = await page.evaluate(() => {
@@ -194,10 +194,7 @@ playwright.chromium.launch().then(async browser => {
 // Example with launch options
 (async () => {
   const browser = await playwright.chromium.launch({
-    args: [
-      '--no-sandbox',
-      '--disable-setuid-sandbox',
-    ],
+    chromiumSandbox: false,
     handleSIGINT: true,
     handleSIGHUP: true,
     handleSIGTERM: true,

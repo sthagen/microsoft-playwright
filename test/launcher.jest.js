@@ -76,7 +76,7 @@ describe('Playwright', function() {
       const error = await browserType.launch(options).catch(e => e);
       expect(error.message).toContain('<launching>');
     });
-    it.skip(CHANNEL).slow()('should accept objects as options', async({browserType, defaultBrowserOptions}) => {
+    it.slow()('should accept objects as options', async({browserType, defaultBrowserOptions}) => {
       const browser = await browserType.launch({ ...defaultBrowserOptions, process });
       await browser.close();
     });
@@ -274,10 +274,12 @@ describe('browserType.launchServer', function() {
   });
   it('should fire close event', async ({browserType, defaultBrowserOptions}) => {
     const browserServer = await browserType.launchServer(defaultBrowserOptions);
-    await Promise.all([
-      new Promise(f => browserServer.on('close', f)),
+    const [result] = await Promise.all([
+      new Promise(f => browserServer.on('close', (exitCode, signal) => f({ exitCode, signal }))),
       browserServer.close(),
     ]);
+    expect(result.exitCode).toBe(0);
+    expect(result.signal).toBe(null);
   });
 });
 

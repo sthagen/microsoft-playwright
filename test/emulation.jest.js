@@ -16,7 +16,7 @@
  */
 
 const utils = require('./utils');
-const {FFOX, HEADLESS} = testOptions;
+const {CHROMIUM, FFOX, MAC, HEADLESS} = testOptions;
 
 describe('BrowserContext({viewport})', function() {
   it('should get the proper default viewport size', async({page, server}) => {
@@ -26,6 +26,20 @@ describe('BrowserContext({viewport})', function() {
     await utils.verifyViewport(page, 1280, 720);
     await page.setViewportSize({width: 123, height: 456});
     await utils.verifyViewport(page, 123, 456);
+  });
+  it('should return correct outerWidth and outerHeight', async({page}) => {
+    const size = await page.evaluate(() => {
+      return {
+        innerWidth: window.innerWidth,
+        innerHeight: window.innerHeight,
+        outerWidth: window.outerWidth,
+        outerHeight: window.outerHeight,
+      };
+    });
+    expect(size.innerWidth).toBe(1280);
+    expect(size.innerHeight).toBe(720);
+    expect(size.outerWidth >= size.innerWidth).toBeTruthy();
+    expect(size.outerHeight >= size.innerHeight).toBeTruthy();
   });
   it('should emulate device width', async({page, server}) => {
     expect(page.viewportSize()).toEqual({width: 1280, height: 720});
@@ -241,14 +255,14 @@ describe('Page.emulateMedia type', function() {
     await page.emulateMedia({});
     expect(await page.evaluate(() => matchMedia('screen').matches)).toBe(false);
     expect(await page.evaluate(() => matchMedia('print').matches)).toBe(true);
-    await page.emulateMedia({ media: '' });
+    await page.emulateMedia({ media: null });
     expect(await page.evaluate(() => matchMedia('screen').matches)).toBe(true);
     expect(await page.evaluate(() => matchMedia('print').matches)).toBe(false);
   });
   it('should throw in case of bad type argument', async({page, server}) => {
     let error = null;
     await page.emulateMedia({ media: 'bad' }).catch(e => error = e);
-    expect(error.message).toContain('Unsupported media: bad');
+    expect(error.message).toContain('media: expected one of (screen|print|null)');
   });
 });
 
@@ -276,7 +290,7 @@ describe('Page.emulateMedia colorScheme', function() {
   it('should throw in case of bad argument', async({page, server}) => {
     let error = null;
     await page.emulateMedia({ colorScheme: 'bad' }).catch(e => error = e);
-    expect(error.message).toContain('Unsupported color scheme: bad');
+    expect(error.message).toContain('colorScheme: expected one of (dark|light|no-preference|null)');
   });
   it('should work during navigation', async({page, server}) => {
     await page.emulateMedia({ colorScheme: 'light' });
@@ -323,6 +337,38 @@ describe('Page.emulateMedia colorScheme', function() {
     expect(await frame.evaluate(() => matchMedia('(prefers-color-scheme: dark)').matches)).toBe(true);
     await page.close();
   });
+  it.fail(FFOX)('should change the actual colors in css', async({page}) => {
+    await page.setContent(`
+      <style>
+        @media (prefers-color-scheme: dark) {
+          div {
+            background: black;
+            color: white;
+          }
+        }
+        @media (prefers-color-scheme: light) {
+          div {
+            background: white;
+            color: black;
+          }
+        }
+
+      </style>
+      <div>Hello</div>
+    `);
+    function getBackgroundColor() {
+      return page.$eval('div', div => window.getComputedStyle(div).backgroundColor);
+    }
+
+    await page.emulateMedia({ colorScheme: "light" });
+    expect(await getBackgroundColor()).toBe('rgb(255, 255, 255)');
+
+    await page.emulateMedia({ colorScheme: "dark" });
+    expect(await getBackgroundColor()).toBe('rgb(0, 0, 0)');
+
+    await page.emulateMedia({ colorScheme: "light" });
+    expect(await getBackgroundColor()).toBe('rgb(255, 255, 255)');
+  })
 });
 
 describe('BrowserContext({timezoneId})', function() {

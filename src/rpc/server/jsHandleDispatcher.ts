@@ -15,15 +15,15 @@
  */
 
 import * as js from '../../javascript';
-import { JSHandleChannel, JSHandleInitializer, SerializedArgument } from '../channels';
+import { JSHandleChannel, JSHandleInitializer, SerializedArgument, SerializedValue } from '../channels';
 import { Dispatcher, DispatcherScope } from './dispatcher';
-import { parseEvaluationResultValue, serializeAsCallArgument, SerializedValue } from '../../common/utilityScriptSerializers';
 import { createHandle } from './elementHandlerDispatcher';
+import { parseSerializedValue, serializeValue } from '../serializers';
 
 export class JSHandleDispatcher extends Dispatcher<js.JSHandle, JSHandleInitializer> implements JSHandleChannel {
 
   constructor(scope: DispatcherScope, jsHandle: js.JSHandle) {
-    super(scope, jsHandle, jsHandle.asElement() ? 'elementHandle' : 'jsHandle', {
+    super(scope, jsHandle, jsHandle.asElement() ? 'ElementHandle' : 'JSHandle', {
       preview: jsHandle.toString(),
     });
     jsHandle._setPreviewCallback(preview => this._dispatchEvent('previewUpdated', { preview }));
@@ -63,9 +63,12 @@ export class JSHandleDispatcher extends Dispatcher<js.JSHandle, JSHandleInitiali
 // Generic channel parser converts guids to JSHandleDispatchers,
 // and this function takes care of coverting them into underlying JSHandles.
 export function parseArgument(arg: SerializedArgument): any {
-  return parseEvaluationResultValue(arg.value as any, arg.handles.map(arg => (arg as JSHandleDispatcher)._object));
+  return parseSerializedValue(arg.value, arg.handles.map(a => (a as JSHandleDispatcher)._object));
+}
+export function parseValue(v: SerializedValue): any {
+  return parseSerializedValue(v, []);
 }
 
 export function serializeResult(arg: any): SerializedValue {
-  return serializeAsCallArgument(arg, value => ({ fallThrough: value }));
+  return serializeValue(arg, value => ({ fallThrough: value }), new Set());
 }

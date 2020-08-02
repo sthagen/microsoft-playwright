@@ -18,10 +18,13 @@ const NodeEnvironment = require('jest-environment-node');
 const registerFixtures = require('./fixtures');
 const os = require('os');
 const path = require('path');
-const platform = os.platform();
+const fs = require('fs');
+const debug = require('debug');
+const platform = process.env.REPORT_ONLY_PLATFORM || os.platform();
 const GoldenUtils = require('../../utils/testrunner/GoldenUtils');
-
+const {installCoverageHooks} = require('./coverage');
 const browserName = process.env.BROWSER || 'chromium';
+const reportOnly = !!process.env.REPORT_ONLY_PLATFORM;
 
 class PlaywrightEnvironment extends NodeEnvironment {
   constructor(config, context) {
@@ -41,6 +44,7 @@ class PlaywrightEnvironment extends NodeEnvironment {
     testOptions.GOLDEN_DIR = path.join(__dirname, '..', 'golden-' + browserName);
     testOptions.OUTPUT_DIR = path.join(__dirname, '..', 'output-' + browserName);
     this.global.testOptions = testOptions;
+    this.testPath = context.testPath;
 
     this.global.registerFixture = (name, fn) => {
       this.fixturePool.registerFixture(name, 'test', fn);
@@ -49,15 +53,37 @@ class PlaywrightEnvironment extends NodeEnvironment {
       this.fixturePool.registerFixture(name, 'worker', fn);
     };
     registerFixtures(this.global);
+
+    process.on('SIGINT', async () => {
+      await this.fixturePool.teardownScope('test');
+      await this.fixturePool.teardownScope('worker');
+      process.exit(130);
+    });
   }
 
   async setup() {
     await super.setup();
+    const {coverage, uninstall} = installCoverageHooks(browserName);
+    this.coverage = coverage;
+    this.uninstallCoverage = uninstall;
   }
 
   async teardown() {
     await this.fixturePool.teardownScope('worker');
     await super.teardown();
+    // If the setup throws an error, we don't want to override it
+    // with a useless error about this.coverage not existing.
+    if (!this.coverage)
+      return;
+    this.uninstallCoverage();
+    const testRoot = path.join(__dirname, '..');
+    const relativeTestPath = path.relative(testRoot, this.testPath);
+    const coveragePath = path.join(this.global.testOptions.OUTPUT_DIR, 'coverage', relativeTestPath + '.json');
+    const coverageJSON = [...this.coverage.keys()].filter(key => this.coverage.get(key));
+    await fs.promises.mkdir(path.dirname(coveragePath), { recursive: true });
+    await fs.promises.writeFile(coveragePath, JSON.stringify(coverageJSON, undefined, 2), 'utf8');
+    delete this.coverage;
+    delete this.uninstallCoverage;
   }
 
   runScript(script) {
@@ -80,33 +106,64 @@ class PlaywrightEnvironment extends NodeEnvironment {
 
       const describeSkip = this.global.describe.skip;
       this.global.describe.skip = (...args) => {
-        if (args.length = 1)
+        if (args.length === 1)
           return args[0] ? describeSkip : this.global.describe;
         return describeSkip(...args);
       };
-      this.global.describe.fail = this.global.describe.skip;
+
+      function addSlow(f) {
+        f.slow = () => {
+          return (...args) => f(...args, 90000);
+        };
+        return f;
+      }
 
       const itSkip = this.global.it.skip;
-      itSkip.slow = () => itSkip;
+      addSlow(itSkip);
+      addSlow(this.global.it);
       this.global.it.skip = (...args) => {
-        if (args.length = 1)
+        if (args.length === 1)
           return args[0] ? itSkip : this.global.it;
         return itSkip(...args);
       };
-      this.global.it.fail = this.global.it.skip;
-      this.global.it.slow = () => {
-        return (name, fn) => {
-          return this.global.it(name, fn, 90000);
-        }
+      if (reportOnly) {
+        this.global.it.fail = condition => {
+          return addSlow((...inner) => {
+            inner[1].__fail = !!condition;
+            return this.global.it(...inner);
+          });
+        };
+      } else {
+        this.global.it.fail = this.global.it.skip;
       }
 
       const testOptions = this.global.testOptions;
       function toBeGolden(received, goldenName) {
-        return GoldenUtils.compare(received, {
+        const {snapshotState} = this;
+        const updateSnapshot = snapshotState._updateSnapshot;
+        const expectedPath = path.join(testOptions.GOLDEN_DIR, goldenName);
+        const fileExists = fs.existsSync(expectedPath);
+        if (updateSnapshot === 'all' || (updateSnapshot === 'new' && !fileExists)) {
+          fs.writeFileSync(expectedPath, received);
+          if (fileExists)
+            snapshotState.updated++;
+          else
+            snapshotState.added++;
+          return {
+            pass: true
+          }
+        };
+
+        const {pass, message} =  GoldenUtils.compare(received, {
           goldenPath: testOptions.GOLDEN_DIR,
           outputPath: testOptions.OUTPUT_DIR,
           goldenName
         });
+        if (pass)
+          snapshotState.matched++;
+        else
+          snapshotState.unmatched++;
+        return {pass, message: () => message};
       };
       this.global.expect.extend({ toBeGolden });
     }
@@ -114,10 +171,17 @@ class PlaywrightEnvironment extends NodeEnvironment {
     if (event.name === 'test_start') {
       const fn = event.test.fn;
       event.test.fn = async () => {
+        if (reportOnly) {
+          if (fn.__fail)
+            throw new Error('fail');
+          return;
+        }
+        debug('pw:test')(`start "${testOrSuiteName(event.test)}"`);
         try {
-          return await this.fixturePool.resolveParametersAndRun(fn);
+          await this.fixturePool.resolveParametersAndRun(fn);
         } finally {
           await this.fixturePool.teardownScope('test');
+          debug('pw:test')(`finish "${testOrSuiteName(event.test)}"`);
         }
       };
     }
@@ -152,6 +216,7 @@ class Fixture {
     let setupFenceReject;
     const setupFence = new Promise((f, r) => { setupFenceFulfill = f; setupFenceReject = r; });
     const teardownFence = new Promise(f => this._teardownFenceCallback = f);
+    debug('pw:test:hook')(`setup "${this.name}"`);
     this._tearDownComplete = this.fn(params, async value => {
       this.value = value;
       setupFenceFulfill();
@@ -171,8 +236,10 @@ class Fixture {
         continue;
       await fixture.teardown();
     }
-    if (this._setup)
+    if (this._setup) {
+      debug('pw:test:hook')(`teardown "${this.name}"`);
       this._teardownFenceCallback();
+    }
     await this._tearDownComplete;
     this.pool.instances.delete(this.name);
   }
@@ -236,4 +303,13 @@ function valueFromEnv(name, defaultValue) {
   if (!(name in process.env))
     return defaultValue;
   return JSON.parse(process.env[name]);
+}
+
+function testOrSuiteName(o) {
+  if (o.name === 'ROOT_DESCRIBE_BLOCK')
+    return '';
+  let name = o.parent ? testOrSuiteName(o.parent) : '';
+  if (name && o.name)
+    name += ' ';
+  return name + o.name;
 }
