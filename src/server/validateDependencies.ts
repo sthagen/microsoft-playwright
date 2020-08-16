@@ -138,7 +138,7 @@ async function validateDependenciesLinux(browserPath: string, browser: BrowserDe
   if (missingPackages.size) {
     missingPackagesMessage = [
       `  Install missing packages with:`,
-      `      apt-get install ${[...missingPackages].join('\\\n          ')}`,
+      `      sudo apt-get install ${[...missingPackages].join('\\\n          ')}`,
       ``,
       ``,
     ].join('\n');
@@ -187,7 +187,8 @@ async function executablesOrSharedLibraries(directoryPath: string): Promise<stri
 
 async function missingFileDependenciesWindows(filePath: string): Promise<Array<string>> {
   const dirname = path.dirname(filePath);
-  const {stdout, code} = await spawnAsync(path.join(__dirname, '../../bin/PrintDeps.exe'), [filePath], {
+  const printDepsWindowsExecutable = process.env.PW_PRINT_DEPS_WINDOWS_EXECUTABLE || path.join(__dirname, '../../bin/PrintDeps.exe');
+  const {stdout, code} = await spawnAsync(printDepsWindowsExecutable, [filePath], {
     cwd: dirname,
     env: {
       ...process.env,
@@ -219,14 +220,17 @@ async function missingDLOPENLibraries(browser: BrowserDescriptor): Promise<strin
   const libraries = DL_OPEN_LIBRARIES[browser.name];
   if (!libraries.length)
     return [];
-  const {stdout, code} = await spawnAsync('ldconfig', ['-p'], {});
-  if (code !== 0)
+  // NOTE: Using full-qualified path to `ldconfig` since `/sbin` is not part of the
+  // default PATH in CRON.
+  // @see https://github.com/microsoft/playwright/issues/3397
+  const {stdout, code, error} = await spawnAsync('/sbin/ldconfig', ['-p'], {});
+  if (code !== 0 || error)
     return [];
   const isLibraryAvailable = (library: string) => stdout.toLowerCase().includes(library.toLowerCase());
   return libraries.filter(library => !isLibraryAvailable(library));
 }
 
-function spawnAsync(cmd: string, args: string[], options: any): Promise<{stdout: string, stderr: string, code: number}> {
+function spawnAsync(cmd: string, args: string[], options: any): Promise<{stdout: string, stderr: string, code: number, error?: Error}> {
   const process = spawn(cmd, args, options);
 
   return new Promise(resolve => {
@@ -235,6 +239,7 @@ function spawnAsync(cmd: string, args: string[], options: any): Promise<{stdout:
     process.stdout.on('data', data => stdout += data);
     process.stderr.on('data', data => stderr += data);
     process.on('close', code => resolve({stdout, stderr, code}));
+    process.on('error', error => resolve({stdout, stderr, code: 0, error}));
   });
 }
 

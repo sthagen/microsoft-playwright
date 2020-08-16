@@ -2,8 +2,8 @@
 set -e
 set +x
 
-RUST_VERSION="1.42.0"
-CBINDGEN_VERSION="0.14.1"
+RUST_VERSION="1.45.0"
+CBINDGEN_VERSION="0.14.3"
 
 trap "cd $(pwd -P)" EXIT
 cd "$(dirname $0)"
@@ -44,8 +44,8 @@ echo "mk_add_options MOZ_OBJDIR=@TOPSRCDIR@/${OBJ_FOLDER}" >> .mozconfig
 if [[ $1 == "--juggler" ]]; then
   ./mach build faster
 else
-  # TODO: rust is not in the PATH on Windows
-  if command -v rust >/dev/null; then
+  # TODO: rustup is not in the PATH on Windows
+  if command -v rustup >/dev/null; then
     # We manage Rust version ourselves.
     echo "-- Using rust v${RUST_VERSION}"
     rustup default "${RUST_VERSION}"

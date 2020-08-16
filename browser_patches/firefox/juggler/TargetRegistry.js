@@ -113,6 +113,8 @@ class TargetRegistry {
     this._browserToTarget = new Map();
     this._browserBrowsingContextToTarget = new Map();
 
+    this._browserProxy = null;
+
     // Cleanup containers from previous runs (if any)
     for (const identity of ContextualIdentityService.getPublicIdentities()) {
       if (identity.name && identity.name.startsWith(IDENTITY_NAME)) {
@@ -241,6 +243,20 @@ class TargetRegistry {
     extHelperAppSvc.setDownloadInterceptor(new DownloadInterceptor(this));
   }
 
+  setBrowserProxy(proxy) {
+    this._browserProxy = proxy;
+  }
+
+  getProxyInfo(channel) {
+    const originAttributes = channel.loadInfo && channel.loadInfo.originAttributes;
+    const browserContext = originAttributes ? this.browserContextForUserContextId(originAttributes.userContextId) : null;
+    // Prefer context proxy and fallback to browser-level proxy.
+    const proxyInfo = (browserContext && browserContext._proxy) || this._browserProxy;
+    if (!proxyInfo || proxyInfo.bypass.some(domainSuffix => channel.URI.host.endsWith(domainSuffix)))
+      return null;
+    return proxyInfo;
+  }
+
   defaultContext() {
     return this._defaultContext;
   }
@@ -350,7 +366,7 @@ class PageTarget {
     this._channelIds = new Set();
 
     const navigationListener = {
-      QueryInterface: ChromeUtils.generateQI([ Ci.nsIWebProgressListener]),
+      QueryInterface: ChromeUtils.generateQI([Ci.nsIWebProgressListener, Ci.nsISupportsWeakReference]),
       onLocationChange: (aWebProgress, aRequest, aLocation) => this._onNavigated(aLocation),
     };
     this._eventListeners = [
@@ -473,8 +489,8 @@ class BrowserContext {
     this._permissions = new Map();
     this._registry._browserContextIdToBrowserContext.set(this.browserContextId, this);
     this._registry._userContextIdToBrowserContext.set(this.userContextId, this);
+    this._proxy = null;
     this.removeOnDetach = removeOnDetach;
-    this.proxy = undefined;
     this.extraHTTPHeaders = undefined;
     this.httpCredentials = undefined;
     this.requestInterceptionEnabled = undefined;
@@ -505,6 +521,10 @@ class BrowserContext {
     }
     this._registry._browserContextIdToBrowserContext.delete(this.browserContextId);
     this._registry._userContextIdToBrowserContext.delete(this.userContextId);
+  }
+
+  setProxy(proxy) {
+    this._proxy = proxy;
   }
 
   setIgnoreHTTPSErrors(ignoreHTTPSErrors) {
@@ -628,6 +648,7 @@ class BrowserContext {
         cookie.expires === undefined ? Date.now() + HUNDRED_YEARS : cookie.expires,
         { userContextId: this.userContextId || undefined } /* originAttributes */,
         protocolToSameSite[cookie.sameSite],
+        Ci.nsICookie.SCHEME_UNSET
       );
     }
   }

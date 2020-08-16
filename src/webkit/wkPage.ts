@@ -497,7 +497,7 @@ export class WKPage implements PageDelegate {
       handles,
       count: 0,
       location: {
-        url,
+        url: url || '',
         lineNumber: (lineNumber || 1) - 1,
         columnNumber: (columnNumber || 1) - 1,
       }
@@ -702,6 +702,19 @@ export class WKPage implements PageDelegate {
 
   async setBackgroundColor(color?: { r: number; g: number; b: number; a: number; }): Promise<void> {
     await this._session.send('Page.setDefaultBackgroundColorOverride', { color });
+  }
+
+  async startVideoRecording(options: types.VideoRecordingOptions): Promise<void> {
+    this._pageProxySession.send('Screencast.startVideoRecording', {
+      file: options.outputFile,
+      width: options.width,
+      height: options.height,
+      scale: options.scale,
+    });
+  }
+
+  async stopVideoRecording(): Promise<void> {
+    await this._pageProxySession.send('Screencast.stopVideoRecording');
   }
 
   async takeScreenshot(format: string, documentRect: types.Rect | undefined, viewportRect: types.Rect | undefined, quality: number | undefined): Promise<Buffer> {

@@ -33,7 +33,10 @@ PATCHES_PATH=""
 BUILD_NUMBER=""
 WEBKIT_EXTRA_FOLDER_PATH=""
 FIREFOX_EXTRA_FOLDER_PATH=""
-if [[ ("$1" == "firefox") || ("$1" == "firefox/") || ("$1" == "ff") ]]; then
+if [[ ("$1" == "chromium") || ("$1" == "chromium/") || ("$1" == "cr") ]]; then
+  echo "FYI: chromium checkout is not supported."
+  exit 0
+elif [[ ("$1" == "firefox") || ("$1" == "firefox/") || ("$1" == "ff") ]]; then
   FRIENDLY_CHECKOUT_PATH="//browser_patches/firefox/checkout";
   CHECKOUT_PATH="$PWD/firefox/checkout"
   PATCHES_PATH="$PWD/firefox/patches"
@@ -111,7 +114,7 @@ if git show-ref --verify --quiet refs/heads/playwright-build; then
 fi
 git checkout -b playwright-build
 echo "-- applying patches"
-git apply --index $PATCHES_PATH/*
+git apply --index --whitespace=nowarn $PATCHES_PATH/*
 
 if [[ ! -z "${WEBKIT_EXTRA_FOLDER_PATH}" ]]; then
   echo "-- adding WebKit embedders"

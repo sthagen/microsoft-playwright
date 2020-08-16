@@ -37,8 +37,7 @@ let documentation;
   const api = await Source.readFile(path.join(PROJECT_DIR, 'docs', 'api.md'));
   const {documentation: mdDocumentation} = await require('../doclint/check_public_api/MDBuilder')(page, [api]);
   await browser.close();
-  const rpcDir = path.join(PROJECT_DIR, 'src', 'rpc');
-  const sources = await Source.readdir(path.join(PROJECT_DIR, 'src'), '', [rpcDir]);
+  const sources = await Source.readdir(path.join(PROJECT_DIR, 'src', 'rpc', 'client'), '', []);
   const {documentation: jsDocumentation} = await require('../doclint/check_public_api/JSBuilder').checkSources(sources);
   documentation = mergeDocumentation(mdDocumentation, jsDocumentation);
   const handledClasses = new Set();
@@ -178,7 +177,7 @@ function classBody(classDesc) {
       for (const {eventName, params, comment, type} of eventDescriptions) {
         if (comment)
           parts.push(writeComment(comment, '  '));
-        parts.push(`  ${member.name}(event: '${eventName}', optionsOrPredicate?: { predicate?: (${params}) => boolean, timeout?: number }): Promise<${type}>;\n`);
+        parts.push(`  ${member.name}(event: '${eventName}', optionsOrPredicate?: { predicate?: (${params}) => boolean, timeout?: number } | ((${params}) => boolean)): Promise<${type}>;\n`);
       }
 
       return parts.join('\n');
@@ -233,6 +232,9 @@ function writeComment(comment, indent = '') {
 function typeToString(type, ...namespace) {
   if (!type)
     return 'void';
+  // Accessibility.snapshot has a recursive data structure, so special case it here.
+  if (namespace[0] === 'AccessibilitySnapshot' && namespace[1] === 'children')
+    return 'Array<AccessibilitySnapshot>';
   let typeString = stringifyType(parseType(type.name));
   if (type.properties.length && typeString.indexOf('Object') !== -1) {
     const name = namespace.map(n => n[0].toUpperCase() + n.substring(1)).join('');

@@ -208,6 +208,14 @@ export class CRPage implements PageDelegate {
     await this._mainFrameSession._client.send('Emulation.setDefaultBackgroundColorOverride', { color });
   }
 
+  async startVideoRecording(options: types.VideoRecordingOptions): Promise<void> {
+    throw new Error('Not implemented');
+  }
+
+  async stopVideoRecording(): Promise<void> {
+    throw new Error('Not implemented');
+  }
+
   async takeScreenshot(format: 'png' | 'jpeg', documentRect: types.Rect | undefined, viewportRect: types.Rect | undefined, quality: number | undefined): Promise<Buffer> {
     const { visualViewport } = await this._mainFrameSession._client.send('Page.getLayoutMetrics');
     if (!documentRect) {
@@ -678,8 +686,14 @@ class FrameSession {
     const {level, text, args, source, url, lineNumber} = event.entry;
     if (args)
       args.map(arg => releaseObject(this._client, arg.objectId!));
-    if (source !== 'worker')
-      this._page.emit(Events.Page.Console, new ConsoleMessage(level, text, [], {url, lineNumber}));
+    if (source !== 'worker') {
+      const location: types.ConsoleMessageLocation = {
+        url: url || '',
+        lineNumber: lineNumber || 0,
+        columnNumber: 0,
+      };
+      this._page.emit(Events.Page.Console, new ConsoleMessage(level, text, [], location));
+    }
   }
 
   async _onFileChooserOpened(event: Protocol.Page.fileChooserOpenedPayload) {

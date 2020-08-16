@@ -125,13 +125,13 @@ class BrowserHandler {
   }
 
   async close() {
-    this._onclose();
     let browserWindow = Services.wm.getMostRecentWindow(
       "navigator:browser"
     );
     if (browserWindow && browserWindow.gBrowserInit) {
       await browserWindow.gBrowserInit.idleTasksFinishedPromise;
     }
+    this._onclose();
     Services.startup.quit(Ci.nsIAppStartup.eForceQuit);
   }
 
@@ -151,8 +151,13 @@ class BrowserHandler {
     this._targetRegistry.browserContextForId(browserContextId).httpCredentials = nullToUndefined(credentials);
   }
 
-  async setProxy({browserContextId, type, host, port, bypass}) {
-    this._targetRegistry.browserContextForId(browserContextId).proxy = { type, host, port, bypass };
+  async setBrowserProxy({type, host, port, bypass, username, password}) {
+    this._targetRegistry.setBrowserProxy({ type, host, port, bypass, username, password});
+  }
+
+  async setContextProxy({browserContextId, type, host, port, bypass, username, password}) {
+    const browserContext = this._targetRegistry.browserContextForId(browserContextId);
+    browserContext.setProxy({ type, host, port, bypass, username, password });
   }
 
   setRequestInterception({browserContextId, enabled}) {

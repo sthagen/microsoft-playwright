@@ -16,15 +16,12 @@
 
 import { BrowserBase } from '../../browser';
 import { BrowserTypeBase, BrowserType } from '../../server/browserType';
-import * as types from '../../types';
 import { BrowserDispatcher } from './browserDispatcher';
-import { BrowserChannel, BrowserTypeChannel, BrowserContextChannel, BrowserTypeInitializer, BrowserServerChannel, BrowserTypeLaunchParams, BrowserTypeLaunchPersistentContextParams, BrowserTypeLaunchServerParams } from '../channels';
+import { BrowserChannel, BrowserTypeChannel, BrowserContextChannel, BrowserTypeInitializer, BrowserTypeLaunchParams, BrowserTypeLaunchPersistentContextParams } from '../channels';
 import { Dispatcher, DispatcherScope } from './dispatcher';
 import { BrowserContextBase } from '../../browserContext';
 import { BrowserContextDispatcher } from './browserContextDispatcher';
-import { BrowserServerDispatcher } from './browserServerDispatcher';
 import { headersArrayToObject, envArrayToObject } from '../../converters';
-import { parseValue } from './jsHandleDispatcher';
 
 export class BrowserTypeDispatcher extends Dispatcher<BrowserType, BrowserTypeInitializer> implements BrowserTypeChannel {
   constructor(scope: DispatcherScope, browserType: BrowserTypeBase) {
@@ -39,7 +36,6 @@ export class BrowserTypeDispatcher extends Dispatcher<BrowserType, BrowserTypeIn
       ...params,
       ignoreDefaultArgs: params.ignoreAllDefaultArgs ? true : params.ignoreDefaultArgs,
       env: params.env ? envArrayToObject(params.env) : undefined,
-      firefoxUserPrefs: params.firefoxUserPrefs ? parseValue(params.firefoxUserPrefs) : undefined,
     };
     const browser = await this._object.launch(options);
     return { browser: new BrowserDispatcher(this._scope, browser as BrowserBase) };
@@ -55,20 +51,5 @@ export class BrowserTypeDispatcher extends Dispatcher<BrowserType, BrowserTypeIn
     };
     const browserContext = await this._object.launchPersistentContext(params.userDataDir, options);
     return { context: new BrowserContextDispatcher(this._scope, browserContext as BrowserContextBase) };
-  }
-
-  async launchServer(params: BrowserTypeLaunchServerParams): Promise<{ server: BrowserServerChannel }> {
-    const options = {
-      ...params,
-      ignoreDefaultArgs: params.ignoreAllDefaultArgs ? true : params.ignoreDefaultArgs,
-      firefoxUserPrefs: params.firefoxUserPrefs ? parseValue(params.firefoxUserPrefs) : undefined,
-      env: params.env ? envArrayToObject(params.env) : undefined,
-    };
-    return { server: new BrowserServerDispatcher(this._scope, await this._object.launchServer(options)) };
-  }
-
-  async connect(params: types.ConnectOptions): Promise<{ browser: BrowserChannel }> {
-    const browser = await this._object.connect(params);
-    return { browser: new BrowserDispatcher(this._scope, browser as BrowserBase) };
   }
 }

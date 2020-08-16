@@ -297,7 +297,13 @@ class NetworkRequest {
     if (!pageNetwork)
       return false;
     const browserContext = pageNetwork._target.browserContext();
-    const credentials = browserContext ? browserContext.httpCredentials : undefined;
+    let credentials = null;
+    if (authInfo.flags & Ci.nsIAuthInformation.AUTH_PROXY) {
+      const proxy = this._networkObserver._targetRegistry.getProxyInfo(aChannel);
+      credentials = proxy ? {username: proxy.username, password: proxy.password} : null;
+    } else {
+      credentials = browserContext ? browserContext.httpCredentials : undefined;
+    }
     if (!credentials)
       return false;
     authInfo.username = credentials.username;
@@ -449,7 +455,7 @@ class NetworkRequest {
   }
 
   _fallThroughInterceptController() {
-    if (!this._previousCallbacks || !(this._previousCallbacks instanceof Ci.nsIInterfaceRequestor))
+    if (!this._previousCallbacks || !(this._previousCallbacks instanceof Ci.nsINetworkInterceptController))
       return undefined;
     return this._previousCallbacks.getInterface(Ci.nsINetworkInterceptController);
   }
@@ -569,14 +575,8 @@ class NetworkObserver {
     this._channelProxyFilter = {
       QueryInterface: ChromeUtils.generateQI([Ci.nsIProtocolProxyChannelFilter]),
       applyFilter: (channel, defaultProxyInfo, proxyFilter) => {
-        const originAttributes = channel.loadInfo && channel.loadInfo.originAttributes;
-        const browserContext = originAttributes ? this._targetRegistry.browserContextForUserContextId(originAttributes.userContextId) : null;
-        const proxy = browserContext ? browserContext.proxy : null;
+        const proxy = this._targetRegistry.getProxyInfo(channel);
         if (!proxy) {
-          proxyFilter.onProxyFilterResult(defaultProxyInfo);
-          return;
-        }
-        if (proxy.bypass.some(domain => channel.URI.host.endsWith(domain))) {
           proxyFilter.onProxyFilterResult(defaultProxyInfo);
           return;
         }

@@ -23,6 +23,7 @@ const removeFolder = require('rimraf');
 
 const {FlakinessDashboard} = require('../utils/flakiness-dashboard');
 const PROJECT_ROOT = fs.existsSync(path.join(__dirname, '..', 'package.json')) ? path.join(__dirname, '..') : path.join(__dirname, '..', '..');
+const browserName = process.env.BROWSER || 'chromium';
 
 let platform = os.platform();
 
@@ -188,27 +189,6 @@ const utils = module.exports = {
     await utils.removeFolderAsync(dir).catch(e => {});
   },
 
-  testOptions(browserType) {
-    const GOLDEN_DIR = path.join(__dirname, 'golden-' + browserType.name());
-    const OUTPUT_DIR = path.join(__dirname, 'output-' + browserType.name());
-    const ASSETS_DIR = path.join(__dirname, 'assets');
-    return {
-      FFOX: browserType.name() === 'firefox',
-      WEBKIT: browserType.name() === 'webkit',
-      CHROMIUM: browserType.name() === 'chromium',
-      MAC: platform === 'darwin',
-      LINUX: platform === 'linux',
-      WIN: platform === 'win32',
-      browserType,
-      GOLDEN_DIR,
-      OUTPUT_DIR,
-      ASSETS_DIR,
-      USES_HOOKS: process.env.PWCHANNEL === 'wire',
-      CHANNEL: !!process.env.PWCHANNEL,
-      HEADLESS: !!valueFromEnv('HEADLESS', true),
-    };
-  },
-
   setPlatform(p) {
     // To support isplaywrightready.
     platform = p;
@@ -246,10 +226,19 @@ const utils = module.exports = {
     };
     return logger;
   },
-};
 
-function valueFromEnv(name, defaultValue) {
-  if (!(name in process.env))
-    return defaultValue;
-  return JSON.parse(process.env[name]);
-}
+  expectSSLError(errorMessage) {
+    if (browserName === 'chromium') {
+      expect(errorMessage).toContain('net::ERR_CERT_AUTHORITY_INVALID');
+    } else if (browserName === 'webkit') {
+      if (platform === 'darwin')
+        expect(errorMessage).toContain('The certificate for this server is invalid');
+      else if (platform === 'win32')
+        expect(errorMessage).toContain('SSL peer certificate or SSH remote key was not OK');
+      else
+        expect(errorMessage).toContain('Unacceptable TLS certificate');
+    } else {
+      expect(errorMessage).toContain('SSL_ERROR_UNKNOWN');
+    }
+  },
+};

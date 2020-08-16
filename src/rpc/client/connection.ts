@@ -29,7 +29,6 @@ import { ConsoleMessage } from './consoleMessage';
 import { Dialog } from './dialog';
 import { Download } from './download';
 import { parseError } from '../serializers';
-import { BrowserServer } from './browserServer';
 import { CDPSession } from './cdpSession';
 import { Playwright } from './playwright';
 import { Electron, ElectronApplication } from './electron';
@@ -160,9 +159,6 @@ export class Connection {
         else
           result = new BrowserContext(parent, type, guid, initializer, browserName);
         break;
-      case 'BrowserServer':
-        result = new BrowserServer(parent, type, guid, initializer);
-        break;
       case 'BrowserType':
         result = new BrowserType(parent, type, guid, initializer);
         break;
@@ -242,6 +238,6 @@ const scheme = createScheme(tChannel);
 function validateParams(type: string, method: string, params: any): any {
   const name = type + method[0].toUpperCase() + method.substring(1) + 'Params';
   if (!scheme[name])
-    throw new ValidationError(`Uknown scheme for ${type}.${method}`);
+    throw new ValidationError(`Unknown scheme for ${type}.${method}`);
   return scheme[name](params, '');
 }

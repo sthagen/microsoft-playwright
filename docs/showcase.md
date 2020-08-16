@@ -9,11 +9,13 @@
 * [Codex](https://github.com/codex-src/codex-app): Playwright is used to run functional and performance tests
 * [Instakittens React admin](https://github.com/fredericbonnet/instakittens-react-admin): Playwright is used to run end-to-end test scenarios written with Cucumber
 * [xterm.js](https://github.com/xtermjs/xterm.js): Playwright is used to run cross-browser integration tests
+* [Accessibility Insights for Web](https://github.com/microsoft/accessibility-insights-web): Playwright is used with Jest and axe-core to run end-to-end functional and accessibility tests of a WebExtension-based browser extension
 
 ## Tools
 
 * [CodeceptJS](https://github.com/Codeception/CodeceptJS): Write scenario-driven Playwright tests with synchronous code
 * [dom-to-playwright](https://github.com/Xiphe/dom-to-playwright) to copy a JSDOM snapshot into a Playwright page.
+* [expected-condition-playwright](https://github.com/elaichenkov/expected-condition-playwright): Supplies a set of common expected conditions that can wait for certain states and conditions
 * [Headless Testing](https://headlesstesting.com/support/start/playwright.html): Run Playwright tests on browsers in the cloud
 * [Lumberjack](https://github.com/JakePartusch/lumberjack): Automated accessibility scanner to run checks on your entire website
 * [mockiavelli](https://github.com/HLTech/mockiavelli) Request mocking library for Playwright to test SPA in isolation from backend APIs.
@@ -41,6 +43,7 @@
 * [playwright-cljs](https://github.com/apeckham/playwright-cljs): Playwright examples in ClojureScript
 * [playwright-azure-functions](https://github.com/arjun27/playwright-azure-functions): Playwright setup on Azure Functions
 * [playwright-aws-lambda](https://github.com/austinkelleher/playwright-aws-lambda): Playwright setup on AWS Lambda
+* [playwright-jest-circus-allure](https://github.com/d-shch/playwright-jest-circus-allure): Example how to use allure-report and jest-circus with playwright
 
 ## Contributing
 

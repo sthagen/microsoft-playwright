@@ -61,6 +61,13 @@ export type ScreenshotOptions = ElementScreenshotOptions & {
   clip?: Rect,
 };
 
+export type VideoRecordingOptions = {
+  outputFile: string,
+  width: number,
+  height: number,
+  scale?: number,
+};
+
 export type URLMatch = string | RegExp | ((url: URL) => boolean);
 
 export type Credentials = {
@@ -301,12 +308,6 @@ export type LaunchOptionsBase = {
 export type LaunchOptions = LaunchOptionsBase & { slowMo?: number };
 export type LaunchServerOptions = LaunchOptionsBase & { port?: number };
 
-export type ConnectOptions = {
-  wsEndpoint: string,
-  slowMo?: number,
-  timeout?: number,
-};
-
 export type SerializedAXNode = {
   role: string,
   name: string,
@@ -343,9 +344,9 @@ export type SerializedAXNode = {
 };
 
 export type ConsoleMessageLocation = {
-  url?: string,
-  lineNumber?: number,
-  columnNumber?: number,
+  url: string,
+  lineNumber: number,
+  columnNumber: number,
 };
 
 export type Error = {

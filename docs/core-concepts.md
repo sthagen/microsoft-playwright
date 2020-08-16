@@ -70,10 +70,6 @@ const context = await browser.newContext({
 });
 ```
 
-#### Example
-
-[This script](examples/authentication.js) logs in on GitHub.com through Chromium, and then reuses the login cookies state in WebKit. This recipe can be used to speed up tests by logging in once and reusing login state.
-
 #### API reference
 
 - [class `BrowserContext`](./api.md#class-browsercontext)
@@ -238,7 +234,7 @@ await page.waitForSelector('#promo', { state: 'detached' });
 
 ## Execution contexts: Node.js and Browser
 
-Playwright scripts run in your Node.js environment. You page scripts run in the browser page environment. Those environments don't intersect, they are running in different virtual machines in different processes and even potentially on different computers.
+Playwright scripts run in your Node.js environment. Your page scripts run in the browser page environment. Those environments don't intersect, they are running in different virtual machines in different processes and even potentially on different computers.
 
 The [`page.evaluate`](https://github.com/microsoft/playwright/blob/master/docs/api.md#pageevaluatepagefunction-arg) API can run a JavaScript function in the context
 of the web page and bring results back to the Node.js environment. Browser globals like
@@ -285,6 +281,7 @@ const result = await page.evaluate(() => {
 
 - [`page.evaluate(pageFunction[, arg])`](api.md#pageevaluatepagefunction-arg)
 - [`frame.evaluate(pageFunction[, arg])`](api.md#frameevaluatepagefunction-arg)
+- Evaluation argument [examples](api.md#evaluationargument)
 
 <br/>
 

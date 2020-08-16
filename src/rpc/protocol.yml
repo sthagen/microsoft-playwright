@@ -176,14 +176,6 @@ BrowserType:
 
   commands:
 
-    connect:
-      parameters:
-        wsEndpoint: string
-        slowMo: number?
-        timeout: number?
-      returns:
-        browser: Browser
-
     launch:
       parameters:
         executablePath: string?
@@ -215,48 +207,11 @@ BrowserType:
             username: string?
             password: string?
         downloadsPath: string?
-        firefoxUserPrefs: SerializedValue?
+        firefoxUserPrefs: json?
         chromiumSandbox: boolean?
         slowMo: number?
       returns:
         browser: Browser
-
-    launchServer:
-      parameters:
-        executablePath: string?
-        args:
-          type: array?
-          items: string
-        ignoreAllDefaultArgs: boolean?
-        ignoreDefaultArgs:
-          type: array?
-          items: string
-        handleSIGINT: boolean?
-        handleSIGTERM: boolean?
-        handleSIGHUP: boolean?
-        timeout: number?
-        env:
-          type: array?
-          items:
-            type: object
-            properties:
-              name: string
-              value: string
-        headless: boolean?
-        devtools: boolean?
-        proxy:
-          type: object?
-          properties:
-            server: string
-            bypass: string?
-            username: string?
-            password: string?
-        downloadsPath: string?
-        firefoxUserPrefs: SerializedValue?
-        chromiumSandbox: boolean?
-        port: number?
-      returns:
-        server: BrowserServer
 
     launchPersistentContext:
       parameters:
@@ -338,28 +293,6 @@ BrowserType:
         acceptDownloads: boolean?
       returns:
         context: BrowserContext
-
-
-
-BrowserServer:
-  type: interface
-
-  initializer:
-    wsEndpoint: string
-    pid: number
-
-  commands:
-
-    close:
-
-    kill:
-
-  events:
-
-    close:
-      parameters:
-        exitCode: number?
-        signal: string?
 
 
 Browser:
@@ -701,7 +634,6 @@ Page:
           literals:
           - png
           - jpeg
-        path: string?
         quality: number?
         omitBackground: boolean?
         fullPage: boolean?
@@ -1343,6 +1275,9 @@ Worker:
       returns:
         handle: JSHandle
 
+  events:
+
+    close:
 
 
 JSHandle:
@@ -1642,6 +1577,19 @@ ElementHandle:
         noWaitAfter: boolean?
         timeout: number?
 
+    waitForSelector:
+      parameters:
+        selector: string
+        timeout: number?
+        state:
+          type: enum?
+          literals:
+          - attached
+          - detached
+          - visible
+          - hidden
+      returns:
+        element: ElementHandle?
 
 
 Request:
@@ -1751,9 +1699,9 @@ ConsoleMessage:
     location:
       type: object
       properties:
-        url: string?
-        lineNumber: number?
-        columnNumber: number?
+        url: string
+        lineNumber: number
+        columnNumber: number
 
 
 
@@ -1847,9 +1795,9 @@ CDPSession:
     send:
       parameters:
         method: string
-        params: SerializedValue?
+        params: json?
       returns:
-        result: SerializedValue
+        result: json
 
     detach:
 
@@ -1858,7 +1806,7 @@ CDPSession:
     event:
       parameters:
         method: string
-        params: SerializedValue?
+        params: json?
 
 
 

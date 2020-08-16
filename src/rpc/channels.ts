@@ -141,23 +141,9 @@ export type BrowserTypeInitializer = {
   name: string,
 };
 export interface BrowserTypeChannel extends Channel {
-  connect(params: BrowserTypeConnectParams): Promise<BrowserTypeConnectResult>;
   launch(params: BrowserTypeLaunchParams): Promise<BrowserTypeLaunchResult>;
-  launchServer(params: BrowserTypeLaunchServerParams): Promise<BrowserTypeLaunchServerResult>;
   launchPersistentContext(params: BrowserTypeLaunchPersistentContextParams): Promise<BrowserTypeLaunchPersistentContextResult>;
 }
-export type BrowserTypeConnectParams = {
-  wsEndpoint: string,
-  slowMo?: number,
-  timeout?: number,
-};
-export type BrowserTypeConnectOptions = {
-  slowMo?: number,
-  timeout?: number,
-};
-export type BrowserTypeConnectResult = {
-  browser: BrowserChannel,
-};
 export type BrowserTypeLaunchParams = {
   executablePath?: string,
   args?: string[],
@@ -180,7 +166,7 @@ export type BrowserTypeLaunchParams = {
     password?: string,
   },
   downloadsPath?: string,
-  firefoxUserPrefs?: SerializedValue,
+  firefoxUserPrefs?: any,
   chromiumSandbox?: boolean,
   slowMo?: number,
 };
@@ -206,67 +192,12 @@ export type BrowserTypeLaunchOptions = {
     password?: string,
   },
   downloadsPath?: string,
-  firefoxUserPrefs?: SerializedValue,
+  firefoxUserPrefs?: any,
   chromiumSandbox?: boolean,
   slowMo?: number,
 };
 export type BrowserTypeLaunchResult = {
   browser: BrowserChannel,
-};
-export type BrowserTypeLaunchServerParams = {
-  executablePath?: string,
-  args?: string[],
-  ignoreAllDefaultArgs?: boolean,
-  ignoreDefaultArgs?: string[],
-  handleSIGINT?: boolean,
-  handleSIGTERM?: boolean,
-  handleSIGHUP?: boolean,
-  timeout?: number,
-  env?: {
-    name: string,
-    value: string,
-  }[],
-  headless?: boolean,
-  devtools?: boolean,
-  proxy?: {
-    server: string,
-    bypass?: string,
-    username?: string,
-    password?: string,
-  },
-  downloadsPath?: string,
-  firefoxUserPrefs?: SerializedValue,
-  chromiumSandbox?: boolean,
-  port?: number,
-};
-export type BrowserTypeLaunchServerOptions = {
-  executablePath?: string,
-  args?: string[],
-  ignoreAllDefaultArgs?: boolean,
-  ignoreDefaultArgs?: string[],
-  handleSIGINT?: boolean,
-  handleSIGTERM?: boolean,
-  handleSIGHUP?: boolean,
-  timeout?: number,
-  env?: {
-    name: string,
-    value: string,
-  }[],
-  headless?: boolean,
-  devtools?: boolean,
-  proxy?: {
-    server: string,
-    bypass?: string,
-    username?: string,
-    password?: string,
-  },
-  downloadsPath?: string,
-  firefoxUserPrefs?: SerializedValue,
-  chromiumSandbox?: boolean,
-  port?: number,
-};
-export type BrowserTypeLaunchServerResult = {
-  server: BrowserServerChannel,
 };
 export type BrowserTypeLaunchPersistentContextParams = {
   userDataDir: string,
@@ -384,27 +315,6 @@ export type BrowserTypeLaunchPersistentContextOptions = {
 export type BrowserTypeLaunchPersistentContextResult = {
   context: BrowserContextChannel,
 };
-
-// ----------- BrowserServer -----------
-export type BrowserServerInitializer = {
-  wsEndpoint: string,
-  pid: number,
-};
-export interface BrowserServerChannel extends Channel {
-  on(event: 'close', callback: (params: BrowserServerCloseEvent) => void): this;
-  close(params?: BrowserServerCloseParams): Promise<BrowserServerCloseResult>;
-  kill(params?: BrowserServerKillParams): Promise<BrowserServerKillResult>;
-}
-export type BrowserServerCloseEvent = {
-  exitCode?: number,
-  signal?: string,
-};
-export type BrowserServerCloseParams = {};
-export type BrowserServerCloseOptions = {};
-export type BrowserServerCloseResult = void;
-export type BrowserServerKillParams = {};
-export type BrowserServerKillOptions = {};
-export type BrowserServerKillResult = void;
 
 // ----------- Browser -----------
 export type BrowserInitializer = {
@@ -911,7 +821,6 @@ export type PageReloadResult = {
 export type PageScreenshotParams = {
   timeout?: number,
   type?: 'png' | 'jpeg',
-  path?: string,
   quality?: number,
   omitBackground?: boolean,
   fullPage?: boolean,
@@ -925,7 +834,6 @@ export type PageScreenshotParams = {
 export type PageScreenshotOptions = {
   timeout?: number,
   type?: 'png' | 'jpeg',
-  path?: string,
   quality?: number,
   omitBackground?: boolean,
   fullPage?: boolean,
@@ -1591,9 +1499,11 @@ export type WorkerInitializer = {
   url: string,
 };
 export interface WorkerChannel extends Channel {
+  on(event: 'close', callback: (params: WorkerCloseEvent) => void): this;
   evaluateExpression(params: WorkerEvaluateExpressionParams): Promise<WorkerEvaluateExpressionResult>;
   evaluateExpressionHandle(params: WorkerEvaluateExpressionHandleParams): Promise<WorkerEvaluateExpressionHandleResult>;
 }
+export type WorkerCloseEvent = {};
 export type WorkerEvaluateExpressionParams = {
   expression: string,
   isFunction: boolean,
@@ -1710,6 +1620,7 @@ export interface ElementHandleChannel extends JSHandleChannel {
   textContent(params?: ElementHandleTextContentParams): Promise<ElementHandleTextContentResult>;
   type(params: ElementHandleTypeParams): Promise<ElementHandleTypeResult>;
   uncheck(params: ElementHandleUncheckParams): Promise<ElementHandleUncheckResult>;
+  waitForSelector(params: ElementHandleWaitForSelectorParams): Promise<ElementHandleWaitForSelectorResult>;
 }
 export type ElementHandleEvalOnSelectorParams = {
   selector: string,
@@ -2003,6 +1914,18 @@ export type ElementHandleUncheckOptions = {
   timeout?: number,
 };
 export type ElementHandleUncheckResult = void;
+export type ElementHandleWaitForSelectorParams = {
+  selector: string,
+  timeout?: number,
+  state?: 'attached' | 'detached' | 'visible' | 'hidden',
+};
+export type ElementHandleWaitForSelectorOptions = {
+  timeout?: number,
+  state?: 'attached' | 'detached' | 'visible' | 'hidden',
+};
+export type ElementHandleWaitForSelectorResult = {
+  element?: ElementHandleChannel,
+};
 
 // ----------- Request -----------
 export type RequestInitializer = {
@@ -2112,9 +2035,9 @@ export type ConsoleMessageInitializer = {
   text: string,
   args: JSHandleChannel[],
   location: {
-    url?: string,
-    lineNumber?: number,
-    columnNumber?: number,
+    url: string,
+    lineNumber: number,
+    columnNumber: number,
   },
 };
 export interface ConsoleMessageChannel extends Channel {
@@ -2228,17 +2151,17 @@ export interface CDPSessionChannel extends Channel {
 }
 export type CDPSessionEventEvent = {
   method: string,
-  params?: SerializedValue,
+  params?: any,
 };
 export type CDPSessionSendParams = {
   method: string,
-  params?: SerializedValue,
+  params?: any,
 };
 export type CDPSessionSendOptions = {
-  params?: SerializedValue,
+  params?: any,
 };
 export type CDPSessionSendResult = {
-  result: SerializedValue,
+  result: any,
 };
 export type CDPSessionDetachParams = {};
 export type CDPSessionDetachOptions = {};
