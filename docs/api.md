@@ -902,12 +902,12 @@ Emitted when a request fails, for example by timing out.
 #### event: 'requestfinished'
 - <[Request]>
 
-Emitted when a request finishes successfully.
+Emitted when a request finishes successfully after downloading the response body. For a successful response, the sequence of events is `request`, `response` and `requestfinished`.
 
 #### event: 'response'
 - <[Response]>
 
-Emitted when a [response] is received.
+Emitted when [response] status and headers are received for a request. For a successful response, the sequence of events is `request`, `response` and `requestfinished`.
 
 #### event: 'worker'
 - <[Worker]>
@@ -2748,6 +2748,7 @@ ElementHandle instances can be used as an argument in [`page.$eval()`](#pageeval
 - [elementHandle.toString()](#elementhandletostring)
 - [elementHandle.type(text[, options])](#elementhandletypetext-options)
 - [elementHandle.uncheck([options])](#elementhandleuncheckoptions)
+- [elementHandle.waitForElementState(state[, options])](#elementhandlewaitforelementstatestate-options)
 - [elementHandle.waitForSelector(selector[, options])](#elementhandlewaitforselectorselector-options)
 <!-- GEN:stop -->
 <!-- GEN:toc-extends-JSHandle -->
@@ -3111,6 +3112,22 @@ If the element is detached from the DOM at any moment during the action, this me
 
 When all steps combined have not finished during the specified `timeout`, this method rejects with a [TimeoutError]. Passing zero timeout disables this.
 
+#### elementHandle.waitForElementState(state[, options])
+- `state` <"visible"|"hidden"|"stable"|"enabled"|"disabled"> A state to wait for, see below for more details.
+- `options` <[Object]>
+  - `timeout` <[number]> Maximum time in milliseconds, defaults to 30 seconds, pass `0` to disable timeout. The default value can be changed by using the [browserContext.setDefaultTimeout(timeout)](#browsercontextsetdefaulttimeouttimeout) or [page.setDefaultTimeout(timeout)](#pagesetdefaulttimeouttimeout) methods.
+- returns: <[Promise]> Promise that resolves when the element satisfies the `state`.
+
+Depending on the `state` parameter, this method waits for one of the [actionability](./actionability.md) checks to pass. This method throws when the element is detached while waiting, unless waiting for the `"hidden"` state.
+- `"visible"` Wait until the element is [visible](./actionability.md#visible).
+- `"hidden"` Wait until the element is [not visible](./actionability.md#visible) or [not attached](./actionability.md#attached). Note that waiting for hidden does not throw when the element detaches.
+- `"stable"` Wait until the element is both [visible](./actionability.md#visible) and [stable](./actionability.md#stable).
+- `"enabled"` Wait until the element is [enabled](./actionability.md#enabled).
+- `"disabled"` Wait until the element is [not enabled](./actionability.md#enabled).
+
+If the element does not satisfy the condition for the `timeout` milliseconds, this method will throw.
+
+
 #### elementHandle.waitForSelector(selector[, options])
 - `selector` <[string]> A selector of an element to wait for, relative to the element handle. See [working with selectors](#working-with-selectors) for more details.
 - `options` <[Object]>
@@ -3131,7 +3148,7 @@ const div = await page.$('div');
 const span = await div.waitForSelector('span', { state: 'attached' });
 ```
 
-> **NOTE** This method works does not work across navigations, use [page.waitForSelector(selector[, options])](#pagewaitforselectorselector-options) instead.
+> **NOTE** This method does not work across navigations, use [page.waitForSelector(selector[, options])](#pagewaitforselectorselector-options) instead.
 
 ### class: JSHandle
 
@@ -3613,9 +3630,9 @@ Dispatches a `mouseup` event.
 
 ### class: Request
 
-Whenever the page sends a request, such as for a network resource, the following events are emitted by playwright's page:
+Whenever the page sends a request for a network resource the following sequence of events are emitted by [Page]:
 - [`'request'`](#event-request) emitted when the request is issued by the page.
-- [`'response'`](#event-response) emitted when/if the response is received for the request.
+- [`'response'`](#event-response) emitted when/if the response status and headers are received for the request.
 - [`'requestfinished'`](#event-requestfinished) emitted when the response body is downloaded and the request is complete.
 
 If request fails at some point, then instead of `'requestfinished'` event (and possibly instead of 'response' event), the  [`'requestfailed'`](#event-requestfailed) event is emitted.

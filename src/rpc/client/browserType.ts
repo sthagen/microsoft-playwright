@@ -14,19 +14,21 @@
  * limitations under the License.
  */
 
-import { BrowserTypeChannel, BrowserTypeInitializer, BrowserTypeLaunchParams, BrowserTypeLaunchPersistentContextParams } from '../channels';
+import { BrowserTypeChannel, BrowserTypeInitializer, BrowserTypeLaunchParams, BrowserTypeLaunchPersistentContextParams } from '../../protocol/channels';
 import { Browser } from './browser';
 import { BrowserContext } from './browserContext';
 import { ChannelOwner } from './channelOwner';
-import { headersObjectToArray, envObjectToArray } from '../../converters';
+import { headersObjectToArray } from '../../converters';
 import { assert, helper } from '../../helper';
 import { LaunchOptions, LaunchServerOptions, ConnectOptions, LaunchPersistentContextOptions } from './types';
 import * as WebSocket from 'ws';
 import { Connection } from './connection';
-import { serializeError } from '../serializers';
+import { serializeError } from '../../protocol/serializers';
 import { Events } from './events';
 import { TimeoutSettings } from '../../timeoutSettings';
 import { ChildProcess } from 'child_process';
+import { envObjectToArray } from './clientHelper';
+import { validateHeaders } from './network';
 
 export interface BrowserServerLauncher {
   launchServer(options?: LaunchServerOptions): Promise<BrowserServer>;
@@ -87,6 +89,8 @@ export class BrowserType extends ChannelOwner<BrowserTypeChannel, BrowserTypeIni
     const logger = options.logger;
     options = { ...options, logger: undefined };
     return this._wrapApiCall('browserType.launchPersistentContext', async () => {
+      if (options.extraHTTPHeaders)
+        validateHeaders(options.extraHTTPHeaders);
       const persistentOptions: BrowserTypeLaunchPersistentContextParams = {
         ...options,
         viewport: options.viewport === null ? undefined : options.viewport,

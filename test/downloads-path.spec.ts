@@ -13,8 +13,11 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import './base.fixture';
-import { registerFixture } from './runner/fixtures';
+
+
+import './playwright.fixtures';
+
+import { registerFixture } from '../test-runner';
 
 import path from 'path';
 import fs from 'fs';
@@ -23,7 +26,7 @@ import {mkdtempAsync, removeFolderAsync} from './utils';
 import { Browser, BrowserContext } from '..';
 
 declare global {
-  interface FixtureState {
+  interface TestState {
     downloadsBrowser: Browser;
     persistentDownloadsContext: BrowserContext;
   }

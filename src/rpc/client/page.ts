@@ -16,10 +16,10 @@
  */
 
 import { Events } from './events';
-import { assert, assertMaxArguments, helper, Listener } from '../../helper';
+import { assert, helper, Listener, mkdirIfNeeded } from '../../helper';
 import { TimeoutSettings } from '../../timeoutSettings';
-import { BindingCallChannel, BindingCallInitializer, PageChannel, PageInitializer, PagePdfParams, FrameWaitForSelectorOptions, FrameDispatchEventOptions, FrameSetContentOptions, FrameGotoOptions, PageReloadOptions, PageGoBackOptions, PageGoForwardOptions, PageScreenshotOptions, FrameClickOptions, FrameDblclickOptions, FrameFillOptions, FrameFocusOptions, FrameTextContentOptions, FrameInnerTextOptions, FrameInnerHTMLOptions, FrameGetAttributeOptions, FrameHoverOptions, FrameSetInputFilesOptions, FrameTypeOptions, FramePressOptions, FrameCheckOptions, FrameUncheckOptions } from '../channels';
-import { parseError, serializeError } from '../serializers';
+import { BindingCallChannel, BindingCallInitializer, PageChannel, PageInitializer, PagePdfParams, FrameWaitForSelectorOptions, FrameDispatchEventOptions, FrameSetContentOptions, FrameGotoOptions, PageReloadOptions, PageGoBackOptions, PageGoForwardOptions, PageScreenshotOptions, FrameClickOptions, FrameDblclickOptions, FrameFillOptions, FrameFocusOptions, FrameTextContentOptions, FrameInnerTextOptions, FrameInnerHTMLOptions, FrameGetAttributeOptions, FrameHoverOptions, FrameSetInputFilesOptions, FrameTypeOptions, FramePressOptions, FrameCheckOptions, FrameUncheckOptions } from '../../protocol/channels';
+import { parseError, serializeError } from '../../protocol/serializers';
 import { headersObjectToArray } from '../../converters';
 import { Accessibility } from './accessibility';
 import { BrowserContext } from './browserContext';
@@ -27,12 +27,12 @@ import { ChannelOwner } from './channelOwner';
 import { ConsoleMessage } from './consoleMessage';
 import { Dialog } from './dialog';
 import { Download } from './download';
-import { ElementHandle } from './elementHandle';
+import { ElementHandle, determineScreenshotType } from './elementHandle';
 import { Worker } from './worker';
 import { Frame, FunctionWithSource, verifyLoadState, WaitForNavigationOptions } from './frame';
 import { Keyboard, Mouse } from './input';
-import { Func1, FuncOn, SmartHandle, serializeArgument, parseResult } from './jsHandle';
-import { Request, Response, Route, RouteHandler } from './network';
+import { assertMaxArguments, Func1, FuncOn, SmartHandle, serializeArgument, parseResult } from './jsHandle';
+import { Request, Response, Route, RouteHandler, validateHeaders } from './network';
 import { FileChooser } from './fileChooser';
 import { Buffer } from 'buffer';
 import { ChromiumCoverage } from './chromiumCoverage';
@@ -41,6 +41,7 @@ import { Waiter } from './waiter';
 import * as fs from 'fs';
 import * as util from 'util';
 import { Size, URLMatch, Headers, LifecycleEvent, WaitForEventOptions, SelectOption, SelectOptionOptions, FilePayload, WaitForFunctionOptions } from './types';
+import { evaluationScript, urlMatches } from './clientHelper';
 
 type PDFOptions = Omit<PagePdfParams, 'width' | 'height' | 'margin'> & {
   width?: string | number,
@@ -150,7 +151,7 @@ export class Page extends ChannelOwner<PageChannel, PageInitializer> {
 
   private _onRoute(route: Route, request: Request) {
     for (const {url, handler} of this._routes) {
-      if (helper.urlMatches(request.url(), url)) {
+      if (urlMatches(request.url(), url)) {
         handler(route, request);
         return;
       }
@@ -202,7 +203,7 @@ export class Page extends ChannelOwner<PageChannel, PageInitializer> {
     return this.frames().find(f => {
       if (name)
         return f.name() === name;
-      return helper.urlMatches(f.url(), url);
+      return urlMatches(f.url(), url);
     }) || null;
   }
 
@@ -291,6 +292,7 @@ export class Page extends ChannelOwner<PageChannel, PageInitializer> {
 
   async setExtraHTTPHeaders(headers: Headers) {
     return this._wrapApiCall('page.setExtraHTTPHeaders', async () => {
+      validateHeaders(headers);
       await this._channel.setExtraHTTPHeaders({ headers: headersObjectToArray(headers) });
     });
   }
@@ -329,7 +331,7 @@ export class Page extends ChannelOwner<PageChannel, PageInitializer> {
   async waitForRequest(urlOrPredicate: string | RegExp | ((r: Request) => boolean), options: { timeout?: number } = {}): Promise<Request> {
     const predicate = (request: Request) => {
       if (helper.isString(urlOrPredicate) || helper.isRegExp(urlOrPredicate))
-        return helper.urlMatches(request.url(), urlOrPredicate);
+        return urlMatches(request.url(), urlOrPredicate);
       return urlOrPredicate(request);
     };
     return this.waitForEvent(Events.Page.Request, { predicate, timeout: options.timeout });
@@ -338,7 +340,7 @@ export class Page extends ChannelOwner<PageChannel, PageInitializer> {
   async waitForResponse(urlOrPredicate: string | RegExp | ((r: Response) => boolean), options: { timeout?: number } = {}): Promise<Response> {
     const predicate = (response: Response) => {
       if (helper.isString(urlOrPredicate) || helper.isRegExp(urlOrPredicate))
-        return helper.urlMatches(response.url(), urlOrPredicate);
+        return urlMatches(response.url(), urlOrPredicate);
       return urlOrPredicate(response);
     };
     return this.waitForEvent(Events.Page.Response, { predicate, timeout: options.timeout });
@@ -401,7 +403,7 @@ export class Page extends ChannelOwner<PageChannel, PageInitializer> {
 
   async addInitScript(script: Function | string | { path?: string, content?: string }, arg?: any) {
     return this._wrapApiCall('page.addInitScript', async () => {
-      const source = await helper.evaluationScript(script, arg);
+      const source = await evaluationScript(script, arg);
       await this._channel.addInitScript({ source });
     });
   }
@@ -424,9 +426,13 @@ export class Page extends ChannelOwner<PageChannel, PageInitializer> {
 
   async screenshot(options: PageScreenshotOptions & { path?: string } = {}): Promise<Buffer> {
     return this._wrapApiCall('page.screenshot', async () => {
-      const buffer = Buffer.from((await this._channel.screenshot(options)).binary, 'base64');
-      if (options.path)
+      const type = determineScreenshotType(options);
+      const result = await this._channel.screenshot({ ...options, type });
+      const buffer = Buffer.from(result.binary, 'base64');
+      if (options.path) {
+        await mkdirIfNeeded(options.path);
         await fsWriteFileAsync(options.path, buffer);
+      }
       return buffer;
     });
   }

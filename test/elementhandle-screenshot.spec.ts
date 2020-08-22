@@ -14,14 +14,15 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import './base.fixture';
+import { options } from './playwright.fixtures';
 
 import utils from './utils';
-const {WIRE, HEADLESS} = testOptions;
 import {PNG} from 'pngjs';
+import path from 'path';
+import fs from 'fs';
 
 // Firefox headful produces a different image.
-const ffheadful = FFOX && !HEADLESS;
+const ffheadful = options.FIREFOX && !options.HEADLESS;
 
 it.skip(ffheadful)('should work', async({page, server, golden}) => {
   await page.setViewportSize({width: 500, height: 500});
@@ -209,7 +210,7 @@ it.skip(ffheadful)('should work for an element with fractional dimensions', asyn
   expect(screenshot).toMatchImage(golden('screenshot-element-fractional.png'));
 });
 
-it.skip(FFOX)('should work with a mobile viewport', async({browser, server, golden}) => {
+it.skip(options.FIREFOX)('should work with a mobile viewport', async({browser, server, golden}) => {
   const context = await browser.newContext({viewport: { width: 320, height: 480 }, isMobile: true});
   const page = await context.newPage();
   await page.goto(server.PREFIX + '/grid.html');
@@ -220,7 +221,7 @@ it.skip(FFOX)('should work with a mobile viewport', async({browser, server, gold
   await context.close();
 });
 
-it.skip(FFOX)('should work with device scale factor', async({browser, server, golden}) => {
+it.skip(options.FIREFOX)('should work with device scale factor', async({browser, server, golden}) => {
   const context = await browser.newContext({ viewport: { width: 320, height: 480 }, deviceScaleFactor: 2 });
   const page = await context.newPage();
   await page.goto(server.PREFIX + '/grid.html');
@@ -283,7 +284,7 @@ it.skip(ffheadful)('should restore default viewport after fullPage screenshot', 
   await context.close();
 });
 
-it.skip(ffheadful || WIRE)('should restore viewport after page screenshot and exception', async({ browser, server }) => {
+it.skip(ffheadful || options.WIRE)('should restore viewport after page screenshot and exception', async({ browser, server }) => {
   const context = await browser.newContext({ viewport: { width: 350, height: 360 } });
   const page = await context.newPage();
   await page.goto(server.PREFIX + '/grid.html');
@@ -294,7 +295,7 @@ it.skip(ffheadful || WIRE)('should restore viewport after page screenshot and ex
   await context.close();
 });
 
-it.skip(ffheadful || WIRE)('should restore viewport after page screenshot and timeout', async({ browser, server }) => {
+it.skip(ffheadful || options.WIRE)('should restore viewport after page screenshot and timeout', async({ browser, server }) => {
   const context = await browser.newContext({ viewport: { width: 350, height: 360 } });
   const page = await context.newPage();
   await page.goto(server.PREFIX + '/grid.html');
@@ -338,7 +339,7 @@ it.skip(ffheadful)('should take element screenshot when default viewport is null
   await context.close();
 });
 
-it.skip(ffheadful || WIRE)('should restore viewport after element screenshot and exception', async({server, browser}) => {
+it.skip(ffheadful || options.WIRE)('should restore viewport after element screenshot and exception', async({server, browser}) => {
   const context = await browser.newContext({ viewport: { width: 350, height: 360 } });
   const page = await context.newPage();
   await page.setContent(`<div style="width:600px;height:600px;"></div>`);
@@ -368,4 +369,14 @@ it.skip(ffheadful)('should take screenshot of disabled button', async({page}) =>
   const button = await page.$('button');
   const screenshot = await button.screenshot();
   expect(screenshot).toBeInstanceOf(Buffer);
+});
+
+it.skip(ffheadful)('path option should create subdirectories', async({page, server, golden, tmpDir}) => {
+  await page.setViewportSize({width: 500, height: 500});
+  await page.goto(server.PREFIX + '/grid.html');
+  await page.evaluate(() => window.scrollBy(50, 100));
+  const elementHandle = await page.$('.box:nth-of-type(3)');
+  const outputPath = path.join(tmpDir, 'these', 'are', 'directories', 'screenshot.png');
+  await elementHandle.screenshot({path: outputPath});
+  expect(await fs.promises.readFile(outputPath)).toMatchImage(golden('screenshot-element-bounding-box.png'));
 });

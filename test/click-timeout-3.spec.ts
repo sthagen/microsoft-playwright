@@ -14,11 +14,10 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import './base.fixture';
 
-const { WIRE } = testOptions;
+import { options } from './playwright.fixtures';
 
-it.skip(WIRE)('should fail when element jumps during hit testing', async({page, server}) => {
+it.skip(options.WIRE)('should fail when element jumps during hit testing', async({page, server}) => {
   await page.setContent('<button>Click me</button>');
   let clicked = false;
   const handle = await page.$('button');

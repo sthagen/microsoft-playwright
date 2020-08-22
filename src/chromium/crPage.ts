@@ -24,7 +24,6 @@ import { CRExecutionContext } from './crExecutionContext';
 import { CRNetworkManager } from './crNetworkManager';
 import { Page, Worker, PageBinding } from '../page';
 import { Protocol } from './protocol';
-import { Events } from '../events';
 import { toConsoleMessageLocation, exceptionToError, releaseObject } from './crProtocolHelper';
 import * as dialog from '../dialog';
 import { PageDelegate } from '../page';
@@ -37,6 +36,7 @@ import * as types from '../types';
 import { ConsoleMessage } from '../console';
 import * as sourceMap from '../utils/sourceMap';
 import { rewriteErrorMessage } from '../utils/stackTrace';
+import { headersArrayToObject } from '../converters';
 
 
 const UTILITY_WORLD_NAME = '__playwright_utility_world__';
@@ -74,7 +74,7 @@ export class CRPage implements PageDelegate {
     this._mainFrameSession = new FrameSession(this, client, targetId, null);
     this._sessions.set(targetId, this._mainFrameSession);
     client.once(CRSessionEvents.Disconnected, () => this._page._didDisconnect());
-    if (opener && browserContext._options.viewport !== null) {
+    if (opener && !browserContext._options.noDefaultViewport) {
       const features = opener._nextWindowOpenPopupFeatures.shift() || [];
       const viewportSize = helper.getViewportSizeFromWindowFeatures(features);
       if (viewportSize)
@@ -119,7 +119,7 @@ export class CRPage implements PageDelegate {
 
   async exposeBinding(binding: PageBinding) {
     await this._forAllFrameSessions(frame => frame._initBinding(binding));
-    await Promise.all(this._page.frames().map(frame => frame.evaluate(binding.source).catch(e => {})));
+    await Promise.all(this._page.frames().map(frame => frame._evaluateExpression(binding.source, false, {}).catch(e => {})));
   }
 
   async updateExtraHTTPHeaders(): Promise<void> {
@@ -208,11 +208,11 @@ export class CRPage implements PageDelegate {
     await this._mainFrameSession._client.send('Emulation.setDefaultBackgroundColorOverride', { color });
   }
 
-  async startVideoRecording(options: types.VideoRecordingOptions): Promise<void> {
+  async startScreencast(options: types.PageScreencastOptions): Promise<void> {
     throw new Error('Not implemented');
   }
 
-  async stopVideoRecording(): Promise<void> {
+  async stopScreencast(): Promise<void> {
     throw new Error('Not implemented');
   }
 
@@ -269,7 +269,7 @@ export class CRPage implements PageDelegate {
 
   async setInputFiles(handle: dom.ElementHandle<HTMLInputElement>, files: types.FilePayload[]): Promise<void> {
     await handle._evaluateInUtility(([injected, node, files]) =>
-      injected.setInputFiles(node, files), dom.toFileTransferPayload(files));
+      injected.setInputFiles(node, files), files);
   }
 
   async adoptElementHandle<T extends Node>(handle: dom.ElementHandle<T>, to: dom.FrameExecutionContext): Promise<dom.ElementHandle<T>> {
@@ -371,7 +371,7 @@ class FrameSession {
   }
 
   async _initialize(hasUIWindow: boolean) {
-    if (hasUIWindow && this._crPage._browserContext._options.viewport !== null) {
+    if (hasUIWindow && !this._crPage._browserContext._options.noDefaultViewport) {
       const { windowId } = await this._client.send('Browser.getWindowForTarget');
       this._windowId = windowId;
     }
@@ -394,7 +394,7 @@ class FrameSession {
             worldName: UTILITY_WORLD_NAME,
           });
           for (const binding of this._crPage._browserContext._pageBindings.values())
-            frame.evaluate(binding.source).catch(e => {});
+            frame._evaluateExpression(binding.source, false, {}).catch(e => {});
         }
         const isInitialEmptyPage = this._isMainFrame() && this._page.mainFrame().url() === ':';
         if (isInitialEmptyPage) {
@@ -589,7 +589,7 @@ class FrameSession {
       const args = event.args.map(o => worker._existingExecutionContext!.createHandle(o));
       this._page._addConsoleMessage(event.type, args, toConsoleMessageLocation(event.stackTrace));
     });
-    session.on('Runtime.exceptionThrown', exception => this._page.emit(Events.Page.PageError, exceptionToError(exception.exceptionDetails)));
+    session.on('Runtime.exceptionThrown', exception => this._page.emit(Page.Events.PageError, exceptionToError(exception.exceptionDetails)));
     // TODO: attribute workers to the right frame.
     this._networkManager.instrumentNetworkEvents(session, this._page._frameManager.frame(this._targetId)!);
   }
@@ -663,8 +663,7 @@ class FrameSession {
   }
 
   _onDialog(event: Protocol.Page.javascriptDialogOpeningPayload) {
-    this._page.emit(Events.Page.Dialog, new dialog.Dialog(
-        this._page._logger,
+    this._page.emit(Page.Events.Dialog, new dialog.Dialog(
         event.type,
         event.message,
         async (accept: boolean, promptText?: string) => {
@@ -674,7 +673,7 @@ class FrameSession {
   }
 
   _handleException(exceptionDetails: Protocol.Runtime.ExceptionDetails) {
-    this._page.emit(Events.Page.PageError, exceptionToError(exceptionDetails));
+    this._page.emit(Page.Events.PageError, exceptionToError(exceptionDetails));
   }
 
   async _onTargetCrashed() {
@@ -692,7 +691,7 @@ class FrameSession {
         lineNumber: lineNumber || 0,
         columnNumber: 0,
       };
-      this._page.emit(Events.Page.Console, new ConsoleMessage(level, text, [], location));
+      this._page.emit(Page.Events.Console, new ConsoleMessage(level, text, [], location));
     }
   }
 
@@ -730,7 +729,7 @@ class FrameSession {
       this._crPage._browserContext._options.extraHTTPHeaders,
       this._page._state.extraHTTPHeaders
     ]);
-    await this._client.send('Network.setExtraHTTPHeaders', { headers });
+    await this._client.send('Network.setExtraHTTPHeaders', { headers: headersArrayToObject(headers, false /* lowerCase */) });
   }
 
   async _updateGeolocation(): Promise<void> {

@@ -11,7 +11,6 @@ on:
       - release-*
 
 env:
-  CI: true
   # Force terminal colors. @see https://www.npmjs.com/package/colors
   FORCE_COLOR: 1
 
@@ -38,7 +37,7 @@ jobs:
     # XVFB-RUN merges both STDOUT and STDERR, whereas we need only STDERR
     # Wrap `npm run` in a subshell to redirect STDERR to file.
     # Enable core dumps in the subshell.
-    - run: xvfb-run --auto-servernum  --server-args="-screen 0 1280x960x24" -- bash -c "ulimit -c unlimited && node test/runner test/ --jobs=1 --forbid-only --timeout=30000 && npm run coverage"
+    - run: xvfb-run --auto-servernum --server-args="-screen 0 1280x960x24" -- bash -c "ulimit -c unlimited && node test-runner/cli test/ --jobs=1 --forbid-only --timeout=30000 && npm run coverage"
       env:
         BROWSER: ${{ matrix.browser }}
         DEBUG: "pw:*,-pw:wrapped*,-pw:test*"
@@ -46,8 +45,8 @@ jobs:
     - uses: actions/upload-artifact@v1
       if: failure()
       with:
-        name: ${{ matrix.browser }}-${{ matrix.os }}-output
-        path: test/output-${{ matrix.browser }}
+        name: ${{ matrix.browser }}-${{ matrix.os }}-test-results
+        path: test-results
     - uses: actions/upload-artifact@v1
       if: ${{ always() }}
       with:
@@ -69,7 +68,7 @@ jobs:
     - uses: microsoft/playwright-github-action@v1
     - run: npm ci
     - run: npm run build
-    - run: node test/runner test/ --jobs=1 --forbid-only --timeout=30000
+    - run: node test-runner/cli test/ --jobs=1 --forbid-only --timeout=30000
       env:
         BROWSER: ${{ matrix.browser }}
         DEBUG: "pw:*,-pw:wrapped*,-pw:test*"
@@ -77,8 +76,8 @@ jobs:
     - uses: actions/upload-artifact@v1
       if: failure()
       with:
-        name: ${{ matrix.browser }}-mac-output
-        path: test/output-${{ matrix.browser }}
+        name: ${{ matrix.browser }}-mac-test-results
+        path: test-results
     - uses: actions/upload-artifact@v1
       if: ${{ always() }}
       with:
@@ -103,7 +102,7 @@ jobs:
     - uses: microsoft/playwright-github-action@v1
     - run: npm ci
     - run: npm run build
-    - run: node test/runner test/ --jobs=1 --forbid-only --timeout=30000
+    - run: node test-runner/cli test/ --jobs=1 --forbid-only --timeout=30000
       shell: bash
       env:
         BROWSER: ${{ matrix.browser }}
@@ -112,8 +111,8 @@ jobs:
     - uses: actions/upload-artifact@v1
       if: failure()
       with:
-        name: ${{ matrix.browser }}-win-output
-        path: test/output-${{ matrix.browser }}
+        name: ${{ matrix.browser }}-win-test-results
+        path: test-results
     - uses: actions/upload-artifact@v1
       if: ${{ always() }}
       with:
@@ -160,7 +159,7 @@ jobs:
     # XVFB-RUN merges both STDOUT and STDERR, whereas we need only STDERR
     # Wrap `npm run` in a subshell to redirect STDERR to file.
     # Enable core dumps in the subshell.
-    - run: xvfb-run --auto-servernum  --server-args="-screen 0 1280x960x24" -- bash -c "ulimit -c unlimited && node test/runner test/ --jobs=1 --forbid-only --timeout=30000"
+    - run: xvfb-run --auto-servernum --server-args="-screen 0 1280x960x24" -- bash -c "ulimit -c unlimited && node test-runner/cli test/ --jobs=1 --forbid-only --timeout=30000"
       if: ${{ always() }}
       env:
         BROWSER: ${{ matrix.browser }}
@@ -169,8 +168,8 @@ jobs:
     - uses: actions/upload-artifact@v1
       if: failure()
       with:
-        name: headful-${{ matrix.browser }}-linux-output
-        path: test/output-${{ matrix.browser }}
+        name: headful-${{ matrix.browser }}-linux-test-results
+        path: test-results
     - uses: actions/upload-artifact@v1
       if: ${{ always() }}
       with:
@@ -198,7 +197,7 @@ jobs:
     # XVFB-RUN merges both STDOUT and STDERR, whereas we need only STDERR
     # Wrap `npm run` in a subshell to redirect STDERR to file.
     # Enable core dumps in the subshell.
-    - run: xvfb-run --auto-servernum  --server-args="-screen 0 1280x960x24" -- bash -c "ulimit -c unlimited && node test/runner test/ --jobs=1 --forbid-only --timeout=30000"
+    - run: xvfb-run --auto-servernum --server-args="-screen 0 1280x960x24" -- bash -c "ulimit -c unlimited && node test-runner/cli test/ --jobs=1 --forbid-only --timeout=30000"
       env:
         BROWSER: ${{ matrix.browser }}
         DEBUG: "pw:*,-pw:wrapped*,-pw:test*"
@@ -207,8 +206,8 @@ jobs:
     - uses: actions/upload-artifact@v1
       if: failure()
       with:
-        name: wire-${{ matrix.browser }}-linux-output
-        path: test/output-${{ matrix.browser }}
+        name: wire-${{ matrix.browser }}-linux-test-results
+        path: test-results
     - uses: actions/upload-artifact@v1
       if: ${{ always() }}
       with:

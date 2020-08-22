@@ -15,12 +15,12 @@
  * limitations under the License.
  */
 
+import { Screencast, BrowserContext } from '../browserContext';
 import * as frames from '../frames';
 import { helper, RegisteredListener, assert, debugAssert } from '../helper';
 import * as dom from '../dom';
 import * as network from '../network';
 import { WKSession } from './wkConnection';
-import { Events } from '../events';
 import { WKExecutionContext } from './wkExecutionContext';
 import { WKInterceptableRequest } from './wkInterceptableRequest';
 import { WKWorkers } from './wkWorkers';
@@ -37,6 +37,7 @@ import { selectors } from '../selectors';
 import * as jpeg from 'jpeg-js';
 import * as png from 'pngjs';
 import { JSHandle } from '../javascript';
+import { headersArrayToObject } from '../converters';
 
 const UTILITY_WORLD_NAME = '__playwright_utility_world__';
 const BINDING_CALL_MESSAGE = '__playwright_binding_call__';
@@ -67,6 +68,7 @@ export class WKPage implements PageDelegate {
   // Holds window features for the next popup being opened via window.open,
   // until the popup page proxy arrives.
   private _nextWindowOpenPopupFeatures?: string[];
+  private _recordingVideoFile: string | null = null;
 
   constructor(browserContext: WKBrowserContext, pageProxySession: WKSession, opener: WKPage | null) {
     this._pageProxySession = pageProxySession;
@@ -78,7 +80,7 @@ export class WKPage implements PageDelegate {
     this._workers = new WKWorkers(this._page);
     this._session = undefined as any as WKSession;
     this._browserContext = browserContext;
-    this._page.on(Events.Page.FrameDetached, (frame: frames.Frame) => this._removeContextsForFrame(frame, false));
+    this._page.on(Page.Events.FrameDetached, (frame: frames.Frame) => this._removeContextsForFrame(frame, false));
     this._eventListeners = [
       helper.addEventListener(this._pageProxySession, 'Target.targetCreated', this._onTargetCreated.bind(this)),
       helper.addEventListener(this._pageProxySession, 'Target.targetDestroyed', this._onTargetDestroyed.bind(this)),
@@ -90,7 +92,7 @@ export class WKPage implements PageDelegate {
       this._firstNonInitialNavigationCommittedFulfill = f;
       this._firstNonInitialNavigationCommittedReject = r;
     });
-    if (opener && browserContext._options.viewport !== null && opener._nextWindowOpenPopupFeatures) {
+    if (opener && !browserContext._options.noDefaultViewport && opener._nextWindowOpenPopupFeatures) {
       const viewportSize = helper.getViewportSizeFromWindowFeatures(opener._nextWindowOpenPopupFeatures);
       opener._nextWindowOpenPopupFeatures = undefined;
       if (viewportSize)
@@ -175,7 +177,7 @@ export class WKPage implements PageDelegate {
       }));
     }
     promises.push(this.updateEmulateMedia());
-    promises.push(session.send('Network.setExtraHTTPHeaders', { headers: this._calculateExtraHTTPHeaders() }));
+    promises.push(session.send('Network.setExtraHTTPHeaders', { headers: headersArrayToObject(this._calculateExtraHTTPHeaders(), false /* lowerCase */) }));
     if (contextOptions.offline)
       promises.push(session.send('Network.setEmulateOfflineState', { offline: true }));
     promises.push(session.send('Page.setTouchEmulationEnabled', { enabled: !!contextOptions.hasTouch }));
@@ -471,7 +473,7 @@ export class WKPage implements PageDelegate {
       } else {
         error.stack = '';
       }
-      this._page.emit(Events.Page.PageError, error);
+      this._page.emit(Page.Events.PageError, error);
       return;
     }
 
@@ -521,8 +523,7 @@ export class WKPage implements PageDelegate {
   }
 
   _onDialog(event: Protocol.Dialog.javascriptDialogOpeningPayload) {
-    this._page.emit(Events.Page.Dialog, new dialog.Dialog(
-        this._page._logger,
+    this._page.emit(Page.Events.Dialog, new dialog.Dialog(
         event.type as dialog.DialogType,
         event.message,
         async (accept: boolean, promptText?: string) => {
@@ -552,17 +553,16 @@ export class WKPage implements PageDelegate {
   }
 
   async updateExtraHTTPHeaders(): Promise<void> {
-    await this._updateState('Network.setExtraHTTPHeaders', { headers: this._calculateExtraHTTPHeaders() });
+    await this._updateState('Network.setExtraHTTPHeaders', { headers: headersArrayToObject(this._calculateExtraHTTPHeaders(), false /* lowerCase */) });
   }
 
-  _calculateExtraHTTPHeaders(): types.Headers {
+  _calculateExtraHTTPHeaders(): types.HeadersArray {
+    const locale = this._browserContext._options.locale;
     const headers = network.mergeHeaders([
       this._browserContext._options.extraHTTPHeaders,
-      this._page._state.extraHTTPHeaders
+      this._page._state.extraHTTPHeaders,
+      locale ? network.singleHeader('Accept-Language', locale) : undefined,
     ]);
-    const locale = this._browserContext._options.locale;
-    if (locale)
-      headers['Accept-Language'] = locale;
     return headers;
   }
 
@@ -663,7 +663,7 @@ export class WKPage implements PageDelegate {
 
   private async _evaluateBindingScript(binding: PageBinding): Promise<void> {
     const script = this._bindingToScript(binding);
-    await Promise.all(this._page.frames().map(frame => frame.evaluate(script).catch(e => {})));
+    await Promise.all(this._page.frames().map(frame => frame._evaluateExpression(script, false, {}).catch(e => {})));
   }
 
   async evaluateOnNewDocument(script: string): Promise<void> {
@@ -690,7 +690,9 @@ export class WKPage implements PageDelegate {
   }
 
   async closePage(runBeforeUnload: boolean): Promise<void> {
-    this._pageProxySession.sendMayFail('Target.close', {
+    if (this._recordingVideoFile)
+      await this.stopScreencast();
+    await this._pageProxySession.sendMayFail('Target.close', {
       targetId: this._session.sessionId,
       runBeforeUnload
     });
@@ -704,17 +706,31 @@ export class WKPage implements PageDelegate {
     await this._session.send('Page.setDefaultBackgroundColorOverride', { color });
   }
 
-  async startVideoRecording(options: types.VideoRecordingOptions): Promise<void> {
-    this._pageProxySession.send('Screencast.startVideoRecording', {
-      file: options.outputFile,
-      width: options.width,
-      height: options.height,
-      scale: options.scale,
-    });
+  async startScreencast(options: types.PageScreencastOptions): Promise<void> {
+    if (this._recordingVideoFile)
+      throw new Error('Already recording');
+    this._recordingVideoFile = options.outputFile;
+    try {
+      await this._pageProxySession.send('Screencast.startVideoRecording', {
+        file: options.outputFile,
+        width: options.width,
+        height: options.height,
+        scale: options.scale,
+      });
+      this._browserContext.emit(BrowserContext.Events.ScreencastStarted, new Screencast(options.outputFile, this._initializedPage!));
+    } catch (e) {
+      this._recordingVideoFile = null;
+      throw e;
+    }
   }
 
-  async stopVideoRecording(): Promise<void> {
+  async stopScreencast(): Promise<void> {
+    if (!this._recordingVideoFile)
+      throw new Error('No video recording in progress');
+    const fileName = this._recordingVideoFile;
+    this._recordingVideoFile = null;
     await this._pageProxySession.send('Screencast.stopVideoRecording');
+    this._browserContext.emit(BrowserContext.Events.ScreencastStopped, new Screencast(fileName, this._initializedPage!));
   }
 
   async takeScreenshot(format: string, documentRect: types.Rect | undefined, viewportRect: types.Rect | undefined, quality: number | undefined): Promise<Buffer> {
@@ -805,7 +821,12 @@ export class WKPage implements PageDelegate {
 
   async setInputFiles(handle: dom.ElementHandle<HTMLInputElement>, files: types.FilePayload[]): Promise<void> {
     const objectId = handle._objectId;
-    await this._session.send('DOM.setInputFiles', { objectId, files: dom.toFileTransferPayload(files) });
+    const protocolFiles = files.map(file => ({
+      name: file.name,
+      type: file.mimeType,
+      data: file.buffer,
+    }));
+    await this._session.send('DOM.setInputFiles', { objectId, files: protocolFiles });
   }
 
   async adoptElementHandle<T extends Node>(handle: dom.ElementHandle<T>, to: dom.FrameExecutionContext): Promise<dom.ElementHandle<T>> {

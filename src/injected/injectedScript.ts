@@ -357,6 +357,45 @@ export default class InjectedScript {
     });
   }
 
+  waitForNodeHidden(node: Node): types.InjectedScriptPoll<'done'> {
+    return this.pollRaf((progress, continuePolling) => {
+      const element = node.nodeType === Node.ELEMENT_NODE ? node as Element : node.parentElement;
+      if (!node.isConnected || !element)
+        return 'done';
+      if (this.isVisible(element)) {
+        progress.logRepeating('    element is visible - waiting...');
+        return continuePolling;
+      }
+      return 'done';
+    });
+  }
+
+  waitForNodeEnabled(node: Node): types.InjectedScriptPoll<'error:notconnected' | 'done'> {
+    return this.pollRaf((progress, continuePolling) => {
+      const element = node.nodeType === Node.ELEMENT_NODE ? node as Element : node.parentElement;
+      if (!node.isConnected || !element)
+        return 'error:notconnected';
+      if (this._isElementDisabled(element)) {
+        progress.logRepeating('    element is not enabled - waiting...');
+        return continuePolling;
+      }
+      return 'done';
+    });
+  }
+
+  waitForNodeDisabled(node: Node): types.InjectedScriptPoll<'error:notconnected' | 'done'> {
+    return this.pollRaf((progress, continuePolling) => {
+      const element = node.nodeType === Node.ELEMENT_NODE ? node as Element : node.parentElement;
+      if (!node.isConnected || !element)
+        return 'error:notconnected';
+      if (!this._isElementDisabled(element)) {
+        progress.logRepeating('    element is enabled - waiting...');
+        return continuePolling;
+      }
+      return 'done';
+    });
+  }
+
   focusNode(node: Node, resetSelectionIfNotFocused?: boolean): FatalDOMError | 'error:notconnected' | 'done' {
     if (!node.isConnected)
       return 'error:notconnected';
@@ -399,7 +438,7 @@ export default class InjectedScript {
     throw new Error('Not a checkbox');
   }
 
-  async setInputFiles(node: Node, payloads: types.FileTransferPayload[]) {
+  async setInputFiles(node: Node, payloads: types.FilePayload[]) {
     if (node.nodeType !== Node.ELEMENT_NODE)
       return 'Node is not of type HTMLElement';
     const element: Element | undefined = node as Element;
@@ -411,8 +450,8 @@ export default class InjectedScript {
       return 'Not an input[type=file] element';
 
     const files = await Promise.all(payloads.map(async file => {
-      const result = await fetch(`data:${file.type};base64,${file.data}`);
-      return new File([await result.blob()], file.name, {type: file.type});
+      const result = await fetch(`data:${file.mimeType};base64,${file.buffer}`);
+      return new File([await result.blob()], file.name, {type: file.mimeType});
     }));
     const dt = new DataTransfer();
     for (const file of files)
@@ -463,8 +502,7 @@ export default class InjectedScript {
       const style = element.ownerDocument && element.ownerDocument.defaultView ? element.ownerDocument.defaultView.getComputedStyle(element) : undefined;
       const isVisible = !!style && style.visibility !== 'hidden';
 
-      const elementOrButton = element.closest('button, [role=button]') || element;
-      const isDisabled = waitForEnabled && ['BUTTON', 'INPUT', 'SELECT'].includes(elementOrButton.nodeName) && elementOrButton.hasAttribute('disabled');
+      const isDisabled = waitForEnabled && this._isElementDisabled(element);
 
       if (isDisplayed && isStable && isVisible && !isDisabled)
         return 'done';
@@ -524,6 +562,11 @@ export default class InjectedScript {
       default: event = new Event(type, eventInit); break;
     }
     node.dispatchEvent(event);
+  }
+
+  private _isElementDisabled(element: Element): boolean {
+    const elementOrButton = element.closest('button, [role=button]') || element;
+    return ['BUTTON', 'INPUT', 'SELECT'].includes(elementOrButton.nodeName) && elementOrButton.hasAttribute('disabled');
   }
 
   private _parentElementOrShadowHost(element: Element): Element | undefined {

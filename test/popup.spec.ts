@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import './base.fixture';
+import { options } from './playwright.fixtures';
 
 it('should inherit user agent from browser context', async function({browser, server}) {
   const context = await browser.newContext({
@@ -221,7 +221,7 @@ it('should not dispatch binding on a closed page', async function({browser, serv
   await Promise.all([
     page.waitForEvent('popup').then(popup => {
       if (popup.isClosed())
-        messages.push('alreadyclosed');
+        messages.push('close');
       else
         return popup.waitForEvent('close').then(() => messages.push('close'));
     }),
@@ -232,8 +232,8 @@ it('should not dispatch binding on a closed page', async function({browser, serv
     }),
   ]);
   await context.close();
-  if (FFOX)
-    expect(messages.join('|')).toBe('alreadyclosed');
+  if (options.FIREFOX)
+    expect(messages.join('|')).toBe('close');
   else
     expect(messages.join('|')).toBe('binding|close');
 });

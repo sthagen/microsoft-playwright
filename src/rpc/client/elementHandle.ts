@@ -14,13 +14,18 @@
  * limitations under the License.
  */
 
-import { ElementHandleChannel, JSHandleInitializer, ElementHandleScrollIntoViewIfNeededOptions, ElementHandleHoverOptions, ElementHandleClickOptions, ElementHandleDblclickOptions, ElementHandleFillOptions, ElementHandleSetInputFilesOptions, ElementHandlePressOptions, ElementHandleCheckOptions, ElementHandleUncheckOptions, ElementHandleScreenshotOptions, ElementHandleTypeOptions, ElementHandleSelectTextOptions, ElementHandleWaitForSelectorOptions } from '../channels';
+import { ElementHandleChannel, JSHandleInitializer, ElementHandleScrollIntoViewIfNeededOptions, ElementHandleHoverOptions, ElementHandleClickOptions, ElementHandleDblclickOptions, ElementHandleFillOptions, ElementHandleSetInputFilesOptions, ElementHandlePressOptions, ElementHandleCheckOptions, ElementHandleUncheckOptions, ElementHandleScreenshotOptions, ElementHandleTypeOptions, ElementHandleSelectTextOptions, ElementHandleWaitForSelectorOptions, ElementHandleWaitForElementStateOptions, ElementHandleSetInputFilesParams } from '../../protocol/channels';
 import { Frame } from './frame';
 import { FuncOn, JSHandle, serializeArgument, parseResult } from './jsHandle';
 import { ChannelOwner } from './channelOwner';
-import { helper, assert } from '../../helper';
-import { normalizeFilePayloads } from '../../converters';
+import { helper, assert, mkdirIfNeeded } from '../../helper';
 import { SelectOption, FilePayload, Rect, SelectOptionOptions } from './types';
+import * as fs from 'fs';
+import * as mime from 'mime';
+import * as path from 'path';
+import * as util from 'util';
+
+const fsWriteFileAsync = util.promisify(fs.writeFile.bind(fs));
 
 export class ElementHandle<T extends Node = Node> extends JSHandle<T> {
   readonly _elementChannel: ElementHandleChannel;
@@ -172,9 +177,16 @@ export class ElementHandle<T extends Node = Node> extends JSHandle<T> {
     });
   }
 
-  async screenshot(options: ElementHandleScreenshotOptions = {}): Promise<Buffer> {
+  async screenshot(options: ElementHandleScreenshotOptions & { path?: string } = {}): Promise<Buffer> {
     return this._wrapApiCall('elementHandle.screenshot', async () => {
-      return Buffer.from((await this._elementChannel.screenshot(options)).binary, 'base64');
+      const type = determineScreenshotType(options);
+      const result = await this._elementChannel.screenshot({ ...options, type });
+      const buffer = Buffer.from(result.binary, 'base64');
+      if (options.path) {
+        await mkdirIfNeeded(options.path);
+        await fsWriteFileAsync(options.path, buffer);
+      }
+      return buffer;
     });
   }
 
@@ -209,6 +221,12 @@ export class ElementHandle<T extends Node = Node> extends JSHandle<T> {
     });
   }
 
+  async waitForElementState(state: 'visible' | 'hidden' | 'stable' | 'enabled' | 'disabled', options: ElementHandleWaitForElementStateOptions = {}): Promise<void> {
+    return this._wrapApiCall('elementHandle.waitForElementState', async () => {
+      return await this._elementChannel.waitForElementState({ state, ...options });
+    });
+  }
+
   async waitForSelector(selector: string, options: ElementHandleWaitForSelectorOptions = {}): Promise<ElementHandle<Element> | null> {
     return this._wrapApiCall('elementHandle.waitForSelector', async () => {
       const result = await this._elementChannel.waitForSelector({ selector, ...options });
@@ -218,7 +236,7 @@ export class ElementHandle<T extends Node = Node> extends JSHandle<T> {
 }
 
 export function convertSelectOptionValues(values: string | ElementHandle | SelectOption | string[] | ElementHandle[] | SelectOption[] | null): { elements?: ElementHandleChannel[], options?: SelectOption[] } {
-  if (!values)
+  if (values === null)
     return {};
   if (!Array.isArray(values))
     values = [ values as any ];
@@ -226,7 +244,6 @@ export function convertSelectOptionValues(values: string | ElementHandle | Selec
     return {};
   for (let i = 0; i < values.length; i++)
     assert(values[i] !== null, `options[${i}]: expected object, got null`);
-
   if (values[0] instanceof ElementHandle)
     return { elements: (values as ElementHandle[]).map((v: ElementHandle) => v._elementChannel) };
   if (helper.isString(values[0]))
@@ -234,7 +251,35 @@ export function convertSelectOptionValues(values: string | ElementHandle | Selec
   return { options: values as SelectOption[] };
 }
 
-export async function convertInputFiles(files: string | FilePayload | string[] | FilePayload[]): Promise<{ name: string, mimeType: string, buffer: string }[]> {
-  const filePayloads = await normalizeFilePayloads(files);
-  return filePayloads.map(f => ({ name: f.name, mimeType: f.mimeType, buffer: f.buffer.toString('base64') }));
+type SetInputFilesFiles = ElementHandleSetInputFilesParams['files'];
+export async function convertInputFiles(files: string | FilePayload | string[] | FilePayload[]): Promise<SetInputFilesFiles> {
+  const items: (string | FilePayload)[] = Array.isArray(files) ? files : [ files ];
+  const filePayloads: SetInputFilesFiles = await Promise.all(items.map(async item => {
+    if (typeof item === 'string') {
+      return {
+        name: path.basename(item),
+        mimeType: mime.getType(item) || 'application/octet-stream',
+        buffer: (await util.promisify(fs.readFile)(item)).toString('base64')
+      };
+    } else {
+      return {
+        name: item.name,
+        mimeType: item.mimeType,
+        buffer: item.buffer.toString('base64'),
+      };
+    }
+  }));
+  return filePayloads;
+}
+
+export function determineScreenshotType(options: { path?: string, type?: 'png' | 'jpeg' }): 'png' | 'jpeg' | undefined {
+  if (options.path) {
+    const mimeType = mime.getType(options.path);
+    if (mimeType === 'image/png')
+      return 'png';
+    else if (mimeType === 'image/jpeg')
+      return 'jpeg';
+    throw new Error(`path: unsupported mime type "${mimeType}"`);
+  }
+  return options.type;
 }

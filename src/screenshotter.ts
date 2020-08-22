@@ -15,9 +15,6 @@
  * limitations under the License.
  */
 
-import * as fs from 'fs';
-import * as mime from 'mime';
-import * as util from 'util';
 import * as dom from './dom';
 import { assert, helper } from './helper';
 import { Page } from './page';
@@ -153,8 +150,6 @@ export class Screenshotter {
     if (shouldSetDefaultBackground)
       await this._page._delegate.setBackgroundColor();
     progress.throwIfAborted(); // Avoid side effects.
-    if (options.path)
-      await util.promisify(fs.writeFile)(options.path, buffer);
     if ((options as any).__testHookAfterScreenshot)
       await (options as any).__testHookAfterScreenshot();
     return buffer;
@@ -204,13 +199,6 @@ function validateScreenshotOptions(options: types.ScreenshotOptions): 'png' | 'j
   if (options.type) {
     assert(options.type === 'png' || options.type === 'jpeg', 'Unknown options.type value: ' + options.type);
     format = options.type;
-  } else if (options.path) {
-    const mimeType = mime.getType(options.path);
-    if (mimeType === 'image/png')
-      format = 'png';
-    else if (mimeType === 'image/jpeg')
-      format = 'jpeg';
-    assert(format, 'Unsupported screenshot mime type: ' + mimeType);
   }
 
   if (!format)

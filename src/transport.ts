@@ -44,80 +44,6 @@ export interface ConnectionTransport {
   onclose?: () => void,
 }
 
-export class SlowMoTransport implements ConnectionTransport {
-  private readonly _delay: number;
-  private readonly _delegate: ConnectionTransport;
-
-  onmessage?: (message: ProtocolResponse) => void;
-  onclose?: () => void;
-
-  static wrap(transport: ConnectionTransport, delay?: number): ConnectionTransport {
-    return delay ? new SlowMoTransport(transport, delay) : transport;
-  }
-
-  constructor(transport: ConnectionTransport, delay: number) {
-    this._delay = delay;
-    this._delegate = transport;
-    this._delegate.onmessage = this._onmessage.bind(this);
-    this._delegate.onclose = this._onClose.bind(this);
-  }
-
-  private _onmessage(message: ProtocolResponse) {
-    if (this.onmessage)
-      this.onmessage(message);
-  }
-
-  private _onClose() {
-    if (this.onclose)
-      this.onclose();
-    this._delegate.onmessage = undefined;
-    this._delegate.onclose = undefined;
-  }
-
-  send(s: ProtocolRequest) {
-    setTimeout(() => {
-      if (this._delegate.onmessage)
-        this._delegate.send(s);
-    }, this._delay);
-  }
-
-  close() {
-    this._delegate.close();
-  }
-}
-
-export class DeferWriteTransport implements ConnectionTransport {
-  private _delegate: ConnectionTransport;
-  private _readPromise: Promise<void>;
-
-  onmessage?: (message: ProtocolResponse) => void;
-  onclose?: () => void;
-
-  constructor(transport: ConnectionTransport) {
-    this._delegate = transport;
-    let callback: () => void;
-    this._readPromise = new Promise(f => callback = f);
-    this._delegate.onmessage = (s: ProtocolResponse) => {
-      callback();
-      if (this.onmessage)
-        this.onmessage(s);
-    };
-    this._delegate.onclose = () => {
-      if (this.onclose)
-        this.onclose();
-    };
-  }
-
-  async send(s: ProtocolRequest) {
-    await this._readPromise;
-    this._delegate.send(s);
-  }
-
-  close() {
-    this._delegate.close();
-  }
-}
-
 export class WebSocketTransport implements ConnectionTransport {
   private _ws: WebSocket;
   private _progress: Progress;
@@ -126,7 +52,7 @@ export class WebSocketTransport implements ConnectionTransport {
   onclose?: () => void;
 
   static async connect(progress: Progress, url: string): Promise<WebSocketTransport> {
-    progress.logger.info(`<ws connecting> ${url}`);
+    progress.log(`<ws connecting> ${url}`);
     const transport = new WebSocketTransport(progress, url);
     let success = false;
     progress.aborted.then(() => {
@@ -135,11 +61,11 @@ export class WebSocketTransport implements ConnectionTransport {
     });
     await new Promise<WebSocketTransport>((fulfill, reject) => {
       transport._ws.addEventListener('open', async () => {
-        progress.logger.info(`<ws connected> ${url}`);
+        progress.log(`<ws connected> ${url}`);
         fulfill(transport);
       });
       transport._ws.addEventListener('error', event => {
-        progress.logger.info(`<ws connect error> ${url} ${event.message}`);
+        progress.log(`<ws connect error> ${url} ${event.message}`);
         reject(new Error('WebSocket error: ' + event.message));
         transport._ws.close();
       });
@@ -169,7 +95,7 @@ export class WebSocketTransport implements ConnectionTransport {
     });
 
     this._ws.addEventListener('close', event => {
-      this._progress && this._progress.logger.info(`<ws disconnected> ${url}`);
+      this._progress && this._progress.log(`<ws disconnected> ${url}`);
       if (this.onclose)
         this.onclose.call(null);
     });
@@ -182,7 +108,7 @@ export class WebSocketTransport implements ConnectionTransport {
   }
 
   close() {
-    this._progress && this._progress.logger.info(`<ws disconnecting> ${this._ws.url}`);
+    this._progress && this._progress.log(`<ws disconnecting> ${this._ws.url}`);
     this._ws.close();
   }
 
@@ -190,40 +116,5 @@ export class WebSocketTransport implements ConnectionTransport {
     const promise = new Promise(f => this.onclose = f);
     this.close();
     return promise; // Make sure to await the actual disconnect.
-  }
-}
-
-export class InterceptingTransport implements ConnectionTransport {
-  private readonly _delegate: ConnectionTransport;
-  private _interceptor: (message: ProtocolRequest) => ProtocolRequest;
-
-  onmessage?: (message: ProtocolResponse) => void;
-  onclose?: () => void;
-
-  constructor(transport: ConnectionTransport, interceptor: (message: ProtocolRequest) => ProtocolRequest) {
-    this._delegate = transport;
-    this._interceptor = interceptor;
-    this._delegate.onmessage = this._onmessage.bind(this);
-    this._delegate.onclose = this._onClose.bind(this);
-  }
-
-  private _onmessage(message: ProtocolResponse) {
-    if (this.onmessage)
-      this.onmessage(message);
-  }
-
-  private _onClose() {
-    if (this.onclose)
-      this.onclose();
-    this._delegate.onmessage = undefined;
-    this._delegate.onclose = undefined;
-  }
-
-  send(s: ProtocolRequest) {
-    this._delegate.send(this._interceptor(s));
-  }
-
-  close() {
-    this._delegate.close();
   }
 }

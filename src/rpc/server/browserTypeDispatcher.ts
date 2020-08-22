@@ -14,16 +14,13 @@
  * limitations under the License.
  */
 
-import { BrowserBase } from '../../browser';
 import { BrowserTypeBase, BrowserType } from '../../server/browserType';
 import { BrowserDispatcher } from './browserDispatcher';
-import { BrowserChannel, BrowserTypeChannel, BrowserContextChannel, BrowserTypeInitializer, BrowserTypeLaunchParams, BrowserTypeLaunchPersistentContextParams } from '../channels';
+import * as channels from '../../protocol/channels';
 import { Dispatcher, DispatcherScope } from './dispatcher';
-import { BrowserContextBase } from '../../browserContext';
 import { BrowserContextDispatcher } from './browserContextDispatcher';
-import { headersArrayToObject, envArrayToObject } from '../../converters';
 
-export class BrowserTypeDispatcher extends Dispatcher<BrowserType, BrowserTypeInitializer> implements BrowserTypeChannel {
+export class BrowserTypeDispatcher extends Dispatcher<BrowserType, channels.BrowserTypeInitializer> implements channels.BrowserTypeChannel {
   constructor(scope: DispatcherScope, browserType: BrowserTypeBase) {
     super(scope, browserType, 'BrowserType', {
       executablePath: browserType.executablePath(),
@@ -31,25 +28,13 @@ export class BrowserTypeDispatcher extends Dispatcher<BrowserType, BrowserTypeIn
     }, true);
   }
 
-  async launch(params: BrowserTypeLaunchParams): Promise<{ browser: BrowserChannel }> {
-    const options = {
-      ...params,
-      ignoreDefaultArgs: params.ignoreAllDefaultArgs ? true : params.ignoreDefaultArgs,
-      env: params.env ? envArrayToObject(params.env) : undefined,
-    };
-    const browser = await this._object.launch(options);
-    return { browser: new BrowserDispatcher(this._scope, browser as BrowserBase) };
+  async launch(params: channels.BrowserTypeLaunchParams): Promise<channels.BrowserTypeLaunchResult> {
+    const browser = await this._object.launch(params);
+    return { browser: new BrowserDispatcher(this._scope, browser) };
   }
 
-  async launchPersistentContext(params: BrowserTypeLaunchPersistentContextParams): Promise<{ context: BrowserContextChannel }> {
-    const options = {
-      ...params,
-      viewport: params.viewport || (params.noDefaultViewport ? null : undefined),
-      ignoreDefaultArgs: params.ignoreAllDefaultArgs ? true : params.ignoreDefaultArgs,
-      env: params.env ? envArrayToObject(params.env) : undefined,
-      extraHTTPHeaders: params.extraHTTPHeaders ? headersArrayToObject(params.extraHTTPHeaders) : undefined,
-    };
-    const browserContext = await this._object.launchPersistentContext(params.userDataDir, options);
-    return { context: new BrowserContextDispatcher(this._scope, browserContext as BrowserContextBase) };
+  async launchPersistentContext(params: channels.BrowserTypeLaunchPersistentContextParams): Promise<channels.BrowserTypeLaunchPersistentContextResult> {
+    const browserContext = await this._object.launchPersistentContext(params.userDataDir, params);
+    return { context: new BrowserContextDispatcher(this._scope, browserContext) };
   }
 }

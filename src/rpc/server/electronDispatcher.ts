@@ -15,39 +15,33 @@
  */
 
 import { Dispatcher, DispatcherScope, lookupDispatcher } from './dispatcher';
-import { Electron, ElectronApplication, ElectronEvents, ElectronPage } from '../../server/electron';
-import { ElectronApplicationChannel, ElectronApplicationInitializer, PageChannel, JSHandleChannel, ElectronInitializer, ElectronChannel, SerializedArgument, ElectronLaunchParams, SerializedValue } from '../channels';
+import { Electron, ElectronApplication, ElectronPage } from '../../server/electron';
+import * as channels from '../../protocol/channels';
 import { BrowserContextDispatcher } from './browserContextDispatcher';
-import { BrowserContextBase } from '../../browserContext';
 import { PageDispatcher } from './pageDispatcher';
 import { parseArgument, serializeResult } from './jsHandleDispatcher';
 import { createHandle } from './elementHandlerDispatcher';
-import { envArrayToObject } from '../../converters';
 
-export class ElectronDispatcher extends Dispatcher<Electron, ElectronInitializer> implements ElectronChannel {
+export class ElectronDispatcher extends Dispatcher<Electron, channels.ElectronInitializer> implements channels.ElectronChannel {
   constructor(scope: DispatcherScope, electron: Electron) {
     super(scope, electron, 'Electron', {}, true);
   }
 
-  async launch(params: ElectronLaunchParams): Promise<{ electronApplication: ElectronApplicationChannel }> {
-    const options = {
-      ...params,
-      env: params.env ? envArrayToObject(params.env) : undefined,
-    };
-    const electronApplication = await this._object.launch(params.executablePath, options);
+  async launch(params: channels.ElectronLaunchParams): Promise<channels.ElectronLaunchResult> {
+    const electronApplication = await this._object.launch(params.executablePath, params);
     return { electronApplication: new ElectronApplicationDispatcher(this._scope, electronApplication) };
   }
 }
 
-export class ElectronApplicationDispatcher extends Dispatcher<ElectronApplication, ElectronApplicationInitializer> implements ElectronApplicationChannel {
+export class ElectronApplicationDispatcher extends Dispatcher<ElectronApplication, channels.ElectronApplicationInitializer> implements channels.ElectronApplicationChannel {
   constructor(scope: DispatcherScope, electronApplication: ElectronApplication) {
     super(scope, electronApplication, 'ElectronApplication', {}, true);
-    this._dispatchEvent('context', { context: new BrowserContextDispatcher(this._scope, electronApplication.context() as BrowserContextBase) });
-    electronApplication.on(ElectronEvents.ElectronApplication.Close, () => {
+    this._dispatchEvent('context', { context: new BrowserContextDispatcher(this._scope, electronApplication.context()) });
+    electronApplication.on(ElectronApplication.Events.Close, () => {
       this._dispatchEvent('close');
       this._dispose();
     });
-    electronApplication.on(ElectronEvents.ElectronApplication.Window, (page: ElectronPage) => {
+    electronApplication.on(ElectronApplication.Events.Window, (page: ElectronPage) => {
       this._dispatchEvent('window', {
         page: lookupDispatcher<PageDispatcher>(page),
         browserWindow: createHandle(this._scope, page.browserWindow),
@@ -55,17 +49,17 @@ export class ElectronApplicationDispatcher extends Dispatcher<ElectronApplicatio
     });
   }
 
-  async newBrowserWindow(params: { arg: SerializedArgument }): Promise<{ page: PageChannel }> {
+  async newBrowserWindow(params: channels.ElectronApplicationNewBrowserWindowParams): Promise<channels.ElectronApplicationNewBrowserWindowResult> {
     const page = await this._object.newBrowserWindow(parseArgument(params.arg));
-    return { page: lookupDispatcher<PageChannel>(page) };
+    return { page: lookupDispatcher<PageDispatcher>(page) };
   }
 
-  async evaluateExpression(params: { expression: string, isFunction: boolean, arg: SerializedArgument }): Promise<{ value: SerializedValue }> {
+  async evaluateExpression(params: channels.ElectronApplicationEvaluateExpressionParams): Promise<channels.ElectronApplicationEvaluateExpressionResult> {
     const handle = this._object._nodeElectronHandle!;
     return { value: serializeResult(await handle._evaluateExpression(params.expression, params.isFunction, true /* returnByValue */, parseArgument(params.arg))) };
   }
 
-  async evaluateExpressionHandle(params: { expression: string, isFunction: boolean, arg: SerializedArgument }): Promise<{ handle: JSHandleChannel }> {
+  async evaluateExpressionHandle(params: channels.ElectronApplicationEvaluateExpressionHandleParams): Promise<channels.ElectronApplicationEvaluateExpressionHandleResult> {
     const handle = this._object._nodeElectronHandle!;
     const result = await handle._evaluateExpression(params.expression, params.isFunction, false /* returnByValue */, parseArgument(params.arg));
     return { handle: createHandle(this._scope, result) };

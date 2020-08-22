@@ -14,21 +14,18 @@
  * limitations under the License.
  */
 
-import { Browser, BrowserBase } from '../../browser';
-import { BrowserContextBase } from '../../browserContext';
-import { Events } from '../../events';
-import { BrowserChannel, BrowserContextChannel, BrowserInitializer, CDPSessionChannel, Binary, BrowserNewContextParams } from '../channels';
+import { Browser } from '../../browser';
+import * as channels from '../../protocol/channels';
 import { BrowserContextDispatcher } from './browserContextDispatcher';
 import { CDPSessionDispatcher } from './cdpSessionDispatcher';
 import { Dispatcher, DispatcherScope } from './dispatcher';
 import { CRBrowser } from '../../chromium/crBrowser';
 import { PageDispatcher } from './pageDispatcher';
-import { headersArrayToObject } from '../../converters';
 
-export class BrowserDispatcher extends Dispatcher<Browser, BrowserInitializer> implements BrowserChannel {
-  constructor(scope: DispatcherScope, browser: BrowserBase, guid?: string) {
+export class BrowserDispatcher extends Dispatcher<Browser, channels.BrowserInitializer> implements channels.BrowserChannel {
+  constructor(scope: DispatcherScope, browser: Browser, guid?: string) {
     super(scope, browser, 'Browser', { version: browser.version() }, true, guid);
-    browser.on(Events.Browser.Disconnected, () => this._didClose());
+    browser.on(Browser.Events.Disconnected, () => this._didClose());
   }
 
   _didClose() {
@@ -36,30 +33,25 @@ export class BrowserDispatcher extends Dispatcher<Browser, BrowserInitializer> i
     this._dispose();
   }
 
-  async newContext(params: BrowserNewContextParams): Promise<{ context: BrowserContextChannel }> {
-    const options = {
-      ...params,
-      viewport: params.viewport || (params.noDefaultViewport ? null : undefined),
-      extraHTTPHeaders: params.extraHTTPHeaders ? headersArrayToObject(params.extraHTTPHeaders) : undefined,
-    };
-    return { context: new BrowserContextDispatcher(this._scope, await this._object.newContext(options) as BrowserContextBase) };
+  async newContext(params: channels.BrowserNewContextParams): Promise<channels.BrowserNewContextResult> {
+    return { context: new BrowserContextDispatcher(this._scope, await this._object.newContext(params)) };
   }
 
   async close(): Promise<void> {
     await this._object.close();
   }
 
-  async crNewBrowserCDPSession(): Promise<{ session: CDPSessionChannel }> {
+  async crNewBrowserCDPSession(): Promise<channels.BrowserCrNewBrowserCDPSessionResult> {
     const crBrowser = this._object as CRBrowser;
     return { session: new CDPSessionDispatcher(this._scope, await crBrowser.newBrowserCDPSession()) };
   }
 
-  async crStartTracing(params: { page?: PageDispatcher, path?: string, screenshots?: boolean, categories?: string[] }): Promise<void> {
+  async crStartTracing(params: channels.BrowserCrStartTracingParams): Promise<void> {
     const crBrowser = this._object as CRBrowser;
-    await crBrowser.startTracing(params.page ? params.page._object : undefined, params);
+    await crBrowser.startTracing(params.page ? (params.page as PageDispatcher)._object : undefined, params);
   }
 
-  async crStopTracing(): Promise<{ binary: Binary }> {
+  async crStopTracing(): Promise<channels.BrowserCrStopTracingResult> {
     const crBrowser = this._object as CRBrowser;
     const buffer = await crBrowser.stopTracing();
     return { binary: buffer.toString('base64') };

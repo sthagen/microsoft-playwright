@@ -18,37 +18,27 @@ import * as path from 'path';
 import { CRBrowser, CRBrowserContext } from '../chromium/crBrowser';
 import { CRConnection, CRSession } from '../chromium/crConnection';
 import { CRExecutionContext } from '../chromium/crExecutionContext';
-import { Events } from '../events';
 import * as js from '../javascript';
-import { Loggers, Logger } from '../logger';
 import { Page } from '../page';
 import { TimeoutSettings } from '../timeoutSettings';
 import { WebSocketTransport } from '../transport';
 import * as types from '../types';
-import { launchProcess, waitForLine } from './processLauncher';
+import { launchProcess, waitForLine, envArrayToObject } from './processLauncher';
 import { BrowserContext } from '../browserContext';
 import type {BrowserWindow} from 'electron';
 import { runAbortableTask, ProgressController } from '../progress';
 import { EventEmitter } from 'events';
 import { helper } from '../helper';
-import { LoggerSink } from '../loggerSink';
 import { BrowserProcess } from '../browser';
 
 export type ElectronLaunchOptionsBase = {
   args?: string[],
   cwd?: string,
-  env?: types.Env,
+  env?: types.EnvArray,
   handleSIGINT?: boolean,
   handleSIGTERM?: boolean,
   handleSIGHUP?: boolean,
   timeout?: number,
-};
-
-export const ElectronEvents = {
-  ElectronApplication: {
-    Close: 'close',
-    Window: 'window',
-  }
 };
 
 export interface ElectronPage extends Page {
@@ -57,7 +47,11 @@ export interface ElectronPage extends Page {
 }
 
 export class ElectronApplication extends EventEmitter {
-  private _apiLogger: Logger;
+  static Events = {
+    Close: 'close',
+    Window: 'window',
+  };
+
   private _browserContext: CRBrowserContext;
   private _nodeConnection: CRConnection;
   private _nodeSession: CRSession;
@@ -67,15 +61,14 @@ export class ElectronApplication extends EventEmitter {
   private _lastWindowId = 0;
   readonly _timeoutSettings = new TimeoutSettings();
 
-  constructor(logger: Loggers, browser: CRBrowser, nodeConnection: CRConnection) {
+  constructor(browser: CRBrowser, nodeConnection: CRConnection) {
     super();
-    this._apiLogger = logger.api;
     this._browserContext = browser._defaultContext as CRBrowserContext;
-    this._browserContext.on(Events.BrowserContext.Close, () => {
+    this._browserContext.on(BrowserContext.Events.Close, () => {
       // Emit application closed after context closed.
-      Promise.resolve().then(() => this.emit(ElectronEvents.ElectronApplication.Close));
+      Promise.resolve().then(() => this.emit(ElectronApplication.Events.Close));
     });
-    this._browserContext.on(Events.BrowserContext.Page, event => this._onPage(event));
+    this._browserContext.on(BrowserContext.Events.Page, event => this._onPage(event));
     this._nodeConnection = nodeConnection;
     this._nodeSession = nodeConnection.rootSession;
   }
@@ -89,27 +82,17 @@ export class ElectronApplication extends EventEmitter {
       return;
     page.browserWindow = handle;
     page._browserWindowId = windowId;
-    page.on(Events.Page.Close, () => {
+    page.on(Page.Events.Close, () => {
       page.browserWindow.dispose();
       this._windows.delete(page);
     });
     this._windows.add(page);
     await page.mainFrame().waitForLoadState('domcontentloaded').catch(e => {}); // can happen after detach
-    this.emit(ElectronEvents.ElectronApplication.Window, page);
-  }
-
-  windows(): Page[] {
-    return [...this._windows];
-  }
-
-  async firstWindow(): Promise<Page> {
-    if (this._windows.size)
-      return this._windows.values().next().value;
-    return this.waitForEvent('window');
+    this.emit(ElectronApplication.Events.Window, page);
   }
 
   async newBrowserWindow(options: any): Promise<Page> {
-    const windowId = await this.evaluate(async ({ BrowserWindow }, options) => {
+    const windowId = await this._nodeElectronHandle!.evaluate(async ({ BrowserWindow }, options) => {
       const win = new BrowserWindow(options);
       win.loadURL('about:blank');
       return win.id;
@@ -120,7 +103,7 @@ export class ElectronApplication extends EventEmitter {
         return page;
     }
 
-    return await this.waitForEvent(ElectronEvents.ElectronApplication.Window, (page: ElectronPage) => page._browserWindowId === windowId);
+    return await this._waitForEvent(ElectronApplication.Events.Window, (page: ElectronPage) => page._browserWindowId === windowId);
   }
 
   context(): BrowserContext {
@@ -128,18 +111,17 @@ export class ElectronApplication extends EventEmitter {
   }
 
   async close() {
-    const closed = this.waitForEvent(ElectronEvents.ElectronApplication.Close);
-    await this.evaluate(({ app }) => app.quit());
+    const closed = this._waitForEvent(ElectronApplication.Events.Close);
+    await this._nodeElectronHandle!.evaluate(({ app }) => app.quit());
     this._nodeConnection.close();
     await closed;
   }
 
-  async waitForEvent(event: string, optionsOrPredicate: types.WaitForEventOptions = {}): Promise<any> {
-    const options = typeof optionsOrPredicate === 'function' ? { predicate: optionsOrPredicate } : optionsOrPredicate;
-    const progressController = new ProgressController(this._apiLogger, this._timeoutSettings.timeout(options));
-    if (event !== ElectronEvents.ElectronApplication.Close)
+  private async _waitForEvent(event: string, predicate?: Function): Promise<any> {
+    const progressController = new ProgressController(this._timeoutSettings.timeout({}));
+    if (event !== ElectronApplication.Events.Close)
       this._browserContext._closePromise.then(error => progressController.abort(error));
-    return progressController.run(progress => helper.waitForEvent(progress, this, event, options.predicate).promise);
+    return progressController.run(progress => helper.waitForEvent(progress, this, event, predicate).promise);
   }
 
   async _init()  {
@@ -154,37 +136,23 @@ export class ElectronApplication extends EventEmitter {
       return new Promise(f => (global as any)._playwrightRunCallback = f);
     });
   }
-
-  async evaluate<R, Arg>(pageFunction: js.FuncOn<any, Arg, R>, arg: Arg): Promise<R>;
-  async evaluate<R>(pageFunction: js.FuncOn<any, void, R>, arg?: any): Promise<R>;
-  async evaluate<R, Arg>(pageFunction: js.FuncOn<any, Arg, R>, arg: Arg): Promise<R> {
-    return this._nodeElectronHandle!.evaluate(pageFunction, arg);
-  }
-
-  async evaluateHandle<R, Arg>(pageFunction: js.FuncOn<any, Arg, R>, arg: Arg): Promise<js.SmartHandle<R>>;
-  async evaluateHandle<R>(pageFunction: js.FuncOn<any, void, R>, arg?: any): Promise<js.SmartHandle<R>>;
-  async evaluateHandle<R, Arg>(pageFunction: js.FuncOn<any, Arg, R>, arg: Arg): Promise<js.SmartHandle<R>> {
-    return this._nodeElectronHandle!.evaluateHandle(pageFunction, arg);
-  }
 }
 
 export class Electron  {
-  async launch(executablePath: string, options: ElectronLaunchOptionsBase & { logger?: LoggerSink } = {}): Promise<ElectronApplication> {
+  async launch(executablePath: string, options: ElectronLaunchOptionsBase = {}): Promise<ElectronApplication> {
     const {
       args = [],
-      env = process.env,
       handleSIGINT = true,
       handleSIGTERM = true,
       handleSIGHUP = true,
     } = options;
-    const loggers = new Loggers(options.logger);
     return runAbortableTask(async progress => {
       let app: ElectronApplication | undefined = undefined;
       const electronArguments = ['--inspect=0', '--remote-debugging-port=0', '--require', path.join(__dirname, 'electronLoader.js'), ...args];
       const { launchedProcess, gracefullyClose, kill } = await launchProcess({
         executablePath,
         args: electronArguments,
-        env,
+        env: options.env ? envArrayToObject(options.env) : process.env,
         handleSIGINT,
         handleSIGTERM,
         handleSIGHUP,
@@ -198,7 +166,7 @@ export class Electron  {
 
       const nodeMatch = await waitForLine(progress, launchedProcess, launchedProcess.stderr, /^Debugger listening on (ws:\/\/.*)$/);
       const nodeTransport = await WebSocketTransport.connect(progress, nodeMatch[1]);
-      const nodeConnection = new CRConnection(nodeTransport, loggers);
+      const nodeConnection = new CRConnection(nodeTransport);
 
       const chromeMatch = await waitForLine(progress, launchedProcess, launchedProcess.stderr, /^DevTools listening on (ws:\/\/.*)$/);
       const chromeTransport = await WebSocketTransport.connect(progress, chromeMatch[1]);
@@ -208,10 +176,10 @@ export class Electron  {
         close: gracefullyClose,
         kill
       };
-      const browser = await CRBrowser.connect(chromeTransport, { name: 'electron', headful: true, loggers, persistent: { viewport: null }, browserProcess });
-      app = new ElectronApplication(loggers, browser, nodeConnection);
+      const browser = await CRBrowser.connect(chromeTransport, { name: 'electron', headful: true, persistent: { noDefaultViewport: true }, browserProcess });
+      app = new ElectronApplication(browser, nodeConnection);
       await app._init();
       return app;
-    }, loggers.browser, TimeoutSettings.timeout(options));
+    }, TimeoutSettings.timeout(options), 'browser');
   }
 }

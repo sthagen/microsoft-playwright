@@ -15,10 +15,10 @@
  */
 
 import { EventEmitter } from 'events';
-import type { Channel } from '../channels';
+import type { Channel } from '../../protocol/channels';
 import type { Connection } from './connection';
 import type { LoggerSink } from './types';
-import { DebugLoggerSink } from '../../logger';
+import { debugLogger } from '../../helper';
 
 export abstract class ChannelOwner<T extends Channel = Channel, Initializer = {}> extends EventEmitter {
   private _connection: Connection;
@@ -106,12 +106,21 @@ export abstract class ChannelOwner<T extends Channel = Channel, Initializer = {}
       throw e;
     }
   }
+
+  private toJSON() {
+    // Jest's expect library tries to print objects sometimes.
+    // RPC objects can contain links to lots of other objects,
+    // which can cause jest to crash. Let's help it out
+    // by just returning the important values.
+    return {
+      _type: this._type,
+      _guid: this._guid,
+    };
+  }
 }
 
-const debugLogger = new DebugLoggerSink();
 function logApiCall(logger: LoggerSink | undefined, message: string) {
   if (logger && logger.isEnabled('api', 'info'))
     logger.log('api', 'info', message, [], { color: 'cyan' });
-  if (debugLogger.isEnabled('api', 'info'))
-    debugLogger.log('api', 'info', message, [], { color: 'cyan' });
+  debugLogger.log('api', message);
 }

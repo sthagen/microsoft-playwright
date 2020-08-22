@@ -13,11 +13,12 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import './base.fixture';
+
+import { parameters } from '../test-runner';
+import { options } from './playwright.fixtures';
 
 import socks from 'socksv5';
 
-const { HEADLESS } = testOptions;
 
 it('should use proxy', async ({browserType, defaultBrowserOptions, server}) => {
   server.setRoute('/target.html', async (req, res) => {
@@ -55,7 +56,7 @@ it('should authenticate', async ({browserType, defaultBrowserOptions, server}) =
   await browser.close();
 });
 
-it.fail(CHROMIUM && !HEADLESS)('should exclude patterns', async ({browserType, defaultBrowserOptions, server}) => {
+it.fail(options.CHROMIUM && !options.HEADLESS)('should exclude patterns', async ({browserType, defaultBrowserOptions, server}) => {
   // Chromium headful crashes with CHECK(!in_frame_tree_) in RenderFrameImpl::OnDeleteFrame.
   server.setRoute('/target.html', async (req, res) => {
     res.end('<html><title>Served by the proxy</title></html>');
@@ -96,7 +97,7 @@ it.fail(CHROMIUM && !HEADLESS)('should exclude patterns', async ({browserType, d
   await browser.close();
 });
 
-it('should use socks proxy', async ({ browserType, defaultBrowserOptions, parallelIndex }) => {
+it('should use socks proxy', async ({ browserType, defaultBrowserOptions }) => {
   const server = socks.createServer((info, accept, deny) => {
     let socket;
     if (socket = accept(true)) {
@@ -113,7 +114,7 @@ it('should use socks proxy', async ({ browserType, defaultBrowserOptions, parall
       ].join('\r\n'));
     }
   });
-  const socksPort = 9107 + parallelIndex * 2;
+  const socksPort = 9107 + parameters.parallelIndex * 2;
   server.listen(socksPort, 'localhost');
   server.useAuth(socks.auth.None());
 

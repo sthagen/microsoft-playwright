@@ -17,7 +17,6 @@
 
 import * as dialog from '../dialog';
 import * as dom from '../dom';
-import { Events } from '../events';
 import * as frames from '../frames';
 import { assert, helper, RegisteredListener } from '../helper';
 import { Page, PageBinding, PageDelegate, Worker } from '../page';
@@ -28,10 +27,11 @@ import { FFBrowserContext } from './ffBrowser';
 import { FFSession, FFSessionEvents } from './ffConnection';
 import { FFExecutionContext } from './ffExecutionContext';
 import { RawKeyboardImpl, RawMouseImpl } from './ffInput';
-import { FFNetworkManager, headersArray } from './ffNetworkManager';
+import { FFNetworkManager } from './ffNetworkManager';
 import { Protocol } from './protocol';
 import { selectors } from '../selectors';
 import { rewriteErrorMessage } from '../utils/stackTrace';
+import { Screencast, BrowserContext } from '../browserContext';
 
 const UTILITY_WORLD_NAME = '__playwright_utility_world__';
 
@@ -50,6 +50,7 @@ export class FFPage implements PageDelegate {
   private readonly _contextIdToContext: Map<string, dom.FrameExecutionContext>;
   private _eventListeners: RegisteredListener[];
   private _workers = new Map<string, { frameId: string, session: FFSession }>();
+  private readonly _idToScreencast = new Map<string, Screencast>();
 
   constructor(session: FFSession, browserContext: FFBrowserContext, opener: FFPage | null) {
     this._session = session;
@@ -60,7 +61,7 @@ export class FFPage implements PageDelegate {
     this._browserContext = browserContext;
     this._page = new Page(this, browserContext);
     this._networkManager = new FFNetworkManager(session, this._page);
-    this._page.on(Events.Page.FrameDetached, frame => this._removeContextsForFrame(frame));
+    this._page.on(Page.Events.FrameDetached, frame => this._removeContextsForFrame(frame));
     // TODO: remove Page.willOpenNewWindowAsynchronously from the protocol.
     this._eventListeners = [
       helper.addEventListener(this._session, 'Page.eventFired', this._onEventFired.bind(this)),
@@ -82,6 +83,8 @@ export class FFPage implements PageDelegate {
       helper.addEventListener(this._session, 'Page.workerDestroyed', this._onWorkerDestroyed.bind(this)),
       helper.addEventListener(this._session, 'Page.dispatchMessageFromWorker', this._onDispatchMessageFromWorker.bind(this)),
       helper.addEventListener(this._session, 'Page.crashed', this._onCrashed.bind(this)),
+      helper.addEventListener(this._session, 'Page.screencastStarted', this._onScreencastStarted.bind(this)),
+      helper.addEventListener(this._session, 'Page.screencastStopped', this._onScreencastStopped.bind(this)),
     ];
     this._pagePromise = new Promise(f => this._pageCallback = f);
     session.once(FFSessionEvents.Disconnected, () => this._page._didDisconnect());
@@ -175,7 +178,7 @@ export class FFPage implements PageDelegate {
     const message = params.message.startsWith('Error: ') ? params.message.substring(7) : params.message;
     const error = new Error(message);
     error.stack = params.stack;
-    this._page.emit(Events.Page.PageError, error);
+    this._page.emit(Page.Events.PageError, error);
   }
 
   _onConsole(payload: Protocol.Runtime.consolePayload) {
@@ -185,8 +188,7 @@ export class FFPage implements PageDelegate {
   }
 
   _onDialogOpened(params: Protocol.Page.dialogOpenedPayload) {
-    this._page.emit(Events.Page.Dialog, new dialog.Dialog(
-        this._page._logger,
+    this._page.emit(Page.Events.Dialog, new dialog.Dialog(
         params.type,
         params.message,
         async (accept: boolean, promptText?: string) => {
@@ -256,6 +258,20 @@ export class FFPage implements PageDelegate {
     this._page._didCrash();
   }
 
+  _onScreencastStarted(event: Protocol.Page.screencastStartedPayload) {
+    const screencast = new Screencast(event.file, this._page);
+    this._idToScreencast.set(event.uid, screencast);
+    this._browserContext.emit(BrowserContext.Events.ScreencastStarted, screencast);
+  }
+
+  _onScreencastStopped(event: Protocol.Page.screencastStoppedPayload) {
+    const screencast = this._idToScreencast.get(event.uid);
+    if (!screencast)
+      return;
+    this._idToScreencast.delete(event.uid);
+    this._browserContext.emit(BrowserContext.Events.ScreencastStopped, screencast);
+  }
+
   async exposeBinding(binding: PageBinding) {
     await this._session.send('Page.addBinding', { name: binding.name, script: binding.source });
   }
@@ -273,7 +289,7 @@ export class FFPage implements PageDelegate {
   }
 
   async updateExtraHTTPHeaders(): Promise<void> {
-    await this._session.send('Network.setExtraHTTPHeaders', { headers: headersArray(this._page._state.extraHTTPHeaders || {}) });
+    await this._session.send('Network.setExtraHTTPHeaders', { headers: this._page._state.extraHTTPHeaders || [] });
   }
 
   async setViewportSize(viewportSize: types.Size): Promise<void> {
@@ -347,7 +363,7 @@ export class FFPage implements PageDelegate {
       throw new Error('Not implemented');
   }
 
-  async startVideoRecording(options: types.VideoRecordingOptions): Promise<void> {
+  async startScreencast(options: types.PageScreencastOptions): Promise<void> {
     this._session.send('Page.startVideoRecording', {
       file: options.outputFile,
       width: options.width,
@@ -356,7 +372,7 @@ export class FFPage implements PageDelegate {
     });
   }
 
-  async stopVideoRecording(): Promise<void> {
+  async stopScreencast(): Promise<void> {
     await this._session.send('Page.stopVideoRecording');
   }
 
@@ -459,7 +475,7 @@ export class FFPage implements PageDelegate {
 
   async setInputFiles(handle: dom.ElementHandle<HTMLInputElement>, files: types.FilePayload[]): Promise<void> {
     await handle._evaluateInUtility(([injected, node, files]) =>
-      injected.setInputFiles(node, files), dom.toFileTransferPayload(files));
+      injected.setInputFiles(node, files), files);
   }
 
   async adoptElementHandle<T extends Node>(handle: dom.ElementHandle<T>, to: dom.FrameExecutionContext): Promise<dom.ElementHandle<T>> {

@@ -14,10 +14,10 @@
  * limitations under the License.
  */
 
-import { JSHandleChannel, JSHandleInitializer, SerializedArgument, SerializedValue, Channel } from '../channels';
+import { JSHandleChannel, JSHandleInitializer, SerializedArgument, SerializedValue, Channel } from '../../protocol/channels';
 import { ElementHandle } from './elementHandle';
 import { ChannelOwner } from './channelOwner';
-import { parseSerializedValue, serializeValue } from '../serializers';
+import { parseSerializedValue, serializeValue } from '../../protocol/serializers';
 
 type NoHandles<Arg> = Arg extends JSHandle ? never : (Arg extends object ? { [Key in keyof Arg]: NoHandles<Arg[Key]> } : Arg);
 type Unboxed<Arg> =
@@ -109,4 +109,9 @@ export function serializeArgument(arg: any): SerializedArgument {
 
 export function parseResult(value: SerializedValue): any {
   return parseSerializedValue(value, undefined);
+}
+
+export function assertMaxArguments(count: number, max: number): asserts count {
+  if (count > max)
+    throw new Error('Too many arguments. If you need to pass more than 1 argument to the function wrap them in an object.');
 }

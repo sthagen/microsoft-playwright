@@ -18,9 +18,9 @@
 import * as frames from './frame';
 import { Page, BindingCall } from './page';
 import * as network from './network';
-import { BrowserContextChannel, BrowserContextInitializer } from '../channels';
+import { BrowserContextChannel, BrowserContextInitializer } from '../../protocol/channels';
 import { ChannelOwner } from './channelOwner';
-import { helper } from '../../helper';
+import { isUnderTest, deprecate, evaluationScript, urlMatches } from './clientHelper';
 import { Browser } from './browser';
 import { Events } from './events';
 import { TimeoutSettings } from '../../timeoutSettings';
@@ -67,7 +67,7 @@ export class BrowserContext extends ChannelOwner<BrowserContextChannel, BrowserC
 
   _onRoute(route: network.Route, request: network.Request) {
     for (const {url, handler} of this._routes) {
-      if (helper.urlMatches(request.url(), url)) {
+      if (urlMatches(request.url(), url)) {
         handler(route, request);
         return;
       }
@@ -146,6 +146,7 @@ export class BrowserContext extends ChannelOwner<BrowserContextChannel, BrowserC
 
   async setExtraHTTPHeaders(headers: Headers): Promise<void> {
     return this._wrapApiCall('browserContext.setExtraHTTPHeaders', async () => {
+      network.validateHeaders(headers);
       await this._channel.setExtraHTTPHeaders({ headers: headersObjectToArray(headers) });
     });
   }
@@ -157,6 +158,8 @@ export class BrowserContext extends ChannelOwner<BrowserContextChannel, BrowserC
   }
 
   async setHTTPCredentials(httpCredentials: { username: string, password: string } | null): Promise<void> {
+    if (!isUnderTest())
+      deprecate(`context.setHTTPCredentials`, `warning: method |context.setHTTPCredentials()| is deprecated. Instead of changing credentials, create another browser context with new credentials.`);
     return this._wrapApiCall('browserContext.setHTTPCredentials', async () => {
       await this._channel.setHTTPCredentials({ httpCredentials: httpCredentials || undefined });
     });
@@ -164,7 +167,7 @@ export class BrowserContext extends ChannelOwner<BrowserContextChannel, BrowserC
 
   async addInitScript(script: Function | string | { path?: string, content?: string }, arg?: any): Promise<void> {
     return this._wrapApiCall('browserContext.addInitScript', async () => {
-      const source = await helper.evaluationScript(script, arg);
+      const source = await evaluationScript(script, arg);
       await this._channel.addInitScript({ source });
     });
   }

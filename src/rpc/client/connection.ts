@@ -24,22 +24,22 @@ import { JSHandle } from './jsHandle';
 import { Request, Response, Route } from './network';
 import { Page, BindingCall } from './page';
 import { Worker } from './worker';
-import debug = require('debug');
 import { ConsoleMessage } from './consoleMessage';
 import { Dialog } from './dialog';
 import { Download } from './download';
-import { parseError } from '../serializers';
+import { parseError } from '../../protocol/serializers';
 import { CDPSession } from './cdpSession';
 import { Playwright } from './playwright';
 import { Electron, ElectronApplication } from './electron';
-import { Channel } from '../channels';
+import { Channel } from '../../protocol/channels';
 import { ChromiumBrowser } from './chromiumBrowser';
 import { ChromiumBrowserContext } from './chromiumBrowserContext';
 import { Selectors } from './selectors';
 import { Stream } from './stream';
-import { createScheme, Validator, ValidationError } from '../validator';
+import { createScheme, Validator, ValidationError } from '../../protocol/validator';
 import { WebKitBrowser } from './webkitBrowser';
 import { FirefoxBrowser } from './firefoxBrowser';
+import { debugLogger } from '../../helper';
 
 class Root extends ChannelOwner<Channel, {}> {
   constructor(connection: Connection) {
@@ -73,7 +73,7 @@ export class Connection {
     const id = ++this._lastId;
     const validated = method === 'debugScopeState' ? params : validateParams(type, method, params);
     const converted = { id, guid, method, params: validated };
-    debug('pw:channel:command')(converted);
+    debugLogger.log('channel:command', converted);
     this.onmessage(converted);
     return new Promise((resolve, reject) => this._callbacks.set(id, { resolve, reject }));
   }
@@ -85,7 +85,7 @@ export class Connection {
   dispatch(message: object) {
     const { id, guid, method, params, result, error } = message as any;
     if (id) {
-      debug('pw:channel:response')(message);
+      debugLogger.log('channel:response', message);
       const callback = this._callbacks.get(id)!;
       this._callbacks.delete(id);
       if (error)
@@ -95,7 +95,7 @@ export class Connection {
       return;
     }
 
-    debug('pw:channel:event')(message);
+    debugLogger.log('channel:event', message);
     if (method === '__create__') {
       this._createRemoteObject(guid, params.type, params.guid, params.initializer);
       return;

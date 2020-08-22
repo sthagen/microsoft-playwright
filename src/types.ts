@@ -44,14 +44,8 @@ export type PointerActionWaitOptions = TimeoutOptions & {
   force?: boolean,
 };
 
-export type WaitForNavigationOptions = TimeoutOptions & {
-  waitUntil?: LifecycleEvent,
-  url?: URLMatch
-};
-
 export type ElementScreenshotOptions = TimeoutOptions & {
   type?: 'png' | 'jpeg',
-  path?: string,
   quality?: number,
   omitBackground?: boolean,
 };
@@ -61,11 +55,18 @@ export type ScreenshotOptions = ElementScreenshotOptions & {
   clip?: Rect,
 };
 
-export type VideoRecordingOptions = {
-  outputFile: string,
+export type ScreencastOptions = {
   width: number,
   height: number,
   scale?: number,
+};
+
+export type PageScreencastOptions = ScreencastOptions & {
+  outputFile: string,
+};
+
+export type ContextScreencastOptions = ScreencastOptions & {
+  dir: string,
 };
 
 export type URLMatch = string | RegExp | ((url: URL) => boolean);
@@ -90,13 +91,7 @@ export type SelectOption = {
 export type FilePayload = {
   name: string,
   mimeType: string,
-  buffer: Buffer,
-};
-
-export type FileTransferPayload = {
-  name: string,
-  type: string,
-  data: string,
+  buffer: string,
 };
 
 export type MediaType = 'screen' | 'print';
@@ -123,11 +118,10 @@ export type PDFOptions = {
   landscape?: boolean,
   pageRanges?: string,
   format?: string,
-  width?: string|number,
-  height?: string|number,
+  width?: string,
+  height?: string,
   preferCSSPageSize?: boolean,
-  margin?: {top?: string|number, bottom?: string|number, left?: string|number, right?: string|number},
-  path?: string,
+  margin?: {top?: string, bottom?: string, left?: string, right?: string},
 }
 
 export type CSSCoverageOptions = {
@@ -187,8 +181,6 @@ export type ProxySettings = {
   password?: string
 };
 
-export type WaitForEventOptions = Function | { predicate?: Function, timeout?: number };
-
 export type KeyboardModifier = 'Alt' | 'Control' | 'Meta' | 'Shift';
 export type MouseButton = 'left' | 'right' | 'middle';
 
@@ -210,18 +202,10 @@ export type MouseMultiClickOptions = PointerActionOptions & {
 
 export type World = 'main' | 'utility';
 
-export type Headers = { [key: string]: string };
 export type HeadersArray = { name: string, value: string }[];
 
 export type GotoOptions = NavigateOptions & {
   referer?: string,
-};
-
-export type FulfillResponse = {
-  status?: number,
-  headers?: Headers,
-  contentType?: string,
-  body?: string | Buffer,
 };
 
 export type NormalizedFulfillResponse = {
@@ -229,12 +213,6 @@ export type NormalizedFulfillResponse = {
   headers: HeadersArray,
   body: string,
   isBase64: boolean,
-};
-
-export type ContinueOverrides = {
-  method?: string,
-  headers?: Headers,
-  postData?: string | Buffer,
 };
 
 export type NormalizedContinueOverrides = {
@@ -267,7 +245,8 @@ export type SetNetworkCookieParam = {
 };
 
 export type BrowserContextOptions = {
-  viewport?: Size | null,
+  viewport?: Size,
+  noDefaultViewport?: boolean,
   ignoreHTTPSErrors?: boolean,
   javaScriptEnabled?: boolean,
   bypassCSP?: boolean,
@@ -276,7 +255,7 @@ export type BrowserContextOptions = {
   timezoneId?: string,
   geolocation?: Geolocation,
   permissions?: string[],
-  extraHTTPHeaders?: Headers,
+  extraHTTPHeaders?: HeadersArray,
   offline?: boolean,
   httpCredentials?: Credentials,
   deviceScaleFactor?: number,
@@ -286,32 +265,35 @@ export type BrowserContextOptions = {
   acceptDownloads?: boolean,
 };
 
-export type Env = {[key: string]: string | number | boolean | undefined};
 export type EnvArray = { name: string, value: string }[];
 
-export type LaunchOptionsBase = {
+type LaunchOptionsBase = {
   executablePath?: string,
   args?: string[],
-  ignoreDefaultArgs?: boolean | string[],
+  ignoreDefaultArgs?: string[],
+  ignoreAllDefaultArgs?: boolean,
   handleSIGINT?: boolean,
   handleSIGTERM?: boolean,
   handleSIGHUP?: boolean,
   timeout?: number,
-  env?: Env,
+  env?: EnvArray,
   headless?: boolean,
   devtools?: boolean,
   proxy?: ProxySettings,
   downloadsPath?: string,
   chromiumSandbox?: boolean,
+  slowMo?: number,
 };
-
-export type LaunchOptions = LaunchOptionsBase & { slowMo?: number };
-export type LaunchServerOptions = LaunchOptionsBase & { port?: number };
+export type LaunchOptions = LaunchOptionsBase & UIOptions & {
+  firefoxUserPrefs?: { [key: string]: string | number | boolean },
+};
+export type LaunchPersistentOptions = LaunchOptionsBase & BrowserContextOptions;
 
 export type SerializedAXNode = {
   role: string,
   name: string,
-  value?: string|number,
+  valueString?: string,
+  valueNumber?: number,
   description?: string,
 
   keyshortcuts?: string,
@@ -328,8 +310,8 @@ export type SerializedAXNode = {
   required?: boolean,
   selected?: boolean,
 
-  checked?: boolean | 'mixed',
-  pressed?: boolean | 'mixed',
+  checked?: 'checked' | 'unchecked' | 'mixed',
+  pressed?: 'pressed' | 'released' | 'mixed',
 
   level?: number,
   valuemin?: number,
@@ -353,4 +335,8 @@ export type Error = {
   message: string,
   name: string,
   stack?: string,
+};
+
+export type UIOptions = {
+  slowMo?: number;
 };

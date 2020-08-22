@@ -15,20 +15,18 @@
  * limitations under the License.
  */
 
-import { BrowserBase, BrowserOptions, BrowserContextOptions } from '../browser';
-import { assertBrowserContextIsNotOwned, BrowserContext, BrowserContextBase, validateBrowserContextOptions, verifyGeolocation } from '../browserContext';
-import { Events } from '../events';
+import { Browser, BrowserOptions } from '../browser';
+import { assertBrowserContextIsNotOwned, BrowserContext, validateBrowserContextOptions, verifyGeolocation } from '../browserContext';
 import { assert, helper, RegisteredListener } from '../helper';
 import * as network from '../network';
 import { Page, PageBinding } from '../page';
-import { ConnectionTransport, SlowMoTransport } from '../transport';
+import { ConnectionTransport } from '../transport';
 import * as types from '../types';
 import { ConnectionEvents, FFConnection } from './ffConnection';
-import { headersArray } from './ffNetworkManager';
 import { FFPage } from './ffPage';
 import { Protocol } from './protocol';
 
-export class FFBrowser extends BrowserBase {
+export class FFBrowser extends Browser {
   _connection: FFConnection;
   readonly _ffPages: Map<string, FFPage>;
   readonly _contexts: Map<string, FFBrowserContext>;
@@ -36,7 +34,7 @@ export class FFBrowser extends BrowserBase {
   private _version = '';
 
   static async connect(transport: ConnectionTransport, options: BrowserOptions): Promise<FFBrowser> {
-    const connection = new FFConnection(SlowMoTransport.wrap(transport, options.slowMo), options.loggers);
+    const connection = new FFConnection(transport);
     const browser = new FFBrowser(connection, options);
     const promises: Promise<any>[] = [
       connection.send('Browser.enable', { attachToDefaultContext: !!options.persistent }),
@@ -91,8 +89,8 @@ export class FFBrowser extends BrowserBase {
     return !this._connection._closed;
   }
 
-  async newContext(options: BrowserContextOptions = {}): Promise<BrowserContext> {
-    options = validateBrowserContextOptions(options);
+  async newContext(options: types.BrowserContextOptions = {}): Promise<BrowserContext> {
+    validateBrowserContextOptions(options);
     if (options.isMobile)
       throw new Error('options.isMobile is not supported in Firefox');
     const { browserContextId } = await this._connection.send('Browser.createBrowserContext', { removeOnDetach: true });
@@ -130,12 +128,12 @@ export class FFBrowser extends BrowserBase {
       const page = ffPage._page;
       if (pageOrError instanceof Error)
         page._setIsError();
-      context.emit(Events.BrowserContext.Page, page);
+      context.emit(BrowserContext.Events.Page, page);
       if (!opener)
         return;
       const openerPage = await opener.pageOrError();
       if (openerPage instanceof Page && !openerPage.isClosed())
-        openerPage.emit(Events.Page.Popup, page);
+        openerPage.emit(Page.Events.Popup, page);
     });
   }
 
@@ -162,14 +160,9 @@ export class FFBrowser extends BrowserBase {
     const error = payload.canceled ? 'canceled' : payload.error;
     this._downloadFinished(payload.uuid, error);
   }
-
-  _disconnect() {
-    helper.removeEventListeners(this._eventListeners);
-    this._connection.close();
-  }
 }
 
-export class FFBrowserContext extends BrowserContextBase {
+export class FFBrowserContext extends BrowserContext {
   readonly _browser: FFBrowser;
   readonly _browserContextId: string | null;
 
@@ -216,7 +209,7 @@ export class FFBrowserContext extends BrowserContextBase {
     if (this._options.permissions)
       promises.push(this.grantPermissions(this._options.permissions));
     if (this._options.extraHTTPHeaders || this._options.locale)
-      promises.push(this.setExtraHTTPHeaders(this._options.extraHTTPHeaders || {}));
+      promises.push(this.setExtraHTTPHeaders(this._options.extraHTTPHeaders || []));
     if (this._options.httpCredentials)
       promises.push(this.setHTTPCredentials(this._options.httpCredentials));
     if (this._options.geolocation)
@@ -293,19 +286,18 @@ export class FFBrowserContext extends BrowserContextBase {
     await this._browser._connection.send('Browser.resetPermissions', { browserContextId: this._browserContextId || undefined });
   }
 
-  async setGeolocation(geolocation: types.Geolocation | null): Promise<void> {
-    if (geolocation)
-      geolocation = verifyGeolocation(geolocation);
-    this._options.geolocation = geolocation || undefined;
-    await this._browser._connection.send('Browser.setGeolocationOverride', { browserContextId: this._browserContextId || undefined, geolocation });
+  async setGeolocation(geolocation?: types.Geolocation): Promise<void> {
+    verifyGeolocation(geolocation);
+    this._options.geolocation = geolocation;
+    await this._browser._connection.send('Browser.setGeolocationOverride', { browserContextId: this._browserContextId || undefined, geolocation: geolocation || null });
   }
 
-  async setExtraHTTPHeaders(headers: types.Headers): Promise<void> {
-    this._options.extraHTTPHeaders = network.verifyHeaders(headers);
-    const allHeaders = { ...this._options.extraHTTPHeaders };
+  async setExtraHTTPHeaders(headers: types.HeadersArray): Promise<void> {
+    this._options.extraHTTPHeaders = headers;
+    let allHeaders = this._options.extraHTTPHeaders;
     if (this._options.locale)
-      allHeaders['Accept-Language'] = this._options.locale;
-    await this._browser._connection.send('Browser.setExtraHTTPHeaders', { browserContextId: this._browserContextId || undefined, headers: headersArray(allHeaders) });
+      allHeaders = network.mergeHeaders([allHeaders, network.singleHeader('Accept-Language', this._options.locale)]);
+    await this._browser._connection.send('Browser.setExtraHTTPHeaders', { browserContextId: this._browserContextId || undefined, headers: allHeaders });
   }
 
   async setOffline(offline: boolean): Promise<void> {
@@ -313,9 +305,9 @@ export class FFBrowserContext extends BrowserContextBase {
     await this._browser._connection.send('Browser.setOnlineOverride', { browserContextId: this._browserContextId || undefined, override: offline ? 'offline' : 'online' });
   }
 
-  async _doSetHTTPCredentials(httpCredentials: types.Credentials | null): Promise<void> {
-    this._options.httpCredentials = httpCredentials || undefined;
-    await this._browser._connection.send('Browser.setHTTPCredentials', { browserContextId: this._browserContextId || undefined, credentials: httpCredentials });
+  async _doSetHTTPCredentials(httpCredentials?: types.Credentials): Promise<void> {
+    this._options.httpCredentials = httpCredentials;
+    await this._browser._connection.send('Browser.setHTTPCredentials', { browserContextId: this._browserContextId || undefined, credentials: httpCredentials || null });
   }
 
   async _doAddInitScript(source: string) {
@@ -326,16 +318,13 @@ export class FFBrowserContext extends BrowserContextBase {
     await this._browser._connection.send('Browser.addBinding', { browserContextId: this._browserContextId || undefined, name: binding.name, script: binding.source });
   }
 
-  async route(url: types.URLMatch, handler: network.RouteHandler): Promise<void> {
-    this._routes.push({ url, handler });
-    if (this._routes.length === 1)
-      await this._browser._connection.send('Browser.setRequestInterception', { browserContextId: this._browserContextId || undefined, enabled: true });
+  async _doUpdateRequestInterception(): Promise<void> {
+    await this._browser._connection.send('Browser.setRequestInterception', { browserContextId: this._browserContextId || undefined, enabled: !!this._requestInterceptor });
   }
 
-  async unroute(url: types.URLMatch, handler?: network.RouteHandler): Promise<void> {
-    this._routes = this._routes.filter(route => route.url !== url || (handler && route.handler !== handler));
-    if (this._routes.length === 0)
-      await this._browser._connection.send('Browser.setRequestInterception', { browserContextId: this._browserContextId || undefined, enabled: false });
+  async _enableScreencast(options: types.ContextScreencastOptions): Promise<void> {
+    await super._enableScreencast(options);
+    await this._browser._connection.send('Browser.setScreencastOptions', Object.assign({}, options, { browserContextId: this._browserContextId || undefined}));
   }
 
   async _doClose() {

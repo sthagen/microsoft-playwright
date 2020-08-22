@@ -15,12 +15,12 @@
  * limitations under the License.
  */
 
-import { assertMaxArguments, helper, assert } from '../../helper';
-import { FrameChannel, FrameInitializer, FrameNavigatedEvent, FrameGotoOptions, FrameWaitForSelectorOptions, FrameDispatchEventOptions, FrameSetContentOptions, FrameClickOptions, FrameDblclickOptions, FrameFillOptions, FrameFocusOptions, FrameTextContentOptions, FrameInnerTextOptions, FrameInnerHTMLOptions, FrameGetAttributeOptions, FrameHoverOptions, FrameSetInputFilesOptions, FrameTypeOptions, FramePressOptions, FrameCheckOptions, FrameUncheckOptions } from '../channels';
+import { assert } from '../../helper';
+import { FrameChannel, FrameInitializer, FrameNavigatedEvent, FrameGotoOptions, FrameWaitForSelectorOptions, FrameDispatchEventOptions, FrameSetContentOptions, FrameClickOptions, FrameDblclickOptions, FrameFillOptions, FrameFocusOptions, FrameTextContentOptions, FrameInnerTextOptions, FrameInnerHTMLOptions, FrameGetAttributeOptions, FrameHoverOptions, FrameSetInputFilesOptions, FrameTypeOptions, FramePressOptions, FrameCheckOptions, FrameUncheckOptions } from '../../protocol/channels';
 import { BrowserContext } from './browserContext';
 import { ChannelOwner } from './channelOwner';
 import { ElementHandle, convertSelectOptionValues, convertInputFiles } from './elementHandle';
-import { JSHandle, Func1, FuncOn, SmartHandle, serializeArgument, parseResult } from './jsHandle';
+import { assertMaxArguments, JSHandle, Func1, FuncOn, SmartHandle, serializeArgument, parseResult } from './jsHandle';
 import * as fs from 'fs';
 import * as network from './network';
 import * as util from 'util';
@@ -29,6 +29,7 @@ import { EventEmitter } from 'events';
 import { Waiter } from './waiter';
 import { Events } from './events';
 import { LifecycleEvent, URLMatch, SelectOption, SelectOptionOptions, FilePayload, WaitForFunctionOptions, kLifecycleEvents } from './types';
+import { urlMatches } from './clientHelper';
 
 const fsReadFileAsync = util.promisify(fs.readFile.bind(fs));
 
@@ -123,7 +124,7 @@ export class Frame extends ChannelOwner<FrameChannel, FrameInitializer> {
         if (event.error)
           return true;
         waiter.log(`  navigated to "${event.url}"`);
-        return helper.urlMatches(event.url, options.url);
+        return urlMatches(event.url, options.url);
       });
       if (navigatedEvent.error) {
         const e = new Error(navigatedEvent.error);

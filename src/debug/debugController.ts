@@ -14,19 +14,18 @@
  * limitations under the License.
  */
 
-import { BrowserContextBase } from '../browserContext';
-import { Events } from '../events';
+import { BrowserContext } from '../browserContext';
 import * as frames from '../frames';
 import * as js from '../javascript';
 import { Page } from '../page';
 import DebugScript from './injected/debugScript';
 
 export class DebugController {
-  constructor(context: BrowserContextBase) {
-    context.on(Events.BrowserContext.Page, (page: Page) => {
+  constructor(context: BrowserContext) {
+    context.on(BrowserContext.Events.Page, (page: Page) => {
       for (const frame of page.frames())
         this.ensureInstalledInFrame(frame);
-      page.on(Events.Page.FrameNavigated, frame => this.ensureInstalledInFrame(frame));
+      page.on(Page.Events.FrameNavigated, frame => this.ensureInstalledInFrame(frame));
     });
   }
 

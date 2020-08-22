@@ -15,12 +15,9 @@
  * limitations under the License.
  */
 
-import * as fs from 'fs';
-import * as util from 'util';
 import { ConsoleMessage } from './console';
 import * as dom from './dom';
-import { Events } from './events';
-import { assert, helper, RegisteredListener, assertMaxArguments } from './helper';
+import { assert, helper, RegisteredListener, debugLogger } from './helper';
 import * as js from './javascript';
 import * as network from './network';
 import { Page } from './page';
@@ -52,7 +49,6 @@ type ConsoleTagHandler = () => void;
 
 export type FunctionWithSource = (source: { context: BrowserContext, page: Page, frame: Frame}, ...args: any) => any;
 
-export const kNavigationEvent = Symbol('navigation');
 export type NavigationEvent = {
   // New frame url after navigation.
   url: string,
@@ -65,8 +61,6 @@ export type NavigationEvent = {
   // the navigation did not commit.
   error?: Error,
 };
-export const kAddLifecycleEvent = Symbol('addLifecycle');
-export const kRemoveLifecycleEvent = Symbol('removeLifecycle');
 
 export class FrameManager {
   private _page: Page;
@@ -122,7 +116,7 @@ export class FrameManager {
       assert(!this._frames.has(frameId));
       const frame = new Frame(this._page, frameId, parentFrame);
       this._frames.set(frameId, frame);
-      this._page.emit(Events.Page.FrameAttached, frame);
+      this._page.emit(Page.Events.FrameAttached, frame);
       return frame;
     }
   }
@@ -199,10 +193,10 @@ export class FrameManager {
 
     frame._onClearLifecycle();
     const navigationEvent: NavigationEvent = { url, name, newDocument: frame._currentDocument };
-    frame._eventEmitter.emit(kNavigationEvent, navigationEvent);
+    frame.emit(Frame.Events.Navigation, navigationEvent);
     if (!initial) {
-      this._page._logger.info(`  navigated to "${url}"`);
-      this._page.emit(Events.Page.FrameNavigated, frame);
+      debugLogger.log('api', `  navigated to "${url}"`);
+      this._page.emit(Page.Events.FrameNavigated, frame);
     }
     // Restore pending if any - see comments above about keepPending.
     frame._pendingDocument = keepPending;
@@ -214,9 +208,9 @@ export class FrameManager {
       return;
     frame._url = url;
     const navigationEvent: NavigationEvent = { url, name: frame._name };
-    frame._eventEmitter.emit(kNavigationEvent, navigationEvent);
-    this._page._logger.info(`  navigated to "${url}"`);
-    this._page.emit(Events.Page.FrameNavigated, frame);
+    frame.emit(Frame.Events.Navigation, navigationEvent);
+    debugLogger.log('api', `  navigated to "${url}"`);
+    this._page.emit(Page.Events.FrameNavigated, frame);
   }
 
   frameAbortedNavigation(frameId: string, errorText: string, documentId?: string) {
@@ -232,7 +226,7 @@ export class FrameManager {
       error: new Error(errorText),
     };
     frame._pendingDocument = undefined;
-    frame._eventEmitter.emit(kNavigationEvent, navigationEvent);
+    frame.emit(Frame.Events.Navigation, navigationEvent);
   }
 
   frameDetached(frameId: string) {
@@ -268,13 +262,13 @@ export class FrameManager {
 
   requestReceivedResponse(response: network.Response) {
     if (!response.request()._isFavicon)
-      this._page.emit(Events.Page.Response, response);
+      this._page.emit(Page.Events.Response, response);
   }
 
   requestFinished(request: network.Request) {
     this._inflightRequestFinished(request);
     if (!request._isFavicon)
-      this._page.emit(Events.Page.RequestFinished, request);
+      this._page.emit(Page.Events.RequestFinished, request);
   }
 
   requestFailed(request: network.Request, canceled: boolean) {
@@ -287,7 +281,7 @@ export class FrameManager {
       this.frameAbortedNavigation(frame._id, errorText, frame._pendingDocument.documentId);
     }
     if (!request._isFavicon)
-      this._page.emit(Events.Page.RequestFailed, request);
+      this._page.emit(Page.Events.RequestFailed, request);
   }
 
   removeChildFramesRecursively(frame: Frame) {
@@ -299,7 +293,7 @@ export class FrameManager {
     this.removeChildFramesRecursively(frame);
     frame._onDetached();
     this._frames.delete(frame._id);
-    this._page.emit(Events.Page.FrameDetached, frame);
+    this._page.emit(Page.Events.FrameDetached, frame);
   }
 
   private _inflightRequestFinished(request: network.Request) {
@@ -335,8 +329,13 @@ export class FrameManager {
   }
 }
 
-export class Frame {
-  readonly _eventEmitter: EventEmitter;
+export class Frame extends EventEmitter {
+  static Events = {
+    Navigation: 'navigation',
+    AddLifecycle: 'addlifecycle',
+    RemoveLifecycle: 'removelifecycle',
+  };
+
   _id: string;
   private _firedLifecycleEvents = new Set<types.LifecycleEvent>();
   _subtreeLifecycleEvents = new Set<types.LifecycleEvent>();
@@ -356,8 +355,8 @@ export class Frame {
   private _detachedCallback = () => {};
 
   constructor(page: Page, id: string, parentFrame: Frame | null) {
-    this._eventEmitter = new EventEmitter();
-    this._eventEmitter.setMaxListeners(0);
+    super();
+    this.setMaxListeners(0);
     this._id = id;
     this._page = page;
     this._parentFrame = parentFrame;
@@ -372,10 +371,6 @@ export class Frame {
 
     if (this._parentFrame)
       this._parentFrame._childFrames.add(this);
-  }
-
-  page(): Page {
-    return this._page;
   }
 
   _onLifecycleEvent(event: types.LifecycleEvent) {
@@ -412,18 +407,18 @@ export class Frame {
     for (const event of events) {
       // Checking whether we have already notified about this event.
       if (!this._subtreeLifecycleEvents.has(event)) {
-        this._eventEmitter.emit(kAddLifecycleEvent, event);
+        this.emit(Frame.Events.AddLifecycle, event);
         if (this === mainFrame && this._url !== 'about:blank')
-          this._page._logger.info(`  "${event}" event fired`);
+          debugLogger.log('api', `  "${event}" event fired`);
         if (this === mainFrame && event === 'load')
-          this._page.emit(Events.Page.Load);
+          this._page.emit(Page.Events.Load);
         if (this === mainFrame && event === 'domcontentloaded')
-          this._page.emit(Events.Page.DOMContentLoaded);
+          this._page.emit(Page.Events.DOMContentLoaded);
       }
     }
     for (const event of this._subtreeLifecycleEvents) {
       if (!events.has(event))
-        this._eventEmitter.emit(kRemoveLifecycleEvent, event);
+        this.emit(Frame.Events.RemoveLifecycle, event);
     }
     this._subtreeLifecycleEvents = events;
   }
@@ -431,9 +426,10 @@ export class Frame {
   async goto(url: string, options: types.GotoOptions = {}): Promise<network.Response | null> {
     return runNavigationTask(this, options, async progress => {
       const waitUntil = verifyLifecycle('waitUntil', options.waitUntil === undefined ? 'load' : options.waitUntil);
-      progress.logger.info(`navigating to "${url}", waiting until "${waitUntil}"`);
-      const headers = (this._page._state.extraHTTPHeaders || {});
-      let referer = headers['referer'] || headers['Referer'];
+      progress.log(`navigating to "${url}", waiting until "${waitUntil}"`);
+      const headers = this._page._state.extraHTTPHeaders || [];
+      const refererHeader = headers.find(h => h.name.toLowerCase() === 'referer');
+      let referer = refererHeader ? refererHeader.value : undefined;
       if (options.referer !== undefined) {
         if (referer !== undefined && referer !== options.referer)
           throw new Error('"referer" is already specified as extra HTTP header');
@@ -441,13 +437,13 @@ export class Frame {
       }
       url = helper.completeUserURL(url);
 
-      const sameDocument = helper.waitForEvent(progress, this._eventEmitter, kNavigationEvent, (e: NavigationEvent) => !e.newDocument);
+      const sameDocument = helper.waitForEvent(progress, this, Frame.Events.Navigation, (e: NavigationEvent) => !e.newDocument);
       const navigateResult = await this._page._delegate.navigateFrame(this, url, referer);
 
       let event: NavigationEvent;
       if (navigateResult.newDocumentId) {
         sameDocument.dispose();
-        event = await helper.waitForEvent(progress, this._eventEmitter, kNavigationEvent, (event: NavigationEvent) => {
+        event = await helper.waitForEvent(progress, this, Frame.Events.Navigation, (event: NavigationEvent) => {
           // We are interested either in this specific document, or any other document that
           // did commit and replaced the expected document.
           return event.newDocument && (event.newDocument.documentId === navigateResult.newDocumentId || !event.error);
@@ -465,31 +461,32 @@ export class Frame {
       }
 
       if (!this._subtreeLifecycleEvents.has(waitUntil))
-        await helper.waitForEvent(progress, this._eventEmitter, kAddLifecycleEvent, (e: types.LifecycleEvent) => e === waitUntil).promise;
+        await helper.waitForEvent(progress, this, Frame.Events.AddLifecycle, (e: types.LifecycleEvent) => e === waitUntil).promise;
 
       const request = event.newDocument ? event.newDocument.request : undefined;
-      return request ? request._finalRequest().response() : null;
+      const response = request ? request._finalRequest().response() : null;
+      await this._page._doSlowMo();
+      return response;
     });
   }
 
-  async waitForNavigation(options: types.WaitForNavigationOptions = {}): Promise<network.Response | null> {
+  async waitForNavigation(options: types.NavigateOptions = {}): Promise<network.Response | null> {
     return runNavigationTask(this, options, async progress => {
-      const toUrl = typeof options.url === 'string' ? ` to "${options.url}"` : '';
       const waitUntil = verifyLifecycle('waitUntil', options.waitUntil === undefined ? 'load' : options.waitUntil);
-      progress.logger.info(`waiting for navigation${toUrl} until "${waitUntil}"`);
+      progress.log(`waiting for navigation until "${waitUntil}"`);
 
-      const navigationEvent: NavigationEvent = await helper.waitForEvent(progress, this._eventEmitter, kNavigationEvent, (event: NavigationEvent) => {
+      const navigationEvent: NavigationEvent = await helper.waitForEvent(progress, this, Frame.Events.Navigation, (event: NavigationEvent) => {
         // Any failed navigation results in a rejection.
         if (event.error)
           return true;
-        progress.logger.info(`  navigated to "${this._url}"`);
-        return helper.urlMatches(this._url, options.url);
+        progress.log(`  navigated to "${this._url}"`);
+        return true;
       }).promise;
       if (navigationEvent.error)
         throw navigationEvent.error;
 
       if (!this._subtreeLifecycleEvents.has(waitUntil))
-        await helper.waitForEvent(progress, this._eventEmitter, kAddLifecycleEvent, (e: types.LifecycleEvent) => e === waitUntil).promise;
+        await helper.waitForEvent(progress, this, Frame.Events.AddLifecycle, (e: types.LifecycleEvent) => e === waitUntil).promise;
 
       const request = navigationEvent.newDocument ? navigationEvent.newDocument.request : undefined;
       return request ? request._finalRequest().response() : null;
@@ -503,7 +500,7 @@ export class Frame {
   async _waitForLoadState(progress: Progress, state: types.LifecycleEvent): Promise<void> {
     const waitUntil = verifyLifecycle('state', state);
     if (!this._subtreeLifecycleEvents.has(waitUntil))
-      await helper.waitForEvent(progress, this._eventEmitter, kAddLifecycleEvent, (e: types.LifecycleEvent) => e === waitUntil).promise;
+      await helper.waitForEvent(progress, this, Frame.Events.AddLifecycle, (e: types.LifecycleEvent) => e === waitUntil).promise;
   }
 
   async frameElement(): Promise<dom.ElementHandle> {
@@ -524,30 +521,18 @@ export class Frame {
     return this._context('utility');
   }
 
-  async evaluateHandle<R, Arg>(pageFunction: js.Func1<Arg, R>, arg: Arg): Promise<js.SmartHandle<R>>;
-  async evaluateHandle<R>(pageFunction: js.Func1<void, R>, arg?: any): Promise<js.SmartHandle<R>>;
-  async evaluateHandle<R, Arg>(pageFunction: js.Func1<Arg, R>, arg: Arg): Promise<js.SmartHandle<R>> {
-    assertMaxArguments(arguments.length, 2);
-    const context = await this._mainContext();
-    return context.evaluateHandleInternal(pageFunction, arg);
-  }
-
   async _evaluateExpressionHandle(expression: string, isFunction: boolean, arg: any): Promise<any> {
     const context = await this._mainContext();
-    return context.evaluateExpressionHandleInternal(expression, isFunction, arg);
-  }
-
-  async evaluate<R, Arg>(pageFunction: js.Func1<Arg, R>, arg: Arg): Promise<R>;
-  async evaluate<R>(pageFunction: js.Func1<void, R>, arg?: any): Promise<R>;
-  async evaluate<R, Arg>(pageFunction: js.Func1<Arg, R>, arg: Arg): Promise<R> {
-    assertMaxArguments(arguments.length, 2);
-    const context = await this._mainContext();
-    return context.evaluateInternal(pageFunction, arg);
+    const handle = await context.evaluateExpressionHandleInternal(expression, isFunction, arg);
+    await this._page._doSlowMo();
+    return handle;
   }
 
   async _evaluateExpression(expression: string, isFunction: boolean, arg: any): Promise<any> {
     const context = await this._mainContext();
-    return context.evaluateExpressionInternal(expression, isFunction, arg);
+    const value = await context.evaluateExpressionInternal(expression, isFunction, arg);
+    await this._page._doSlowMo();
+    return value;
   }
 
   async $(selector: string): Promise<dom.ElementHandle<Element> | null> {
@@ -565,7 +550,7 @@ export class Frame {
     const info = selectors._parseSelector(selector);
     const task = dom.waitForSelectorTask(info, state);
     return this._page._runAbortableTask(async progress => {
-      progress.logger.info(`waiting for selector "${selector}"${state === 'attached' ? '' : ' to be ' + state}`);
+      progress.log(`waiting for selector "${selector}"${state === 'attached' ? '' : ' to be ' + state}`);
       const result = await this._scheduleRerunnableHandleTask(progress, info.world, task);
       if (!result.asElement()) {
         result.dispose();
@@ -579,18 +564,12 @@ export class Frame {
   async dispatchEvent(selector: string, type: string, eventInit?: Object, options: types.TimeoutOptions = {}): Promise<void> {
     const info = selectors._parseSelector(selector);
     const task = dom.dispatchEventTask(info, type, eventInit || {});
-    return this._page._runAbortableTask(async progress => {
-      progress.logger.info(`Dispatching "${type}" event on selector "${selector}"...`);
+    await this._page._runAbortableTask(async progress => {
+      progress.log(`Dispatching "${type}" event on selector "${selector}"...`);
       // Note: we always dispatch events in the main world.
       await this._scheduleRerunnableTask(progress, 'main', task);
     }, this._page._timeoutSettings.timeout(options));
-  }
-
-  async $eval<R, Arg>(selector: string, pageFunction: js.FuncOn<Element, Arg, R>, arg: Arg): Promise<R>;
-  async $eval<R>(selector: string, pageFunction: js.FuncOn<Element, void, R>, arg?: any): Promise<R>;
-  async $eval<R, Arg>(selector: string, pageFunction: js.FuncOn<Element, Arg, R>, arg: Arg): Promise<R> {
-    assertMaxArguments(arguments.length, 3);
-    return this._$evalExpression(selector, String(pageFunction), typeof pageFunction === 'function', arg);
+    await this._page._doSlowMo();
   }
 
   async _$evalExpression(selector: string, expression: string, isFunction: boolean, arg: any): Promise<any> {
@@ -600,13 +579,6 @@ export class Frame {
     const result = await handle._evaluateExpression(expression, isFunction, true, arg);
     handle.dispose();
     return result;
-  }
-
-  async $$eval<R, Arg>(selector: string, pageFunction: js.FuncOn<Element[], Arg, R>, arg: Arg): Promise<R>;
-  async $$eval<R>(selector: string, pageFunction: js.FuncOn<Element[], void, R>, arg?: any): Promise<R>;
-  async $$eval<R, Arg>(selector: string, pageFunction: js.FuncOn<Element[], Arg, R>, arg: Arg): Promise<R> {
-    assertMaxArguments(arguments.length, 3);
-    return this._$$evalExpression(selector, String(pageFunction), typeof pageFunction === 'function', arg);
   }
 
   async _$$evalExpression(selector: string, expression: string, isFunction: boolean, arg: any): Promise<any> {
@@ -635,7 +607,7 @@ export class Frame {
   async setContent(html: string, options: types.NavigateOptions = {}): Promise<void> {
     return runNavigationTask(this, options, async progress => {
       const waitUntil = options.waitUntil === undefined ? 'load' : options.waitUntil;
-      progress.logger.info(`setting frame content, waiting until "${waitUntil}"`);
+      progress.log(`setting frame content, waiting until "${waitUntil}"`);
       const tag = `--playwright--set--content--${this._id}--${++this._setContentCounter}--`;
       const context = await this._utilityContext();
       const lifecyclePromise = new Promise((resolve, reject) => {
@@ -653,6 +625,7 @@ export class Frame {
         document.close();
       }, { html, tag });
       await Promise.all([contentPromise, lifecyclePromise]);
+      await this._page._doSlowMo();
     });
   }
 
@@ -672,36 +645,24 @@ export class Frame {
     return Array.from(this._childFrames);
   }
 
-  isDetached(): boolean {
-    return this._detached;
-  }
-
   async addScriptTag(options: {
-      url?: string; path?: string;
-      content?: string;
-      type?: string;
+      url?: string,
+      content?: string,
+      type?: string,
     }): Promise<dom.ElementHandle> {
     const {
       url = null,
-      path = null,
       content = null,
       type = ''
     } = options;
-    if (!url && !path && !content)
+    if (!url && !content)
       throw new Error('Provide an object with a `url`, `path` or `content` property');
 
     const context = await this._mainContext();
     return this._raceWithCSPError(async () => {
       if (url !== null)
         return (await context.evaluateHandleInternal(addScriptUrl, { url, type })).asElement()!;
-      let result;
-      if (path !== null) {
-        let contents = await util.promisify(fs.readFile)(path, 'utf8');
-        contents += '\n//# sourceURL=' + path.replace(/\n/g, '');
-        result = (await context.evaluateHandleInternal(addScriptContent, { content: contents, type })).asElement()!;
-      } else {
-        result = (await context.evaluateHandleInternal(addScriptContent, { content: content!, type })).asElement()!;
-      }
+      const result = (await context.evaluateHandleInternal(addScriptContent, { content: content!, type })).asElement()!;
       // Another round trip to the browser to ensure that we receive CSP error messages
       // (if any) logged asynchronously in a separate task on the content main thread.
       if (this._page._delegate.cspErrorsAsynchronousForInlineScipts)
@@ -736,26 +697,18 @@ export class Frame {
     }
   }
 
-  async addStyleTag(options: { url?: string; path?: string; content?: string; }): Promise<dom.ElementHandle> {
+  async addStyleTag(options: { url?: string, content?: string }): Promise<dom.ElementHandle> {
     const {
       url = null,
-      path = null,
       content = null
     } = options;
-    if (!url && !path && !content)
+    if (!url && !content)
       throw new Error('Provide an object with a `url`, `path` or `content` property');
 
     const context = await this._mainContext();
     return this._raceWithCSPError(async () => {
       if (url !== null)
         return (await context.evaluateHandleInternal(addStyleUrl, url)).asElement()!;
-
-      if (path !== null) {
-        let contents = await util.promisify(fs.readFile)(path, 'utf8');
-        contents += '\n/*# sourceURL=' + path.replace(/\n/g, '') + '*/';
-        return (await context.evaluateHandleInternal(addStyleContent, contents)).asElement()!;
-      }
-
       return (await context.evaluateHandleInternal(addStyleContent, content!)).asElement()!;
     });
 
@@ -800,7 +753,7 @@ export class Frame {
       resolve();
     });
     const errorPromise = new Promise(resolve => {
-      listeners.push(helper.addEventListener(this._page, Events.Page.Console, (message: ConsoleMessage) => {
+      listeners.push(helper.addEventListener(this._page, Page.Events.Console, (message: ConsoleMessage) => {
         if (message.type() === 'error' && message.text().includes('Content Security Policy')) {
           cspMessage = message;
           resolve();
@@ -822,7 +775,7 @@ export class Frame {
     const info = selectors._parseSelector(selector);
     return this._page._runAbortableTask(async progress => {
       while (progress.isRunning()) {
-        progress.logger.info(`waiting for selector "${selector}"`);
+        progress.log(`waiting for selector "${selector}"`);
         const task = dom.waitForSelectorTask(info, 'attached');
         const handle = await this._scheduleRerunnableHandleTask(progress, info.world, task);
         const element = handle.asElement() as dom.ElementHandle<Element>;
@@ -834,7 +787,7 @@ export class Frame {
         const result = await action(progress, element);
         element.dispose();
         if (result === 'error:notconnected') {
-          progress.logger.info('element was detached from the DOM, retrying');
+          progress.log('element was detached from the DOM, retrying');
           continue;
         }
         return result;
@@ -857,13 +810,14 @@ export class Frame {
 
   async focus(selector: string, options: types.TimeoutOptions = {}) {
     await this._retryWithSelectorIfNotConnected(selector, options, (progress, handle) => handle._focus(progress));
+    await this._page._doSlowMo();
   }
 
   async textContent(selector: string, options: types.TimeoutOptions = {}): Promise<string | null> {
     const info = selectors._parseSelector(selector);
     const task = dom.textContentTask(info);
     return this._page._runAbortableTask(async progress => {
-      progress.logger.info(`  retrieving textContent from "${selector}"`);
+      progress.log(`  retrieving textContent from "${selector}"`);
       return this._scheduleRerunnableTask(progress, info.world, task);
     }, this._page._timeoutSettings.timeout(options));
   }
@@ -872,7 +826,7 @@ export class Frame {
     const info = selectors._parseSelector(selector);
     const task = dom.innerTextTask(info);
     return this._page._runAbortableTask(async progress => {
-      progress.logger.info(`  retrieving innerText from "${selector}"`);
+      progress.log(`  retrieving innerText from "${selector}"`);
       const result = dom.throwFatalDOMError(await this._scheduleRerunnableTask(progress, info.world, task));
       return result.innerText;
     }, this._page._timeoutSettings.timeout(options));
@@ -882,7 +836,7 @@ export class Frame {
     const info = selectors._parseSelector(selector);
     const task = dom.innerHTMLTask(info);
     return this._page._runAbortableTask(async progress => {
-      progress.logger.info(`  retrieving innerHTML from "${selector}"`);
+      progress.log(`  retrieving innerHTML from "${selector}"`);
       return this._scheduleRerunnableTask(progress, info.world, task);
     }, this._page._timeoutSettings.timeout(options));
   }
@@ -891,7 +845,7 @@ export class Frame {
     const info = selectors._parseSelector(selector);
     const task = dom.getAttributeTask(info, name);
     return this._page._runAbortableTask(async progress => {
-      progress.logger.info(`  retrieving attribute "${name}" from "${selector}"`);
+      progress.log(`  retrieving attribute "${name}" from "${selector}"`);
       return this._scheduleRerunnableTask(progress, info.world, task);
     }, this._page._timeoutSettings.timeout(options));
   }
@@ -900,11 +854,11 @@ export class Frame {
     await this._retryWithSelectorIfNotConnected(selector, options, (progress, handle) => handle._hover(progress, options));
   }
 
-  async selectOption(selector: string, values: string | dom.ElementHandle | types.SelectOption | string[] | dom.ElementHandle[] | types.SelectOption[] | null, options: types.NavigatingActionWaitOptions = {}): Promise<string[]> {
-    return this._retryWithSelectorIfNotConnected(selector, options, (progress, handle) => handle._selectOption(progress, values, options));
+  async selectOption(selector: string, elements: dom.ElementHandle[], values: types.SelectOption[], options: types.NavigatingActionWaitOptions = {}): Promise<string[]> {
+    return this._retryWithSelectorIfNotConnected(selector, options, (progress, handle) => handle._selectOption(progress, elements, values, options));
   }
 
-  async setInputFiles(selector: string, files: string | types.FilePayload | string[] | types.FilePayload[], options: types.NavigatingActionWaitOptions = {}): Promise<void> {
+  async setInputFiles(selector: string, files: types.FilePayload[], options: types.NavigatingActionWaitOptions = {}): Promise<void> {
     await this._retryWithSelectorIfNotConnected(selector, options, (progress, handle) => handle._setInputFiles(progress, files, options));
   }
 
@@ -922,16 +876,6 @@ export class Frame {
 
   async uncheck(selector: string, options: types.PointerActionWaitOptions & types.NavigatingActionWaitOptions = {}) {
     await this._retryWithSelectorIfNotConnected(selector, options, (progress, handle) => handle._setChecked(progress, false, options));
-  }
-
-  async waitForTimeout(timeout: number) {
-    await new Promise(fulfill => setTimeout(fulfill, timeout));
-  }
-
-  async waitForFunction<R, Arg>(pageFunction: js.Func1<Arg, R>, arg: Arg, options?: types.WaitForFunctionOptions): Promise<js.SmartHandle<R>>;
-  async waitForFunction<R>(pageFunction: js.Func1<void, R>, arg?: any, options?: types.WaitForFunctionOptions): Promise<js.SmartHandle<R>>;
-  async waitForFunction<R, Arg>(pageFunction: js.Func1<Arg, R>, arg: Arg, options: types.WaitForFunctionOptions = {}): Promise<js.SmartHandle<R>> {
-    return this._waitForFunctionExpression(String(pageFunction), typeof pageFunction === 'function', arg, options);
   }
 
   async _waitForFunctionExpression<R>(expression: string, isFunction: boolean, arg: any, options: types.WaitForFunctionOptions = {}): Promise<js.SmartHandle<R>> {
@@ -1102,9 +1046,9 @@ class SignalBarrier {
 
   async addFrameNavigation(frame: Frame) {
     this.retain();
-    const waiter = helper.waitForEvent(null, frame._eventEmitter, kNavigationEvent, (e: NavigationEvent) => {
+    const waiter = helper.waitForEvent(null, frame, Frame.Events.Navigation, (e: NavigationEvent) => {
       if (!e.error && this._progress)
-        this._progress.logger.info(`  navigated to "${frame._url}"`);
+        this._progress.log(`  navigated to "${frame._url}"`);
       return true;
     });
     await Promise.race([
@@ -1130,7 +1074,7 @@ class SignalBarrier {
 
 async function runNavigationTask<T>(frame: Frame, options: types.TimeoutOptions, task: (progress: Progress) => Promise<T>): Promise<T> {
   const page = frame._page;
-  const controller = new ProgressController(page._logger, page._timeoutSettings.navigationTimeout(options));
+  const controller = new ProgressController(page._timeoutSettings.navigationTimeout(options));
   page._disconnectedPromise.then(() => controller.abort(new Error('Navigation failed because page was closed!')));
   page._crashedPromise.then(() => controller.abort(new Error('Navigation failed because page crashed!')));
   frame._detachedPromise.then(() => controller.abort(new Error('Navigating frame was detached!')));

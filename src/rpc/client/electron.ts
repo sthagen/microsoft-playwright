@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { ElectronChannel, ElectronInitializer, ElectronApplicationChannel, ElectronApplicationInitializer, ElectronLaunchParams, ElectronLaunchOptions } from '../channels';
+import { ElectronChannel, ElectronInitializer, ElectronApplicationChannel, ElectronApplicationInitializer, ElectronLaunchParams, ElectronLaunchOptions } from '../../protocol/channels';
 import { BrowserContext } from './browserContext';
 import { ChannelOwner } from './channelOwner';
 import { Page } from './page';
@@ -22,8 +22,8 @@ import { serializeArgument, FuncOn, parseResult, SmartHandle, JSHandle } from '.
 import { TimeoutSettings } from '../../timeoutSettings';
 import { Waiter } from './waiter';
 import { Events } from './events';
-import { envObjectToArray } from '../../converters';
 import { WaitForEventOptions, Env, LoggerSink } from './types';
+import { envObjectToArray } from './clientHelper';
 
 type ElectronOptions = Omit<ElectronLaunchOptions, 'env'> & {
   env?: Env,

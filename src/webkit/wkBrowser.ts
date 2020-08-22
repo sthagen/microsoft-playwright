@@ -15,13 +15,13 @@
  * limitations under the License.
  */
 
-import { BrowserBase, BrowserOptions, BrowserContextOptions } from '../browser';
-import { assertBrowserContextIsNotOwned, BrowserContext, BrowserContextBase, validateBrowserContextOptions, verifyGeolocation } from '../browserContext';
-import { Events } from '../events';
+import { Browser, BrowserOptions } from '../browser';
+import { assertBrowserContextIsNotOwned, BrowserContext, validateBrowserContextOptions, verifyGeolocation } from '../browserContext';
 import { helper, RegisteredListener, assert } from '../helper';
 import * as network from '../network';
 import { Page, PageBinding } from '../page';
-import { ConnectionTransport, SlowMoTransport } from '../transport';
+import * as path from 'path';
+import { ConnectionTransport } from '../transport';
 import * as types from '../types';
 import { Protocol } from './protocol';
 import { kPageProxyMessageReceived, PageProxyMessageReceivedPayload, WKConnection, WKSession } from './wkConnection';
@@ -30,7 +30,7 @@ import { WKPage } from './wkPage';
 const DEFAULT_USER_AGENT = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_5) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.0 Safari/605.1.15';
 const BROWSER_VERSION = '14.0';
 
-export class WKBrowser extends BrowserBase {
+export class WKBrowser extends Browser {
   private readonly _connection: WKConnection;
   readonly _browserSession: WKSession;
   readonly _contexts = new Map<string, WKBrowserContext>();
@@ -38,7 +38,7 @@ export class WKBrowser extends BrowserBase {
   private readonly _eventListeners: RegisteredListener[];
 
   static async connect(transport: ConnectionTransport, options: BrowserOptions): Promise<WKBrowser> {
-    const browser = new WKBrowser(SlowMoTransport.wrap(transport, options.slowMo), options);
+    const browser = new WKBrowser(transport, options);
     const promises: Promise<any>[] = [
       browser._browserSession.send('Playwright.enable'),
     ];
@@ -52,7 +52,7 @@ export class WKBrowser extends BrowserBase {
 
   constructor(transport: ConnectionTransport, options: BrowserOptions) {
     super(options);
-    this._connection = new WKConnection(transport, options.loggers, this._onDisconnect.bind(this));
+    this._connection = new WKConnection(transport, this._onDisconnect.bind(this));
     this._browserSession = this._connection.browserSession;
     this._eventListeners = [
       helper.addEventListener(this._browserSession, 'Playwright.pageProxyCreated', this._onPageProxyCreated.bind(this)),
@@ -72,8 +72,8 @@ export class WKBrowser extends BrowserBase {
     this._didClose();
   }
 
-  async newContext(options: BrowserContextOptions = {}): Promise<BrowserContext> {
-    options = validateBrowserContextOptions(options);
+  async newContext(options: types.BrowserContextOptions = {}): Promise<BrowserContext> {
+    validateBrowserContextOptions(options);
     const { browserContextId } = await this._browserSession.send('Playwright.createContext');
     options.userAgent = options.userAgent || DEFAULT_USER_AGENT;
     const context = new WKBrowserContext(this, browserContextId, options);
@@ -149,13 +149,13 @@ export class WKBrowser extends BrowserBase {
       const page = wkPage._page;
       if (pageOrError instanceof Error)
         page._setIsError();
-      context!.emit(Events.BrowserContext.Page, page);
+      context!.emit(BrowserContext.Events.Page, page);
       if (!opener)
         return;
       await opener.pageOrError();
       const openerPage = opener._page;
       if (!openerPage.isClosed())
-        openerPage.emit(Events.Page.Popup, page);
+        openerPage.emit(Page.Events.Popup, page);
     });
   }
 
@@ -193,14 +193,9 @@ export class WKBrowser extends BrowserBase {
   isConnected(): boolean {
     return !this._connection.isClosed();
   }
-
-  _disconnect() {
-    helper.removeEventListeners(this._eventListeners);
-    this._connection.close();
-  }
 }
 
-export class WKBrowserContext extends BrowserContextBase {
+export class WKBrowserContext extends BrowserContext {
   readonly _browser: WKBrowser;
   readonly _browserContextId: string | undefined;
   readonly _evaluateOnNewDocumentSources: string[];
@@ -252,12 +247,17 @@ export class WKBrowserContext extends BrowserContextBase {
     const { pageProxyId } = await this._browser._browserSession.send('Playwright.createPage', { browserContextId: this._browserContextId });
     const wkPage = this._browser._wkPages.get(pageProxyId)!;
     const result = await wkPage.pageOrError();
-    if (result instanceof Page) {
-      if (result.isClosed())
-        throw new Error('Page has been closed.');
-      return result;
+    if (!(result instanceof Page))
+      throw result;
+    if (result.isClosed())
+      throw new Error('Page has been closed.');
+    if (result._browserContext._screencastOptions) {
+      const contextOptions = result._browserContext._screencastOptions;
+      const outputFile = path.join(contextOptions.dir, helper.guid() + '.webm');
+      const options = Object.assign({}, contextOptions, {outputFile});
+      await wkPage.startScreencast(options);
     }
-    throw result;
+    return result;
   }
 
   async _doCookies(urls: string[]): Promise<types.NetworkCookie[]> {
@@ -291,16 +291,15 @@ export class WKBrowserContext extends BrowserContextBase {
     await Promise.all(this.pages().map(page => (page._delegate as WKPage)._clearPermissions()));
   }
 
-  async setGeolocation(geolocation: types.Geolocation | null): Promise<void> {
-    if (geolocation)
-      geolocation = verifyGeolocation(geolocation);
-    this._options.geolocation = geolocation || undefined;
+  async setGeolocation(geolocation?: types.Geolocation): Promise<void> {
+    verifyGeolocation(geolocation);
+    this._options.geolocation = geolocation;
     const payload: any = geolocation ? { ...geolocation, timestamp: Date.now() } : undefined;
     await this._browser._browserSession.send('Playwright.setGeolocationOverride', { browserContextId: this._browserContextId, geolocation: payload });
   }
 
-  async setExtraHTTPHeaders(headers: types.Headers): Promise<void> {
-    this._options.extraHTTPHeaders = network.verifyHeaders(headers);
+  async setExtraHTTPHeaders(headers: types.HeadersArray): Promise<void> {
+    this._options.extraHTTPHeaders = headers;
     for (const page of this.pages())
       await (page._delegate as WKPage).updateExtraHTTPHeaders();
   }
@@ -311,8 +310,8 @@ export class WKBrowserContext extends BrowserContextBase {
       await (page._delegate as WKPage).updateOffline();
   }
 
-  async _doSetHTTPCredentials(httpCredentials: types.Credentials | null): Promise<void> {
-    this._options.httpCredentials = httpCredentials || undefined;
+  async _doSetHTTPCredentials(httpCredentials?: types.Credentials): Promise<void> {
+    this._options.httpCredentials = httpCredentials;
     for (const page of this.pages())
       await (page._delegate as WKPage).updateHttpCredentials();
   }
@@ -328,14 +327,7 @@ export class WKBrowserContext extends BrowserContextBase {
       await (page._delegate as WKPage).exposeBinding(binding);
   }
 
-  async route(url: types.URLMatch, handler: network.RouteHandler): Promise<void> {
-    this._routes.push({ url, handler });
-    for (const page of this.pages())
-      await (page._delegate as WKPage).updateRequestInterception();
-  }
-
-  async unroute(url: types.URLMatch, handler?: network.RouteHandler): Promise<void> {
-    this._routes = this._routes.filter(route => route.url !== url || (handler && route.handler !== handler));
+  async _doUpdateRequestInterception(): Promise<void> {
     for (const page of this.pages())
       await (page._delegate as WKPage).updateRequestInterception();
   }

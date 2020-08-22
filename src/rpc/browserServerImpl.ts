@@ -18,15 +18,16 @@ import { LaunchServerOptions } from './client/types';
 import { BrowserTypeBase } from '../server/browserType';
 import * as ws from 'ws';
 import { helper } from '../helper';
-import { BrowserBase } from '../browser';
+import { Browser } from '../browser';
 import { ChildProcess } from 'child_process';
 import { EventEmitter } from 'ws';
 import { DispatcherScope, DispatcherConnection } from './server/dispatcher';
 import { BrowserTypeDispatcher } from './server/browserTypeDispatcher';
 import { BrowserDispatcher } from './server/browserDispatcher';
 import { BrowserContextDispatcher } from './server/browserContextDispatcher';
-import { BrowserNewContextParams, BrowserContextChannel } from './channels';
+import { BrowserNewContextParams, BrowserContextChannel } from '../protocol/channels';
 import { BrowserServerLauncher, BrowserServer } from './client/browserType';
+import { envObjectToArray } from './client/clientHelper';
 
 export class BrowserServerLauncherImpl implements BrowserServerLauncher {
   private _browserType: BrowserTypeBase;
@@ -36,19 +37,24 @@ export class BrowserServerLauncherImpl implements BrowserServerLauncher {
   }
 
   async launchServer(options: LaunchServerOptions = {}): Promise<BrowserServerImpl> {
-    const browser = await this._browserType.launch(options);
-    return new BrowserServerImpl(this._browserType, browser as BrowserBase, options.port);
+    const browser = await this._browserType.launch({
+      ...options,
+      ignoreDefaultArgs: Array.isArray(options.ignoreDefaultArgs) ? options.ignoreDefaultArgs : undefined,
+      ignoreAllDefaultArgs: !!options.ignoreDefaultArgs && !Array.isArray(options.ignoreDefaultArgs),
+      env: options.env ? envObjectToArray(options.env) : undefined,
+    });
+    return new BrowserServerImpl(this._browserType, browser, options.port);
   }
 }
 
 export class BrowserServerImpl extends EventEmitter implements BrowserServer {
   private _server: ws.Server;
   private _browserType: BrowserTypeBase;
-  private _browser: BrowserBase;
+  private _browser: Browser;
   private _wsEndpoint: string;
   private _process: ChildProcess;
 
-  constructor(browserType: BrowserTypeBase, browser: BrowserBase, port: number = 0) {
+  constructor(browserType: BrowserTypeBase, browser: Browser, port: number = 0) {
     super();
 
     this._browserType = browserType;
@@ -115,7 +121,7 @@ class ConnectedBrowser extends BrowserDispatcher {
   private _contexts: BrowserContextDispatcher[] = [];
   _closed = false;
 
-  constructor(scope: DispatcherScope, browser: BrowserBase) {
+  constructor(scope: DispatcherScope, browser: Browser) {
     super(scope, browser, 'connectedBrowser');
   }
 

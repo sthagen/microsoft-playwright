@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { BrowserChannel, BrowserInitializer, BrowserNewContextParams } from '../channels';
+import { BrowserChannel, BrowserInitializer, BrowserNewContextParams } from '../../protocol/channels';
 import { BrowserContext } from './browserContext';
 import { Page } from './page';
 import { ChannelOwner } from './channelOwner';
@@ -22,6 +22,7 @@ import { Events } from './events';
 import { BrowserType } from './browserType';
 import { headersObjectToArray } from '../../converters';
 import { BrowserContextOptions } from './types';
+import { validateHeaders } from './network';
 
 export class Browser extends ChannelOwner<BrowserChannel, BrowserInitializer> {
   readonly _contexts = new Set<BrowserContext>();
@@ -47,8 +48,9 @@ export class Browser extends ChannelOwner<BrowserChannel, BrowserInitializer> {
 
   async newContext(options: BrowserContextOptions = {}): Promise<BrowserContext> {
     const logger = options.logger;
-    options = { ...options, logger: undefined };
     return this._wrapApiCall('browser.newContext', async () => {
+      if (options.extraHTTPHeaders)
+        validateHeaders(options.extraHTTPHeaders);
       const contextOptions: BrowserNewContextParams = {
         ...options,
         viewport: options.viewport === null ? undefined : options.viewport,

@@ -17,21 +17,19 @@
 
 import * as dom from './dom';
 import * as frames from './frames';
-import { assert, helper, Listener, assertMaxArguments } from './helper';
+import { assert, helper, debugLogger } from './helper';
 import * as input from './input';
 import * as js from './javascript';
 import * as network from './network';
 import { Screenshotter } from './screenshotter';
 import { TimeoutSettings } from './timeoutSettings';
 import * as types from './types';
-import { Events } from './events';
-import { BrowserContext, BrowserContextBase } from './browserContext';
+import { BrowserContext } from './browserContext';
 import { ConsoleMessage } from './console';
 import * as accessibility from './accessibility';
 import { EventEmitter } from 'events';
 import { FileChooser } from './fileChooser';
-import { logError, Logger } from './logger';
-import { ProgressController, Progress, runAbortableTask } from './progress';
+import { Progress, runAbortableTask } from './progress';
 
 export interface PageDelegate {
   readonly rawMouse: input.RawMouse;
@@ -58,8 +56,8 @@ export interface PageDelegate {
   canScreenshotOutsideViewport(): boolean;
   resetViewport(): Promise<void>; // Only called if canScreenshotOutsideViewport() returns false.
   setBackgroundColor(color?: { r: number; g: number; b: number; a: number; }): Promise<void>;
-  startVideoRecording(options: types.VideoRecordingOptions): Promise<void>;
-  stopVideoRecording(): Promise<void>;
+  startScreencast(options: types.PageScreencastOptions): Promise<void>;
+  stopScreencast(): Promise<void>;
   takeScreenshot(format: string, documentRect: types.Rect | undefined, viewportRect: types.Rect | undefined, quality: number | undefined): Promise<Buffer>;
 
   isElementHandle(remoteObject: any): boolean;
@@ -88,10 +86,33 @@ type PageState = {
   viewportSize: types.Size | null;
   mediaType: types.MediaType | null;
   colorScheme: types.ColorScheme | null;
-  extraHTTPHeaders: types.Headers | null;
+  extraHTTPHeaders: types.HeadersArray | null;
 };
 
 export class Page extends EventEmitter {
+  static Events = {
+    Close: 'close',
+    Crash: 'crash',
+    Console: 'console',
+    Dialog: 'dialog',
+    Download: 'download',
+    FileChooser: 'filechooser',
+    DOMContentLoaded: 'domcontentloaded',
+    // Can't use just 'error' due to node.js special treatment of error events.
+    // @see https://nodejs.org/api/events.html#events_error_events
+    PageError: 'pageerror',
+    Request: 'request',
+    Response: 'response',
+    RequestFailed: 'requestfailed',
+    RequestFinished: 'requestfinished',
+    FrameAttached: 'frameattached',
+    FrameDetached: 'framedetached',
+    FrameNavigated: 'framenavigated',
+    Load: 'load',
+    Popup: 'popup',
+    Worker: 'worker',
+  };
+
   private _closedState: 'open' | 'closing' | 'closed' = 'open';
   private _closedCallback: () => void;
   private _closedPromise: Promise<void>;
@@ -100,12 +121,11 @@ export class Page extends EventEmitter {
   readonly _disconnectedPromise: Promise<Error>;
   private _crashedCallback: (e: Error) => void;
   readonly _crashedPromise: Promise<Error>;
-  readonly _browserContext: BrowserContextBase;
+  readonly _browserContext: BrowserContext;
   readonly keyboard: input.Keyboard;
   readonly mouse: input.Mouse;
   readonly _timeoutSettings: TimeoutSettings;
   readonly _delegate: PageDelegate;
-  readonly _logger: Logger;
   readonly _state: PageState;
   readonly _pageBindings = new Map<string, PageBinding>();
   readonly _evaluateOnNewDocumentSources: string[] = [];
@@ -115,13 +135,12 @@ export class Page extends EventEmitter {
   private _workers = new Map<string, Worker>();
   readonly pdf: ((options?: types.PDFOptions) => Promise<Buffer>) | undefined;
   readonly coverage: any;
-  _routes: { url: types.URLMatch, handler: network.RouteHandler }[] = [];
+  private _requestInterceptor?: network.RouteHandler;
   _ownedContext: BrowserContext | undefined;
 
-  constructor(delegate: PageDelegate, browserContext: BrowserContextBase) {
+  constructor(delegate: PageDelegate, browserContext: BrowserContext) {
     super();
     this._delegate = delegate;
-    this._logger = browserContext._apiLogger;
     this._closedCallback = () => {};
     this._closedPromise = new Promise(f => this._closedCallback = f);
     this._disconnectedCallback = () => {};
@@ -130,14 +149,14 @@ export class Page extends EventEmitter {
     this._crashedPromise = new Promise(f => this._crashedCallback = f);
     this._browserContext = browserContext;
     this._state = {
-      viewportSize: browserContext._options.viewport ? { ...browserContext._options.viewport } : null,
+      viewportSize: browserContext._options.viewport || null,
       mediaType: null,
       colorScheme: null,
       extraHTTPHeaders: null,
     };
     this.accessibility = new accessibility.Accessibility(delegate.getAccessibilityTree.bind(delegate));
-    this.keyboard = new input.Keyboard(delegate.rawKeyboard);
-    this.mouse = new input.Mouse(delegate.rawMouse, this.keyboard);
+    this.keyboard = new input.Keyboard(delegate.rawKeyboard, this);
+    this.mouse = new input.Mouse(delegate.rawMouse, this);
     this._timeoutSettings = new TimeoutSettings(browserContext._timeoutSettings);
     this._screenshotter = new Screenshotter(this);
     this._frameManager = new frames.FrameManager(this);
@@ -146,17 +165,24 @@ export class Page extends EventEmitter {
     this.coverage = delegate.coverage ? delegate.coverage() : null;
   }
 
+  async _doSlowMo() {
+    const slowMo = this._browserContext._browser._options.slowMo;
+    if (!slowMo)
+      return;
+    await new Promise(x => setTimeout(x, slowMo));
+  }
+
   _didClose() {
     this._frameManager.dispose();
     assert(this._closedState !== 'closed', 'Page closed twice');
     this._closedState = 'closed';
-    this.emit(Events.Page.Close);
+    this.emit(Page.Events.Close);
     this._closedCallback();
   }
 
   _didCrash() {
     this._frameManager.dispose();
-    this.emit(Events.Page.Crash);
+    this.emit(Page.Events.Crash);
     this._crashedCallback(new Error('Page crashed'));
   }
 
@@ -170,17 +196,17 @@ export class Page extends EventEmitter {
   async _runAbortableTask<T>(task: (progress: Progress) => Promise<T>, timeout: number): Promise<T> {
     return runAbortableTask(async progress => {
       return task(progress);
-    }, this._logger, timeout);
+    }, timeout);
   }
 
   async _onFileChooserOpened(handle: dom.ElementHandle) {
     const multiple = await handle.evaluate(element => !!(element as HTMLInputElement).multiple);
-    if (!this.listenerCount(Events.Page.FileChooser)) {
+    if (!this.listenerCount(Page.Events.FileChooser)) {
       handle.dispose();
       return;
     }
     const fileChooser = new FileChooser(this, handle, multiple);
-    this.emit(Events.Page.FileChooser, fileChooser);
+    this.emit(Page.Events.FileChooser, fileChooser);
   }
 
   context(): BrowserContext {
@@ -195,17 +221,6 @@ export class Page extends EventEmitter {
     return this._frameManager.mainFrame();
   }
 
-  frame(options: string | { name?: string, url?: types.URLMatch }): frames.Frame | null {
-    const name = helper.isString(options) ? options : options.name;
-    const url = helper.isObject(options) ? options.url : undefined;
-    assert(name || url, 'Either name or url matcher should be specified');
-    return this.frames().find(f => {
-      if (name)
-        return f.name() === name;
-      return helper.urlMatches(f.url(), url);
-    }) || null;
-  }
-
   frames(): frames.Frame[] {
     return this._frameManager.frames();
   }
@@ -218,10 +233,6 @@ export class Page extends EventEmitter {
     this._timeoutSettings.setDefaultTimeout(timeout);
   }
 
-  async exposeFunction(name: string, playwrightFunction: Function) {
-    await this.exposeBinding(name, (options, ...args: any) => playwrightFunction(...args));
-  }
-
   async exposeBinding(name: string, playwrightBinding: frames.FunctionWithSource) {
     if (this._pageBindings.has(name))
       throw new Error(`Function "${name}" has been already registered`);
@@ -232,8 +243,8 @@ export class Page extends EventEmitter {
     await this._delegate.exposeBinding(binding);
   }
 
-  setExtraHTTPHeaders(headers: types.Headers) {
-    this._state.extraHTTPHeaders = network.verifyHeaders(headers);
+  setExtraHTTPHeaders(headers: types.HeadersArray) {
+    this._state.extraHTTPHeaders = headers;
     return this._delegate.updateExtraHTTPHeaders();
   }
 
@@ -246,43 +257,18 @@ export class Page extends EventEmitter {
   _addConsoleMessage(type: string, args: js.JSHandle[], location: types.ConsoleMessageLocation, text?: string) {
     const message = new ConsoleMessage(type, text, args, location);
     const intercepted = this._frameManager.interceptConsoleMessage(message);
-    if (intercepted || !this.listenerCount(Events.Page.Console))
+    if (intercepted || !this.listenerCount(Page.Events.Console))
       args.forEach(arg => arg.dispose());
     else
-      this.emit(Events.Page.Console, message);
+      this.emit(Page.Events.Console, message);
   }
 
   async reload(options?: types.NavigateOptions): Promise<network.Response | null> {
     const waitPromise = this.mainFrame().waitForNavigation(options);
     await this._delegate.reload();
-    return waitPromise;
-  }
-
-  async waitForRequest(urlOrPredicate: string | RegExp | ((r: network.Request) => boolean), options: types.TimeoutOptions = {}): Promise<network.Request> {
-    const predicate = (request: network.Request) => {
-      if (helper.isString(urlOrPredicate) || helper.isRegExp(urlOrPredicate))
-        return helper.urlMatches(request.url(), urlOrPredicate);
-      return urlOrPredicate(request);
-    };
-    return this.waitForEvent(Events.Page.Request, { predicate, timeout: options.timeout });
-  }
-
-  async waitForResponse(urlOrPredicate: string | RegExp | ((r: network.Response) => boolean), options: types.TimeoutOptions = {}): Promise<network.Response> {
-    const predicate = (response: network.Response) => {
-      if (helper.isString(urlOrPredicate) || helper.isRegExp(urlOrPredicate))
-        return helper.urlMatches(response.url(), urlOrPredicate);
-      return urlOrPredicate(response);
-    };
-    return this.waitForEvent(Events.Page.Response, { predicate, timeout: options.timeout });
-  }
-
-  async waitForEvent(event: string, optionsOrPredicate: types.WaitForEventOptions = {}): Promise<any> {
-    const options = typeof optionsOrPredicate === 'function' ? { predicate: optionsOrPredicate } : optionsOrPredicate;
-    const progressController = new ProgressController(this._logger, this._timeoutSettings.timeout(options));
-    this._disconnectedPromise.then(error => progressController.abort(error));
-    if (event !== Events.Page.Crash)
-      this._crashedPromise.then(error => progressController.abort(error));
-    return progressController.run(progress => helper.waitForEvent(progress, this, event, options.predicate).promise);
+    const response = await waitPromise;
+    await this._doSlowMo();
+    return response;
   }
 
   async goBack(options?: types.NavigateOptions): Promise<network.Response | null> {
@@ -292,7 +278,9 @@ export class Page extends EventEmitter {
       waitPromise.catch(() => {});
       return null;
     }
-    return waitPromise;
+    const response = await waitPromise;
+    await this._doSlowMo();
+    return response;
   }
 
   async goForward(options?: types.NavigateOptions): Promise<network.Response | null> {
@@ -302,7 +290,9 @@ export class Page extends EventEmitter {
       waitPromise.catch(() => {});
       return null;
     }
-    return waitPromise;
+    const response = await waitPromise;
+    await this._doSlowMo();
+    return response;
   }
 
   async emulateMedia(options: { media?: types.MediaType | null, colorScheme?: types.ColorScheme | null }) {
@@ -315,11 +305,13 @@ export class Page extends EventEmitter {
     if (options.colorScheme !== undefined)
       this._state.colorScheme = options.colorScheme;
     await this._delegate.updateEmulateMedia();
+    await this._doSlowMo();
   }
 
   async setViewportSize(viewportSize: types.Size) {
     this._state.viewportSize = { ...viewportSize };
     await this._delegate.setViewportSize(this._state.viewportSize);
+    await this._doSlowMo();
   }
 
   viewportSize(): types.Size | null {
@@ -330,60 +322,34 @@ export class Page extends EventEmitter {
     await this._delegate.bringToFront();
   }
 
-  async addInitScript(script: Function | string | { path?: string, content?: string }, arg?: any) {
-    const source = await helper.evaluationScript(script, arg);
-    await this._addInitScriptExpression(source);
-  }
-
   async _addInitScriptExpression(source: string) {
     this._evaluateOnNewDocumentSources.push(source);
     await this._delegate.evaluateOnNewDocument(source);
   }
 
   _needsRequestInterception(): boolean {
-    return this._routes.length > 0 || this._browserContext._routes.length > 0;
+    return !!this._requestInterceptor || !!this._browserContext._requestInterceptor;
   }
 
-  async route(url: types.URLMatch, handler: network.RouteHandler): Promise<void> {
-    this._routes.push({ url, handler });
-    await this._delegate.updateRequestInterception();
-  }
-
-  async unroute(url: types.URLMatch, handler?: network.RouteHandler): Promise<void> {
-    this._routes = this._routes.filter(route => route.url !== url || (handler && route.handler !== handler));
+  async _setRequestInterceptor(handler: network.RouteHandler | undefined): Promise<void> {
+    this._requestInterceptor = handler;
     await this._delegate.updateRequestInterception();
   }
 
   _requestStarted(request: network.Request) {
-    this.emit(Events.Page.Request, request);
+    this.emit(Page.Events.Request, request);
     const route = request._route();
     if (!route)
       return;
-    for (const { url, handler } of this._routes) {
-      if (helper.urlMatches(request.url(), url)) {
-        handler(route, request);
-        return;
-      }
+    if (this._requestInterceptor) {
+      this._requestInterceptor(route, request);
+      return;
     }
-    for (const { url, handler } of this._browserContext._routes) {
-      if (helper.urlMatches(request.url(), url)) {
-        handler(route, request);
-        return;
-      }
+    if (this._browserContext._requestInterceptor) {
+      this._browserContext._requestInterceptor(route, request);
+      return;
     }
     route.continue();
-  }
-
-  _isRouted(requestURL: string): boolean {
-    for (const { url } of this._routes) {
-      if (helper.urlMatches(requestURL, url))
-        return true;
-    }
-    for (const { url } of this._browserContext._routes) {
-      if (helper.urlMatches(requestURL, url))
-        return true;
-    }
-    return false;
   }
 
   async screenshot(options: types.ScreenshotOptions = {}): Promise<Buffer> {
@@ -416,52 +382,36 @@ export class Page extends EventEmitter {
     return this._closedState === 'closed';
   }
 
-  async waitForTimeout(timeout: number) {
-    await this.mainFrame().waitForTimeout(timeout);
-  }
-
-  workers(): Worker[] {
-    return [...this._workers.values()];
-  }
-
   _addWorker(workerId: string, worker: Worker) {
     this._workers.set(workerId, worker);
-    this.emit(Events.Page.Worker, worker);
+    this.emit(Page.Events.Worker, worker);
   }
 
   _removeWorker(workerId: string) {
     const worker = this._workers.get(workerId);
     if (!worker)
       return;
-    worker.emit(Events.Worker.Close, worker);
+    worker.emit(Worker.Events.Close, worker);
     this._workers.delete(workerId);
   }
 
   _clearWorkers() {
     for (const [workerId, worker] of this._workers) {
-      worker.emit(Events.Worker.Close, worker);
+      worker.emit(Worker.Events.Close, worker);
       this._workers.delete(workerId);
     }
   }
 
-  on(event: string | symbol, listener: Listener): this {
-    if (event === Events.Page.FileChooser) {
-      if (!this.listenerCount(event))
-        this._delegate.setFileChooserIntercepted(true);
-    }
-    super.on(event, listener);
-    return this;
-  }
-
-  removeListener(event: string | symbol, listener: Listener): this {
-    super.removeListener(event, listener);
-    if (event === Events.Page.FileChooser && !this.listenerCount(event))
-      this._delegate.setFileChooserIntercepted(false);
-    return this;
+  async _setFileChooserIntercepted(enabled: boolean): Promise<void> {
+    await this._delegate.setFileChooserIntercepted(enabled);
   }
 }
 
 export class Worker extends EventEmitter {
+  static Events = {
+    Close: 'close',
+  };
+
   private _url: string;
   private _executionContextPromise: Promise<js.ExecutionContext>;
   private _executionContextCallback: (value?: js.ExecutionContext) => void;
@@ -483,22 +433,8 @@ export class Worker extends EventEmitter {
     return this._url;
   }
 
-  async evaluate<R, Arg>(pageFunction: js.Func1<Arg, R>, arg: Arg): Promise<R>;
-  async evaluate<R>(pageFunction: js.Func1<void, R>, arg?: any): Promise<R>;
-  async evaluate<R, Arg>(pageFunction: js.Func1<Arg, R>, arg: Arg): Promise<R> {
-    assertMaxArguments(arguments.length, 2);
-    return js.evaluate(await this._executionContextPromise, true /* returnByValue */, pageFunction, arg);
-  }
-
   async _evaluateExpression(expression: string, isFunction: boolean, arg: any): Promise<any> {
     return js.evaluateExpression(await this._executionContextPromise, true /* returnByValue */, expression, isFunction, arg);
-  }
-
-  async evaluateHandle<R, Arg>(pageFunction: js.Func1<Arg, R>, arg: Arg): Promise<js.SmartHandle<R>>;
-  async evaluateHandle<R>(pageFunction: js.Func1<void, R>, arg?: any): Promise<js.SmartHandle<R>>;
-  async evaluateHandle<R, Arg>(pageFunction: js.Func1<Arg, R>, arg: Arg): Promise<js.SmartHandle<R>> {
-    assertMaxArguments(arguments.length, 2);
-    return js.evaluate(await this._executionContextPromise, false /* returnByValue */, pageFunction, arg);
   }
 
   async _evaluateExpressionHandle(expression: string, isFunction: boolean, arg: any): Promise<any> {
@@ -514,7 +450,7 @@ export class PageBinding {
   constructor(name: string, playwrightFunction: frames.FunctionWithSource) {
     this.name = name;
     this.playwrightFunction = playwrightFunction;
-    this.source = helper.evaluationString(addPageBinding, name);
+    this.source = `(${addPageBinding.toString()})(${JSON.stringify(name)})`;
   }
 
   static async dispatch(page: Page, payload: string, context: dom.FrameExecutionContext) {
@@ -524,12 +460,12 @@ export class PageBinding {
       if (!binding)
         binding = page._browserContext._pageBindings.get(name);
       const result = await binding!.playwrightFunction({ frame: context.frame, page, context: page._browserContext }, ...args);
-      context.evaluateInternal(deliverResult, { name, seq, result }).catch(logError(page._logger));
+      context.evaluateInternal(deliverResult, { name, seq, result }).catch(e => debugLogger.log('error', e));
     } catch (error) {
       if (helper.isError(error))
-        context.evaluateInternal(deliverError, { name, seq, message: error.message, stack: error.stack }).catch(logError(page._logger));
+        context.evaluateInternal(deliverError, { name, seq, message: error.message, stack: error.stack }).catch(e => debugLogger.log('error', e));
       else
-        context.evaluateInternal(deliverErrorValue, { name, seq, error }).catch(logError(page._logger));
+        context.evaluateInternal(deliverErrorValue, { name, seq, error }).catch(e => debugLogger.log('error', e));
     }
 
     function deliverResult(arg: { name: string, seq: number, result: any }) {

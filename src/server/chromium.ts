@@ -17,7 +17,7 @@
 
 import * as path from 'path';
 import * as os from 'os';
-import { getFromENV, logPolitely, helper } from '../helper';
+import { getFromENV, helper } from '../helper';
 import { CRBrowser } from '../chromium/crBrowser';
 import { Env } from './processLauncher';
 import { kBrowserCloseMessageId } from '../chromium/crConnection';
@@ -27,7 +27,7 @@ import { ConnectionTransport, ProtocolRequest } from '../transport';
 import { BrowserDescriptor } from '../install/browserPaths';
 import { CRDevTools } from '../chromium/crDevTools';
 import { BrowserOptions } from '../browser';
-import { LaunchOptionsBase } from '../types';
+import * as types from '../types';
 
 export class Chromium extends BrowserTypeBase {
   private _devtools: CRDevTools | undefined;
@@ -39,7 +39,6 @@ export class Chromium extends BrowserTypeBase {
     if (debugPort !== undefined) {
       if (Number.isNaN(debugPort))
         throw new Error(`PLAYWRIGHT_CHROMIUM_DEBUG_PORT must be a number, but is set to "${debugPortStr}"`);
-      logPolitely(`NOTE: Chromium will be launched in debug mode on port ${debugPort}`);
     }
 
     super(packagePath, browser, debugPort ? { webSocketRegex: /^DevTools listening on (ws:\/\/.*)$/, stream: 'stderr' } : null);
@@ -102,7 +101,7 @@ export class Chromium extends BrowserTypeBase {
     transport.send(message);
   }
 
-  _defaultArgs(options: LaunchOptionsBase, isPersistent: boolean, userDataDir: string): string[] {
+  _defaultArgs(options: types.LaunchOptions, isPersistent: boolean, userDataDir: string): string[] {
     const { args = [], proxy } = options;
     const userDataDirArg = args.find(arg => arg.startsWith('--user-data-dir'));
     if (userDataDirArg)
@@ -163,7 +162,7 @@ const DEFAULT_ARGS = [
   '--disable-dev-shm-usage',
   '--disable-extensions',
   // BlinkGenPropertyTrees disabled due to crbug.com/937609
-  '--disable-features=TranslateUI,BlinkGenPropertyTrees,ImprovedCookieControls,SameSiteByDefaultCookies',
+  '--disable-features=TranslateUI,BlinkGenPropertyTrees,ImprovedCookieControls,SameSiteByDefaultCookies,LazyFrameLoading',
   '--disable-hang-monitor',
   '--disable-ipc-flooding-protection',
   '--disable-popup-blocking',

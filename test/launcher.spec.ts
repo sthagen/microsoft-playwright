@@ -14,13 +14,13 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import './base.fixture';
 
+import './playwright.fixtures';
 import path from 'path';
 import utils from './utils';
 
 it('should require top-level Errors', async({}) => {
-  const Errors = require(path.join(utils.projectRoot(), '/lib/errors.js'));
+  const Errors = require(path.join(utils.projectRoot(), '/lib/utils/errors.js'));
   expect(String(Errors.TimeoutError)).toContain('TimeoutError');
 });
 

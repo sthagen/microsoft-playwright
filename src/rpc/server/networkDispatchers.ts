@@ -15,13 +15,11 @@
  */
 
 import { Request, Response, Route } from '../../network';
-import { RequestChannel, ResponseChannel, RouteChannel, ResponseInitializer, RequestInitializer, RouteInitializer, Binary } from '../channels';
+import * as channels from '../../protocol/channels';
 import { Dispatcher, DispatcherScope, lookupNullableDispatcher, existingDispatcher } from './dispatcher';
 import { FrameDispatcher } from './frameDispatcher';
-import { headersObjectToArray, headersArrayToObject } from '../../converters';
-import * as types from '../../types';
 
-export class RequestDispatcher extends Dispatcher<Request, RequestInitializer> implements RequestChannel {
+export class RequestDispatcher extends Dispatcher<Request, channels.RequestInitializer> implements channels.RequestChannel {
 
   static from(scope: DispatcherScope, request: Request): RequestDispatcher {
     const result = existingDispatcher<RequestDispatcher>(request);
@@ -40,18 +38,18 @@ export class RequestDispatcher extends Dispatcher<Request, RequestInitializer> i
       resourceType: request.resourceType(),
       method: request.method(),
       postData: postData === null ? undefined : postData.toString('base64'),
-      headers: headersObjectToArray(request.headers()),
+      headers: request.headers(),
       isNavigationRequest: request.isNavigationRequest(),
       redirectedFrom: RequestDispatcher.fromNullable(scope, request.redirectedFrom()),
     });
   }
 
-  async response(): Promise<{ response?: ResponseChannel }> {
+  async response(): Promise<channels.RequestResponseResult> {
     return { response: lookupNullableDispatcher<ResponseDispatcher>(await this._object.response()) };
   }
 }
 
-export class ResponseDispatcher extends Dispatcher<Response, ResponseInitializer> implements ResponseChannel {
+export class ResponseDispatcher extends Dispatcher<Response, channels.ResponseInitializer> implements channels.ResponseChannel {
 
   constructor(scope: DispatcherScope, response: Response) {
     super(scope, response, 'Response', {
@@ -60,20 +58,20 @@ export class ResponseDispatcher extends Dispatcher<Response, ResponseInitializer
       url: response.url(),
       status: response.status(),
       statusText: response.statusText(),
-      headers: headersObjectToArray(response.headers()),
+      headers: response.headers(),
     });
   }
 
-  async finished(): Promise<{ error?: string }> {
+  async finished(): Promise<channels.ResponseFinishedResult> {
     return await this._object._finishedPromise;
   }
 
-  async body(): Promise<{ binary: Binary }> {
+  async body(): Promise<channels.ResponseBodyResult> {
     return { binary: (await this._object.body()).toString('base64') };
   }
 }
 
-export class RouteDispatcher extends Dispatcher<Route, RouteInitializer> implements RouteChannel {
+export class RouteDispatcher extends Dispatcher<Route, channels.RouteInitializer> implements channels.RouteChannel {
 
   constructor(scope: DispatcherScope, route: Route) {
     super(scope, route, 'Route', {
@@ -82,23 +80,19 @@ export class RouteDispatcher extends Dispatcher<Route, RouteInitializer> impleme
     });
   }
 
-  async continue(params: { method?: string, headers?: types.HeadersArray, postData?: string }): Promise<void> {
+  async continue(params: channels.RouteContinueParams): Promise<void> {
     await this._object.continue({
       method: params.method,
-      headers: params.headers ? headersArrayToObject(params.headers) : undefined,
+      headers: params.headers,
       postData: params.postData ? Buffer.from(params.postData, 'base64') : undefined,
     });
   }
 
-  async fulfill(params: types.NormalizedFulfillResponse): Promise<void> {
-    await this._object.fulfill({
-      status: params.status,
-      headers: params.headers ? headersArrayToObject(params.headers) : undefined,
-      body: params.isBase64 ? Buffer.from(params.body, 'base64') : params.body,
-    });
+  async fulfill(params: channels.RouteFulfillParams): Promise<void> {
+    await this._object.fulfill(params);
   }
 
-  async abort(params: { errorCode?: string }): Promise<void> {
+  async abort(params: channels.RouteAbortParams): Promise<void> {
     await this._object.abort(params.errorCode || 'failed');
   }
 }

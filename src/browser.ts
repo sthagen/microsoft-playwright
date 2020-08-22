@@ -15,14 +15,11 @@
  */
 
 import * as types from './types';
-import { BrowserContext, BrowserContextBase } from './browserContext';
+import { BrowserContext } from './browserContext';
 import { Page } from './page';
 import { EventEmitter } from 'events';
 import { Download } from './download';
-import { Events } from './events';
-import { Loggers } from './logger';
 import { ProxySettings } from './types';
-import { LoggerSink } from './loggerSink';
 import { ChildProcess } from 'child_process';
 
 export interface BrowserProcess {
@@ -32,32 +29,23 @@ export interface BrowserProcess {
   close(): Promise<void>;
 }
 
-export type BrowserOptions = {
+export type BrowserOptions = types.UIOptions & {
   name: string,
-  loggers: Loggers,
   downloadsPath?: string,
   headful?: boolean,
   persistent?: types.BrowserContextOptions,  // Undefined means no persistent context.
-  slowMo?: number,
   browserProcess: BrowserProcess,
   proxy?: ProxySettings,
 };
 
-export type BrowserContextOptions = types.BrowserContextOptions & { logger?: LoggerSink };
+export abstract class Browser extends EventEmitter {
+  static Events = {
+    Disconnected: 'disconnected',
+  };
 
-export interface Browser extends EventEmitter {
-  newContext(options?: BrowserContextOptions): Promise<BrowserContext>;
-  contexts(): BrowserContext[];
-  newPage(options?: BrowserContextOptions): Promise<Page>;
-  isConnected(): boolean;
-  close(): Promise<void>;
-  version(): string;
-}
-
-export abstract class BrowserBase extends EventEmitter implements Browser {
   readonly _options: BrowserOptions;
   private _downloads = new Map<string, Download>();
-  _defaultContext: BrowserContextBase | null = null;
+  _defaultContext: BrowserContext | null = null;
   private _startedClosing = false;
 
   constructor(options: BrowserOptions) {
@@ -65,13 +53,12 @@ export abstract class BrowserBase extends EventEmitter implements Browser {
     this._options = options;
   }
 
-  abstract newContext(options?: BrowserContextOptions): Promise<BrowserContext>;
+  abstract newContext(options?: types.BrowserContextOptions): Promise<BrowserContext>;
   abstract contexts(): BrowserContext[];
   abstract isConnected(): boolean;
-  abstract _disconnect(): void;
   abstract version(): string;
 
-  async newPage(options?: BrowserContextOptions): Promise<Page> {
+  async newPage(options?: types.BrowserContextOptions): Promise<Page> {
     const context = await this.newContext(options);
     const page = await context.newPage();
     page._ownedContext = context;
@@ -100,10 +87,10 @@ export abstract class BrowserBase extends EventEmitter implements Browser {
 
   _didClose() {
     for (const context of this.contexts())
-      (context as BrowserContextBase)._browserClosed();
+      context._browserClosed();
     if (this._defaultContext)
       this._defaultContext._browserClosed();
-    this.emit(Events.Browser.Disconnected);
+    this.emit(Browser.Events.Disconnected);
   }
 
   async close() {
@@ -112,7 +99,7 @@ export abstract class BrowserBase extends EventEmitter implements Browser {
       await this._options.browserProcess.close();
     }
     if (this.isConnected())
-      await new Promise(x => this.once(Events.Browser.Disconnected, x));
+      await new Promise(x => this.once(Browser.Events.Disconnected, x));
   }
 }
 

@@ -14,12 +14,14 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import './base.fixture';
+
+import { options } from './playwright.fixtures';
 import utils from './utils';
-const { HEADLESS } = testOptions;
+import path from 'path';
+import fs from 'fs';
 
 // Firefox headful produces a different image.
-const ffheadful = FFOX && !HEADLESS;
+const ffheadful = options.FIREFOX && !options.HEADLESS;
 
 it.skip(ffheadful)('should work', async({page, server, golden}) => {
   await page.setViewportSize({width: 500, height: 500});
@@ -137,7 +139,7 @@ it.skip(ffheadful)('should run in parallel in multiple pages', async({server, co
   await Promise.all(pages.map(page => page.close()));
 });
 
-it.fail(FFOX)('should allow transparency', async({page, golden}) => {
+it.fail(options.FIREFOX)('should allow transparency', async({page, golden}) => {
   await page.setViewportSize({ width: 50, height: 150 });
   await page.setContent(`
     <style>
@@ -171,7 +173,7 @@ it.skip(ffheadful)('should work with odd clip size on Retina displays', async({p
   expect(screenshot).toMatchImage(golden('screenshot-clip-odd-size.png'));
 });
 
-it.skip(FFOX)('should work with a mobile viewport', async({browser, server, golden}) => {
+it.skip(options.FIREFOX)('should work with a mobile viewport', async({browser, server, golden}) => {
   const context = await browser.newContext({ viewport: { width: 320, height: 480 }, isMobile: true });
   const page = await context.newPage();
   await page.goto(server.PREFIX + '/overflow.html');
@@ -180,7 +182,7 @@ it.skip(FFOX)('should work with a mobile viewport', async({browser, server, gold
   await context.close();
 });
 
-it.skip(FFOX)('should work with a mobile viewport and clip', async({browser, server, golden}) => {
+it.skip(options.FIREFOX)('should work with a mobile viewport and clip', async({browser, server, golden}) => {
   const context = await browser.newContext({viewport: { width: 320, height: 480 }, isMobile: true});
   const page = await context.newPage();
   await page.goto(server.PREFIX + '/overflow.html');
@@ -189,7 +191,7 @@ it.skip(FFOX)('should work with a mobile viewport and clip', async({browser, ser
   await context.close();
 });
 
-it.skip(FFOX)('should work with a mobile viewport and fullPage', async({browser, server, golden}) => {
+it.skip(options.FIREFOX)('should work with a mobile viewport and fullPage', async({browser, server, golden}) => {
   const context = await browser.newContext({viewport: { width: 320, height: 480 }, isMobile: true});
   const page = await context.newPage();
   await page.goto(server.PREFIX + '/overflow-large.html');
@@ -202,7 +204,7 @@ it.skip(ffheadful)('should work for canvas', async({page, server, golden}) => {
   await page.setViewportSize({width: 500, height: 500});
   await page.goto(server.PREFIX + '/screenshots/canvas.html');
   const screenshot = await page.screenshot();
-  expect(screenshot).toMatchImage(golden('screenshot-canvas.png'));
+  expect(screenshot).toMatchImage(golden('screenshot-canvas.png'), { threshold: 0.3 });
 });
 
 it.skip(ffheadful)('should work for translateZ', async({page, server, golden}) => {
@@ -212,7 +214,7 @@ it.skip(ffheadful)('should work for translateZ', async({page, server, golden}) =
   expect(screenshot).toMatchImage(golden('screenshot-translateZ.png'));
 });
 
-it.fail(FFOX || WEBKIT)('should work for webgl', async({page, server, golden}) => {
+it.fail(options.FIREFOX || options.WEBKIT)('should work for webgl', async({page, server, golden}) => {
   await page.setViewportSize({width: 640, height: 480});
   await page.goto(server.PREFIX + '/screenshots/webgl.html');
   const screenshot = await page.screenshot();
@@ -245,4 +247,34 @@ it.skip(ffheadful)('should work with iframe in shadow', async({page, server, gol
   await page.setViewportSize({width: 500, height: 500});
   await page.goto(server.PREFIX + '/grid-iframe-in-shadow.html');
   expect(await page.screenshot()).toMatchImage(golden('screenshot-iframe.png'));
+});
+
+it.skip(ffheadful)('path option should work', async({page, server, golden, tmpDir}) => {
+  await page.setViewportSize({width: 500, height: 500});
+  await page.goto(server.PREFIX + '/grid.html');
+  const outputPath = path.join(tmpDir, 'screenshot.png');
+  await page.screenshot({path: outputPath});
+  expect(await fs.promises.readFile(outputPath)).toMatchImage(golden('screenshot-sanity.png'));
+});
+
+it.skip(ffheadful)('path option should create subdirectories', async({page, server, golden, tmpDir}) => {
+  await page.setViewportSize({width: 500, height: 500});
+  await page.goto(server.PREFIX + '/grid.html');
+  const outputPath = path.join(tmpDir, 'these', 'are', 'directories', 'screenshot.png');
+  await page.screenshot({path: outputPath});
+  expect(await fs.promises.readFile(outputPath)).toMatchImage(golden('screenshot-sanity.png'));
+});
+
+it.skip(ffheadful)('path option should detect jpeg', async({page, server, golden, tmpDir}) => {
+  await page.setViewportSize({ width: 100, height: 100 });
+  await page.goto(server.EMPTY_PAGE);
+  const outputPath = path.join(tmpDir, 'screenshot.jpg');
+  const screenshot = await page.screenshot({omitBackground: true, path: outputPath});
+  expect(await fs.promises.readFile(outputPath)).toMatchImage(golden('white.jpg'));
+  expect(screenshot).toMatchImage(golden('white.jpg'));
+});
+
+it.skip(ffheadful)('path option should throw for unsupported mime type', async({page, server, golden, tmpDir}) => {
+  const error = await page.screenshot({ path: 'file.txt' }).catch(e => e);
+  expect(error.message).toContain('path: unsupported mime type "text/plain"');
 });

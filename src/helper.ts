@@ -21,11 +21,14 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as removeFolder from 'rimraf';
 import * as util from 'util';
+import * as path from 'path';
 import * as types from './types';
 import { Progress } from './progress';
+import * as debug from 'debug';
 
 const removeFolderAsync = util.promisify(removeFolder);
 const readFileAsync = util.promisify(fs.readFile.bind(fs));
+const mkdirAsync = util.promisify(fs.mkdir.bind(fs));
 
 export type RegisteredListener = {
   emitter: EventEmitter;
@@ -37,49 +40,7 @@ export type Listener = (...args: any[]) => void;
 
 const isInDebugMode = !!getFromENV('PWDEBUG');
 
-const deprecatedHits = new Set();
-export function deprecate(methodName: string, message: string) {
-  if (deprecatedHits.has(methodName))
-    return;
-  deprecatedHits.add(methodName);
-  console.warn(message);
-}
-
 class Helper {
-
-  static evaluationString(fun: Function | string, ...args: any[]): string {
-    if (Helper.isString(fun)) {
-      assert(args.length === 0 || (args.length === 1 && args[0] === undefined), 'Cannot evaluate a string with arguments');
-      return fun;
-    }
-    return Helper.evaluationStringForFunctionBody(String(fun), ...args);
-  }
-
-  static evaluationStringForFunctionBody(functionBody: string, ...args: any[]): string {
-    return `(${functionBody})(${args.map(serializeArgument).join(',')})`;
-    function serializeArgument(arg: any): string {
-      if (Object.is(arg, undefined))
-        return 'undefined';
-      return JSON.stringify(arg);
-    }
-  }
-
-  static async evaluationScript(fun: Function | string | { path?: string, content?: string }, arg?: any, addSourceUrl: boolean = true): Promise<string> {
-    if (!helper.isString(fun) && typeof fun !== 'function') {
-      if (fun.content !== undefined) {
-        fun = fun.content;
-      } else if (fun.path !== undefined) {
-        let contents = await util.promisify(fs.readFile)(fun.path, 'utf8');
-        if (addSourceUrl)
-          contents += '//# sourceURL=' + fun.path.replace(/\n/g, '');
-        fun = contents;
-      } else {
-        throw new Error('Either path or content property must be present');
-      }
-    }
-    return helper.evaluationString(fun, arg);
-  }
-
   static addEventListener(
     emitter: EventEmitter,
     eventName: (string | symbol),
@@ -122,75 +83,10 @@ class Helper {
     return typeof obj === 'boolean' || obj instanceof Boolean;
   }
 
-  static globToRegex(glob: string): RegExp {
-    const tokens = ['^'];
-    let inGroup;
-    for (let i = 0; i < glob.length; ++i) {
-      const c = glob[i];
-      if (escapeGlobChars.has(c)) {
-        tokens.push('\\' + c);
-        continue;
-      }
-      if (c === '*') {
-        const beforeDeep = glob[i - 1];
-        let starCount = 1;
-        while (glob[i + 1] === '*') {
-          starCount++;
-          i++;
-        }
-        const afterDeep = glob[i + 1];
-        const isDeep = starCount > 1 &&
-            (beforeDeep === '/' || beforeDeep === undefined) &&
-            (afterDeep === '/' || afterDeep === undefined);
-        if (isDeep) {
-          tokens.push('((?:[^/]*(?:\/|$))*)');
-          i++;
-        } else {
-          tokens.push('([^/]*)');
-        }
-        continue;
-      }
-
-      switch (c) {
-        case '?':
-          tokens.push('.');
-          break;
-        case '{':
-          inGroup = true;
-          tokens.push('(');
-          break;
-        case '}':
-          inGroup = false;
-          tokens.push(')');
-          break;
-        case ',':
-          if (inGroup) {
-            tokens.push('|');
-            break;
-          }
-          tokens.push('\\' + c);
-          break;
-        default:
-          tokens.push(c);
-      }
-    }
-    tokens.push('$');
-    return new RegExp(tokens.join(''));
-  }
-
   static completeUserURL(urlString: string): string {
     if (urlString.startsWith('localhost') || urlString.startsWith('127.0.0.1'))
       urlString = 'http://' + urlString;
     return urlString;
-  }
-
-  static trimMiddle(string: string, maxLength: number) {
-    if (string.length <= maxLength)
-      return string;
-
-    const leftHalf = maxLength >> 1;
-    const rightHalf = maxLength - leftHalf - 1;
-    return string.substr(0, leftHalf) + '\u2026' + string.substr(this.length - rightHalf, rightHalf);
   }
 
   static enclosingIntRect(rect: types.Rect): types.Rect {
@@ -203,23 +99,6 @@ class Helper {
 
   static enclosingIntSize(size: types.Size): types.Size {
     return { width: Math.floor(size.width + 1e-3), height: Math.floor(size.height + 1e-3) };
-  }
-
-  static urlMatches(urlString: string, match: types.URLMatch | undefined): boolean {
-    if (match === undefined || match === '')
-      return true;
-    if (helper.isString(match))
-      match = helper.globToRegex(match);
-    if (helper.isRegExp(match))
-      return match.test(urlString);
-    if (typeof match === 'string' && match === urlString)
-      return true;
-    const url = new URL(urlString);
-    if (typeof match === 'string')
-      return url.pathname === match;
-
-    assert(typeof match === 'function', 'url parameter should be string, RegExp or function');
-    return match(url);
   }
 
   // See https://joel.tools/microtasks/
@@ -362,10 +241,6 @@ export function debugAssert(value: any, message?: string): asserts value {
     throw new Error(message);
 }
 
-export function assertMaxArguments(count: number, max: number): asserts count {
-  assert(count <= max, 'Too many arguments. If you need to pass more than 1 argument to the function wrap them in an object.');
-}
-
 export function getFromENV(name: string) {
   let value = process.env[name];
   value = value || process.env[`npm_config_${name.toLowerCase()}`];
@@ -373,14 +248,60 @@ export function getFromENV(name: string) {
   return value;
 }
 
-export function logPolitely(toBeLogged: string) {
-  const logLevel = process.env.npm_config_loglevel;
-  const logLevelDisplay = ['silent', 'error', 'warn'].indexOf(logLevel || '') > -1;
-
-  if (!logLevelDisplay)
-    console.log(toBeLogged);  // eslint-disable-line no-console
+export async function doSlowMo(amount?: number) {
+  if (!amount)
+    return;
+  await new Promise(x => setTimeout(x, amount));
 }
 
-const escapeGlobChars = new Set(['/', '$', '^', '+', '.', '(', ')', '=', '!', '|']);
+export async function mkdirIfNeeded(filePath: string) {
+  // This will harmlessly throw on windows if the dirname is the root directory.
+  await mkdirAsync(path.dirname(filePath), {recursive: true}).catch(() => {});
+}
 
 export const helper = Helper;
+
+const debugLoggerColorMap = {
+  'api': 45, // cyan
+  'protocol': 34, // green
+  'browser': 0, // reset
+  'error': 160, // red,
+  'channel:command': 33, // blue
+  'channel:response': 202, // orange
+  'channel:event': 207, // magenta
+};
+export type LogName = keyof typeof debugLoggerColorMap;
+
+export class DebugLogger {
+  private _debuggers = new Map<string, debug.IDebugger>();
+
+  constructor() {
+    if (process.env.DEBUG_FILE) {
+      const ansiRegex = new RegExp([
+        '[\\u001B\\u009B][[\\]()#;?]*(?:(?:(?:[a-zA-Z\\d]*(?:;[-a-zA-Z\\d\\/#&.:=?%@~_]*)*)?\\u0007)',
+        '(?:(?:\\d{1,4}(?:;\\d{0,4})*)?[\\dA-PR-TZcf-ntqry=><~]))'
+      ].join('|'), 'g');
+      const stream = fs.createWriteStream(process.env.DEBUG_FILE);
+      (debug as any).log = (data: string) => {
+        stream.write(data.replace(ansiRegex, ''));
+        stream.write('\n');
+      };
+    }
+  }
+
+  log(name: LogName, message: string | Error | object) {
+    let cachedDebugger = this._debuggers.get(name);
+    if (!cachedDebugger) {
+      cachedDebugger = debug(`pw:${name}`);
+      this._debuggers.set(name, cachedDebugger);
+      (cachedDebugger as any).color = debugLoggerColorMap[name];
+    }
+    cachedDebugger(message);
+  }
+
+  isEnabled(name: LogName) {
+    return debug.enabled(`pw:${name}`);
+  }
+}
+
+export const debugLogger = new DebugLogger();

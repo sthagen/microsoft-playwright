@@ -15,23 +15,21 @@
  * limitations under the License.
  */
 
-import { BrowserBase, BrowserOptions, BrowserContextOptions } from '../browser';
-import { assertBrowserContextIsNotOwned, BrowserContext, BrowserContextBase, validateBrowserContextOptions, verifyGeolocation } from '../browserContext';
-import { Events as CommonEvents } from '../events';
+import { Browser, BrowserOptions } from '../browser';
+import { assertBrowserContextIsNotOwned, BrowserContext, validateBrowserContextOptions, verifyGeolocation } from '../browserContext';
 import { assert } from '../helper';
 import * as network from '../network';
 import { Page, PageBinding, Worker } from '../page';
-import { ConnectionTransport, SlowMoTransport } from '../transport';
+import { ConnectionTransport } from '../transport';
 import * as types from '../types';
 import { ConnectionEvents, CRConnection, CRSession } from './crConnection';
 import { CRPage } from './crPage';
 import { readProtocolStream } from './crProtocolHelper';
-import { Events } from './events';
 import { Protocol } from './protocol';
 import { CRExecutionContext } from './crExecutionContext';
 import { CRDevTools } from './crDevTools';
 
-export class CRBrowser extends BrowserBase {
+export class CRBrowser extends Browser {
   readonly _connection: CRConnection;
   _session: CRSession;
   private _clientRootSessionPromise: Promise<CRSession> | null = null;
@@ -48,7 +46,7 @@ export class CRBrowser extends BrowserBase {
   private _tracingClient: CRSession | undefined;
 
   static async connect(transport: ConnectionTransport, options: BrowserOptions, devtools?: CRDevTools): Promise<CRBrowser> {
-    const connection = new CRConnection(SlowMoTransport.wrap(transport, options.slowMo), options.loggers);
+    const connection = new CRConnection(transport);
     const browser = new CRBrowser(connection, options);
     browser._devtools = devtools;
     const session = connection.rootSession;
@@ -99,8 +97,8 @@ export class CRBrowser extends BrowserBase {
     this._session.on('Target.detachedFromTarget', this._onDetachedFromTarget.bind(this));
   }
 
-  async newContext(options: BrowserContextOptions = {}): Promise<BrowserContext> {
-    options = validateBrowserContextOptions(options);
+  async newContext(options: types.BrowserContextOptions = {}): Promise<BrowserContext> {
+    validateBrowserContextOptions(options);
     const { browserContextId } = await this._session.send('Target.createBrowserContext', { disposeOnDetach: true });
     const context = new CRBrowserContext(this, browserContextId, options);
     await context._initialize();
@@ -151,7 +149,7 @@ export class CRBrowser extends BrowserBase {
       const backgroundPage = new CRPage(session, targetInfo.targetId, context, null, false);
       this._backgroundPages.set(targetInfo.targetId, backgroundPage);
       backgroundPage.pageOrError().then(() => {
-        context!.emit(Events.ChromiumBrowserContext.BackgroundPage, backgroundPage._page);
+        context!.emit(CRBrowserContext.CREvents.BackgroundPage, backgroundPage._page);
       });
       return;
     }
@@ -164,11 +162,11 @@ export class CRBrowser extends BrowserBase {
         const page = crPage._page;
         if (pageOrError instanceof Error)
           page._setIsError();
-        context!.emit(CommonEvents.BrowserContext.Page, page);
+        context!.emit(BrowserContext.Events.Page, page);
         if (opener) {
           opener.pageOrError().then(openerPage => {
             if (openerPage instanceof Page && !openerPage.isClosed())
-              openerPage.emit(CommonEvents.Page.Popup, page);
+              openerPage.emit(Page.Events.Popup, page);
           });
         }
       });
@@ -178,7 +176,7 @@ export class CRBrowser extends BrowserBase {
     if (targetInfo.type === 'service_worker') {
       const serviceWorker = new CRServiceWorker(context, session, targetInfo.url);
       this._serviceWorkers.set(targetInfo.targetId, serviceWorker);
-      context.emit(Events.ChromiumBrowserContext.ServiceWorker, serviceWorker);
+      context.emit(CRBrowserContext.CREvents.ServiceWorker, serviceWorker);
       return;
     }
 
@@ -202,17 +200,13 @@ export class CRBrowser extends BrowserBase {
     const serviceWorker = this._serviceWorkers.get(targetId);
     if (serviceWorker) {
       this._serviceWorkers.delete(targetId);
-      serviceWorker.emit(CommonEvents.Worker.Close);
+      serviceWorker.emit(Worker.Events.Close);
       return;
     }
   }
 
   async _closePage(crPage: CRPage) {
     await this._session.send('Target.closeTarget', { targetId: crPage._targetId });
-  }
-
-  _disconnect() {
-    this._connection.close();
   }
 
   async newBrowserCDPSession(): Promise<CRSession> {
@@ -283,7 +277,12 @@ class CRServiceWorker extends Worker {
   }
 }
 
-export class CRBrowserContext extends BrowserContextBase {
+export class CRBrowserContext extends BrowserContext {
+  static CREvents = {
+    BackgroundPage: 'backgroundpage',
+    ServiceWorker: 'serviceworker',
+  };
+
   readonly _browser: CRBrowser;
   readonly _browserContextId: string | null;
   readonly _evaluateOnNewDocumentSources: string[];
@@ -384,16 +383,15 @@ export class CRBrowserContext extends BrowserContextBase {
     await this._browser._session.send('Browser.resetPermissions', { browserContextId: this._browserContextId || undefined });
   }
 
-  async setGeolocation(geolocation: types.Geolocation | null): Promise<void> {
-    if (geolocation)
-      geolocation = verifyGeolocation(geolocation);
-    this._options.geolocation = geolocation || undefined;
+  async setGeolocation(geolocation?: types.Geolocation): Promise<void> {
+    verifyGeolocation(geolocation);
+    this._options.geolocation = geolocation;
     for (const page of this.pages())
       await (page._delegate as CRPage).updateGeolocation();
   }
 
-  async setExtraHTTPHeaders(headers: types.Headers): Promise<void> {
-    this._options.extraHTTPHeaders = network.verifyHeaders(headers);
+  async setExtraHTTPHeaders(headers: types.HeadersArray): Promise<void> {
+    this._options.extraHTTPHeaders = headers;
     for (const page of this.pages())
       await (page._delegate as CRPage).updateExtraHTTPHeaders();
   }
@@ -404,8 +402,8 @@ export class CRBrowserContext extends BrowserContextBase {
       await (page._delegate as CRPage).updateOffline();
   }
 
-  async _doSetHTTPCredentials(httpCredentials: types.Credentials | null): Promise<void> {
-    this._options.httpCredentials = httpCredentials || undefined;
+  async _doSetHTTPCredentials(httpCredentials?: types.Credentials): Promise<void> {
+    this._options.httpCredentials = httpCredentials;
     for (const page of this.pages())
       await (page._delegate as CRPage).updateHttpCredentials();
   }
@@ -421,14 +419,7 @@ export class CRBrowserContext extends BrowserContextBase {
       await (page._delegate as CRPage).exposeBinding(binding);
   }
 
-  async route(url: types.URLMatch, handler: network.RouteHandler): Promise<void> {
-    this._routes.push({ url, handler });
-    for (const page of this.pages())
-      await (page._delegate as CRPage).updateRequestInterception();
-  }
-
-  async unroute(url: types.URLMatch, handler?: network.RouteHandler): Promise<void> {
-    this._routes = this._routes.filter(route => route.url !== url || (handler && route.handler !== handler));
+  async _doUpdateRequestInterception(): Promise<void> {
     for (const page of this.pages())
       await (page._delegate as CRPage).updateRequestInterception();
   }
@@ -444,7 +435,7 @@ export class CRBrowserContext extends BrowserContextBase {
       // asynchronously and we get detached from them later.
       // To avoid the wrong order of notifications, we manually fire
       // "close" event here and forget about the serivce worker.
-      serviceWorker.emit(CommonEvents.Worker.Close);
+      serviceWorker.emit(Worker.Events.Close);
       this._browser._serviceWorkers.delete(targetId);
     }
   }
