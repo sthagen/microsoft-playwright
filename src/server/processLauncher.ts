@@ -19,9 +19,10 @@ import * as childProcess from 'child_process';
 import * as readline from 'readline';
 import * as removeFolder from 'rimraf';
 import * as stream from 'stream';
-import { helper, isUnderTest } from '../helper';
-import { Progress } from '../progress';
-import * as types from '../types';
+import { helper } from './helper';
+import { Progress } from './progress';
+import * as types from './types';
+import { isDevMode } from '../utils/utils';
 
 export type Env = {[key: string]: string | number | boolean | undefined};
 
@@ -34,6 +35,7 @@ export type LaunchProcessOptions = {
   handleSIGTERM?: boolean,
   handleSIGHUP?: boolean,
   pipe?: boolean,
+  pipeStdin?: boolean,
   tempDirectories: string[],
 
   cwd?: string,
@@ -61,6 +63,8 @@ export async function launchProcess(options: LaunchProcessOptions): Promise<Laun
 
   const progress = options.progress;
   const stdio: ('ignore' | 'pipe')[] = options.pipe ? ['ignore', 'pipe', 'pipe', 'pipe', 'pipe'] : ['ignore', 'pipe', 'pipe'];
+  if (options.pipeStdin)
+    stdio[0] = 'pipe';
   progress.log(`<launching> ${options.executablePath} ${options.args.join(' ')}`);
   const spawnedProcess = childProcess.spawn(
       options.executablePath,
@@ -116,7 +120,7 @@ export async function launchProcess(options: LaunchProcessOptions): Promise<Laun
     listeners.push(helper.addEventListener(process, 'SIGINT', () => {
       gracefullyClose().then(() => {
         // Give tests a chance to dispatch any async calls.
-        if (isUnderTest())
+        if (isDevMode())
           setTimeout(() => process.exit(130), 0);
         else
           process.exit(130);

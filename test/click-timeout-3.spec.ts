@@ -15,14 +15,16 @@
  * limitations under the License.
  */
 
-import { options } from './playwright.fixtures';
+import { it, expect, options } from './playwright.fixtures';
 
-it.skip(options.WIRE)('should fail when element jumps during hit testing', async({page, server}) => {
+it('should fail when element jumps during hit testing', test => {
+  test.skip(options.WIRE);
+}, async ({page}) => {
   await page.setContent('<button>Click me</button>');
   let clicked = false;
   const handle = await page.$('button');
   const __testHookBeforeHitTarget = () => page.evaluate(() => {
-    const margin = parseInt(document.querySelector('button').style.marginLeft || '0') + 100;
+    const margin = parseInt(document.querySelector('button').style.marginLeft || '0', 10) + 100;
     document.querySelector('button').style.marginLeft = margin + 'px';
   });
   const promise = handle.click({ timeout: 5000, __testHookBeforeHitTarget } as any).then(() => clicked = true).catch(e => e);
@@ -34,7 +36,7 @@ it.skip(options.WIRE)('should fail when element jumps during hit testing', async
   expect(error.message).toContain('retrying click action');
 });
 
-it('should timeout waiting for hit target', async({page, server}) => {
+it('should timeout waiting for hit target', async ({page, server}) => {
   await page.goto(server.PREFIX + '/input/button.html');
   const button = await page.$('button');
   await page.evaluate(() => {
@@ -54,7 +56,7 @@ it('should timeout waiting for hit target', async({page, server}) => {
   expect(error.message).toContain('retrying click action');
 });
 
-it('should report wrong hit target subtree', async({page, server}) => {
+it('should report wrong hit target subtree', async ({page, server}) => {
   await page.goto(server.PREFIX + '/input/button.html');
   const button = await page.$('button');
   await page.evaluate(() => {

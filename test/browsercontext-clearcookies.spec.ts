@@ -15,9 +15,9 @@
  * limitations under the License.
  */
 
-import './playwright.fixtures';
+import { it, expect } from './playwright.fixtures';
 
-it('should clear cookies', async({context, page, server}) => {
+it('should clear cookies', async ({context, page, server}) => {
   await page.goto(server.EMPTY_PAGE);
   await context.addCookies([{
     url: server.EMPTY_PAGE,
@@ -31,7 +31,7 @@ it('should clear cookies', async({context, page, server}) => {
   expect(await page.evaluate('document.cookie')).toBe('');
 });
 
-it('should isolate cookies when clearing', async({context, server, browser}) => {
+it('should isolate cookies when clearing', async ({context, server, browser}) => {
   const anotherContext = await browser.newContext();
   await context.addCookies([{url: server.EMPTY_PAGE, name: 'page1cookie', value: 'page1value'}]);
   await anotherContext.addCookies([{url: server.EMPTY_PAGE, name: 'page2cookie', value: 'page2value'}]);

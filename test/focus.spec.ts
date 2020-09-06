@@ -13,9 +13,12 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import { options } from './playwright.fixtures';
 
-it.skip(options.FIREFOX)('should work', async function({page}) {
+import { it, expect, options } from './playwright.fixtures';
+
+it('should work', test => {
+  test.skip(options.FIREFOX);
+}, async function({page}) {
   await page.setContent(`<div id=d1 tabIndex=0></div>`);
   expect(await page.evaluate(() => document.activeElement.nodeName)).toBe('BODY');
   await page.focus('#d1');
@@ -52,9 +55,9 @@ it('should traverse focus', async function({page}) {
   await page.$eval('#i2', i2 => (i2 as HTMLInputElement).addEventListener('focus', window['focusEvent']));
 
   await page.focus('#i1');
-  await page.keyboard.type("First");
-  await page.keyboard.press("Tab");
-  await page.keyboard.type("Last");
+  await page.keyboard.type('First');
+  await page.keyboard.press('Tab');
+  await page.keyboard.type('Last');
 
   expect(focused).toBe(true);
   expect(await page.$eval('#i1', e => (e as HTMLInputElement).value)).toBe('First');
@@ -75,9 +78,10 @@ it('should traverse focus in all directions', async function({page}) {
   expect(await page.evaluate(() => (document.activeElement as HTMLInputElement).value)).toBe('1');
 });
 
-// Chromium and WebKit both have settings for tab traversing all links, but 
-// it is only on by default in WebKit.
-it.skip(!MAC || !options.WEBKIT)('should traverse only form elements', async function({page}) {
+it('should traverse only form elements', test => {
+  test.skip(!MAC || !options.WEBKIT,
+      'Chromium and WebKit both have settings for tab traversing all links, but it is only on by default in WebKit.');
+}, async function({page}) {
   await page.setContent(`
     <input id="input-1">
     <button id="button">buttton</button>

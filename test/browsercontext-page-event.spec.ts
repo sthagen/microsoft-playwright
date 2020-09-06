@@ -14,9 +14,10 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import { options } from './playwright.fixtures';
 
-it('should have url', async({browser, server}) => {
+import { it, expect, options } from './playwright.fixtures';
+
+it('should have url', async ({browser, server}) => {
   const context = await browser.newContext();
   const page = await context.newPage();
   const [otherPage] = await Promise.all([
@@ -27,7 +28,7 @@ it('should have url', async({browser, server}) => {
   await context.close();
 });
 
-it('should have url after domcontentloaded', async({browser, server}) => {
+it('should have url after domcontentloaded', async ({browser, server}) => {
   const context = await browser.newContext();
   const page = await context.newPage();
   const [otherPage] = await Promise.all([
@@ -39,7 +40,7 @@ it('should have url after domcontentloaded', async({browser, server}) => {
   await context.close();
 });
 
-it('should have about:blank url with domcontentloaded', async({browser, server}) => {
+it('should have about:blank url with domcontentloaded', async ({browser, server}) => {
   const context = await browser.newContext();
   const page = await context.newPage();
   const [otherPage] = await Promise.all([
@@ -51,7 +52,7 @@ it('should have about:blank url with domcontentloaded', async({browser, server})
   await context.close();
 });
 
-it('should have about:blank for empty url with domcontentloaded', async({browser, server}) => {
+it('should have about:blank for empty url with domcontentloaded', async ({browser, server}) => {
   const context = await browser.newContext();
   const page = await context.newPage();
   const [otherPage] = await Promise.all([
@@ -63,7 +64,7 @@ it('should have about:blank for empty url with domcontentloaded', async({browser
   await context.close();
 });
 
-it('should report when a new page is created and closed', async({browser, server}) => {
+it('should report when a new page is created and closed', async ({browser, server}) => {
   const context = await browser.newContext();
   const page = await context.newPage();
   const [otherPage] = await Promise.all([
@@ -90,7 +91,7 @@ it('should report when a new page is created and closed', async({browser, server
   await context.close();
 });
 
-it('should report initialized pages', async({browser, server}) => {
+it('should report initialized pages', async ({browser, server}) => {
   const context = await browser.newContext();
   const pagePromise = context.waitForEvent('page');
   context.newPage();
@@ -105,7 +106,7 @@ it('should report initialized pages', async({browser, server}) => {
   await context.close();
 });
 
-it('should not crash while redirecting of original request was missed', async({browser, server}) => {
+it('should not crash while redirecting of original request was missed', async ({browser, server}) => {
   const context = await browser.newContext();
   const page = await context.newPage();
   let serverResponse = null;
@@ -125,7 +126,7 @@ it('should not crash while redirecting of original request was missed', async({b
   await context.close();
 });
 
-it('should have an opener', async({browser, server}) => {
+it('should have an opener', async ({browser, server}) => {
   const context = await browser.newContext();
   const page = await context.newPage();
   await page.goto(server.EMPTY_PAGE);
@@ -156,8 +157,9 @@ it('should fire page lifecycle events', async function({browser, server}) {
   await context.close();
 });
 
-it.fail(options.WEBKIT)('should work with Shift-clicking', async({browser, server}) => {
-  // WebKit: Shift+Click does not open a new window.
+it('should work with Shift-clicking', test => {
+  test.fixme(options.WEBKIT, 'WebKit: Shift+Click does not open a new window.');
+}, async ({browser, server}) => {
   const context = await browser.newContext();
   const page = await context.newPage();
   await page.goto(server.EMPTY_PAGE);
@@ -170,9 +172,10 @@ it.fail(options.WEBKIT)('should work with Shift-clicking', async({browser, serve
   await context.close();
 });
 
-it.fail(options.WEBKIT || options.FIREFOX)('should work with Ctrl-clicking', async({browser, server}) => {
-  // Firefox: reports an opener in this case.
-  // WebKit: Ctrl+Click does not open a new tab.
+it('should work with Ctrl-clicking', test => {
+  test.fixme(options.WEBKIT, 'Ctrl+Click does not open a new tab.');
+  test.fixme(options.FIREFOX, 'Reports an opener in this case.');
+}, async ({browser, server}) => {
   const context = await browser.newContext();
   const page = await context.newPage();
   await page.goto(server.EMPTY_PAGE);

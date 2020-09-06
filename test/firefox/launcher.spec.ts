@@ -13,9 +13,11 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import { options } from '../playwright.fixtures';
+import { it, expect, options } from '../playwright.fixtures';
 
-it.skip(!options.FIREFOX)('should pass firefox user preferences', async({browserType, defaultBrowserOptions}) => {
+it('should pass firefox user preferences', test => {
+  test.skip(!options.FIREFOX);
+}, async ({browserType, defaultBrowserOptions}) => {
   const browser = await browserType.launch({
     ...defaultBrowserOptions,
     firefoxUserPrefs: {

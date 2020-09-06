@@ -14,191 +14,123 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import { options } from './playwright.fixtures';
-import { registerFixture } from '../test-runner';
 
+import { it, expect, describe, options } from './playwright.fixtures';
+import './remoteServer.fixture';
+import { registerFixture } from '@playwright/test-runner';
+
+import { execSync } from 'child_process';
 import path from 'path';
-import {spawn, execSync} from 'child_process';
-import { BrowserType, Browser, LaunchOptions } from '..';
-
-const playwrightPath = path.join(__dirname, '..');
-
-class Wrapper {
-  _output: Map<any, any>;
-  _outputCallback: Map<any, any>;
-  _browserType: BrowserType<Browser>;
-  _child: import("child_process").ChildProcess;
-  _exitPromise: Promise<unknown>;
-  _exitAndDisconnectPromise: Promise<any>;
-  constructor(browserType: BrowserType<Browser>, defaultBrowserOptions: LaunchOptions, extraOptions?: { stallOnClose: boolean; }) {
-    this._output = new Map();
-    this._outputCallback = new Map();
-
-    this._browserType = browserType;
-    const launchOptions = {...defaultBrowserOptions,
-      handleSIGINT: true,
-      handleSIGTERM: true,
-      handleSIGHUP: true,
-      executablePath: defaultBrowserOptions.executablePath || browserType.executablePath(),
-      logger: undefined,
-    };
-    const options = {
-      playwrightPath,
-      browserTypeName: browserType.name(),
-      launchOptions,
-      ...extraOptions,
-    };
-    this._child = spawn('node', [path.join(__dirname, 'fixtures', 'closeme.js'), JSON.stringify(options)]);
-    this._child.on('error', (...args) => console.log("ERROR", ...args));
-    this._exitPromise = new Promise(resolve => this._child.on('exit', resolve));
-
-    let outputString = '';
-    this._child.stdout.on('data', data => {
-      outputString += data.toString();
-      // Uncomment to debug.
-      // console.log(data.toString());
-      let match;
-      while (match = outputString.match(/\(([^()]+)=>([^()]+)\)/)) {
-        const key = match[1];
-        const value = match[2];
-        this._addOutput(key, value);
-        outputString = outputString.substring(match.index + match[0].length);
-      }
-    });
-  }
-
-  _addOutput(key, value) {
-    this._output.set(key, value);
-    const cb = this._outputCallback.get(key);
-    this._outputCallback.delete(key);
-    if (cb)
-      cb();
-  }
-
-  async out(key) {
-    if (!this._output.has(key))
-      await new Promise(f => this._outputCallback.set(key, f));
-    return this._output.get(key);
-  }
-
-  async connect() {
-    const wsEndpoint = await this.out('wsEndpoint');
-    const browser = await this._browserType.connect({ wsEndpoint });
-    this._exitAndDisconnectPromise = Promise.all([
-      this._exitPromise,
-      new Promise(resolve => browser.once('disconnected', resolve)),
-    ]).then(([exitCode]) => exitCode);
-  }
-
-  child() {
-    return this._child;
-  }
-
-  async childExitCode() {
-    return await this._exitAndDisconnectPromise;
-  }
-}
 
 declare global {
   interface TestState {
-    wrapper: Wrapper;
-    stallingWrapper: Wrapper;
+    connectedRemoteServer: TestState['remoteServer'];
+    stallingConnectedRemoteServer: TestState['stallingRemoteServer'];
   }
 }
-registerFixture('wrapper', async ({browserType, defaultBrowserOptions}, test) => {
-  const wrapper = new Wrapper(browserType, defaultBrowserOptions);
-  await wrapper.connect();
-  await test(wrapper);
+
+registerFixture('connectedRemoteServer', async ({browserType, remoteServer, server}, test) => {
+  const browser = await browserType.connect({ wsEndpoint: remoteServer.wsEndpoint() });
+  const page = await browser.newPage();
+  await page.goto(server.EMPTY_PAGE);
+  await test(remoteServer);
+  await browser.close();
 });
 
-registerFixture('stallingWrapper', async ({browserType, defaultBrowserOptions}, test) => {
-  const wrapper = new Wrapper(browserType, defaultBrowserOptions, { stallOnClose: true });
-  await wrapper.connect();
-  await test(wrapper);
+registerFixture('stallingConnectedRemoteServer', async ({browserType, stallingRemoteServer, server}, test) => {
+  const browser = await browserType.connect({ wsEndpoint: stallingRemoteServer.wsEndpoint() });
+  const page = await browser.newPage();
+  await page.goto(server.EMPTY_PAGE);
+  await test(stallingRemoteServer);
+  await browser.close();
 });
 
-it.slow()('should close the browser when the node process closes', async ({wrapper}) => {
+it('should close the browser when the node process closes', test => {
+  test.slow();
+}, async ({connectedRemoteServer}) => {
   if (WIN)
-    execSync(`taskkill /pid ${wrapper.child().pid} /T /F`);
+    execSync(`taskkill /pid ${connectedRemoteServer.child().pid} /T /F`);
   else
-    process.kill(wrapper.child().pid);
-  expect(await wrapper.childExitCode()).toBe(WIN ? 1 : 0);
+    process.kill(connectedRemoteServer.child().pid);
+  expect(await connectedRemoteServer.childExitCode()).toBe(WIN ? 1 : 0);
   // We might not get browser exitCode in time when killing the parent node process,
   // so we don't check it here.
 });
 
-// Cannot reliably send signals on Windows.
-it.skip(WIN || !options.HEADLESS).slow()('should report browser close signal', async ({wrapper}) => {
-  const pid = await wrapper.out('pid');
-  process.kill(-pid, 'SIGTERM');
-  expect(await wrapper.out('exitCode')).toBe('null');
-  expect(await wrapper.out('signal')).toBe('SIGTERM');
-  process.kill(wrapper.child().pid);
-  await wrapper.childExitCode();
-});
+describe('fixtures', suite => {
+  suite.skip(WIN || !options.HEADLESS);
+  suite.slow();
+}, () => {
+  // Cannot reliably send signals on Windows.
+  it('should report browser close signal', async ({connectedRemoteServer}) => {
+    const pid = await connectedRemoteServer.out('pid');
+    process.kill(-pid, 'SIGTERM');
+    expect(await connectedRemoteServer.out('exitCode')).toBe('null');
+    expect(await connectedRemoteServer.out('signal')).toBe('SIGTERM');
+    process.kill(connectedRemoteServer.child().pid);
+    await connectedRemoteServer.childExitCode();
+  });
 
-it.skip(WIN || !options.HEADLESS).slow()('should report browser close signal 2', async ({wrapper}) => {
-  const pid = await wrapper.out('pid');
-  process.kill(-pid, 'SIGKILL');
-  expect(await wrapper.out('exitCode')).toBe('null');
-  expect(await wrapper.out('signal')).toBe('SIGKILL');
-  process.kill(wrapper.child().pid);
-  await wrapper.childExitCode();
-});
+  it('should report browser close signal 2', async ({connectedRemoteServer}) => {
+    const pid = await connectedRemoteServer.out('pid');
+    process.kill(-pid, 'SIGKILL');
+    expect(await connectedRemoteServer.out('exitCode')).toBe('null');
+    expect(await connectedRemoteServer.out('signal')).toBe('SIGKILL');
+    process.kill(connectedRemoteServer.child().pid);
+    await connectedRemoteServer.childExitCode();
+  });
 
-it.skip(WIN || !options.HEADLESS).slow()('should close the browser on SIGINT', async ({wrapper}) => {
-  process.kill(wrapper.child().pid, 'SIGINT');
-  expect(await wrapper.out('exitCode')).toBe('0');
-  expect(await wrapper.out('signal')).toBe('null');
-  expect(await wrapper.childExitCode()).toBe(130);
-});
+  it('should close the browser on SIGINT', async ({connectedRemoteServer}) => {
+    process.kill(connectedRemoteServer.child().pid, 'SIGINT');
+    expect(await connectedRemoteServer.out('exitCode')).toBe('0');
+    expect(await connectedRemoteServer.out('signal')).toBe('null');
+    expect(await connectedRemoteServer.childExitCode()).toBe(130);
+  });
 
-it.skip(WIN || !options.HEADLESS).slow()('should close the browser on SIGTERM', async ({wrapper}) => {
-  process.kill(wrapper.child().pid, 'SIGTERM');
-  expect(await wrapper.out('exitCode')).toBe('0');
-  expect(await wrapper.out('signal')).toBe('null');
-  expect(await wrapper.childExitCode()).toBe(0);
-});
+  it('should close the browser on SIGTERM', async ({connectedRemoteServer}) => {
+    process.kill(connectedRemoteServer.child().pid, 'SIGTERM');
+    expect(await connectedRemoteServer.out('exitCode')).toBe('0');
+    expect(await connectedRemoteServer.out('signal')).toBe('null');
+    expect(await connectedRemoteServer.childExitCode()).toBe(0);
+  });
 
-it.skip(WIN || !options.HEADLESS).slow()('should close the browser on SIGHUP', async ({wrapper}) => {
-  process.kill(wrapper.child().pid, 'SIGHUP');
-  expect(await wrapper.out('exitCode')).toBe('0');
-  expect(await wrapper.out('signal')).toBe('null');
-  expect(await wrapper.childExitCode()).toBe(0);
-});
+  it('should close the browser on SIGHUP', async ({connectedRemoteServer}) => {
+    process.kill(connectedRemoteServer.child().pid, 'SIGHUP');
+    expect(await connectedRemoteServer.out('exitCode')).toBe('0');
+    expect(await connectedRemoteServer.out('signal')).toBe('null');
+    expect(await connectedRemoteServer.childExitCode()).toBe(0);
+  });
 
-it.skip(WIN || !options.HEADLESS).slow()('should kill the browser on double SIGINT', async ({stallingWrapper}) => {
-  const wrapper = stallingWrapper;
-  process.kill(wrapper.child().pid, 'SIGINT');
-  await wrapper.out('stalled');
-  process.kill(wrapper.child().pid, 'SIGINT');
-  expect(await wrapper.out('exitCode')).toBe('null');
-  expect(await wrapper.out('signal')).toBe('SIGKILL');
-  expect(await wrapper.childExitCode()).toBe(130);
-});
+  it('should kill the browser on double SIGINT', async ({stallingConnectedRemoteServer}) => {
+    process.kill(stallingConnectedRemoteServer.child().pid, 'SIGINT');
+    await stallingConnectedRemoteServer.out('stalled');
+    process.kill(stallingConnectedRemoteServer.child().pid, 'SIGINT');
+    expect(await stallingConnectedRemoteServer.out('exitCode')).toBe('null');
+    expect(await stallingConnectedRemoteServer.out('signal')).toBe('SIGKILL');
+    expect(await stallingConnectedRemoteServer.childExitCode()).toBe(130);
+  });
 
-it.skip(WIN || !options.HEADLESS).slow()('should kill the browser on SIGINT + SIGTERM', async ({stallingWrapper}) => {
-  const wrapper = stallingWrapper;
-  process.kill(wrapper.child().pid, 'SIGINT');
-  await wrapper.out('stalled');
-  process.kill(wrapper.child().pid, 'SIGTERM');
-  expect(await wrapper.out('exitCode')).toBe('null');
-  expect(await wrapper.out('signal')).toBe('SIGKILL');
-  expect(await wrapper.childExitCode()).toBe(0);
-});
+  it('should kill the browser on SIGINT + SIGTERM', async ({stallingConnectedRemoteServer}) => {
+    process.kill(stallingConnectedRemoteServer.child().pid, 'SIGINT');
+    await stallingConnectedRemoteServer.out('stalled');
+    process.kill(stallingConnectedRemoteServer.child().pid, 'SIGTERM');
+    expect(await stallingConnectedRemoteServer.out('exitCode')).toBe('null');
+    expect(await stallingConnectedRemoteServer.out('signal')).toBe('SIGKILL');
+    expect(await stallingConnectedRemoteServer.childExitCode()).toBe(0);
+  });
 
-it.skip(WIN || !options.HEADLESS).slow()('should kill the browser on SIGTERM + SIGINT', async ({stallingWrapper}) => {
-  const wrapper = stallingWrapper;
-  process.kill(wrapper.child().pid, 'SIGTERM');
-  await wrapper.out('stalled');
-  process.kill(wrapper.child().pid, 'SIGINT');
-  expect(await wrapper.out('exitCode')).toBe('null');
-  expect(await wrapper.out('signal')).toBe('SIGKILL');
-  expect(await wrapper.childExitCode()).toBe(130);
+  it('should kill the browser on SIGTERM + SIGINT', async ({stallingConnectedRemoteServer}) => {
+    process.kill(stallingConnectedRemoteServer.child().pid, 'SIGTERM');
+    await stallingConnectedRemoteServer.out('stalled');
+    process.kill(stallingConnectedRemoteServer.child().pid, 'SIGINT');
+    expect(await stallingConnectedRemoteServer.out('exitCode')).toBe('null');
+    expect(await stallingConnectedRemoteServer.out('signal')).toBe('SIGKILL');
+    expect(await stallingConnectedRemoteServer.childExitCode()).toBe(130);
+  });
 });
 
 it('caller file path', async ({}) => {
-  const stackTrace = require(path.join(playwrightPath, 'lib', 'utils', 'stackTrace'));
+  const stackTrace = require(path.join(__dirname, '..', 'lib', 'utils', 'stackTrace'));
   const callme = require('./fixtures/callback');
   const filePath = callme(() => {
     return stackTrace.getCallerFilePath(path.join(__dirname, 'fixtures') + path.sep);

@@ -14,7 +14,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import { options } from './playwright.fixtures';
+
+import { it, expect, options } from './playwright.fixtures';
 import utils from './utils';
 
 it('should type into a textarea', async ({page}) => {
@@ -82,7 +83,9 @@ it('insertText should only emit input event', async ({page, server}) => {
   expect(await events.jsonValue()).toEqual(['input']);
 });
 
-it.fail(options.FIREFOX && MAC)('should report shiftKey', async ({page, server}) => {
+it('should report shiftKey', test => {
+  test.fail(options.FIREFOX && MAC);
+}, async ({page, server}) => {
   await page.goto(server.PREFIX + '/input/keyboard.html');
   const keyboard = page.keyboard;
   const codeForKey = {'Shift': 16, 'Alt': 18, 'Control': 17};
@@ -339,7 +342,9 @@ it('should be able to prevent selectAll', async ({page, server}) => {
   expect(await page.$eval('textarea', textarea => textarea.value)).toBe('some tex');
 });
 
-it.skip(!MAC)('should support MacOS shortcuts', async ({page, server}) => {
+it('should support MacOS shortcuts', test => {
+  test.skip(!MAC);
+}, async ({page, server}) => {
   await page.goto(server.PREFIX + '/input/textarea.html');
   const textarea = await page.$('textarea');
   await textarea.type('some text');
@@ -379,7 +384,9 @@ it('should work after a cross origin navigation', async ({page, server}) => {
 });
 
 // event.keyIdentifier has been removed from all browsers except WebKit
-it.skip(!options.WEBKIT)('should expose keyIdentifier in webkit', async ({page, server}) => {
+it('should expose keyIdentifier in webkit', test => {
+  test.skip(!options.WEBKIT);
+}, async ({page, server}) => {
   const lastEvent = await captureLastKeydown(page);
   const keyMap = {
     'ArrowUp': 'Up',

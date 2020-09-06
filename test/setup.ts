@@ -20,19 +20,10 @@ declare const matrix: (m: any) => void;
 
 matrix({
   'browserName': process.env.BROWSER ? [process.env.BROWSER] : ['chromium', 'webkit', 'firefox'],
-  'headless': [!!valueFromEnv('HEADLESS', true)],
-  'wire': [!!process.env.PWWIRE],
-  'slowMo': [valueFromEnv('SLOW_MO', 0)]
 });
 
 before(async () => {
 });
 
-after(async () => {  
+after(async () => {
 });
-
-function valueFromEnv(name, defaultValue) {
-  if (!(name in process.env))
-    return defaultValue;
-  return JSON.parse(process.env[name]);
-}

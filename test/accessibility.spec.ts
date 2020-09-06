@@ -14,7 +14,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import { options } from './playwright.fixtures';
+
+import { it, expect, describe, options } from './playwright.fixtures';
 
 it('should work', async function({page}) {
   await page.setContent(`
@@ -78,7 +79,7 @@ it('should work', async function({page}) {
   expect(await page.accessibility.snapshot()).toEqual(golden);
 });
 
-it('should work with regular text', async({page}) => {
+it('should work with regular text', async ({page}) => {
   await page.setContent(`<div>Hello World</div>`);
   const snapshot = await page.accessibility.snapshot();
   expect(snapshot.children[0]).toEqual({
@@ -87,31 +88,31 @@ it('should work with regular text', async({page}) => {
   });
 });
 
-it('roledescription', async({page}) => {
+it('roledescription', async ({page}) => {
   await page.setContent('<div tabIndex=-1 aria-roledescription="foo">Hi</div>');
   const snapshot = await page.accessibility.snapshot();
   expect(snapshot.children[0].roledescription).toEqual('foo');
 });
 
-it('orientation', async({page}) => {
+it('orientation', async ({page}) => {
   await page.setContent('<a href="" role="slider" aria-orientation="vertical">11</a>');
   const snapshot = await page.accessibility.snapshot();
   expect(snapshot.children[0].orientation).toEqual('vertical');
 });
 
-it('autocomplete', async({page}) => {
+it('autocomplete', async ({page}) => {
   await page.setContent('<div role="textbox" aria-autocomplete="list">hi</div>');
   const snapshot = await page.accessibility.snapshot();
   expect(snapshot.children[0].autocomplete).toEqual('list');
 });
 
-it('multiselectable', async({page}) => {
+it('multiselectable', async ({page}) => {
   await page.setContent('<div role="grid" tabIndex=-1 aria-multiselectable=true>hey</div>');
   const snapshot = await page.accessibility.snapshot();
   expect(snapshot.children[0].multiselectable).toEqual(true);
 });
 
-it('keyshortcuts', async({page}) => {
+it('keyshortcuts', async ({page}) => {
   await page.setContent('<div role="grid" tabIndex=-1 aria-keyshortcuts="foo">hey</div>');
   const snapshot = await page.accessibility.snapshot();
   expect(snapshot.children[0].keyshortcuts).toEqual('foo');
@@ -138,8 +139,9 @@ it('should not report text nodes inside controls', async function({page}) {
   expect(await page.accessibility.snapshot()).toEqual(golden);
 });
 
-// WebKit rich text accessibility is iffy
-it.skip(options.WEBKIT)('rich text editable fields should have children', async function({page}) {
+it('rich text editable fields should have children', test => {
+  test.skip(options.WEBKIT, 'WebKit rich text accessibility is iffy');
+}, async function({page}) {
   await page.setContent(`
   <div contenteditable="true">
     Edit this image: <img src="fakeimage.png" alt="my fake image">
@@ -169,8 +171,10 @@ it.skip(options.WEBKIT)('rich text editable fields should have children', async 
   const snapshot = await page.accessibility.snapshot();
   expect(snapshot.children[0]).toEqual(golden);
 });
-// WebKit rich text accessibility is iffy
-it.skip(options.WEBKIT)('rich text editable fields with role should have children', async function({page}) {
+
+it('rich text editable fields with role should have children', test => {
+  test.skip(options.WEBKIT, 'WebKit rich text accessibility is iffy');
+}, async function({page}) {
   await page.setContent(`
   <div contenteditable="true" role='textbox'>
     Edit this image: <img src="fakeimage.png" alt="my fake image">
@@ -199,36 +203,39 @@ it.skip(options.WEBKIT)('rich text editable fields with role should have childre
   expect(snapshot.children[0]).toEqual(golden);
 });
 
-it.skip(options.FIREFOX || options.WEBKIT)('plain text field with role should not have children', async function({page}) {
-  // Firefox does not support contenteditable="plaintext-only".
-  // WebKit rich text accessibility is iffy
-  await page.setContent(`
-    <div contenteditable="plaintext-only" role='textbox'>Edit this image:<img src="fakeimage.png" alt="my fake image"></div>`);
+describe('contenteditable', suite => {
+  suite.skip(options.FIREFOX, 'Firefox does not support contenteditable="plaintext-only"');
+  suite.skip(options.WEBKIT, 'WebKit rich text accessibility is iffy');
+}, () => {
+  it('plain text field with role should not have children', async function({page}) {
+    await page.setContent(`
+      <div contenteditable="plaintext-only" role='textbox'>Edit this image:<img src="fakeimage.png" alt="my fake image"></div>`);
     const snapshot = await page.accessibility.snapshot();
     expect(snapshot.children[0]).toEqual({
       role: 'textbox',
       name: '',
       value: 'Edit this image:'
     });
-});
-
-it.skip(options.FIREFOX || options.WEBKIT)('plain text field without role should not have content', async function({page}) {
-  await page.setContent(`
-  <div contenteditable="plaintext-only">Edit this image:<img src="fakeimage.png" alt="my fake image"></div>`);
-  const snapshot = await page.accessibility.snapshot();
-  expect(snapshot.children[0]).toEqual({
-    role: 'generic',
-    name: ''
   });
-});
 
-it.skip(options.FIREFOX || options.WEBKIT)('plain text field with tabindex and without role should not have content', async function({page}) {
-  await page.setContent(`
-  <div contenteditable="plaintext-only" tabIndex=0>Edit this image:<img src="fakeimage.png" alt="my fake image"></div>`);
-  const snapshot = await page.accessibility.snapshot();
-  expect(snapshot.children[0]).toEqual({
-    role: 'generic',
-    name: ''
+  it('plain text field without role should not have content', async function({page}) {
+    await page.setContent(`
+    <div contenteditable="plaintext-only">Edit this image:<img src="fakeimage.png" alt="my fake image"></div>`);
+    const snapshot = await page.accessibility.snapshot();
+    expect(snapshot.children[0]).toEqual({
+      role: 'generic',
+      name: ''
+    });
+  });
+
+  it('plain text field with tabindex and without role should not have content', async function({page}) {
+    await page.setContent(`
+    <div contenteditable="plaintext-only" tabIndex=0>Edit this image:<img src="fakeimage.png" alt="my fake image"></div>`);
+    const snapshot = await page.accessibility.snapshot();
+    expect(snapshot.children[0]).toEqual({
+      role: 'generic',
+      name: ''
+    });
   });
 });
 
@@ -289,7 +296,7 @@ it('checkbox without label should not have children', async function({page}) {
   expect(snapshot.children[0]).toEqual(golden);
 });
 
-it('should work a button', async({page}) => {
+it('should work a button', async ({page}) => {
   await page.setContent(`<button>My Button</button>`);
 
   const button = await page.$('button');
@@ -299,7 +306,7 @@ it('should work a button', async({page}) => {
   });
 });
 
-it('should work an input', async({page}) => {
+it('should work an input', async ({page}) => {
   await page.setContent(`<input title="My Input" value="My Value">`);
 
   const input = await page.$('input');
@@ -310,7 +317,7 @@ it('should work an input', async({page}) => {
   });
 });
 
-it('should work on a menu', async({page}) => {
+it('should work on a menu', async ({page}) => {
   await page.setContent(`
     <div role="menu" title="My Menu">
       <div role="menuitem">First Item</div>
@@ -331,14 +338,14 @@ it('should work on a menu', async({page}) => {
   });
 });
 
-it('should return null when the element is no longer in DOM', async({page}) => {
+it('should return null when the element is no longer in DOM', async ({page}) => {
   await page.setContent(`<button>My Button</button>`);
   const button = await page.$('button');
   await page.$eval('button', button => button.remove());
   expect(await page.accessibility.snapshot({root: button})).toEqual(null);
 });
 
-it('should show uninteresting nodes', async({page}) => {
+it('should show uninteresting nodes', async ({page}) => {
   await page.setContent(`
     <div id="root" role="textbox">
       <div>

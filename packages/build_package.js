@@ -28,7 +28,7 @@ const cpAsync = util.promisify(ncp);
 const SCRIPT_NAME = path.basename(__filename);
 const ROOT_PATH = path.join(__dirname, '..');
 
-const PLAYWRIGHT_CORE_FILES = ['bin', 'lib', 'types', 'NOTICE', 'LICENSE', '.npmignore'];
+const PLAYWRIGHT_CORE_FILES = ['bin', 'lib', 'types', 'NOTICE', 'LICENSE'];
 
 const PACKAGES = {
   'playwright': {
@@ -61,7 +61,7 @@ const PACKAGES = {
     version: '0.4.0', // Manually manage playwright-electron version.
     description: 'A high-level API to automate Electron',
     browsers: [],
-    files: PLAYWRIGHT_CORE_FILES,
+    files: [...PLAYWRIGHT_CORE_FILES, 'electron-types.d.ts'],
   },
 };
 
@@ -157,7 +157,11 @@ if (!args.some(arg => arg === '--no-cleanup')) {
     browser.download = package.browsers.includes(browser.name);
   await writeToPackage('browsers.json', JSON.stringify(browsersJSON, null, 2));
 
-  // 6. Run npm pack
+  // 6. Bake commit SHA into the package
+  const commitSHA = spawnSync('git', ['rev-parse', 'HEAD'], {cwd: __dirname, encoding: 'utf8'});
+  await writeToPackage('commitinfo', commitSHA.stdout.trim());
+
+  // 7. Run npm pack
   const shell = os.platform() === 'win32';
   const {stdout, stderr, status} = spawnSync('npm', ['pack'], {cwd: packagePath, encoding: 'utf8', shell});
   if (status !== 0) {

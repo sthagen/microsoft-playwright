@@ -14,7 +14,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import { options } from './playwright.fixtures';
+
+import { it, expect, options } from './playwright.fixtures';
 
 import utils from './utils';
 
@@ -22,10 +23,10 @@ it('should have different execution contexts', async ({ page, server }) => {
   await page.goto(server.EMPTY_PAGE);
   await utils.attachFrame(page, 'frame1', server.EMPTY_PAGE);
   expect(page.frames().length).toBe(2);
-  await page.frames()[0].evaluate(() => window["FOO"] = 'foo');
-  await page.frames()[1].evaluate(() => window["FOO"] = 'bar');
-  expect(await page.frames()[0].evaluate(() => window["FOO"])).toBe('foo');
-  expect(await page.frames()[1].evaluate(() => window["FOO"])).toBe('bar');
+  await page.frames()[0].evaluate(() => window['FOO'] = 'foo');
+  await page.frames()[1].evaluate(() => window['FOO'] = 'bar');
+  expect(await page.frames()[0].evaluate(() => window['FOO'])).toBe('foo');
+  expect(await page.frames()[1].evaluate(() => window['FOO'])).toBe('bar');
 });
 
 it('should have correct execution contexts', async ({ page, server }) => {
@@ -42,7 +43,9 @@ function expectContexts(pageImpl, count) {
     expect(pageImpl._delegate._contextIdToContext.size).toBe(count);
 }
 
-it.skip(options.WIRE)('should dispose context on navigation', async ({ page, server, toImpl }) => {
+it('should dispose context on navigation', test => {
+  test.skip(options.WIRE);
+}, async ({ page, server, toImpl }) => {
   await page.goto(server.PREFIX + '/frames/one-frame.html');
   expect(page.frames().length).toBe(2);
   expectContexts(toImpl(page), 4);
@@ -50,7 +53,9 @@ it.skip(options.WIRE)('should dispose context on navigation', async ({ page, ser
   expectContexts(toImpl(page), 2);
 });
 
-it.skip(options.WIRE)('should dispose context on cross-origin navigation', async ({ page, server, toImpl }) => {
+it('should dispose context on cross-origin navigation', test => {
+  test.skip(options.WIRE);
+}, async ({ page, server, toImpl }) => {
   await page.goto(server.PREFIX + '/frames/one-frame.html');
   expect(page.frames().length).toBe(2);
   expectContexts(toImpl(page), 4);
@@ -99,7 +104,7 @@ it('should not allow cross-frame element handles when frames do not script each 
   expect(error.message).toContain('Unable to adopt element handle from a different document');
 });
 
-it('should throw for detached frames', async({page, server}) => {
+it('should throw for detached frames', async ({page, server}) => {
   const frame1 = await utils.attachFrame(page, 'frame1', server.EMPTY_PAGE);
   await utils.detachFrame(page, 'frame1');
   let error = null;
@@ -107,7 +112,7 @@ it('should throw for detached frames', async({page, server}) => {
   expect(error.message).toContain('Execution Context is not available in detached frame');
 });
 
-it('should be isolated between frames', async({page, server}) => {
+it('should be isolated between frames', async ({page, server}) => {
   await page.goto(server.EMPTY_PAGE);
   await utils.attachFrame(page, 'frame1', server.EMPTY_PAGE);
   expect(page.frames().length).toBe(2);
@@ -115,8 +120,8 @@ it('should be isolated between frames', async({page, server}) => {
   expect(frame1 !== frame2).toBeTruthy();
 
   await Promise.all([
-    frame1.evaluate(() => window["a"] = 1),
-    frame2.evaluate(() => window["a"] = 2)
+    frame1.evaluate(() => window['a'] = 1),
+    frame2.evaluate(() => window['a'] = 2)
   ]);
   const [a1, a2] = await Promise.all([
     frame1.evaluate(() => window['a']),
@@ -126,7 +131,10 @@ it('should be isolated between frames', async({page, server}) => {
   expect(a2).toBe(2);
 });
 
-it.fail(options.CHROMIUM || options.FIREFOX)('should work in iframes that failed initial navigation', async({page, server}) => {
+it('should work in iframes that failed initial navigation', test => {
+  test.fail(options.CHROMIUM);
+  test.fixme(options.FIREFOX);
+}, async ({page}) => {
   // - Firefox does not report domcontentloaded for the iframe.
   // - Chromium and Firefox report empty url.
   // - Chromium does not report main/utility worlds for the iframe.
@@ -147,7 +155,9 @@ it.fail(options.CHROMIUM || options.FIREFOX)('should work in iframes that failed
   expect(await page.frames()[1].$('div')).toBeTruthy();
 });
 
-it.fail(options.CHROMIUM)('should work in iframes that interrupted initial javascript url navigation', async({page, server}) => {
+it('should work in iframes that interrupted initial javascript url navigation', test => {
+  test.fixme(options.CHROMIUM);
+}, async ({page, server}) => {
   // Chromium does not report isolated world for the iframe.
   await page.goto(server.EMPTY_PAGE);
   await page.evaluate(() => {
@@ -164,7 +174,7 @@ it.fail(options.CHROMIUM)('should work in iframes that interrupted initial javas
   expect(await page.frames()[1].$('div')).toBeTruthy();
 });
 
-it('evaluateHandle should work', async({page, server}) => {
+it('evaluateHandle should work', async ({page, server}) => {
   await page.goto(server.EMPTY_PAGE);
   const mainFrame = page.mainFrame();
   const windowHandle = await mainFrame.evaluateHandle(() => window);

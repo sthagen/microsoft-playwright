@@ -23,9 +23,9 @@ import * as ProgressBar from 'progress';
 import { getProxyForUrl } from 'proxy-from-env';
 import * as URL from 'url';
 import * as util from 'util';
-import { assert, getFromENV } from '../helper';
-import * as browserPaths from './browserPaths';
-import { BrowserName, BrowserPlatform, BrowserDescriptor } from './browserPaths';
+import { assert, getFromENV } from '../utils/utils';
+import * as browserPaths from '../utils/browserPaths';
+import { BrowserName, BrowserPlatform, BrowserDescriptor } from '../utils/browserPaths';
 
 // `https-proxy-agent` v5 is written in Typescript and exposes generated types.
 // However, as of June 2020, its types are generated with tsconfig that enables
@@ -129,7 +129,7 @@ function getDownloadUrl(browserName: BrowserName, revision: number, platform: Br
 }
 
 function revisionURL(browser: BrowserDescriptor, platform = browserPaths.hostPlatform): string {
-  const revision = parseInt(browser.revision, 10);
+  const revision = parseFloat(browser.revision);
   const serverHost = getDownloadHost(browser.name, revision);
   const urlTemplate = getDownloadUrl(browser.name, revision, platform);
   assert(urlTemplate, `ERROR: Playwright does not support ${browser.name} on ${platform}`);

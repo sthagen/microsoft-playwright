@@ -102,6 +102,7 @@ export type PlaywrightInitializer = {
       deviceScaleFactor: number,
       isMobile: boolean,
       hasTouch: boolean,
+      defaultBrowserType: 'chromium' | 'firefox' | 'webkit',
     },
   }[],
   selectors: SelectorsChannel,
@@ -109,11 +110,18 @@ export type PlaywrightInitializer = {
 export interface PlaywrightChannel extends Channel {
 }
 
+// ----------- RemoteBrowser -----------
+export type RemoteBrowserInitializer = {
+  browser: BrowserChannel,
+  selectors: SelectorsChannel,
+};
+export interface RemoteBrowserChannel extends Channel {
+}
+
 // ----------- Selectors -----------
 export type SelectorsInitializer = {};
 export interface SelectorsChannel extends Channel {
   register(params: SelectorsRegisterParams): Promise<SelectorsRegisterResult>;
-  createSelector(params: SelectorsCreateSelectorParams): Promise<SelectorsCreateSelectorResult>;
 }
 export type SelectorsRegisterParams = {
   name: string,
@@ -124,16 +132,6 @@ export type SelectorsRegisterOptions = {
   contentScript?: boolean,
 };
 export type SelectorsRegisterResult = void;
-export type SelectorsCreateSelectorParams = {
-  name: string,
-  handle: ElementHandleChannel,
-};
-export type SelectorsCreateSelectorOptions = {
-
-};
-export type SelectorsCreateSelectorResult = {
-  value?: string,
-};
 
 // ----------- BrowserType -----------
 export type BrowserTypeInitializer = {
@@ -166,6 +164,7 @@ export type BrowserTypeLaunchParams = {
     password?: string,
   },
   downloadsPath?: string,
+  _videosPath?: string,
   firefoxUserPrefs?: any,
   chromiumSandbox?: boolean,
   slowMo?: number,
@@ -192,6 +191,7 @@ export type BrowserTypeLaunchOptions = {
     password?: string,
   },
   downloadsPath?: string,
+  _videosPath?: string,
   firefoxUserPrefs?: any,
   chromiumSandbox?: boolean,
   slowMo?: number,
@@ -222,6 +222,7 @@ export type BrowserTypeLaunchPersistentContextParams = {
     password?: string,
   },
   downloadsPath?: string,
+  _videosPath?: string,
   chromiumSandbox?: boolean,
   slowMo?: number,
   noDefaultViewport?: boolean,
@@ -278,6 +279,7 @@ export type BrowserTypeLaunchPersistentContextOptions = {
     password?: string,
   },
   downloadsPath?: string,
+  _videosPath?: string,
   chromiumSandbox?: boolean,
   slowMo?: number,
   noDefaultViewport?: boolean,
@@ -319,6 +321,7 @@ export type BrowserTypeLaunchPersistentContextResult = {
 // ----------- Browser -----------
 export type BrowserInitializer = {
   version: string,
+  name: string,
 };
 export interface BrowserChannel extends Channel {
   on(event: 'close', callback: (params: BrowserCloseEvent) => void): this;
@@ -364,6 +367,10 @@ export type BrowserNewContextParams = {
   hasTouch?: boolean,
   colorScheme?: 'dark' | 'light' | 'no-preference',
   acceptDownloads?: boolean,
+  _recordVideos?: {
+    width: number,
+    height: number,
+  },
 };
 export type BrowserNewContextOptions = {
   noDefaultViewport?: boolean,
@@ -397,6 +404,10 @@ export type BrowserNewContextOptions = {
   hasTouch?: boolean,
   colorScheme?: 'dark' | 'light' | 'no-preference',
   acceptDownloads?: boolean,
+  _recordVideos?: {
+    width: number,
+    height: number,
+  },
 };
 export type BrowserNewContextResult = {
   context: BrowserContextChannel,
@@ -426,7 +437,9 @@ export type BrowserCrStopTracingResult = {
 };
 
 // ----------- BrowserContext -----------
-export type BrowserContextInitializer = {};
+export type BrowserContextInitializer = {
+  browserName: string,
+};
 export interface BrowserContextChannel extends Channel {
   on(event: 'bindingCall', callback: (params: BrowserContextBindingCallEvent) => void): this;
   on(event: 'close', callback: (params: BrowserContextCloseEvent) => void): this;
@@ -644,6 +657,7 @@ export interface PageChannel extends Channel {
   on(event: 'requestFinished', callback: (params: PageRequestFinishedEvent) => void): this;
   on(event: 'response', callback: (params: PageResponseEvent) => void): this;
   on(event: 'route', callback: (params: PageRouteEvent) => void): this;
+  on(event: 'videoStarted', callback: (params: PageVideoStartedEvent) => void): this;
   on(event: 'worker', callback: (params: PageWorkerEvent) => void): this;
   setDefaultNavigationTimeoutNoReply(params: PageSetDefaultNavigationTimeoutNoReplyParams): Promise<PageSetDefaultNavigationTimeoutNoReplyResult>;
   setDefaultTimeoutNoReply(params: PageSetDefaultTimeoutNoReplyParams): Promise<PageSetDefaultTimeoutNoReplyResult>;
@@ -725,6 +739,9 @@ export type PageResponseEvent = {
 export type PageRouteEvent = {
   route: RouteChannel,
   request: RequestChannel,
+};
+export type PageVideoStartedEvent = {
+  video: VideoChannel,
 };
 export type PageWorkerEvent = {
   worker: WorkerChannel,
@@ -1622,6 +1639,7 @@ export interface ElementHandleChannel extends JSHandleChannel {
   uncheck(params: ElementHandleUncheckParams): Promise<ElementHandleUncheckResult>;
   waitForElementState(params: ElementHandleWaitForElementStateParams): Promise<ElementHandleWaitForElementStateResult>;
   waitForSelector(params: ElementHandleWaitForSelectorParams): Promise<ElementHandleWaitForSelectorResult>;
+  createSelectorForTest(params: ElementHandleCreateSelectorForTestParams): Promise<ElementHandleCreateSelectorForTestResult>;
 }
 export type ElementHandleEvalOnSelectorParams = {
   selector: string,
@@ -1933,6 +1951,15 @@ export type ElementHandleWaitForSelectorOptions = {
 export type ElementHandleWaitForSelectorResult = {
   element?: ElementHandleChannel,
 };
+export type ElementHandleCreateSelectorForTestParams = {
+  name: string,
+};
+export type ElementHandleCreateSelectorForTestOptions = {
+
+};
+export type ElementHandleCreateSelectorForTestResult = {
+  value?: string,
+};
 
 // ----------- Request -----------
 export type RequestInitializer = {
@@ -2096,6 +2123,17 @@ export type DialogDismissParams = {};
 export type DialogDismissOptions = {};
 export type DialogDismissResult = void;
 
+// ----------- Video -----------
+export type VideoInitializer = {};
+export interface VideoChannel extends Channel {
+  path(params?: VideoPathParams): Promise<VideoPathResult>;
+}
+export type VideoPathParams = {};
+export type VideoPathOptions = {};
+export type VideoPathResult = {
+  value: string,
+};
+
 // ----------- Download -----------
 export type DownloadInitializer = {
   url: string,
@@ -2104,6 +2142,7 @@ export type DownloadInitializer = {
 export interface DownloadChannel extends Channel {
   path(params?: DownloadPathParams): Promise<DownloadPathResult>;
   saveAs(params: DownloadSaveAsParams): Promise<DownloadSaveAsResult>;
+  saveAsStream(params?: DownloadSaveAsStreamParams): Promise<DownloadSaveAsStreamResult>;
   failure(params?: DownloadFailureParams): Promise<DownloadFailureResult>;
   stream(params?: DownloadStreamParams): Promise<DownloadStreamResult>;
   delete(params?: DownloadDeleteParams): Promise<DownloadDeleteResult>;
@@ -2120,6 +2159,11 @@ export type DownloadSaveAsOptions = {
 
 };
 export type DownloadSaveAsResult = void;
+export type DownloadSaveAsStreamParams = {};
+export type DownloadSaveAsStreamOptions = {};
+export type DownloadSaveAsStreamResult = {
+  stream: StreamChannel,
+};
 export type DownloadFailureParams = {};
 export type DownloadFailureOptions = {};
 export type DownloadFailureResult = {
@@ -2138,6 +2182,7 @@ export type DownloadDeleteResult = void;
 export type StreamInitializer = {};
 export interface StreamChannel extends Channel {
   read(params: StreamReadParams): Promise<StreamReadResult>;
+  close(params?: StreamCloseParams): Promise<StreamCloseResult>;
 }
 export type StreamReadParams = {
   size?: number,
@@ -2148,6 +2193,9 @@ export type StreamReadOptions = {
 export type StreamReadResult = {
   binary: Binary,
 };
+export type StreamCloseParams = {};
+export type StreamCloseOptions = {};
+export type StreamCloseResult = void;
 
 // ----------- CDPSession -----------
 export type CDPSessionInitializer = {};

@@ -18,19 +18,25 @@ import fs from 'fs';
 import path from 'path';
 import os from 'os';
 import childProcess from 'child_process';
-import { LaunchOptions, BrowserType, Browser, BrowserContext, Page, BrowserServer } from '../index';
+import type { LaunchOptions, BrowserType, Browser, BrowserContext, Page, BrowserServer } from '../index';
 import { TestServer } from '../utils/testserver';
-import { Connection } from '../lib/rpc/client/connection';
+import { Connection } from '../lib/client/connection';
 import { Transport } from '../lib/protocol/transport';
-import { setUnderTest } from '../lib/helper';
 import { installCoverageHooks } from './coverage';
-import { parameters, registerFixture, registerWorkerFixture } from '../test-runner';
+import { parameters, registerFixture, registerWorkerFixture } from '@playwright/test-runner';
+import { mkdtempAsync, removeFolderAsync } from './utils';
+export { it, fit, xit, describe, fdescribe, xdescribe, expect } from '@playwright/test-runner';
 
-import {mkdtempAsync, removeFolderAsync} from './utils';
-
-setUnderTest(); // Note: we must call setUnderTest before requiring Playwright
-
-const platform = os.platform();
+export const options = {
+  CHROMIUM: parameters.browserName === 'chromium',
+  FIREFOX: parameters.browserName === 'firefox',
+  WEBKIT: parameters.browserName === 'webkit',
+  HEADLESS: !!valueFromEnv('HEADLESS', true),
+  WIRE: !!process.env.PWWIRE,
+  SLOW_MO: valueFromEnv('SLOW_MO', 0),
+  // Tracing is currently not implemented under wire.
+  TRACING: valueFromEnv('TRACING', false) && !process.env.PWWIRE,
+};
 
 declare global {
   interface WorkerState {
@@ -38,6 +44,7 @@ declare global {
     defaultBrowserOptions: LaunchOptions;
     golden: (path: string) => string;
     playwright: typeof import('../index');
+    browserName: string;
     browserType: BrowserType<Browser>;
     browser: Browser;
     httpService: {server: TestServer, httpsServer: TestServer}
@@ -49,12 +56,7 @@ declare global {
     page: Page;
     httpsServer: TestServer;
     browserServer: BrowserServer;
-  }
-  interface FixtureParameters {
-    browserName: string;
-    headless: boolean;
-    wire: boolean;
-    slowMo: number;
+    launchPersistent: (options?: Parameters<BrowserType<Browser>['launchPersistentContext']>[1]) => Promise<{context: BrowserContext, page: Page}>;
   }
 }
 
@@ -63,6 +65,7 @@ declare global {
   const LINUX: boolean;
   const WIN: boolean;
 }
+const platform = os.platform();
 global['MAC'] = platform === 'darwin';
 global['LINUX'] = platform === 'linux';
 global['WIN'] = platform === 'win32';
@@ -87,33 +90,34 @@ registerWorkerFixture('httpService', async ({}, test) => {
   ]);
 });
 
-const getExecutablePath = (browserName) => {
+const getExecutablePath = browserName => {
   if (browserName === 'chromium' && process.env.CRPATH)
     return process.env.CRPATH;
   if (browserName === 'firefox' && process.env.FFPATH)
     return process.env.FFPATH;
   if (browserName === 'webkit' && process.env.WKPATH)
     return process.env.WKPATH;
-}
+};
 
-registerWorkerFixture('defaultBrowserOptions', async({browserName, headless, slowMo}, test) => {
-  let executablePath = getExecutablePath(browserName);
+registerWorkerFixture('defaultBrowserOptions', async ({browserName}, test) => {
+  const executablePath = getExecutablePath(browserName);
 
   if (executablePath)
     console.error(`Using executable at ${executablePath}`);
   await test({
     handleSIGINT: false,
-    slowMo,
-    headless,
+    slowMo: options.SLOW_MO,
+    headless: options.HEADLESS,
     executablePath
   });
 });
 
-registerWorkerFixture('playwright', async({browserName, wire}, test) => {
+registerWorkerFixture('playwright', async ({browserName}, test) => {
   const {coverage, uninstall} = installCoverageHooks(browserName);
-  if (wire) {
+  if (options.WIRE) {
+    require('../lib/utils/utils').setDevMode();
     const connection = new Connection();
-    const spawnedProcess = childProcess.fork(path.join(__dirname, '..', 'lib', 'rpc', 'server'), [], {
+    const spawnedProcess = childProcess.fork(path.join(__dirname, '..', 'lib', 'server.js'), [], {
       stdio: 'pipe',
       detached: true,
     });
@@ -133,7 +137,14 @@ registerWorkerFixture('playwright', async({browserName, wire}, test) => {
     spawnedProcess.stderr.destroy();
     await teardownCoverage();
   } else {
-    await test(require('../index'))
+    const playwright = require('../index');
+    if (options.TRACING) {
+      const tracerFactory = require('../lib/trace/tracer').Tracer;
+      playwright.__tracer = new tracerFactory();
+    }
+    await test(playwright);
+    if (playwright.__tracer)
+      playwright.__tracer.dispose();
     await teardownCoverage();
   }
 
@@ -144,7 +155,6 @@ registerWorkerFixture('playwright', async({browserName, wire}, test) => {
     await fs.promises.mkdir(path.dirname(coveragePath), { recursive: true });
     await fs.promises.writeFile(coveragePath, JSON.stringify(coverageJSON, undefined, 2), 'utf8');
   }
-
 });
 
 registerWorkerFixture('toImpl', async ({playwright}, test) => {
@@ -157,7 +167,7 @@ registerWorkerFixture('browserType', async ({playwright, browserName}, test) => 
 });
 
 registerWorkerFixture('browserName', async ({}, test) => {
-  await test('chromium');
+  throw new Error(`Parameter 'browserName' is not specified`);
 });
 
 registerWorkerFixture('browser', async ({browserType, defaultBrowserOptions}, test) => {
@@ -178,21 +188,46 @@ registerWorkerFixture('golden', async ({browserName}, test) => {
   await test(p => path.join(browserName, p));
 });
 
-registerFixture('context', async ({browser}, test) => {
+registerFixture('context', async ({browser, playwright, toImpl}, runTest, info) => {
   const context = await browser.newContext();
-  await test(context);
+  const { test, config } = info;
+  if ((playwright as any).__tracer) {
+    const traceStorageDir = path.join(config.outputDir, 'trace-storage');
+    const relativePath = path.relative(config.testDir, test.file).replace(/\.spec\.[jt]s/, '');
+    const sanitizedTitle = test.title.replace(/[^\w\d]+/g, '_');
+    const traceFile = path.join(config.outputDir, relativePath, sanitizedTitle + '.trace');
+    (playwright as any).__tracer.traceContext(toImpl(context), traceStorageDir, traceFile);
+  }
+  await runTest(context);
   await context.close();
 });
 
-registerFixture('page', async ({context}, runTest) => {
+registerFixture('page', async ({context, playwright, toImpl}, runTest, info) => {
   const page = await context.newPage();
-  const { success, test, config } = await runTest(page);
-  if (!success) {
+  await runTest(page);
+  const { test, config, result } = info;
+  if (result.status === 'failed' || result.status === 'timedOut') {
     const relativePath = path.relative(config.testDir, test.file).replace(/\.spec\.[jt]s/, '');
     const sanitizedTitle = test.title.replace(/[^\w\d]+/g, '_');
     const assetPath = path.join(config.outputDir, relativePath, sanitizedTitle) + '-failed.png';
-    await page.screenshot({ path: assetPath });
+    await page.screenshot({ timeout: 5000, path: assetPath });
+    if ((playwright as any).__tracer)
+      await (playwright as any).__tracer.captureSnapshot(toImpl(page), { timeout: 5000, label: 'Test Failed' });
   }
+});
+
+registerFixture('launchPersistent', async ({tmpDir, defaultBrowserOptions, browserType}, test) => {
+  let context;
+  async function launchPersistent(options) {
+    if (context)
+      throw new Error('can only launch one persitent context');
+    context = await browserType.launchPersistentContext(tmpDir, {...defaultBrowserOptions, ...options});
+    const page = context.pages()[0];
+    return {context, page};
+  }
+  await test(launchPersistent);
+  if (context)
+    await context.close();
 });
 
 registerFixture('server', async ({httpService}, test) => {
@@ -211,10 +246,8 @@ registerFixture('tmpDir', async ({}, test) => {
   await removeFolderAsync(tmpDir).catch(e => {});
 });
 
-export const options = {
-  CHROMIUM: parameters.browserName === 'chromium',
-  FIREFOX: parameters.browserName === 'firefox',
-  WEBKIT: parameters.browserName === 'webkit',
-  HEADLESS : parameters.headless,
-  WIRE: parameters.wire,
+function valueFromEnv(name, defaultValue) {
+  if (!(name in process.env))
+    return defaultValue;
+  return JSON.parse(process.env[name]);
 }

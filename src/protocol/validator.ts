@@ -96,10 +96,6 @@ export function createScheme(tChannel: (name: string) => Validator): Scheme {
     source: tString,
     contentScript: tOptional(tBoolean),
   });
-  scheme.SelectorsCreateSelectorParams = tObject({
-    name: tString,
-    handle: tChannel('ElementHandle'),
-  });
   scheme.BrowserTypeLaunchParams = tObject({
     executablePath: tOptional(tString),
     args: tOptional(tArray(tString)),
@@ -122,6 +118,7 @@ export function createScheme(tChannel: (name: string) => Validator): Scheme {
       password: tOptional(tString),
     })),
     downloadsPath: tOptional(tString),
+    _videosPath: tOptional(tString),
     firefoxUserPrefs: tOptional(tAny),
     chromiumSandbox: tOptional(tBoolean),
     slowMo: tOptional(tNumber),
@@ -149,6 +146,7 @@ export function createScheme(tChannel: (name: string) => Validator): Scheme {
       password: tOptional(tString),
     })),
     downloadsPath: tOptional(tString),
+    _videosPath: tOptional(tString),
     chromiumSandbox: tOptional(tBoolean),
     slowMo: tOptional(tNumber),
     noDefaultViewport: tOptional(tBoolean),
@@ -216,6 +214,10 @@ export function createScheme(tChannel: (name: string) => Validator): Scheme {
     hasTouch: tOptional(tBoolean),
     colorScheme: tOptional(tEnum(['dark', 'light', 'no-preference'])),
     acceptDownloads: tOptional(tBoolean),
+    _recordVideos: tOptional(tObject({
+      width: tNumber,
+      height: tNumber,
+    })),
   });
   scheme.BrowserCrNewBrowserCDPSessionParams = tOptional(tObject({}));
   scheme.BrowserCrStartTracingParams = tObject({
@@ -767,6 +769,9 @@ export function createScheme(tChannel: (name: string) => Validator): Scheme {
     timeout: tOptional(tNumber),
     state: tOptional(tEnum(['attached', 'detached', 'visible', 'hidden'])),
   });
+  scheme.ElementHandleCreateSelectorForTestParams = tObject({
+    name: tString,
+  });
   scheme.RequestResponseParams = tOptional(tObject({}));
   scheme.RouteAbortParams = tObject({
     errorCode: tOptional(tString),
@@ -800,16 +805,19 @@ export function createScheme(tChannel: (name: string) => Validator): Scheme {
     promptText: tOptional(tString),
   });
   scheme.DialogDismissParams = tOptional(tObject({}));
+  scheme.VideoPathParams = tOptional(tObject({}));
   scheme.DownloadPathParams = tOptional(tObject({}));
   scheme.DownloadSaveAsParams = tObject({
     path: tString,
   });
+  scheme.DownloadSaveAsStreamParams = tOptional(tObject({}));
   scheme.DownloadFailureParams = tOptional(tObject({}));
   scheme.DownloadStreamParams = tOptional(tObject({}));
   scheme.DownloadDeleteParams = tOptional(tObject({}));
   scheme.StreamReadParams = tObject({
     size: tOptional(tNumber),
   });
+  scheme.StreamCloseParams = tOptional(tObject({}));
   scheme.CDPSessionSendParams = tObject({
     method: tString,
     params: tOptional(tAny),

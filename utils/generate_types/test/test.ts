@@ -189,6 +189,12 @@ playwright.chromium.launch().then(async browser => {
 
   const inputElement = (await page.$('input[type=submit]'))!;
   await inputElement.click();
+
+  await inputElement.setInputFiles([{
+    name: 'yo',
+    mimeType: 'text/plain',
+    buffer: Buffer.from('yo')
+  }])
 });
 
 // Example with launch options
@@ -722,6 +728,7 @@ playwright.chromium.launch().then(async browser => {
       deviceScaleFactor: 1,
       hasTouch: false,
       isMobile: true,
+      defaultBrowserType: 'chromium'
     };
     const iPhone = playwright.devices['iPhone 11'];
     const assertion: AssertType<string, typeof iPhone.userAgent> = true;

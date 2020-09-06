@@ -15,13 +15,12 @@
  */
 
 import { options } from './playwright.fixtures';
-import { registerFixture } from '../test-runner';
-import { Page } from '..';
+import { it, expect, describe, registerFixture } from '@playwright/test-runner';
+import type { Page } from '..';
 
 import fs from 'fs';
 import path from 'path';
-import url from 'url';
-
+import { TestServer } from '../utils/testserver';
 
 declare global {
   interface TestState {
@@ -29,19 +28,19 @@ declare global {
   }
 }
 
-registerFixture('videoPlayer', async ({playwright, context}, test) => {
-  let firefox;
+registerFixture('videoPlayer', async ({playwright, context, server}, test) => {
+  let chromium;
   if (options.WEBKIT && !LINUX) {
-    // WebKit on Mac & Windows cannot replay webm/vp8 video, so we launch Firefox.
-    firefox = await playwright.firefox.launch();
-    context = await firefox.newContext();
+    // WebKit on Mac & Windows cannot replay webm/vp8 video, so we launch chromium.
+    chromium = await playwright.chromium.launch();
+    context = await chromium.newContext();
   }
 
   const page = await context.newPage();
-  const player = new VideoPlayer(page);
+  const player = new VideoPlayer(page, server);
   await test(player);
-  if (firefox)
-    await firefox.close();
+  if (chromium)
+    await chromium.close();
   else
     await page.close();
 });
@@ -71,17 +70,17 @@ function almostGrey(r, g, b, alpha) {
 }
 
 function expectAll(pixels, rgbaPredicate) {
-  const checkPixel = (i) => {
+  const checkPixel = i => {
     const r = pixels[i];
     const g = pixels[i + 1];
     const b = pixels[i + 2];
     const alpha = pixels[i + 3];
     rgbaPredicate(r, g, b, alpha);
-  }
+  };
   try {
-    for (var i = 0, n = pixels.length; i < n; i += 4)
+    for (let i = 0, n = pixels.length; i < n; i += 4)
       checkPixel(i);
-  } catch(e) {
+  } catch (e) {
     // Log pixel values on failure.
     e.message += `\n\nActual pixels=[${pixels}]`;
     throw e;
@@ -90,77 +89,66 @@ function expectAll(pixels, rgbaPredicate) {
 
 class VideoPlayer {
   private readonly _page: Page;
-  constructor(page: Page) {
+  private readonly _server: TestServer;
+  constructor(page: Page, server: TestServer) {
     this._page = page;
+    this._server = server;
   }
 
-  async load(videoFile) {
-    await this._page.goto(url.pathToFileURL(videoFile).href);
-    await this._page.$eval('video', (v:HTMLVideoElement) => {
-      return new Promise(fulfil => {
-        // In case video playback autostarts.
-        v.pause();
-        v.onplaying = fulfil;
-        v.play();
-      });
+  async load(videoFile: string) {
+    const servertPath = '/v.webm';
+    this._server.setRoute(servertPath, (req, response) => {
+      this._server.serveFile(req, response, videoFile);
     });
-    await this._page.$eval('video', (v:HTMLVideoElement) => {
-      v.pause();
-      const result = new Promise(f => v.onseeked = f);
-      v.currentTime = v.duration;
-      return result;
-    });
+
+    await this._page.goto(this._server.PREFIX + '/player.html');
   }
 
   async duration() {
-    return await this._page.$eval('video', (v:HTMLVideoElement) => v.duration);
+    return await this._page.$eval('video', (v: HTMLVideoElement) => v.duration);
   }
 
   async videoWidth() {
-    return await this._page.$eval('video', (v:HTMLVideoElement) => v.videoWidth);
+    return await this._page.$eval('video', (v: HTMLVideoElement) => v.videoWidth);
   }
 
   async videoHeight() {
-    return await this._page.$eval('video', (v:HTMLVideoElement) => v.videoHeight);
-  }
-
-  async seek(timestamp) {
-    await this._page.$eval('video', (v:HTMLVideoElement, timestamp) => {
-      v.pause();
-      const result = new Promise(f => v.onseeked = f);
-      v.currentTime = timestamp;
-      return result;
-    }, timestamp);
+    return await this._page.$eval('video', (v: HTMLVideoElement) => v.videoHeight);
   }
 
   async seekFirstNonEmptyFrame() {
-    let time = 0;
-    for (let i = 0; i < 10; i++) {
-      await this.seek(time);
+    await this._page.evaluate(async () => await (window as any).playToTheEnd());
+    while (true) {
+      await this._page.evaluate(async () => await (window as any).playOneFrame());
+      const ended = await this._page.$eval('video', (video: HTMLVideoElement) => video.ended);
+      if (ended)
+        throw new Error('All frames are empty');
       const pixels = await this.pixels();
       if (!pixels.every(p => p === 255))
         return;
-      time += 0.1;
     }
   }
 
-  async seekLastNonEmptyFrame() {
-    const duration = await this.duration();
-    let time = duration - 0.01;
-    for (let i = 0; i < 10; i++) {
-      await this.seek(time);
-      const pixels = await this.pixels();
-      if (!pixels.every(p => p === 0))
-        return;
-      time -= 0.1;
-    }
+  async countFrames() {
+    return await this._page.evaluate(async () => await (window as any).countFrames());
+  }
+  async currentTime() {
+    return await this._page.$eval('video', (v: HTMLVideoElement) => v.currentTime);
+  }
+  async playOneFrame() {
+    return await this._page.evaluate(async () => await (window as any).playOneFrame());
+  }
+
+  async seekLastFrame() {
+    const isWPE = LINUX && options.WEBKIT && options.HEADLESS;
+    return await this._page.evaluate(async x => await (window as any).seekLastFrame(x), isWPE);
   }
 
   async pixels(point = {x: 0, y: 0}) {
-    const pixels = await this._page.$eval('video', (video:HTMLVideoElement, point) => {
-      let canvas = document.createElement("canvas");
+    const pixels = await this._page.$eval('video', (video: HTMLVideoElement, point) => {
+      const canvas = document.createElement('canvas');
       if (!video.videoWidth || !video.videoHeight)
-        throw new Error("Video element is empty");
+        throw new Error('Video element is empty');
       canvas.width = video.videoWidth;
       canvas.height = video.videoHeight;
       const context = canvas.getContext('2d');
@@ -172,110 +160,189 @@ class VideoPlayer {
   }
 }
 
-it.fail(options.CHROMIUM)('should capture static page', async({page, tmpDir, videoPlayer, toImpl}) => {
-  if (!toImpl)
-    return;
-  const videoFile = path.join(tmpDir, 'v.webm');
-  await page.evaluate(() => document.body.style.backgroundColor = 'red');
-  await toImpl(page)._delegate.startScreencast({outputFile: videoFile, width: 640, height: 480});
-  // TODO: in WebKit figure out why video size is not reported correctly for
-  // static pictures.
-  if (options.HEADLESS && options.WEBKIT)
-    await page.setViewportSize({width: 1270, height: 950});
-  await new Promise(r => setTimeout(r, 300));
-  await toImpl(page)._delegate.stopScreencast();
-  expect(fs.existsSync(videoFile)).toBe(true);
+describe('screencast', suite => {
+  suite.slow();
+  suite.flaky();
+  suite.skip(options.WIRE);
+}, () => {
+  it('should capture static page', test => {
+    test.flaky(options.CHROMIUM && LINUX && !options.HEADLESS);
+    test.flaky(options.WEBKIT && LINUX);
+  }, async ({page, tmpDir, videoPlayer, toImpl}) => {
+    const videoFile = path.join(tmpDir, 'v.webm');
+    await page.evaluate(() => document.body.style.backgroundColor = 'red');
+    await toImpl(page)._delegate.startScreencast({outputFile: videoFile, width: 320, height: 240});
+    await new Promise(r => setTimeout(r, 1000));
+    await toImpl(page)._delegate.stopScreencast();
+    expect(fs.existsSync(videoFile)).toBe(true);
 
-  await videoPlayer.load(videoFile);
-  const duration = await videoPlayer.duration();
-  expect(duration).toBeGreaterThan(0);
+    await videoPlayer.load(videoFile);
+    const duration = await videoPlayer.duration();
+    expect(duration).toBeGreaterThan(0);
 
-  expect(await videoPlayer.videoWidth()).toBe(640);
-  expect(await videoPlayer.videoHeight()).toBe(480);
+    expect(await videoPlayer.videoWidth()).toBe(320);
+    expect(await videoPlayer.videoHeight()).toBe(240);
 
-  await videoPlayer.seekLastNonEmptyFrame();
-  const pixels = await videoPlayer.pixels();
-  expectAll(pixels, almostRed);
-});
-
-it.fail(options.CHROMIUM)('should capture navigation', async({page, tmpDir, server, videoPlayer, toImpl}) => {
-  if (!toImpl)
-    return;
-  const videoFile = path.join(tmpDir, 'v.webm');
-  await page.goto(server.PREFIX + '/background-color.html#rgb(0,0,0)');
-  await toImpl(page)._delegate.startScreencast({outputFile: videoFile, width: 640, height: 480});
-  // TODO: in WebKit figure out why video size is not reported correctly for
-  // static pictures.
-  if (options.HEADLESS && options.WEBKIT)
-    await page.setViewportSize({width: 1270, height: 950});
-  await new Promise(r => setTimeout(r, 300));
-  await page.goto(server.CROSS_PROCESS_PREFIX + '/background-color.html#rgb(100,100,100)');
-  await new Promise(r => setTimeout(r, 300));
-  await toImpl(page)._delegate.stopScreencast();
-  expect(fs.existsSync(videoFile)).toBe(true);
-
-  await videoPlayer.load(videoFile);
-  const duration = await videoPlayer.duration();
-  expect(duration).toBeGreaterThan(0);
-
-  {
-    await videoPlayer.seekFirstNonEmptyFrame();
+    await videoPlayer.seekLastFrame();
     const pixels = await videoPlayer.pixels();
-    expectAll(pixels, almostBlack);
-  }
-
-  {
-    await videoPlayer.seekLastNonEmptyFrame();
-    const pixels = await videoPlayer.pixels();
-    expectAll(pixels, almostGrey);
-  }
-});
-
-// Accelerated compositing is disabled in WebKit on Windows.
-it.fail(options.CHROMIUM || (options.WEBKIT && WIN))('should capture css transformation', async({page, tmpDir, server, videoPlayer, toImpl}) => {
-  if (!toImpl)
-    return;
-  const videoFile = path.join(tmpDir, 'v.webm');
-  await page.goto(server.PREFIX + '/rotate-z.html');
-  await toImpl(page)._delegate.startScreencast({outputFile: videoFile, width: 640, height: 480});
-  // TODO: in WebKit figure out why video size is not reported correctly for
-  // static pictures.
-  if (options.HEADLESS && options.WEBKIT)
-    await page.setViewportSize({width: 1270, height: 950});
-  await new Promise(r => setTimeout(r, 300));
-  await toImpl(page)._delegate.stopScreencast();
-  expect(fs.existsSync(videoFile)).toBe(true);
-
-  await videoPlayer.load(videoFile);
-  const duration = await videoPlayer.duration();
-  expect(duration).toBeGreaterThan(0);
-
-  {
-    await videoPlayer.seekLastNonEmptyFrame();
-    const pixels = await videoPlayer.pixels({x: 95, y: 45});
     expectAll(pixels, almostRed);
-  }
-});
+  });
 
-it.fail(options.CHROMIUM)('should fire start/stop events when page created/closed', async({browser, tmpDir, server, toImpl}) => {
-  if (!toImpl)
-   return;
-  // Use server side of the context. All the code below also uses server side APIs.
-  const context = toImpl(await browser.newContext());
-  await context._enableScreencast({width: 640, height: 480, dir: tmpDir});
-  expect(context._screencastOptions).toBeTruthy();
+  it('should capture navigation', test => {
+    test.flaky(options.CHROMIUM && MAC);
+    test.flaky(options.FIREFOX);
+    test.flaky(options.WEBKIT);
+    test.fixme(options.WEBKIT && LINUX, 'Times out on bots');
+  }, async ({page, tmpDir, server, videoPlayer, toImpl}) => {
+    const videoFile = path.join(tmpDir, 'v.webm');
+    await page.goto(server.PREFIX + '/background-color.html#rgb(0,0,0)');
+    await toImpl(page)._delegate.startScreencast({outputFile: videoFile, width: 320, height: 240});
+    await new Promise(r => setTimeout(r, 1000));
+    await page.goto(server.CROSS_PROCESS_PREFIX + '/background-color.html#rgb(100,100,100)');
+    await new Promise(r => setTimeout(r, 1000));
+    await toImpl(page)._delegate.stopScreencast();
+    expect(fs.existsSync(videoFile)).toBe(true);
 
-  const [startEvent, newPage] = await Promise.all([
-    new Promise(resolve => context.on('screencaststarted', resolve)) as Promise<any>,
-    context.newPage(),
-  ]);
-  expect(startEvent.page === newPage).toBe(true);
-  expect(startEvent.path).toBeTruthy();
+    await videoPlayer.load(videoFile);
+    const duration = await videoPlayer.duration();
+    expect(duration).toBeGreaterThan(0);
 
-  const [stopEvent] = await Promise.all([
-    new Promise(resolve => context.on('screencaststopped', resolve)) as Promise<any>,
-    newPage.close(),
-  ]);
-  expect(stopEvent.page === newPage).toBe(true);
-  await context.close();
+    {
+      await videoPlayer.seekFirstNonEmptyFrame();
+      const pixels = await videoPlayer.pixels();
+      expectAll(pixels, almostBlack);
+    }
+
+    {
+      await videoPlayer.seekLastFrame();
+      const pixels = await videoPlayer.pixels();
+      expectAll(pixels, almostGrey);
+    }
+  });
+
+  it('should capture css transformation', test => {
+    test.fixme(options.WEBKIT && LINUX, 'Times out on bots');
+  }, async ({page, tmpDir, server, videoPlayer, toImpl}) => {
+    const videoFile = path.join(tmpDir, 'v.webm');
+    // Set viewport equal to screencast frame size to avoid scaling.
+    await page.setViewportSize({width: 320, height: 240});
+    await page.goto(server.PREFIX + '/rotate-z.html');
+    await toImpl(page)._delegate.startScreencast({outputFile: videoFile, width: 320, height: 240});
+    await new Promise(r => setTimeout(r, 1000));
+    await toImpl(page)._delegate.stopScreencast();
+    expect(fs.existsSync(videoFile)).toBe(true);
+
+    await videoPlayer.load(videoFile);
+    const duration = await videoPlayer.duration();
+    expect(duration).toBeGreaterThan(0);
+
+    {
+      await videoPlayer.seekLastFrame();
+      const pixels = await videoPlayer.pixels({x: 95, y: 45});
+      expectAll(pixels, almostRed);
+    }
+  });
+
+  it('should automatically start/finish when new page is created/closed', test => {
+    test.flaky(options.FIREFOX, 'Even slow is not slow enough');
+  }, async ({browserType, tmpDir}) => {
+    const browser = await browserType.launch({_videosPath: tmpDir});
+    const context = await browser.newContext({_recordVideos: {width: 320, height: 240}});
+    const [screencast, newPage] = await Promise.all([
+      new Promise<any>(r => context.on('page', page => page.on('_videostarted', r))),
+      context.newPage(),
+    ]);
+
+    const [videoFile] = await Promise.all([
+      screencast.path(),
+      newPage.close(),
+    ]);
+    expect(path.dirname(videoFile)).toBe(tmpDir);
+    await context.close();
+    await browser.close();
+  });
+
+  it('should finish when contex closes', async ({browserType, tmpDir}) => {
+    const browser = await browserType.launch({_videosPath: tmpDir});
+    const context = await browser.newContext({_recordVideos: {width: 320, height: 240}});
+
+    const [video] = await Promise.all([
+      new Promise<any>(r => context.on('page', page => page.on('_videostarted', r))),
+      context.newPage(),
+    ]);
+
+    const [videoFile] = await Promise.all([
+      video.path(),
+      context.close(),
+    ]);
+    expect(path.dirname(videoFile)).toBe(tmpDir);
+
+    await browser.close();
+  });
+
+  it('should fire start event for popups', async ({browserType, tmpDir, server}) => {
+    const browser = await browserType.launch({_videosPath: tmpDir});
+    const context = await browser.newContext({_recordVideos: {width: 320, height: 240}});
+
+    const [page] = await Promise.all([
+      context.newPage(),
+      new Promise<any>(r => context.on('page', page => page.on('_videostarted', r))),
+    ]);
+    await page.goto(server.EMPTY_PAGE);
+    const [video, popup] = await Promise.all([
+      new Promise<any>(r => context.on('page', page => page.on('_videostarted', r))),
+      new Promise<Page>(resolve => context.on('page', resolve)),
+      page.evaluate(() => { window.open('about:blank'); })
+    ]);
+    const [videoFile] = await Promise.all([
+      video.path(),
+      popup.close()
+    ]);
+    expect(path.dirname(videoFile)).toBe(tmpDir);
+
+    await browser.close();
+  });
+
+  it('should scale frames down to the requested size ', test => {
+    test.fixme(options.WEBKIT && LINUX, 'Times out on bots');
+  }, async ({page, videoPlayer, tmpDir, server, toImpl}) => {
+    await page.setViewportSize({width: 640, height: 480});
+    const videoFile = path.join(tmpDir, 'v.webm');
+    await page.goto(server.PREFIX + '/checkerboard.html');
+    // Set size to 1/2 of the viewport.
+    await toImpl(page)._delegate.startScreencast({outputFile: videoFile, width: 320, height: 240});
+    // Update the picture to ensure enough frames are generated.
+    await page.$eval('.container', container => {
+      container.firstElementChild.classList.remove('red');
+    });
+    await new Promise(r => setTimeout(r, 300));
+    await page.$eval('.container', container => {
+      container.firstElementChild.classList.add('red');
+    });
+    await new Promise(r => setTimeout(r, 1000));
+    await toImpl(page)._delegate.stopScreencast();
+    expect(fs.existsSync(videoFile)).toBe(true);
+
+    await videoPlayer.load(videoFile);
+    const duration = await videoPlayer.duration();
+    expect(duration).toBeGreaterThan(0);
+
+    await videoPlayer.seekLastFrame();
+    {
+      const pixels = await videoPlayer.pixels({x: 0, y: 0});
+      expectAll(pixels, almostRed);
+    }
+    {
+      const pixels = await videoPlayer.pixels({x: 300, y: 0});
+      expectAll(pixels, almostGrey);
+    }
+    {
+      const pixels = await videoPlayer.pixels({x: 0, y: 200});
+      expectAll(pixels, almostGrey);
+    }
+    {
+      const pixels = await videoPlayer.pixels({x: 300, y: 200});
+      expectAll(pixels, almostRed);
+    }
+  });
 });

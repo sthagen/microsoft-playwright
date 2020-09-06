@@ -14,9 +14,12 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import { options } from './playwright.fixtures';
 
-it.fail(options.CHROMIUM && !options.HEADLESS)('should fail without credentials', async({browser, server}) => {
+import { it, expect, options } from './playwright.fixtures';
+
+it('should fail without credentials', test => {
+  test.fail(options.CHROMIUM && !options.HEADLESS);
+}, async ({browser, server}) => {
   server.setAuth('/empty.html', 'user', 'pass');
   const context = await browser.newContext();
   const page = await context.newPage();
@@ -25,7 +28,9 @@ it.fail(options.CHROMIUM && !options.HEADLESS)('should fail without credentials'
   await context.close();
 });
 
-it.fail(options.CHROMIUM && !options.HEADLESS)('should work with setHTTPCredentials', async({browser, server}) => {
+it('should work with setHTTPCredentials', test => {
+  test.fail(options.CHROMIUM && !options.HEADLESS);
+}, async ({browser, server}) => {
   server.setAuth('/empty.html', 'user', 'pass');
   const context = await browser.newContext();
   const page = await context.newPage();
@@ -37,7 +42,7 @@ it.fail(options.CHROMIUM && !options.HEADLESS)('should work with setHTTPCredenti
   await context.close();
 });
 
-it('should work with correct credentials', async({browser, server}) => {
+it('should work with correct credentials', async ({browser, server}) => {
   server.setAuth('/empty.html', 'user', 'pass');
   const context = await browser.newContext({
     httpCredentials: { username: 'user', password: 'pass' }
@@ -48,7 +53,7 @@ it('should work with correct credentials', async({browser, server}) => {
   await context.close();
 });
 
-it.fail(options.CHROMIUM && !options.HEADLESS)('should fail with wrong credentials', async({browser, server}) => {
+it('should fail with wrong credentials', async ({browser, server}) => {
   server.setAuth('/empty.html', 'user', 'pass');
   const context = await browser.newContext({
     httpCredentials: { username: 'foo', password: 'bar' }
@@ -59,7 +64,7 @@ it.fail(options.CHROMIUM && !options.HEADLESS)('should fail with wrong credentia
   await context.close();
 });
 
-it('should return resource body', async({browser, server}) => {
+it('should return resource body', async ({browser, server}) => {
   server.setAuth('/playground.html', 'user', 'pass');
   const context = await browser.newContext({
     httpCredentials: { username: 'user', password: 'pass' }
@@ -67,7 +72,7 @@ it('should return resource body', async({browser, server}) => {
   const page = await context.newPage();
   const response = await page.goto(server.PREFIX + '/playground.html');
   expect(response.status()).toBe(200);
-  expect(await page.title()).toBe("Playground");
-  expect((await response.body()).toString()).toContain("Playground");
+  expect(await page.title()).toBe('Playground');
+  expect((await response.body()).toString()).toContain('Playground');
   await context.close();
 });

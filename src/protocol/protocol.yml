@@ -143,8 +143,21 @@ Playwright:
               deviceScaleFactor: number
               isMobile: boolean
               hasTouch: boolean
+              defaultBrowserType:
+                type: enum
+                literals:
+                - chromium
+                - firefox
+                - webkit
     selectors: Selectors
 
+
+RemoteBrowser:
+  type: interface
+
+  initializer:
+    browser: Browser
+    selectors: Selectors
 
 
 Selectors:
@@ -157,14 +170,6 @@ Selectors:
         name: string
         source: string
         contentScript: boolean?
-
-    createSelector:
-      parameters:
-        name: string
-        handle: ElementHandle
-      returns:
-        value: string?
-
 
 
 BrowserType:
@@ -207,6 +212,7 @@ BrowserType:
             username: string?
             password: string?
         downloadsPath: string?
+        _videosPath: string?
         firefoxUserPrefs: json?
         chromiumSandbox: boolean?
         slowMo: number?
@@ -245,6 +251,7 @@ BrowserType:
             username: string?
             password: string?
         downloadsPath: string?
+        _videosPath: string?
         chromiumSandbox: boolean?
         slowMo: number?
         noDefaultViewport: boolean?
@@ -300,6 +307,7 @@ Browser:
 
   initializer:
     version: string
+    name: string
 
   commands:
 
@@ -351,6 +359,11 @@ Browser:
           - light
           - no-preference
         acceptDownloads: boolean?
+        _recordVideos:
+          type: object?
+          properties:
+            width: number
+            height: number
       returns:
         context: BrowserContext
 
@@ -379,6 +392,9 @@ Browser:
 
 BrowserContext:
   type: interface
+
+  initializer:
+    browserName: string
 
   commands:
 
@@ -882,6 +898,10 @@ Page:
       parameters:
         route: Route
         request: Request
+
+    videoStarted:
+      parameters:
+        video: Video
 
     worker:
       parameters:
@@ -1602,6 +1622,12 @@ ElementHandle:
       returns:
         element: ElementHandle?
 
+    createSelectorForTest:
+      parameters:
+        name: string
+      returns:
+        value: string?
+
 
 Request:
   type: interface
@@ -1756,6 +1782,17 @@ Dialog:
 
 
 
+Video:
+  type: interface
+
+  commands:
+
+    path:
+      returns:
+        value: string
+
+
+
 Download:
   type: interface
 
@@ -1769,9 +1806,15 @@ Download:
       returns:
         value: string?
 
+    # Blocks path/failure/delete/context.close until saved to the local |path|.
     saveAs:
       parameters:
         path: string
+
+    # Blocks path/failure/delete/context.close until the stream is closed.
+    saveAsStream:
+      returns:
+        stream: Stream
 
     failure:
       returns:
@@ -1796,6 +1839,7 @@ Stream:
       returns:
         binary: binary
 
+    close:
 
 
 CDPSession:

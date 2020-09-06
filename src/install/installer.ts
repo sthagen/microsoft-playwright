@@ -15,13 +15,13 @@
  */
 
 import * as crypto from 'crypto';
-import { getFromENV } from '../helper';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as util from 'util';
 import * as removeFolder from 'rimraf';
-import * as browserPaths from './browserPaths';
+import * as browserPaths from '../utils/browserPaths';
 import * as browserFetcher from './browserFetcher';
+import { getFromENV } from '../utils/utils';
 
 const fsMkdirAsync = util.promisify(fs.mkdir.bind(fs));
 const fsReaddirAsync = util.promisify(fs.readdir.bind(fs));
@@ -55,7 +55,7 @@ async function validateCache(packagePath: string, browsersPath: string, linksDir
       const browsersToDownload = await readBrowsersToDownload(linkTarget);
       for (const browser of browsersToDownload) {
         const usedBrowserPath = browserPaths.browserDirectory(browsersPath, browser);
-        const browserRevision = parseInt(browser.revision, 10);
+        const browserRevision = parseFloat(browser.revision);
         // Old browser installations don't have marker file.
         const shouldHaveMarkerFile = (browser.name === 'chromium' && browserRevision >= 786218) ||
             (browser.name === 'firefox' && browserRevision >= 1128) ||

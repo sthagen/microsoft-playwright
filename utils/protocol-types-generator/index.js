@@ -15,15 +15,11 @@ async function generateProtocol(name, executablePath) {
 }
 
 async function generateChromiumProtocol(executablePath) {
-  const outputPath = path.join(__dirname, '..', '..', 'src', 'chromium', 'protocol.ts');
+  const outputPath = path.join(__dirname, '../../src/server/chromium/protocol.ts');
+  process.env.PLAYWRIGHT_CHROMIUM_DEBUG_PORT = '9339';
   const playwright = require('../../index').chromium;
-  const defaultArgs = playwright._defaultArgs.bind(playwright);
-  playwright._defaultArgs = (...args) => {
-    const result = defaultArgs(...args);
-    result.push('--remote-debugging-port=9339');
-    return result;
-  };
   const browser = await playwright.launch({ executablePath });
+  delete process.env.PLAYWRIGHT_CHROMIUM_DEBUG_PORT;
   const page = await browser.newPage();
   await page.goto(`http://localhost:9339/json/protocol`);
   const json = JSON.parse(await page.evaluate(() => document.documentElement.innerText));
@@ -33,8 +29,8 @@ async function generateChromiumProtocol(executablePath) {
 }
 
 async function generateWebKitProtocol(folderPath) {
-  const outputPath = path.join(__dirname, '..', '..', 'src', 'webkit', 'protocol.ts');
-  const json = JSON.parse(await fs.promises.readFile(path.join(folderPath, '..', 'protocol.json'), 'utf8'));
+  const outputPath = path.join(__dirname, '../../src/server/webkit/protocol.ts');
+  const json = JSON.parse(await fs.promises.readFile(path.join(folderPath, '../protocol.json'), 'utf8'));
   await fs.promises.writeFile(outputPath, jsonToTS({domains: json}));
   console.log(`Wrote protocol.ts for WebKit to ${path.relative(process.cwd(), outputPath)}`);
 }
@@ -130,10 +126,10 @@ function typeOfProperty(property, domain) {
 }
 
 async function generateFirefoxProtocol(executablePath) {
-  const outputPath = path.join(__dirname, '..', '..', 'src', 'firefox', 'protocol.ts');
+  const outputPath = path.join(__dirname, '../../src/server/firefox/protocol.ts');
   const omnija = os.platform() === 'darwin' ?
-    path.join(executablePath, '..', '..', 'Resources', 'omni.ja') :
-    path.join(executablePath, '..', 'omni.ja');
+    path.join(executablePath, '../../Resources/omni.ja') :
+    path.join(executablePath, '../omni.ja');
   const zip = new StreamZip({file: omnija, storeEntries: true});
   // @ts-ignore
   await new Promise(x => zip.on('ready', x));

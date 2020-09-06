@@ -15,10 +15,10 @@
  * limitations under the License.
  */
 
-import { options } from './playwright.fixtures';
+import { it, expect, options } from './playwright.fixtures';
 import url from 'url';
 
-it('page.goBack should work', async({page, server}) => {
+it('page.goBack should work', async ({page, server}) => {
   expect(await page.goBack()).toBe(null);
 
   await page.goto(server.EMPTY_PAGE);
@@ -36,7 +36,7 @@ it('page.goBack should work', async({page, server}) => {
   expect(response).toBe(null);
 });
 
-it('page.goBack should work with HistoryAPI', async({page, server}) => {
+it('page.goBack should work with HistoryAPI', async ({page, server}) => {
   await page.goto(server.EMPTY_PAGE);
   await page.evaluate(() => {
     history.pushState({}, '', '/first.html');
@@ -52,7 +52,9 @@ it('page.goBack should work with HistoryAPI', async({page, server}) => {
   expect(page.url()).toBe(server.PREFIX + '/first.html');
 });
 
-it.fail(options.WEBKIT && MAC)('page.goBack should work for file urls', async ({page, server, asset}) => {
+it('page.goBack should work for file urls', test => {
+  test.fail(options.WEBKIT && MAC);
+}, async ({page, server, asset}) => {
   // WebKit embedder fails to go back/forward to the file url.
   const url1 = url.pathToFileURL(asset('empty.html')).href;
   const url2 = server.EMPTY_PAGE;
@@ -77,14 +79,14 @@ it.fail(options.WEBKIT && MAC)('page.goBack should work for file urls', async ({
   await page.screenshot();
 });
 
-it('page.reload should work', async({page, server}) => {
+it('page.reload should work', async ({page, server}) => {
   await page.goto(server.EMPTY_PAGE);
-  await page.evaluate(() => window["_foo"] = 10);
+  await page.evaluate(() => window['_foo'] = 10);
   await page.reload();
-  expect(await page.evaluate(() => window["_foo"])).toBe(undefined);
+  expect(await page.evaluate(() => window['_foo'])).toBe(undefined);
 });
 
-it('page.reload should work with data url', async({page, server}) => {
+it('page.reload should work with data url', async ({page, server}) => {
   await page.goto('data:text/html,hello');
   expect(await page.content()).toContain('hello');
   expect(await page.reload()).toBe(null);

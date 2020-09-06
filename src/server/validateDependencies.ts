@@ -18,8 +18,8 @@ import * as util from 'util';
 import * as path from 'path';
 import * as os from 'os';
 import { spawn } from 'child_process';
-import { getUbuntuVersion } from '../helper';
-import { linuxLddDirectories, windowsExeAndDllDirectories, BrowserDescriptor } from '../install/browserPaths.js';
+import { getUbuntuVersion } from '../utils/ubuntuVersion';
+import { linuxLddDirectories, windowsExeAndDllDirectories, BrowserDescriptor } from '../utils/browserPaths.js';
 
 const accessAsync = util.promisify(fs.access.bind(fs));
 const checkExecutable = (filePath: string) => accessAsync(filePath, fs.constants.X_OK).then(() => true).catch(e => false);
@@ -35,7 +35,7 @@ export async function validateHostRequirements(browserPath: string, browser: Bro
 
 const DL_OPEN_LIBRARIES = {
   chromium: [],
-  webkit: ['libGLESv2.so.2'],
+  webkit: ['libGLESv2.so.2', 'libx264.so'],
   firefox: [],
 };
 
@@ -112,6 +112,8 @@ async function validateDependenciesLinux(browserPath: string, browser: BrowserDe
   }
   for (const dep of (await missingDLOPENLibraries(browser)))
     missingDeps.add(dep);
+  for (const dep of (await missingSystemBinaries(browser)))
+    missingDeps.add(dep);
   if (!missingDeps.size)
     return;
   // Check Ubuntu version.
@@ -123,6 +125,7 @@ async function validateDependenciesLinux(browserPath: string, browser: BrowserDe
     libraryToPackageNameMapping = LIBRARY_TO_PACKAGE_NAME_UBUNTU_18_04;
   else if (ubuntuVersion === '20.04')
     libraryToPackageNameMapping = LIBRARY_TO_PACKAGE_NAME_UBUNTU_20_04;
+  libraryToPackageNameMapping = Object.assign({}, libraryToPackageNameMapping, MANUAL_LIBRARY_TO_PACKAGE_NAME_UBUNTU);
   if (libraryToPackageNameMapping) {
     // Translate missing dependencies to package names to install with apt.
     for (const missingDep of missingDeps) {
@@ -228,6 +231,16 @@ async function missingDLOPENLibraries(browser: BrowserDescriptor): Promise<strin
     return [];
   const isLibraryAvailable = (library: string) => stdout.toLowerCase().includes(library.toLowerCase());
   return libraries.filter(library => !isLibraryAvailable(library));
+}
+
+async function missingSystemBinaries(browser: BrowserDescriptor): Promise<string[]> {
+  if (browser.name !== 'chromium')
+    return [];
+  // Look for ffmpeg in PATH.
+  const {code, error} = await spawnAsync('ffmpeg', ['-version'], {});
+  if (code !== 0 || error)
+    return ['ffmpeg'];
+  return [];
 }
 
 function spawnAsync(cmd: string, args: string[], options: any): Promise<{stdout: string, stderr: string, code: number, error?: Error}> {
@@ -415,4 +428,14 @@ const LIBRARY_TO_PACKAGE_NAME_UBUNTU_20_04: { [s: string]: string} = {
   'libxslt.so.1': 'libxslt1.1',
   'libXt.so.6': 'libxt6',
   'libXtst.so.6': 'libxtst6',
+};
+
+const MANUAL_LIBRARY_TO_PACKAGE_NAME_UBUNTU: { [s: string]: string} = {
+  // libgstlibav.so (the only actual library provided by gstreamer1.0-libav) is not
+  // in the ldconfig cache, so we detect the actual library required for playing h.264
+  // and if it's missing recommend installing missing gstreamer lib.
+  // gstreamer1.0-libav -> libavcodec57 -> libx264-152
+  'libx264.so': 'gstreamer1.0-libav',
+  // Required for screencast in Chromium.
+  'ffmpeg': 'ffmpeg',
 };

@@ -26,6 +26,7 @@
 * [test-real-styles](https://github.com/Xiphe/test-real-styles): Utility to test real styling of virtual DOM elements in a browser
 * [Testim Playground](https://www.testim.io/playground/): Record Playwright UI tests as code
 * [Try Playwright](https://try.playwright.tech/): Interactive playground for Playwright to run examples directly from your browser
+* [Applitools](https://applitools.com): Add AI-powered visual assertions and run your Playwright tests on all browser, device, and viewport combinations in parallel, without requiring any setup.
 
 ## Frameworks
 
@@ -44,6 +45,11 @@
 * [playwright-azure-functions](https://github.com/arjun27/playwright-azure-functions): Playwright setup on Azure Functions
 * [playwright-aws-lambda](https://github.com/austinkelleher/playwright-aws-lambda): Playwright setup on AWS Lambda
 * [playwright-jest-circus-allure](https://github.com/d-shch/playwright-jest-circus-allure): Example how to use allure-report and jest-circus with playwright
+* [Heroku Playwright Example](https://github.com/mxschmitt/heroku-playwright-example): Example using Playwright on Heroku
+
+## Guides
+
+* [theheadless.dev](https://theheadless.dev): Practical guides and runnable examples on Playwright (and Puppeteer)
 
 ## Contributing
 

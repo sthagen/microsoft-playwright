@@ -16,15 +16,17 @@
  */
 
 import fs from 'fs';
-import { options } from './playwright.fixtures';
+import { it, expect, options } from './playwright.fixtures';
 
-it.skip(Boolean(process.env.CRPATH || process.env.FFPATH || process.env.WKPATH))('browserType.executablePath should work', async({browserType}) => {
+it('browserType.executablePath should work', test => {
+  test.skip(Boolean(process.env.CRPATH || process.env.FFPATH || process.env.WKPATH));
+}, async ({browserType}) => {
   const executablePath = browserType.executablePath();
   expect(fs.existsSync(executablePath)).toBe(true);
   expect(fs.realpathSync(executablePath)).toBe(executablePath);
 });
 
-it('browserType.name should work', async({browserType}) => {
+it('browserType.name should work', async ({browserType}) => {
   if (options.WEBKIT)
     expect(browserType.name()).toBe('webkit');
   else if (options.FIREFOX)

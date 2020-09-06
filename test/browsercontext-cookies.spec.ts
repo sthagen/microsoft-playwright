@@ -14,13 +14,14 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import { options } from './playwright.fixtures';
 
-it('should return no cookies in pristine browser context', async({context, page, server}) => {
+import { it, expect, options } from './playwright.fixtures';
+
+it('should return no cookies in pristine browser context', async ({context, page, server}) => {
   expect(await context.cookies()).toEqual([]);
 });
 
-it('should get a cookie', async({context, page, server}) => {
+it('should get a cookie', async ({context, page, server}) => {
   await page.goto(server.EMPTY_PAGE);
   const documentCookie = await page.evaluate(() => {
     document.cookie = 'username=John Doe';
@@ -39,7 +40,7 @@ it('should get a cookie', async({context, page, server}) => {
   }]);
 });
 
-it('should get a non-session cookie', async({context, page, server}) => {
+it('should get a non-session cookie', async ({context, page, server}) => {
   await page.goto(server.EMPTY_PAGE);
   // @see https://en.wikipedia.org/wiki/Year_2038_problem
   const date = +(new Date('1/1/2038'));
@@ -61,7 +62,7 @@ it('should get a non-session cookie', async({context, page, server}) => {
   }]);
 });
 
-it('should properly report httpOnly cookie', async({context, page, server}) => {
+it('should properly report httpOnly cookie', async ({context, page, server}) => {
   server.setRoute('/empty.html', (req, res) => {
     res.setHeader('Set-Cookie', 'name=value;HttpOnly; Path=/');
     res.end();
@@ -72,7 +73,9 @@ it('should properly report httpOnly cookie', async({context, page, server}) => {
   expect(cookies[0].httpOnly).toBe(true);
 });
 
-it.fail(options.WEBKIT && WIN)('should properly report "Strict" sameSite cookie', async({context, page, server}) => {
+it('should properly report "Strict" sameSite cookie', test => {
+  test.fail(options.WEBKIT && WIN);
+}, async ({context, page, server}) => {
   server.setRoute('/empty.html', (req, res) => {
     res.setHeader('Set-Cookie', 'name=value;SameSite=Strict');
     res.end();
@@ -83,7 +86,9 @@ it.fail(options.WEBKIT && WIN)('should properly report "Strict" sameSite cookie'
   expect(cookies[0].sameSite).toBe('Strict');
 });
 
-it.fail(options.WEBKIT && WIN)('should properly report "Lax" sameSite cookie', async({context, page, server}) => {
+it('should properly report "Lax" sameSite cookie', test => {
+  test.fail(options.WEBKIT && WIN);
+}, async ({context, page, server}) => {
   server.setRoute('/empty.html', (req, res) => {
     res.setHeader('Set-Cookie', 'name=value;SameSite=Lax');
     res.end();
@@ -94,7 +99,7 @@ it.fail(options.WEBKIT && WIN)('should properly report "Lax" sameSite cookie', a
   expect(cookies[0].sameSite).toBe('Lax');
 });
 
-it('should get multiple cookies', async({context, page, server}) => {
+it('should get multiple cookies', async ({context, page, server}) => {
   await page.goto(server.EMPTY_PAGE);
   const documentCookie = await page.evaluate(() => {
     document.cookie = 'username=John Doe';
@@ -128,7 +133,7 @@ it('should get multiple cookies', async({context, page, server}) => {
   ]);
 });
 
-it('should get cookies from multiple urls', async({context}) => {
+it('should get cookies from multiple urls', async ({context}) => {
   await context.addCookies([{
     url: 'https://foo.com',
     name: 'doggo',

@@ -14,11 +14,18 @@
  * limitations under the License.
  */
 
-import { parameters } from '../test-runner';
-import { options } from './playwright.fixtures';
+import { parameters } from '@playwright/test-runner';
+import { it, expect, options } from './playwright.fixtures';
 
 import socks from 'socksv5';
 
+it('should throw for bad server value', async ({browserType, defaultBrowserOptions}) => {
+  const error = await browserType.launch({
+    ...defaultBrowserOptions,
+    proxy: { server: 123 as any }
+  }).catch(e => e);
+  expect(error.message).toContain('proxy.server: expected string, got number');
+});
 
 it('should use proxy', async ({browserType, defaultBrowserOptions, server}) => {
   server.setRoute('/target.html', async (req, res) => {
@@ -27,6 +34,20 @@ it('should use proxy', async ({browserType, defaultBrowserOptions, server}) => {
   const browser = await browserType.launch({
     ...defaultBrowserOptions,
     proxy: { server: `localhost:${server.PORT}` }
+  });
+  const page = await browser.newPage();
+  await page.goto('http://non-existent.com/target.html');
+  expect(await page.title()).toBe('Served by the proxy');
+  await browser.close();
+});
+
+it('should work with IP:PORT notion', async ({browserType, defaultBrowserOptions, server}) => {
+  server.setRoute('/target.html', async (req, res) => {
+    res.end('<html><title>Served by the proxy</title></html>');
+  });
+  const browser = await browserType.launch({
+    ...defaultBrowserOptions,
+    proxy: { server: `127.0.0.1:${server.PORT}` }
   });
   const page = await browser.newPage();
   await page.goto('http://non-existent.com/target.html');
@@ -56,8 +77,9 @@ it('should authenticate', async ({browserType, defaultBrowserOptions, server}) =
   await browser.close();
 });
 
-it.fail(options.CHROMIUM && !options.HEADLESS)('should exclude patterns', async ({browserType, defaultBrowserOptions, server}) => {
-  // Chromium headful crashes with CHECK(!in_frame_tree_) in RenderFrameImpl::OnDeleteFrame.
+it('should exclude patterns', test => {
+  test.flaky(options.CHROMIUM && !options.HEADLESS, 'Chromium headful crashes with CHECK(!in_frame_tree_) in RenderFrameImpl::OnDeleteFrame.');
+}, async ({browserType, defaultBrowserOptions, server}) => {
   server.setRoute('/target.html', async (req, res) => {
     res.end('<html><title>Served by the proxy</title></html>');
   });
@@ -97,10 +119,12 @@ it.fail(options.CHROMIUM && !options.HEADLESS)('should exclude patterns', async 
   await browser.close();
 });
 
-it('should use socks proxy', async ({ browserType, defaultBrowserOptions }) => {
+it('should use socks proxy', test => {
+  test.flaky(MAC && options.WEBKIT, 'Intermittent page.goto: The network connection was lost error on bots');
+}, async ({ browserType, defaultBrowserOptions }) => {
   const server = socks.createServer((info, accept, deny) => {
     let socket;
-    if (socket = accept(true)) {
+    if ((socket = accept(true))) {
       // Catch and ignore ECONNRESET errors.
       socket.on('error', () => {});
       const body = '<html><title>Served by the SOCKS proxy</title></html>';

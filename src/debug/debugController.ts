@@ -14,14 +14,38 @@
  * limitations under the License.
  */
 
-import { BrowserContext } from '../browserContext';
-import * as frames from '../frames';
-import * as js from '../javascript';
-import { Page } from '../page';
-import DebugScript from './injected/debugScript';
+import { BrowserContext } from '../server/browserContext';
+import * as frames from '../server/frames';
+import * as js from '../server/javascript';
+import { Page } from '../server/page';
+import { InstrumentingAgent } from '../server/instrumentation';
+import type DebugScript from './injected/debugScript';
+import { Progress } from '../server/progress';
+import { isDebugMode } from '../utils/utils';
+import * as debugScriptSource from '../generated/debugScriptSource';
 
-export class DebugController {
-  constructor(context: BrowserContext) {
+const debugScriptSymbol = Symbol('debugScript');
+
+export class DebugController implements InstrumentingAgent {
+  private async ensureInstalledInFrame(frame: frames.Frame) {
+    try {
+      const mainContext = await frame._mainContext();
+      if ((mainContext as any)[debugScriptSymbol])
+        return;
+      (mainContext as any)[debugScriptSymbol] = true;
+      const objectId = await mainContext._delegate.rawEvaluate(`new (${debugScriptSource.source})()`);
+      const debugScript = new js.JSHandle(mainContext, 'object', objectId) as js.JSHandle<DebugScript>;
+      const injectedScript = await mainContext.injectedScript();
+      await debugScript.evaluate((debugScript, injectedScript) => {
+        debugScript.initialize(injectedScript, { console: true });
+      }, injectedScript);
+    } catch (e) {
+    }
+  }
+
+  async onContextCreated(context: BrowserContext): Promise<void> {
+    if (!isDebugMode())
+      return;
     context.on(BrowserContext.Events.Page, (page: Page) => {
       for (const frame of page.frames())
         this.ensureInstalledInFrame(frame);
@@ -29,11 +53,9 @@ export class DebugController {
     });
   }
 
-  private async ensureInstalledInFrame(frame: frames.Frame): Promise<js.JSHandle<DebugScript> | undefined> {
-    try {
-      const mainContext = await frame._mainContext();
-      return await mainContext.createDebugScript({ console: true });
-    } catch (e) {
-    }
+  async onContextDestroyed(context: BrowserContext): Promise<void> {
+  }
+
+  async onBeforePageAction(page: Page, progress: Progress): Promise<void> {
   }
 }
