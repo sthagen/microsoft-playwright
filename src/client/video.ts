@@ -14,26 +14,24 @@
  * limitations under the License.
  */
 
-import * as channels from '../protocol/channels';
-import { Browser } from './browser';
-import { BrowserContext } from './browserContext';
-import { ChannelOwner } from './channelOwner';
+import * as path from 'path';
+import { Page } from './page';
 
-export class Video extends ChannelOwner<channels.VideoChannel, channels.VideoInitializer> {
-  private _browser: Browser | undefined;
+export class Video {
+  private _page: Page;
+  private _pathCallback: ((path: string) => void) | undefined;
+  private _pathPromise: Promise<string>;
 
-  static from(channel: channels.VideoChannel): Video {
-    return (channel as any)._object;
+  constructor(page: Page) {
+    this._page = page;
+    this._pathPromise = new Promise(f => this._pathCallback = f);
   }
 
-  constructor(parent: ChannelOwner, type: string, guid: string, initializer: channels.VideoInitializer) {
-    super(parent, type, guid, initializer);
-    this._browser = (parent as BrowserContext)._browser;
+  _setRelativePath(relativePath: string) {
+    this._pathCallback!(path.join(this._page.context()._options.videosPath!, relativePath));
   }
 
-  async path(): Promise<string> {
-    if (this._browser && this._browser._isRemote)
-      throw new Error(`Path is not available when using browserType.connect().`);
-    return (await this._channel.path()).value;
+  path(): Promise<string> {
+    return this._pathPromise;
   }
 }

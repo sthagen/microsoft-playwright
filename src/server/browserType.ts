@@ -24,30 +24,22 @@ import { ConnectionTransport, WebSocketTransport } from './transport';
 import { BrowserOptions, Browser, BrowserProcess } from './browser';
 import { launchProcess, Env, waitForLine, envArrayToObject } from './processLauncher';
 import { PipeTransport } from './pipeTransport';
-import { Progress, runAbortableTask } from './progress';
+import { Progress, ProgressController } from './progress';
 import * as types from './types';
 import { TimeoutSettings } from '../utils/timeoutSettings';
 import { validateHostRequirements } from './validateDependencies';
-import { assert, isDebugMode } from '../utils/utils';
-
-export interface BrowserType {
-  executablePath(): string;
-  name(): string;
-  launch(options?: types.LaunchOptions): Promise<Browser>;
-  launchPersistentContext(userDataDir: string, options?: types.LaunchPersistentOptions): Promise<BrowserContext>;
-}
+import { isDebugMode } from '../utils/utils';
 
 const mkdirAsync = util.promisify(fs.mkdir);
 const mkdtempAsync = util.promisify(fs.mkdtemp);
 const existsAsync = (path: string): Promise<boolean> => new Promise(resolve => fs.stat(path, err => resolve(!err)));
 const DOWNLOADS_FOLDER = path.join(os.tmpdir(), 'playwright_downloads-');
-const VIDEOS_FOLDER = path.join(os.tmpdir(), 'playwright_videos-');
 
 type WebSocketNotPipe = { webSocketRegex: RegExp, stream: 'stdout' | 'stderr' };
 
-export abstract class BrowserTypeBase implements BrowserType {
+export abstract class BrowserType {
   private _name: string;
-  private _executablePath: string | undefined;
+  private _executablePath: string;
   private _webSocketNotPipe: WebSocketNotPipe | null;
   private _browserDescriptor: browserPaths.BrowserDescriptor;
   readonly _browserPath: string;
@@ -57,13 +49,11 @@ export abstract class BrowserTypeBase implements BrowserType {
     const browsersPath = browserPaths.browsersPath(packagePath);
     this._browserDescriptor = browser;
     this._browserPath = browserPaths.browserDirectory(browsersPath, browser);
-    this._executablePath = browserPaths.executablePath(this._browserPath, browser);
+    this._executablePath = browserPaths.executablePath(this._browserPath, browser) || '';
     this._webSocketNotPipe = webSocketOrPipe;
   }
 
   executablePath(): string {
-    if (!this._executablePath)
-      throw new Error('Browser is not supported on current platform');
     return this._executablePath;
   }
 
@@ -72,25 +62,29 @@ export abstract class BrowserTypeBase implements BrowserType {
   }
 
   async launch(options: types.LaunchOptions = {}): Promise<Browser> {
-    assert(!(options as any).userDataDir, 'userDataDir option is not supported in `browserType.launch`. Use `browserType.launchPersistentContext` instead');
-    assert(!(options as any).port, 'Cannot specify a port without launching as a server.');
     options = validateLaunchOptions(options);
-    const browser = await runAbortableTask(progress => this._innerLaunch(progress, options, undefined), TimeoutSettings.timeout(options), 'browser').catch(e => { throw this._rewriteStartupError(e); });
+    const controller = new ProgressController();
+    controller.setLogName('browser');
+    const browser = await controller.run(progress => {
+      return this._innerLaunch(progress, options, undefined).catch(e => { throw this._rewriteStartupError(e); });
+    }, TimeoutSettings.timeout(options));
     return browser;
   }
 
   async launchPersistentContext(userDataDir: string, options: types.LaunchPersistentOptions = {}): Promise<BrowserContext> {
-    assert(!(options as any).port, 'Cannot specify a port without launching as a server.');
     options = validateLaunchOptions(options);
     const persistent: types.BrowserContextOptions = options;
-    validateBrowserContextOptions(persistent);
-    const browser = await runAbortableTask(progress => this._innerLaunch(progress, options, persistent, userDataDir), TimeoutSettings.timeout(options), 'browser').catch(e => { throw this._rewriteStartupError(e); });
+    const controller = new ProgressController();
+    controller.setLogName('browser');
+    const browser = await controller.run(progress => {
+      return this._innerLaunch(progress, options, persistent, userDataDir).catch(e => { throw this._rewriteStartupError(e); });
+    }, TimeoutSettings.timeout(options));
     return browser._defaultContext!;
   }
 
   async _innerLaunch(progress: Progress, options: types.LaunchOptions, persistent: types.BrowserContextOptions | undefined, userDataDir?: string): Promise<Browser> {
     options.proxy = options.proxy ? normalizeProxySettings(options.proxy) : undefined;
-    const { browserProcess, downloadsPath, _videosPath, transport } = await this._launchProcess(progress, options, !!persistent, userDataDir);
+    const { browserProcess, downloadsPath, transport } = await this._launchProcess(progress, options, !!persistent, userDataDir);
     if ((options as any).__testHookBeforeCreateBrowser)
       await (options as any).__testHookBeforeCreateBrowser();
     const browserOptions: BrowserOptions = {
@@ -99,10 +93,11 @@ export abstract class BrowserTypeBase implements BrowserType {
       persistent,
       headful: !options.headless,
       downloadsPath,
-      _videosPath,
       browserProcess,
       proxy: options.proxy,
     };
+    if (persistent)
+      validateBrowserContextOptions(persistent, browserOptions);
     copyTestHooks(options, browserOptions);
     const browser = await this._connectToTransport(transport, browserOptions);
     // We assume no control when using custom arguments, and do not prepare the default context in that case.
@@ -111,7 +106,7 @@ export abstract class BrowserTypeBase implements BrowserType {
     return browser;
   }
 
-  private async _launchProcess(progress: Progress, options: types.LaunchOptions, isPersistent: boolean, userDataDir?: string): Promise<{ browserProcess: BrowserProcess, downloadsPath: string, _videosPath: string, transport: ConnectionTransport }> {
+  private async _launchProcess(progress: Progress, options: types.LaunchOptions, isPersistent: boolean, userDataDir?: string): Promise<{ browserProcess: BrowserProcess, downloadsPath: string, transport: ConnectionTransport }> {
     const {
       ignoreDefaultArgs,
       ignoreAllDefaultArgs,
@@ -136,8 +131,8 @@ export abstract class BrowserTypeBase implements BrowserType {
       }
       return dir;
     };
+    // TODO: add downloadsPath to newContext().
     const downloadsPath = await ensurePath(DOWNLOADS_FOLDER, options.downloadsPath);
-    const _videosPath = await ensurePath(VIDEOS_FOLDER, options._videosPath);
 
     if (!userDataDir) {
       userDataDir = await mkdtempAsync(path.join(os.tmpdir(), `playwright_${this._name}dev_profile-`));
@@ -174,7 +169,7 @@ export abstract class BrowserTypeBase implements BrowserType {
     let browserProcess: BrowserProcess | undefined = undefined;
     const { launchedProcess, gracefullyClose, kill } = await launchProcess({
       executablePath: executable,
-      args: this._amendArguments(browserArguments),
+      args: browserArguments,
       env: this._amendEnvironment(env, userDataDir, executable, browserArguments),
       handleSIGINT,
       handleSIGTERM,
@@ -211,13 +206,12 @@ export abstract class BrowserTypeBase implements BrowserType {
       const stdio = launchedProcess.stdio as unknown as [NodeJS.ReadableStream, NodeJS.WritableStream, NodeJS.WritableStream, NodeJS.WritableStream, NodeJS.ReadableStream];
       transport = new PipeTransport(stdio[3], stdio[4]);
     }
-    return { browserProcess, downloadsPath, _videosPath, transport };
+    return { browserProcess, downloadsPath, transport };
   }
 
   abstract _defaultArgs(options: types.LaunchOptions, isPersistent: boolean, userDataDir: string): string[];
   abstract _connectToTransport(transport: ConnectionTransport, options: BrowserOptions): Promise<Browser>;
   abstract _amendEnvironment(env: Env, userDataDir: string, executable: string, browserArguments: string[]): Env;
-  abstract _amendArguments(browserArguments: string[]): string[];
   abstract _rewriteStartupError(error: Error): Error;
   abstract _attemptToGracefullyCloseBrowser(transport: ConnectionTransport): void;
 }

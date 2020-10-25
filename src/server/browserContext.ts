@@ -17,36 +17,81 @@
 
 import { EventEmitter } from 'events';
 import { TimeoutSettings } from '../utils/timeoutSettings';
-import { Browser } from './browser';
+import { mkdirIfNeeded } from '../utils/utils';
+import { Browser, BrowserOptions } from './browser';
+import * as dom from './dom';
 import { Download } from './download';
 import * as frames from './frames';
 import { helper } from './helper';
-import { instrumentingAgents } from './instrumentation';
 import * as network from './network';
 import { Page, PageBinding } from './page';
-import { Progress } from './progress';
+import { Progress, ProgressController, ProgressResult } from './progress';
 import { Selectors, serverSelectors } from './selectors';
 import * as types from './types';
+import * as path from 'path';
 
 export class Video {
-  private readonly _path: string;
-  _finishCallback: () => void = () => {};
-  private readonly _finishedPromise: Promise<void>;
-  constructor(path: string) {
-    this._path = path;
+  readonly _videoId: string;
+  readonly _path: string;
+  readonly _relativePath: string;
+  readonly _context: BrowserContext;
+  readonly _finishedPromise: Promise<void>;
+  private _finishCallback: () => void = () => {};
+  private _callbackOnFinish?: () => Promise<void>;
+
+  constructor(context: BrowserContext, videoId: string, p: string) {
+    this._videoId = videoId;
+    this._path = p;
+    this._relativePath = path.relative(context._options.videosPath!, p);
+    this._context = context;
     this._finishedPromise = new Promise(fulfill => this._finishCallback = fulfill);
   }
 
-  async path(): Promise<string> {
-    await this._finishedPromise;
-    return this._path;
+  async _finish() {
+    if (this._callbackOnFinish)
+      await this._callbackOnFinish();
+    this._finishCallback();
+  }
+
+  _waitForCallbackOnFinish(callback: () => Promise<void>) {
+    this._callbackOnFinish = callback;
   }
 }
+
+export type ActionMetadata = {
+  type: 'click' | 'fill' | 'dblclick' | 'hover' | 'selectOption' | 'setInputFiles' | 'type' | 'press' | 'check' | 'uncheck' | 'goto' | 'setContent' | 'goBack' | 'goForward' | 'reload' | 'tap',
+  page: Page,
+  target?: dom.ElementHandle | string,
+  value?: string,
+  stack?: string,
+};
+
+export interface ActionListener {
+  onAfterAction(result: ProgressResult, metadata: ActionMetadata): Promise<void>;
+}
+
+export async function runAction<T>(task: (controller: ProgressController) => Promise<T>, metadata: ActionMetadata): Promise<T> {
+  const controller = new ProgressController();
+  controller.setListener(async result => {
+    for (const listener of metadata.page._browserContext._actionListeners)
+      await listener.onAfterAction(result, metadata);
+  });
+  const result = await task(controller);
+  return result;
+}
+
+export interface ContextListener {
+  onContextCreated(context: BrowserContext): Promise<void>;
+  onContextDestroyed(context: BrowserContext): Promise<void>;
+}
+
+export const contextListeners = new Set<ContextListener>();
 
 export abstract class BrowserContext extends EventEmitter {
   static Events = {
     Close: 'close',
     Page: 'page',
+    VideoStarted: 'videostarted',
   };
 
   readonly _timeoutSettings = new TimeoutSettings();
@@ -62,6 +107,7 @@ export abstract class BrowserContext extends EventEmitter {
   readonly _browser: Browser;
   readonly _browserContextId: string | undefined;
   private _selectors?: Selectors;
+  readonly _actionListeners = new Set<ActionListener>();
 
   constructor(browser: Browser, options: types.BrowserContextOptions, browserContextId: string | undefined) {
     super();
@@ -81,8 +127,13 @@ export abstract class BrowserContext extends EventEmitter {
   }
 
   async _initialize() {
-    for (const agent of instrumentingAgents)
-      await agent.onContextCreated(this);
+    for (const listener of contextListeners)
+      await listener.onContextCreated(this);
+  }
+
+  async _ensureVideosPath() {
+    if (this._options.videosPath)
+      await mkdirIfNeeded(path.join(this._options.videosPath, 'dummy'));
   }
 
   _browserClosed() {
@@ -130,14 +181,14 @@ export abstract class BrowserContext extends EventEmitter {
     return this._doSetHTTPCredentials(httpCredentials);
   }
 
-  async exposeBinding(name: string, playwrightBinding: frames.FunctionWithSource): Promise<void> {
+  async exposeBinding(name: string, needsHandle: boolean, playwrightBinding: frames.FunctionWithSource): Promise<void> {
     for (const page of this.pages()) {
       if (page._pageBindings.has(name))
         throw new Error(`Function "${name}" has been already registered in one of the pages`);
     }
     if (this._pageBindings.has(name))
       throw new Error(`Function "${name}" has been already registered`);
-    const binding = new PageBinding(name, playwrightBinding);
+    const binding = new PageBinding(name, playwrightBinding, needsHandle);
     this._pageBindings.set(name, binding);
     this._doExposeBinding(binding);
   }
@@ -175,7 +226,7 @@ export abstract class BrowserContext extends EventEmitter {
       await waitForEvent.promise;
     }
     const pages = this.pages();
-    await pages[0].mainFrame().waitForLoadState();
+    await pages[0].mainFrame()._waitForLoadState(progress, 'load');
     if (pages.length !== 1 || pages[0].mainFrame().url() !== 'about:blank')
       throw new Error(`Arguments can not specify page to be opened (first url is ${pages[0].mainFrame().url()})`);
     if (this._options.isMobile || this._options.locale) {
@@ -216,18 +267,37 @@ export abstract class BrowserContext extends EventEmitter {
   }
 
   async close() {
-    if (this._isPersistentContext) {
-      // Default context is only created in 'persistent' mode and closing it should close
-      // the browser.
-      await this._browser.close();
-      return;
-    }
     if (this._closedStatus === 'open') {
       this._closedStatus = 'closing';
-      await this._doClose();
-      await Promise.all([...this._downloads].map(d => d.delete()));
-      for (const agent of instrumentingAgents)
-        await agent.onContextDestroyed(this);
+
+      // Collect videos/downloads that we will await.
+      const promises: Promise<any>[] = [];
+      for (const download of this._downloads)
+        promises.push(download.delete());
+      for (const video of this._browser._idToVideo.values()) {
+        if (video._context === this)
+          promises.push(video._finishedPromise);
+      }
+
+      if (this._isPersistentContext) {
+        // Close all the pages instead of the context,
+        // because we cannot close the default context.
+        await Promise.all(this.pages().map(page => page.close()));
+      } else {
+        // Close the context.
+        await this._doClose();
+      }
+
+      // Wait for the videos/downloads to finish.
+      await Promise.all(promises);
+
+      // Persistent context should also close the browser.
+      if (this._isPersistentContext)
+        await this._browser.close();
+
+      // Bookkeeping.
+      for (const listener of contextListeners)
+        await listener.onContextDestroyed(this);
       this._didCloseInternal();
     }
     await this._closePromise;
@@ -241,7 +311,7 @@ export function assertBrowserContextIsNotOwned(context: BrowserContext) {
   }
 }
 
-export function validateBrowserContextOptions(options: types.BrowserContextOptions) {
+export function validateBrowserContextOptions(options: types.BrowserContextOptions, browserOptions: BrowserOptions) {
   if (options.noDefaultViewport && options.deviceScaleFactor !== undefined)
     throw new Error(`"deviceScaleFactor" option is not supported with null "viewport"`);
   if (options.noDefaultViewport && options.isMobile !== undefined)
@@ -249,6 +319,8 @@ export function validateBrowserContextOptions(options: types.BrowserContextOptio
   if (!options.viewport && !options.noDefaultViewport)
     options.viewport = { width: 1280, height: 720 };
   verifyGeolocation(options.geolocation);
+  if (options.videoSize && !options.videosPath)
+    throw new Error(`"videoSize" option requires "videosPath" to be specified`);
 }
 
 export function verifyGeolocation(geolocation?: types.Geolocation) {

@@ -15,13 +15,14 @@
  * limitations under the License.
  */
 
-import { it, expect, options } from './playwright.fixtures';
+import { it, expect } from './fixtures';
+import { attachFrame, detachFrame } from './utils';
 
-import utils from './utils';
+import type { Frame } from '../src/client/frame';
 
 it('should have different execution contexts', async ({ page, server }) => {
   await page.goto(server.EMPTY_PAGE);
-  await utils.attachFrame(page, 'frame1', server.EMPTY_PAGE);
+  await attachFrame(page, 'frame1', server.EMPTY_PAGE);
   expect(page.frames().length).toBe(2);
   await page.frames()[0].evaluate(() => window['FOO'] = 'foo');
   await page.frames()[1].evaluate(() => window['FOO'] = 'bar');
@@ -36,31 +37,31 @@ it('should have correct execution contexts', async ({ page, server }) => {
   expect(await page.frames()[1].evaluate(() => document.body.textContent.trim())).toBe(`Hi, I'm frame`);
 });
 
-function expectContexts(pageImpl, count) {
-  if (options.CHROMIUM)
+function expectContexts(pageImpl, count, isChromium) {
+  if (isChromium)
     expect(pageImpl._delegate._mainFrameSession._contextIdToContext.size).toBe(count);
   else
     expect(pageImpl._delegate._contextIdToContext.size).toBe(count);
 }
 
-it('should dispose context on navigation', test => {
-  test.skip(options.WIRE);
-}, async ({ page, server, toImpl }) => {
+it('should dispose context on navigation', (test, { wire }) => {
+  test.skip(wire);
+}, async ({ page, server, toImpl, isChromium }) => {
   await page.goto(server.PREFIX + '/frames/one-frame.html');
   expect(page.frames().length).toBe(2);
-  expectContexts(toImpl(page), 4);
+  expectContexts(toImpl(page), 4, isChromium);
   await page.goto(server.EMPTY_PAGE);
-  expectContexts(toImpl(page), 2);
+  expectContexts(toImpl(page), 2, isChromium);
 });
 
-it('should dispose context on cross-origin navigation', test => {
-  test.skip(options.WIRE);
-}, async ({ page, server, toImpl }) => {
+it('should dispose context on cross-origin navigation', (test, { wire }) => {
+  test.skip(wire);
+}, async ({ page, server, toImpl, isChromium }) => {
   await page.goto(server.PREFIX + '/frames/one-frame.html');
   expect(page.frames().length).toBe(2);
-  expectContexts(toImpl(page), 4);
+  expectContexts(toImpl(page), 4, isChromium);
   await page.goto(server.CROSS_PROCESS_PREFIX + '/empty.html');
-  expectContexts(toImpl(page), 2);
+  expectContexts(toImpl(page), 2, isChromium);
 });
 
 it('should execute after cross-site navigation', async ({ page, server }) => {
@@ -98,15 +99,15 @@ it('should allow cross-frame element handles', async ({ page, server }) => {
 
 it('should not allow cross-frame element handles when frames do not script each other', async ({ page, server }) => {
   await page.goto(server.EMPTY_PAGE);
-  const frame = await utils.attachFrame(page, 'frame1', server.CROSS_PROCESS_PREFIX + '/empty.html');
+  const frame = await attachFrame(page, 'frame1', server.CROSS_PROCESS_PREFIX + '/empty.html');
   const bodyHandle = await frame.$('body');
   const error = await page.evaluate(body => body.innerHTML, bodyHandle).catch(e => e);
   expect(error.message).toContain('Unable to adopt element handle from a different document');
 });
 
 it('should throw for detached frames', async ({page, server}) => {
-  const frame1 = await utils.attachFrame(page, 'frame1', server.EMPTY_PAGE);
-  await utils.detachFrame(page, 'frame1');
+  const frame1 = await attachFrame(page, 'frame1', server.EMPTY_PAGE);
+  await detachFrame(page, 'frame1');
   let error = null;
   await frame1.evaluate(() => 7 * 8).catch(e => error = e);
   expect(error.message).toContain('Execution Context is not available in detached frame');
@@ -114,7 +115,7 @@ it('should throw for detached frames', async ({page, server}) => {
 
 it('should be isolated between frames', async ({page, server}) => {
   await page.goto(server.EMPTY_PAGE);
-  await utils.attachFrame(page, 'frame1', server.EMPTY_PAGE);
+  await attachFrame(page, 'frame1', server.EMPTY_PAGE);
   expect(page.frames().length).toBe(2);
   const [frame1, frame2] = page.frames();
   expect(frame1 !== frame2).toBeTruthy();
@@ -131,9 +132,9 @@ it('should be isolated between frames', async ({page, server}) => {
   expect(a2).toBe(2);
 });
 
-it('should work in iframes that failed initial navigation', test => {
-  test.fail(options.CHROMIUM);
-  test.fixme(options.FIREFOX);
+it('should work in iframes that failed initial navigation', (test, { browserName }) => {
+  test.fail(browserName === 'chromium');
+  test.fixme(browserName === 'firefox');
 }, async ({page}) => {
   // - Firefox does not report domcontentloaded for the iframe.
   // - Chromium and Firefox report empty url.
@@ -155,8 +156,8 @@ it('should work in iframes that failed initial navigation', test => {
   expect(await page.frames()[1].$('div')).toBeTruthy();
 });
 
-it('should work in iframes that interrupted initial javascript url navigation', test => {
-  test.fixme(options.CHROMIUM);
+it('should work in iframes that interrupted initial javascript url navigation', (test, { browserName }) => {
+  test.fixme(browserName === 'chromium');
 }, async ({page, server}) => {
   // Chromium does not report isolated world for the iframe.
   await page.goto(server.EMPTY_PAGE);
@@ -179,4 +180,24 @@ it('evaluateHandle should work', async ({page, server}) => {
   const mainFrame = page.mainFrame();
   const windowHandle = await mainFrame.evaluateHandle(() => window);
   expect(windowHandle).toBeTruthy();
+});
+
+it('evaluateInUtility should work', async ({page}) => {
+  await page.setContent('<body>hello</body>');
+  const mainFrame = page.mainFrame() as any as Frame;
+  await mainFrame.evaluate(() => window['foo'] = 42);
+  expect(await mainFrame.evaluate(() => window['foo'])).toBe(42);
+  expect(await mainFrame._evaluateInUtility(() => window['foo'])).toBe(undefined);
+  expect(await mainFrame._evaluateInUtility(() => document.body.textContent)).toBe('hello');
+});
+
+it('evaluateHandleInUtility should work', async ({page}) => {
+  await page.setContent('<body>hello</body>');
+  const mainFrame = page.mainFrame() as any as Frame;
+  await mainFrame.evaluate(() => window['foo'] = 42);
+  expect(await mainFrame.evaluate(() => window['foo'])).toBe(42);
+  const handle1 = await mainFrame._evaluateHandleInUtility(() => window['foo']);
+  expect(await handle1.jsonValue()).toBe(undefined);
+  const handle2 = await mainFrame._evaluateHandleInUtility(() => document.body);
+  expect(await handle2.evaluate(body => body.textContent)).toBe('hello');
 });

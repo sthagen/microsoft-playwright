@@ -6,7 +6,6 @@
 * [TypeScript](https://github.com/microsoft/TypeScript): Playwright is used test typescript.js across browsers
 * [Elastic APM JS agent](https://github.com/elastic/apm-agent-rum-js): Playwright is used to run benchmark tests across browsers
 * [Blockstack](https://github.com/blockstack/ux): Playwright is used to run cross-browser UI tests
-* [Codex](https://github.com/codex-src/codex-app): Playwright is used to run functional and performance tests
 * [Instakittens React admin](https://github.com/fredericbonnet/instakittens-react-admin): Playwright is used to run end-to-end test scenarios written with Cucumber
 * [xterm.js](https://github.com/xtermjs/xterm.js): Playwright is used to run cross-browser integration tests
 * [Accessibility Insights for Web](https://github.com/microsoft/accessibility-insights-web): Playwright is used with Jest and axe-core to run end-to-end functional and accessibility tests of a WebExtension-based browser extension
@@ -23,6 +22,7 @@
 * [playwright-test](https://github.com/hugomrdias/playwright-test) Run unit tests and benchmarks in browsers with Node's seamless experience.
 * [playwright-video](https://github.com/qawolf/playwright-video): Capture a video while executing a Playwright script
 * [QA Wolf](https://github.com/qawolf/qawolf): Record and create Playwright tests and then run them in CI
+* [Root Cause OSS](https://github.com/testimio/root-cause): Capture screenshots on every step and display in a viewer with logs for easy troubleshooting.
 * [test-real-styles](https://github.com/Xiphe/test-real-styles): Utility to test real styling of virtual DOM elements in a browser
 * [Testim Playground](https://www.testim.io/playground/): Record Playwright UI tests as code
 * [Try Playwright](https://try.playwright.tech/): Interactive playground for Playwright to run examples directly from your browser
@@ -34,6 +34,7 @@
 * [query-selector-shadow-dom](https://github.com/Georgegriff/query-selector-shadow-dom): Custom selector engine to pierce shadow DOM roots
 * [Playwright Sharp](https://github.com/kblok/playwright-sharp): Work in progress port of Playwright to .NET
 * [playwright-fluent](https://github.com/hdorgeval/playwright-fluent): Fluent API around Playwright
+* [robotframework-browser](https://robotframework-browser.org/) Robotframework library that uses Playwright to achieve good development ergonomics.
 
 ## Examples
  

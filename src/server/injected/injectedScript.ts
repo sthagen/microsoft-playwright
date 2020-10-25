@@ -19,7 +19,7 @@ import { createCSSEngine } from './cssSelectorEngine';
 import { SelectorEngine, SelectorRoot } from './selectorEngine';
 import { createTextSelector } from './textSelectorEngine';
 import { XPathEngine } from './xpathSelectorEngine';
-import { ParsedSelector } from '../common/selectorParser';
+import { ParsedSelector, parseSelector } from '../common/selectorParser';
 import { FatalDOMError } from '../common/domErrors';
 
 type Predicate<T> = (progress: InjectedScriptProgress, continuePolling: symbol) => T | symbol;
@@ -61,6 +61,10 @@ export class InjectedScript {
     this.engines.set('data-test:light', createAttributeEngine('data-test', false));
     for (const {name, engine} of customEngines)
       this.engines.set(name, engine);
+  }
+
+  parseSelector(selector: string): ParsedSelector {
+    return parseSelector(selector);
   }
 
   querySelector(selector: ParsedSelector, root: Node): Element | undefined {
@@ -106,6 +110,11 @@ export class InjectedScript {
       return candidates;
     const partial = { parts: partsToCheckOne };
     return candidates.filter(e => !!this._querySelectorRecursively(e, partial, 0));
+  }
+
+  extend(source: string, params: any): any {
+    const constrFunction = global.eval(source);
+    return new constrFunction(this, params);
   }
 
   isVisible(element: Element): boolean {
@@ -475,13 +484,13 @@ export class InjectedScript {
     input.dispatchEvent(new Event('change', { 'bubbles': true }));
   }
 
-  waitForDisplayedAtStablePosition(node: Node, rafCount: number, waitForEnabled: boolean): InjectedScriptPoll<'error:notconnected' | 'done'> {
+  waitForDisplayedAtStablePosition(node: Node, rafOptions: { rafCount: number, useTimeout?: boolean }, waitForEnabled: boolean): InjectedScriptPoll<'error:notconnected' | 'done'> {
     let lastRect: { x: number, y: number, width: number, height: number } | undefined;
     let counter = 0;
     let samePositionCounter = 0;
     let lastTime = 0;
 
-    return this.pollRaf((progress, continuePolling) => {
+    const predicate = (progress: InjectedScriptProgress, continuePolling: symbol) => {
       // First raf happens in the same animation frame as evaluation, so it does not produce
       // any client rect difference compared to synchronous call. We skip the synchronous call
       // and only force layout during actual rafs as a small optimisation.
@@ -496,7 +505,7 @@ export class InjectedScript {
 
       // Drop frames that are shorter than 16ms - WebKit Win bug.
       const time = performance.now();
-      if (rafCount > 1 && time - lastTime < 15)
+      if (rafOptions.rafCount > 1 && time - lastTime < 15)
         return continuePolling;
       lastTime = time;
 
@@ -509,7 +518,7 @@ export class InjectedScript {
         ++samePositionCounter;
       else
         samePositionCounter = 0;
-      const isStable = samePositionCounter >= rafCount;
+      const isStable = samePositionCounter >= rafOptions.rafCount;
       const isStableForLogs = isStable || !lastRect;
       lastRect = rect;
 
@@ -528,7 +537,11 @@ export class InjectedScript {
       else if (isDisabled)
         progress.logRepeating(`    element is disabled - waiting...`);
       return continuePolling;
-    });
+    };
+    if (rafOptions.useTimeout)
+      return this.pollInterval(16, predicate);
+    else
+      return this.pollRaf(predicate);
   }
 
   checkHitTargetAt(node: Node, point: { x: number, y: number }): 'error:notconnected' | 'done' | { hitTargetDescription: string } {

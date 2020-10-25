@@ -33,7 +33,7 @@ import { getAccessibilityTree } from './wkAccessibility';
 import { WKBrowserContext } from './wkBrowser';
 import { WKSession } from './wkConnection';
 import { WKExecutionContext } from './wkExecutionContext';
-import { RawKeyboardImpl, RawMouseImpl } from './wkInput';
+import { RawKeyboardImpl, RawMouseImpl, RawTouchscreenImpl } from './wkInput';
 import { WKInterceptableRequest } from './wkInterceptableRequest';
 import { WKProvisionalPage } from './wkProvisionalPage';
 import { WKWorkers } from './wkWorkers';
@@ -44,6 +44,7 @@ const BINDING_CALL_MESSAGE = '__playwright_binding_call__';
 export class WKPage implements PageDelegate {
   readonly rawMouse: RawMouseImpl;
   readonly rawKeyboard: RawKeyboardImpl;
+  readonly rawTouchscreen: RawTouchscreenImpl;
   _session: WKSession;
   private _provisionalPage: WKProvisionalPage | null = null;
   readonly _page: Page;
@@ -74,6 +75,7 @@ export class WKPage implements PageDelegate {
     this._opener = opener;
     this.rawKeyboard = new RawKeyboardImpl(pageProxySession);
     this.rawMouse = new RawMouseImpl(pageProxySession);
+    this.rawTouchscreen = new RawTouchscreenImpl(pageProxySession);
     this._contextIdToContext = new Map();
     this._page = new Page(this, browserContext);
     this._workers = new WKWorkers(this._page);
@@ -113,11 +115,15 @@ export class WKPage implements PageDelegate {
       for (const [key, value] of this._browserContext._permissions)
         this._grantPermissions(key, value);
     }
-    if (this._browserContext._options._recordVideos) {
-      const contextOptions = this._browserContext._options._recordVideos;
-      const outputFile = path.join(this._browserContext._browser._options._videosPath!, createGuid() + '.webm');
-      const options = Object.assign({}, contextOptions, {outputFile});
-      promises.push(this.startScreencast(options));
+    if (this._browserContext._options.videosPath) {
+      const size = this._browserContext._options.videoSize || this._browserContext._options.viewport || { width: 1280, height: 720 };
+      const outputFile = path.join(this._browserContext._options.videosPath, createGuid() + '.webm');
+      promises.push(this._browserContext._ensureVideosPath().then(() => {
+        return this.startScreencast({
+          ...size,
+          outputFile,
+        });
+      }));
     }
     await Promise.all(promises);
   }
@@ -721,11 +727,7 @@ export class WKPage implements PageDelegate {
         width: options.width,
         height: options.height,
       }) as any;
-      const video = this._browserContext._browser._videoStarted(screencastId, options.outputFile);
-      this.pageOrError().then(pageOrError => {
-        if (pageOrError instanceof Page)
-          pageOrError.emit(Page.Events.VideoStarted, video);
-      }).catch(() => {});
+      this._browserContext._browser._videoStarted(this._browserContext, screencastId, options.outputFile, this.pageOrError());
     } catch (e) {
       this._recordingVideoFile = null;
       throw e;
@@ -856,7 +858,7 @@ export class WKPage implements PageDelegate {
     const parent = frame.parentFrame();
     if (!parent)
       throw new Error('Frame has been detached.');
-    const handles = await this._page.selectors._queryAll(parent, 'iframe', undefined, true /* allowUtilityContext */);
+    const handles = await this._page.selectors._queryAll(parent, 'iframe', undefined);
     const items = await Promise.all(handles.map(async handle => {
       const frame = await handle.contentFrame().catch(e => null);
       return { handle, frame };
@@ -876,7 +878,7 @@ export class WKPage implements PageDelegate {
       const request = this._requestIdToRequest.get(event.requestId);
       // If we connect late to the target, we could have missed the requestWillBeSent event.
       if (request) {
-        this._handleRequestRedirect(request, event.redirectResponse);
+        this._handleRequestRedirect(request, event.redirectResponse, event.timestamp);
         redirectedFrom = request.request;
       }
     }
@@ -891,9 +893,9 @@ export class WKPage implements PageDelegate {
     this._page._frameManager.requestStarted(request.request);
   }
 
-  private _handleRequestRedirect(request: WKInterceptableRequest, responsePayload: Protocol.Network.Response) {
+  private _handleRequestRedirect(request: WKInterceptableRequest, responsePayload: Protocol.Network.Response, timestamp: number) {
     const response = request.createResponse(responsePayload);
-    response._requestFinished('Response body is unavailable for redirect responses');
+    response._requestFinished(responsePayload.timing ? helper.secondsToRoundishMillis(timestamp - request._timestamp) : -1, 'Response body is unavailable for redirect responses');
     this._requestIdToRequest.delete(request._requestId);
     this._page._frameManager.requestReceivedResponse(response);
     this._page._frameManager.requestFinished(request.request);
@@ -940,7 +942,7 @@ export class WKPage implements PageDelegate {
     // event from protocol. @see https://crbug.com/883475
     const response = request.request._existingResponse();
     if (response)
-      response._requestFinished();
+      response._requestFinished(helper.secondsToRoundishMillis(event.timestamp - request._timestamp));
     this._requestIdToRequest.delete(request._requestId);
     this._page._frameManager.requestFinished(request.request);
   }
@@ -953,7 +955,7 @@ export class WKPage implements PageDelegate {
       return;
     const response = request.request._existingResponse();
     if (response)
-      response._requestFinished();
+      response._requestFinished(helper.secondsToRoundishMillis(event.timestamp - request._timestamp));
     this._requestIdToRequest.delete(request._requestId);
     request.request._setFailureText(event.errorText);
     this._page._frameManager.requestFailed(request.request, event.errorText.includes('cancelled'));

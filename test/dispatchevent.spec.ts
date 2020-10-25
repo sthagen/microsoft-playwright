@@ -14,9 +14,7 @@
  * limitations under the License.
  */
 
-import { it, expect, options } from './playwright.fixtures';
-
-import utils from './utils';
+import { it, expect } from './fixtures';
 
 it('should dispatch click event', async ({page, server}) => {
   await page.goto(server.PREFIX + '/input/button.html');
@@ -121,15 +119,13 @@ it('should be atomic', async ({playwright, page}) => {
       return result;
     }
   });
-  await utils.registerEngine(playwright, 'dispatchEvent', createDummySelector);
+  await playwright.selectors.register('dispatchEvent', createDummySelector);
   await page.setContent(`<div onclick="window._clicked=true">Hello</div>`);
   await page.dispatchEvent('dispatchEvent=div', 'click');
   expect(await page.evaluate(() => window['_clicked'])).toBe(true);
 });
 
-it('should dispatch drag drop events', test => {
-  test.fail(options.WEBKIT);
-}, async ({page, server}) => {
+it('should dispatch drag drop events', async ({page, server}) => {
   await page.goto(server.PREFIX + '/drag-n-drop.html');
   const dataTransfer = await page.evaluateHandle(() => new DataTransfer());
   await page.dispatchEvent('#source', 'dragstart', { dataTransfer });
@@ -141,9 +137,7 @@ it('should dispatch drag drop events', test => {
   }, {source, target})).toBeTruthy();
 });
 
-it('should dispatch drag drop events', test => {
-  test.fail(options.WEBKIT);
-}, async ({page, server}) => {
+it('should dispatch drag drop events', async ({page, server}) => {
   await page.goto(server.PREFIX + '/drag-n-drop.html');
   const dataTransfer = await page.evaluateHandle(() => new DataTransfer());
   const source = await page.$('#source');

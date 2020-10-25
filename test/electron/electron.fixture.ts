@@ -14,35 +14,35 @@
  * limitations under the License.
  */
 
-import '../playwright.fixtures';
-import { registerFixture } from '@playwright/test-runner';
-import type {ElectronApplication, ElectronLauncher, ElectronPage} from '../../electron-types';
+import { folio as base } from '../fixtures';
+import type { ElectronApplication, ElectronLauncher, ElectronPage } from '../../electron-types';
 import path from 'path';
 
 const electronName = process.platform === 'win32' ? 'electron.cmd' : 'electron';
 
-declare global {
-  interface TestState {
-    application: ElectronApplication;
-    window: ElectronPage;
-  }
-}
+type TestState = {
+  application: ElectronApplication;
+  window: ElectronPage;
+};
+const fixtures = base.extend<TestState>();
 
-declare module '../../index' {
-  const electron: ElectronLauncher;
-}
-
-registerFixture('application', async ({playwright}, test) => {
+fixtures.application.init(async ({ playwright }, run) => {
   const electronPath = path.join(__dirname, '..', '..', 'node_modules', '.bin', electronName);
   const application = await playwright.electron.launch(electronPath, {
     args: [path.join(__dirname, 'testApp.js')],
   });
-  await test(application);
+  await run(application);
   await application.close();
 });
 
-registerFixture('window', async ({application}, test) => {
+fixtures.window.init(async ({ application }, run) => {
   const page = await application.newBrowserWindow({ width: 800, height: 600 });
-  await test(page);
+  await run(page);
   await page.close();
 });
+
+export const folio = fixtures.build();
+
+declare module '../../index' {
+  const electron: ElectronLauncher;
+}

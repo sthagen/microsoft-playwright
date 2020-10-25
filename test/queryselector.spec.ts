@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import { it, expect } from './playwright.fixtures';
+import { it, expect } from './fixtures';
 
 it('should throw for non-string selector', async ({page}) => {
   const error = await page.$(null).catch(e => e);
@@ -113,4 +113,16 @@ it('xpath should return multiple elements', async ({page, server}) => {
   await page.setContent('<div></div><div></div>');
   const elements = await page.$$('xpath=/html/body/div');
   expect(elements.length).toBe(2);
+});
+
+it('$$ should work with bogus Array.from', async ({page, server}) => {
+  await page.setContent('<div>hello</div><div></div>');
+  const div1 = await page.evaluateHandle(() => {
+    Array.from = () => [];
+    return document.querySelector('div');
+  });
+  const elements = await page.$$('div');
+  expect(elements.length).toBe(2);
+  // Check that element handle is functional and belongs to the main world.
+  expect(await elements[0].evaluate((div, div1) => div === div1, div1)).toBe(true);
 });

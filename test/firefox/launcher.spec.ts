@@ -13,13 +13,13 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import { it, expect, options } from '../playwright.fixtures';
+import { it, expect } from '../fixtures';
 
-it('should pass firefox user preferences', test => {
-  test.skip(!options.FIREFOX);
-}, async ({browserType, defaultBrowserOptions}) => {
+it('should pass firefox user preferences', (test, { browserName }) => {
+  test.skip(browserName !== 'firefox');
+}, async ({browserType, browserOptions}) => {
   const browser = await browserType.launch({
-    ...defaultBrowserOptions,
+    ...browserOptions,
     firefoxUserPrefs: {
       'network.proxy.type': 1,
       'network.proxy.http': '127.0.0.1',

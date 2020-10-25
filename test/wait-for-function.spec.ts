@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import { it, expect } from './playwright.fixtures';
+import { it, expect } from './fixtures';
 
 it('should timeout', async ({page}) => {
   const startTime = Date.now();
@@ -68,7 +68,8 @@ it('should avoid side effects after timeout', async ({page}) => {
 });
 
 it('should throw on polling:mutation', async ({page}) => {
-  const error = await page.waitForFunction(() => true, {}, {polling: 'mutation' as any}).catch(e => e);
+  // @ts-expect-error mutation is not a valid polling strategy
+  const error = await page.waitForFunction(() => true, {}, {polling: 'mutation'}).catch(e => e);
   expect(error.message).toContain('Unknown polling option: mutation');
 });
 
@@ -113,7 +114,8 @@ it('should work with strict CSP policy', async ({page, server}) => {
 it('should throw on bad polling value', async ({page}) => {
   let error = null;
   try {
-    await page.waitForFunction(() => !!document.body, {}, {polling: 'unknown' as any});
+    // @ts-expect-error 'unknown' is not a valid polling strategy
+    await page.waitForFunction(() => !!document.body, {}, {polling: 'unknown'});
   } catch (e) {
     error = e;
   }
@@ -207,4 +209,58 @@ it('should work with multiline body', async ({page}) => {
 
 it('should wait for predicate with arguments', async ({page}) => {
   await page.waitForFunction(({arg1, arg2}) => arg1 + arg2 === 3, { arg1: 1, arg2: 2});
+});
+
+it('should not be called after finishing successfully', async ({page, server}) => {
+  await page.goto(server.EMPTY_PAGE);
+
+  const messages = [];
+  page.on('console', msg => {
+    if (msg.text().startsWith('waitForFunction'))
+      messages.push(msg.text());
+  });
+
+  await page.waitForFunction(() => {
+    console.log('waitForFunction1');
+    return true;
+  });
+  await page.reload();
+  await page.waitForFunction(() => {
+    console.log('waitForFunction2');
+    return true;
+  });
+  await page.reload();
+  await page.waitForFunction(() => {
+    console.log('waitForFunction3');
+    return true;
+  });
+
+  expect(messages.join('|')).toBe('waitForFunction1|waitForFunction2|waitForFunction3');
+});
+
+it('should not be called after finishing unsuccessfully', async ({page, server}) => {
+  await page.goto(server.EMPTY_PAGE);
+
+  const messages = [];
+  page.on('console', msg => {
+    if (msg.text().startsWith('waitForFunction'))
+      messages.push(msg.text());
+  });
+
+  await page.waitForFunction(() => {
+    console.log('waitForFunction1');
+    throw new Error('waitForFunction1');
+  }).catch(e => null);
+  await page.reload();
+  await page.waitForFunction(() => {
+    console.log('waitForFunction2');
+    throw new Error('waitForFunction2');
+  }).catch(e => null);
+  await page.reload();
+  await page.waitForFunction(() => {
+    console.log('waitForFunction3');
+    throw new Error('waitForFunction3');
+  }).catch(e => null);
+
+  expect(messages.join('|')).toBe('waitForFunction1|waitForFunction2|waitForFunction3');
 });

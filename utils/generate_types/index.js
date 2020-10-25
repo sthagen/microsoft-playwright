@@ -32,10 +32,11 @@ let documentation;
   if (!fs.existsSync(typesDir))
     fs.mkdirSync(typesDir)
   fs.writeFileSync(path.join(typesDir, 'protocol.d.ts'), fs.readFileSync(path.join(PROJECT_DIR, 'src', 'server', 'chromium', 'protocol.ts')), 'utf8');
+  fs.writeFileSync(path.join(typesDir, 'trace.d.ts'), fs.readFileSync(path.join(PROJECT_DIR, 'src', 'trace', 'traceTypes.ts')), 'utf8');
   const browser = await chromium.launch();
   const page = await browser.newPage();
   const api = await Source.readFile(path.join(PROJECT_DIR, 'docs', 'api.md'));
-  const {documentation: mdDocumentation} = await require('../doclint/check_public_api/MDBuilder')(page, [api]);
+  const {documentation: mdDocumentation} = await require('../doclint/check_public_api/MDBuilder')(page, [api], true);
   await browser.close();
   const sources = await Source.readdir(path.join(PROJECT_DIR, 'src', 'client'), '', []);
   const {documentation: jsDocumentation} = await require('../doclint/check_public_api/JSBuilder').checkSources(sources);
@@ -81,7 +82,7 @@ ${generateDevicesTypes()}
 });
 
 /**
- * @param {string} overriddes 
+ * @param {string} overriddes
  */
 function objectDefinitionsToString(overriddes) {
   let definition;

@@ -19,9 +19,9 @@ import type InjectedScript from '../../server/injected/injectedScript';
 
 export default class DebugScript {
   consoleAPI: ConsoleAPI | undefined;
-
-  initialize(injectedScript: InjectedScript, options: { console?: boolean }) {
-    if (options.console)
-      this.consoleAPI = new ConsoleAPI(injectedScript);
+  constructor(injectedScript: InjectedScript) {
+    if ((window as any).playwright)
+      return;
+    this.consoleAPI = new ConsoleAPI(injectedScript);
   }
 }

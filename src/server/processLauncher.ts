@@ -22,7 +22,7 @@ import * as stream from 'stream';
 import { helper } from './helper';
 import { Progress } from './progress';
 import * as types from './types';
-import { isDevMode } from '../utils/utils';
+import { isUnderTest } from '../utils/utils';
 
 export type Env = {[key: string]: string | number | boolean | undefined};
 
@@ -57,6 +57,12 @@ const gracefullyCloseSet = new Set<() => Promise<void>>();
 export async function gracefullyCloseAll() {
   await Promise.all(Array.from(gracefullyCloseSet).map(gracefullyClose => gracefullyClose().catch(e => {})));
 }
+
+// We currently spawn a process per page when recording video in Chromium.
+//  This triggers "too many listeners" on the process object once you have more than 10 pages open.
+const maxListeners = process.getMaxListeners();
+if (maxListeners !== 0)
+  process.setMaxListeners(Math.max(maxListeners || 0, 100));
 
 export async function launchProcess(options: LaunchProcessOptions): Promise<LaunchResult> {
   const cleanup = () => helper.removeFolders(options.tempDirectories);
@@ -120,7 +126,7 @@ export async function launchProcess(options: LaunchProcessOptions): Promise<Laun
     listeners.push(helper.addEventListener(process, 'SIGINT', () => {
       gracefullyClose().then(() => {
         // Give tests a chance to dispatch any async calls.
-        if (isDevMode())
+        if (isUnderTest())
           setTimeout(() => process.exit(130), 0);
         else
           process.exit(130);

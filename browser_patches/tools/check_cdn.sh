@@ -3,7 +3,7 @@ set -e
 set +x
 
 if [[ ($1 == '--help') || ($1 == '-h') ]]; then
-  echo "usage: $(basename $0) [firefox|webkit] [--full-history] [--has-all-builds]"
+  echo "usage: $(basename $0) [firefox|webkit|chromium|ffmpeg] [--full-history] [--has-all-builds]"
   echo
   echo "List CDN status for browser"
   echo
@@ -11,7 +11,7 @@ if [[ ($1 == '--help') || ($1 == '-h') ]]; then
 fi
 
 if [[ $# == 0 ]]; then
-  echo "missing browser: 'firefox' or 'webkit'"
+  echo "missing browser: 'firefox', 'webkit', 'chromium' or 'ffmpeg'"
   echo "try './$(basename $0) --help' for more information"
   exit 1
 fi
@@ -65,6 +65,28 @@ CR_ALIASES=(
   "CR-WIN64"
 )
 
+FFMPEG_REVISION=$(head -1 ../ffmpeg/BUILD_NUMBER)
+FFMPEG_ARCHIVES=(
+  "$HOST/ffmpeg/%s/ffmpeg-mac.zip"
+  "$HOST/ffmpeg/%s/ffmpeg-linux.zip"
+  "$HOST/ffmpeg/%s/ffmpeg-win32.zip"
+  "$HOST/ffmpeg/%s/ffmpeg-win64.zip"
+)
+FFMPEG_ALIASES=(
+  "FFMPEG-MAC"
+  "FFMPEG-LINUX"
+  "FFMPEG-WIN32"
+  "FFMPEG-WIN64"
+)
+
+WINLDD_REVISION=$(head -1 ../winldd/BUILD_NUMBER)
+WINLDD_ARCHIVES=(
+  "$HOST/winldd/%s/winldd-win64.zip"
+)
+WINLDD_ALIASES=(
+  "WINLDD-WIN64"
+)
+
 COLUMN="%-18s"
 # COLORS
 RED=$'\e[1;31m'
@@ -87,8 +109,16 @@ elif [[ ("$1" == "chromium") || ("$1" == "chromium/") ]]; then
   REVISION=$CR_REVISION
   ARCHIVES=("${CR_ARCHIVES[@]}")
   ALIASES=("${CR_ALIASES[@]}")
+elif [[ ("$1" == "ffmpeg") || ("$1" == "ffmpeg/") ]]; then
+  REVISION=$FFMPEG_REVISION
+  ARCHIVES=("${FFMPEG_ARCHIVES[@]}")
+  ALIASES=("${FFMPEG_ALIASES[@]}")
+elif [[ ("$1" == "winldd") || ("$1" == "winldd/") ]]; then
+  REVISION=$WINLDD_REVISION
+  ARCHIVES=("${WINLDD_ARCHIVES[@]}")
+  ALIASES=("${WINLDD_ALIASES[@]}")
 else
-  echo ERROR: unknown browser - "$1"
+  echo ERROR: unknown application - "$1"
   exit 1
 fi
 

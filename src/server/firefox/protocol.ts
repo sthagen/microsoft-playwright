@@ -590,6 +590,12 @@ export module Protocol {
     export type dispatchTouchEventReturnValue = {
       defaultPrevented: boolean;
     };
+    export type dispatchTapEventParameters = {
+      x: number;
+      y: number;
+      modifiers: number;
+    };
+    export type dispatchTapEventReturnValue = void;
     export type dispatchMouseEventParameters = {
       type: string;
       button: number;
@@ -770,6 +776,16 @@ export module Protocol {
       validFrom: number;
       validTo: number;
     };
+    export type ResourceTiming = {
+      startTime: number;
+      domainLookupStart: number;
+      domainLookupEnd: number;
+      connectStart: number;
+      secureConnectionStart: number;
+      connectEnd: number;
+      requestStart: number;
+      responseStart: number;
+    };
     export type requestWillBeSentPayload = {
       frameId?: string;
       requestId: string;
@@ -804,9 +820,20 @@ export module Protocol {
         name: string;
         value: string;
       }[];
+      timing: {
+        startTime: number;
+        domainLookupStart: number;
+        domainLookupEnd: number;
+        connectStart: number;
+        secureConnectionStart: number;
+        connectEnd: number;
+        requestStart: number;
+        responseStart: number;
+      };
     }
     export type requestFinishedPayload = {
       requestId: string;
+      responseEndTime: number;
     }
     export type requestFailedPayload = {
       requestId: string;
@@ -1013,6 +1040,7 @@ export module Protocol {
     "Page.getContentQuads": Page.getContentQuadsParameters;
     "Page.dispatchKeyEvent": Page.dispatchKeyEventParameters;
     "Page.dispatchTouchEvent": Page.dispatchTouchEventParameters;
+    "Page.dispatchTapEvent": Page.dispatchTapEventParameters;
     "Page.dispatchMouseEvent": Page.dispatchMouseEventParameters;
     "Page.insertText": Page.insertTextParameters;
     "Page.crash": Page.crashParameters;
@@ -1086,6 +1114,7 @@ export module Protocol {
     "Page.getContentQuads": Page.getContentQuadsReturnValue;
     "Page.dispatchKeyEvent": Page.dispatchKeyEventReturnValue;
     "Page.dispatchTouchEvent": Page.dispatchTouchEventReturnValue;
+    "Page.dispatchTapEvent": Page.dispatchTapEventReturnValue;
     "Page.dispatchMouseEvent": Page.dispatchMouseEventReturnValue;
     "Page.insertText": Page.insertTextReturnValue;
     "Page.crash": Page.crashReturnValue;

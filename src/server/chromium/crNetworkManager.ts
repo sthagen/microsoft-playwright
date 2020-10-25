@@ -37,6 +37,7 @@ export class CRNetworkManager {
   private _protocolRequestInterceptionEnabled = false;
   private _requestIdToRequestPausedEvent = new Map<string, Protocol.Fetch.requestPausedPayload>();
   private _eventListeners: RegisteredListener[];
+  private _requestIdToExtraInfo = new Map<string, Protocol.Network.requestWillBeSentExtraInfoPayload>();
 
   constructor(client: CRSession, page: Page, parentManager: CRNetworkManager | null) {
     this._client = client;
@@ -50,6 +51,7 @@ export class CRNetworkManager {
       helper.addEventListener(session, 'Fetch.requestPaused', this._onRequestPaused.bind(this, workerFrame)),
       helper.addEventListener(session, 'Fetch.authRequired', this._onAuthRequired.bind(this)),
       helper.addEventListener(session, 'Network.requestWillBeSent', this._onRequestWillBeSent.bind(this, workerFrame)),
+      helper.addEventListener(session, 'Network.requestWillBeSentExtraInfo', this._onRequestWillBeSentExtraInfo.bind(this)),
       helper.addEventListener(session, 'Network.responseReceived', this._onResponseReceived.bind(this)),
       helper.addEventListener(session, 'Network.loadingFinished', this._onLoadingFinished.bind(this)),
       helper.addEventListener(session, 'Network.loadingFailed', this._onLoadingFailed.bind(this)),
@@ -116,9 +118,22 @@ export class CRNetworkManager {
       } else {
         this._requestIdToRequestWillBeSentEvent.set(event.requestId, event);
       }
-      return;
+    } else {
+      this._onRequest(workerFrame, event, null);
     }
-    this._onRequest(workerFrame, event, null);
+    const extraInfo = this._requestIdToExtraInfo.get(event.requestId);
+    if (extraInfo)
+      this._onRequestWillBeSentExtraInfo(extraInfo);
+  }
+
+  _onRequestWillBeSentExtraInfo(event: Protocol.Network.requestWillBeSentExtraInfoPayload) {
+    const request = this._requestIdToRequest.get(event.requestId);
+    if (request) {
+      request.request._updateWithRawHeaders(headersObjectToArray(event.headers));
+      this._requestIdToExtraInfo.delete(event.requestId);
+    } else {
+      this._requestIdToExtraInfo.set(event.requestId, event);
+    }
   }
 
   _onAuthRequired(event: Protocol.Fetch.authRequiredPayload) {
@@ -173,7 +188,7 @@ export class CRNetworkManager {
       const request = this._requestIdToRequest.get(requestWillBeSentEvent.requestId);
       // If we connect late to the target, we could have missed the requestWillBeSent event.
       if (request) {
-        this._handleRequestRedirect(request, requestWillBeSentEvent.redirectResponse);
+        this._handleRequestRedirect(request, requestWillBeSentEvent.redirectResponse, requestWillBeSentEvent.timestamp);
         redirectedFrom = request.request;
       }
     }
@@ -240,12 +255,37 @@ export class CRNetworkManager {
       const response = await this._client.send('Network.getResponseBody', { requestId: request._requestId });
       return Buffer.from(response.body, response.base64Encoded ? 'base64' : 'utf8');
     };
-    return new network.Response(request.request, responsePayload.status, responsePayload.statusText, headersObjectToArray(responsePayload.headers), getResponseBody);
+    const timingPayload = responsePayload.timing!;
+    let timing: network.ResourceTiming;
+    if (timingPayload) {
+      timing = {
+        startTime: (timingPayload.requestTime - request._timestamp + request._wallTime) * 1000,
+        domainLookupStart: timingPayload.dnsStart,
+        domainLookupEnd: timingPayload.dnsEnd,
+        connectStart: timingPayload.connectStart,
+        secureConnectionStart: timingPayload.sslStart,
+        connectEnd: timingPayload.connectEnd,
+        requestStart: timingPayload.sendStart,
+        responseStart: timingPayload.receiveHeadersEnd,
+      };
+    } else {
+      timing = {
+        startTime: request._wallTime * 1000,
+        domainLookupStart: -1,
+        domainLookupEnd: -1,
+        connectStart: -1,
+        secureConnectionStart: -1,
+        connectEnd: -1,
+        requestStart: -1,
+        responseStart: -1,
+      };
+    }
+    return new network.Response(request.request, responsePayload.status, responsePayload.statusText, headersObjectToArray(responsePayload.headers), timing, getResponseBody);
   }
 
-  _handleRequestRedirect(request: InterceptableRequest, responsePayload: Protocol.Network.Response) {
+  _handleRequestRedirect(request: InterceptableRequest, responsePayload: Protocol.Network.Response, timestamp: number) {
     const response = this._createResponse(request, responsePayload);
-    response._requestFinished('Response body is unavailable for redirect responses');
+    response._requestFinished((timestamp - request._timestamp) * 1000, 'Response body is unavailable for redirect responses');
     this._requestIdToRequest.delete(request._requestId);
     if (request._interceptionId)
       this._attemptedAuthentications.delete(request._interceptionId);
@@ -275,7 +315,7 @@ export class CRNetworkManager {
     // event from protocol. @see https://crbug.com/883475
     const response = request.request._existingResponse();
     if (response)
-      response._requestFinished();
+      response._requestFinished(helper.secondsToRoundishMillis(event.timestamp - request._timestamp));
     this._requestIdToRequest.delete(request._requestId);
     if (request._interceptionId)
       this._attemptedAuthentications.delete(request._interceptionId);
@@ -292,7 +332,7 @@ export class CRNetworkManager {
       return;
     const response = request.request._existingResponse();
     if (response)
-      response._requestFinished();
+      response._requestFinished(helper.secondsToRoundishMillis(event.timestamp - request._timestamp));
     this._requestIdToRequest.delete(request._requestId);
     if (request._interceptionId)
       this._attemptedAuthentications.delete(request._interceptionId);
@@ -324,6 +364,8 @@ class InterceptableRequest implements network.RouteDelegate {
   _interceptionId: string | null;
   _documentId: string | undefined;
   private _client: CRSession;
+  _timestamp: number;
+  _wallTime: number;
 
   constructor(options: {
     client: CRSession;
@@ -336,6 +378,8 @@ class InterceptableRequest implements network.RouteDelegate {
   }) {
     const { client, frame, documentId, allowInterception, requestWillBeSentEvent, requestPausedEvent, redirectedFrom } = options;
     this._client = client;
+    this._timestamp = requestWillBeSentEvent.timestamp;
+    this._wallTime = requestWillBeSentEvent.wallTime;
     this._requestId = requestWillBeSentEvent.requestId;
     this._interceptionId = requestPausedEvent && requestPausedEvent.requestId;
     this._documentId = documentId;

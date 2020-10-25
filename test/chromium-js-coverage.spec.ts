@@ -14,17 +14,17 @@
  * limitations under the License.
  */
 
-import { it, expect, describe, options } from './playwright.fixtures';
+import { it, expect, describe } from './fixtures';
 
-it('should be missing', test => {
-  test.skip(options.CHROMIUM);
+it('should be missing', (test, { browserName }) => {
+  test.skip(browserName === 'chromium');
 },
 async function({page}) {
   expect(page.coverage).toBe(null);
 });
 
-describe('oopif', suite => {
-  suite.skip(!options.CHROMIUM);
+describe('oopif', (suite, { browserName }) => {
+  suite.skip(browserName !== 'chromium');
 }, () => {
   it('should work', async function({page, server}) {
     await page.coverage.startJSCoverage();

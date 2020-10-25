@@ -28,9 +28,9 @@ import { Dialog } from './dialog';
 import { Download } from './download';
 import { ElementHandle, determineScreenshotType } from './elementHandle';
 import { Worker } from './worker';
-import { Frame, FunctionWithSource, verifyLoadState, WaitForNavigationOptions } from './frame';
-import { Keyboard, Mouse } from './input';
-import { assertMaxArguments, Func1, FuncOn, SmartHandle, serializeArgument, parseResult } from './jsHandle';
+import { Frame, verifyLoadState, WaitForNavigationOptions } from './frame';
+import { Keyboard, Mouse, Touchscreen } from './input';
+import { assertMaxArguments, Func1, FuncOn, SmartHandle, serializeArgument, parseResult, JSHandle } from './jsHandle';
 import { Request, Response, Route, RouteHandler, validateHeaders } from './network';
 import { FileChooser } from './fileChooser';
 import { Buffer } from 'buffer';
@@ -38,11 +38,16 @@ import { ChromiumCoverage } from './chromiumCoverage';
 import { Waiter } from './waiter';
 
 import * as fs from 'fs';
+import * as path from 'path';
 import * as util from 'util';
 import { Size, URLMatch, Headers, LifecycleEvent, WaitForEventOptions, SelectOption, SelectOptionOptions, FilePayload, WaitForFunctionOptions } from './types';
 import { evaluationScript, urlMatches } from './clientHelper';
 import { isString, isRegExp, isObject, mkdirIfNeeded, headersObjectToArray } from '../utils/utils';
+import { isSafeCloseError } from '../utils/errors';
 import { Video } from './video';
+
+const fsWriteFileAsync = util.promisify(fs.writeFile.bind(fs));
+const mkdirAsync = util.promisify(fs.mkdir);
 
 type PDFOptions = Omit<channels.PagePdfParams, 'width' | 'height' | 'margin'> & {
   width?: string | number,
@@ -56,8 +61,7 @@ type PDFOptions = Omit<channels.PagePdfParams, 'width' | 'height' | 'margin'> & 
   path?: string,
 };
 type Listener = (...args: any[]) => void;
-
-const fsWriteFileAsync = util.promisify(fs.writeFile.bind(fs));
+export type FunctionWithSource = (source: { context: BrowserContext, page: Page, frame: Frame }, ...args: any) => any;
 
 export class Page extends ChannelOwner<channels.PageChannel, channels.PageInitializer> {
   private _browserContext: BrowserContext;
@@ -73,12 +77,14 @@ export class Page extends ChannelOwner<channels.PageChannel, channels.PageInitia
   readonly accessibility: Accessibility;
   readonly keyboard: Keyboard;
   readonly mouse: Mouse;
+  readonly touchscreen: Touchscreen;
   coverage: ChromiumCoverage | null = null;
   pdf?: (options?: PDFOptions) => Promise<Buffer>;
 
   readonly _bindings = new Map<string, FunctionWithSource>();
   readonly _timeoutSettings: TimeoutSettings;
   _isPageCall = false;
+  private _video: Video | null = null;
 
   static from(page: channels.PageChannel): Page {
     return (page as any)._object;
@@ -97,6 +103,7 @@ export class Page extends ChannelOwner<channels.PageChannel, channels.PageInitia
     this.accessibility = new Accessibility(this._channel);
     this.keyboard = new Keyboard(this._channel);
     this.mouse = new Mouse(this._channel);
+    this.touchscreen = new Touchscreen(this._channel);
 
     this._mainFrame = Frame.from(initializer.mainFrame);
     this._mainFrame._page = this;
@@ -118,12 +125,12 @@ export class Page extends ChannelOwner<channels.PageChannel, channels.PageInitia
     this._channel.on('pageError', ({ error }) => this.emit(Events.Page.PageError, parseError(error)));
     this._channel.on('popup', ({ page }) => this.emit(Events.Page.Popup, Page.from(page)));
     this._channel.on('request', ({ request }) => this.emit(Events.Page.Request, Request.from(request)));
-    this._channel.on('requestFailed', ({ request, failureText }) => this._onRequestFailed(Request.from(request), failureText));
-    this._channel.on('requestFinished', ({ request }) => this.emit(Events.Page.RequestFinished, Request.from(request)));
+    this._channel.on('requestFailed', ({ request, failureText, responseEndTiming }) => this._onRequestFailed(Request.from(request), responseEndTiming, failureText));
+    this._channel.on('requestFinished', ({ request, responseEndTiming }) => this._onRequestFinished(Request.from(request), responseEndTiming));
     this._channel.on('response', ({ response }) => this.emit(Events.Page.Response, Response.from(response)));
     this._channel.on('route', ({ route, request }) => this._onRoute(Route.from(route), Request.from(request)));
+    this._channel.on('video', ({ relativePath }) => this.video()!._setRelativePath(relativePath));
     this._channel.on('worker', ({ worker }) => this._onWorker(Worker.from(worker)));
-    this._channel.on('videoStarted', params => this._onVideoStarted(params));
 
     if (this._browserContext._browserName === 'chromium') {
       this.coverage = new ChromiumCoverage(this._channel);
@@ -131,9 +138,17 @@ export class Page extends ChannelOwner<channels.PageChannel, channels.PageInitia
     }
   }
 
-  private _onRequestFailed(request: Request, failureText: string | undefined) {
+  private _onRequestFailed(request: Request, responseEndTiming: number, failureText: string | undefined) {
     request._failureText = failureText || null;
+    if (request._timing)
+      request._timing.responseEnd = responseEndTiming;
     this.emit(Events.Page.RequestFailed,  request);
+  }
+
+  private _onRequestFinished(request: Request, responseEndTiming: number) {
+    if (request._timing)
+      request._timing.responseEnd = responseEndTiming;
+    this.emit(Events.Page.RequestFinished, request);
   }
 
   private _onFrameAttached(frame: Frame) {
@@ -175,10 +190,6 @@ export class Page extends ChannelOwner<channels.PageChannel, channels.PageInitia
     this._workers.add(worker);
     worker._page = this;
     this.emit(Events.Page.Worker, worker);
-  }
-
-  private _onVideoStarted(params: channels.PageVideoStartedEvent): void {
-    this.emit(Events.Page._VideoStarted, Video.from(params.video));
   }
 
   _onClose() {
@@ -226,6 +237,18 @@ export class Page extends ChannelOwner<channels.PageChannel, channels.PageInitia
   setDefaultTimeout(timeout: number) {
     this._timeoutSettings.setDefaultTimeout(timeout);
     this._channel.setDefaultTimeoutNoReply({ timeout });
+  }
+
+  video(): Video | null {
+    if (this._video)
+      return this._video;
+    if (!this._browserContext._options.videosPath)
+      return null;
+    this._video = new Video(this);
+    // In case of persistent profile, we already have it.
+    if (this._initializer.videoRelativePath)
+      this._video._setRelativePath(this._initializer.videoRelativePath);
+    return this._video;
   }
 
   private _attributeToPage<T>(func: () => T): T {
@@ -283,17 +306,17 @@ export class Page extends ChannelOwner<channels.PageChannel, channels.PageInitia
   }
 
   async exposeFunction(name: string, playwrightFunction: Function) {
-    await this.exposeBinding(name, (options, ...args: any) => playwrightFunction(...args));
+    return this._wrapApiCall('page.exposeFunction', async () => {
+      await this._channel.exposeBinding({ name });
+      const binding: FunctionWithSource = (source, ...args) => playwrightFunction(...args);
+      this._bindings.set(name, binding);
+    });
   }
 
-  async exposeBinding(name: string, playwrightBinding: FunctionWithSource) {
+  async exposeBinding(name: string, playwrightBinding: FunctionWithSource, options: { handle?: boolean } = {}) {
     return this._wrapApiCall('page.exposeBinding', async () => {
-      if (this._bindings.has(name))
-        throw new Error(`Function "${name}" has been already registered`);
-      if (this._browserContext._bindings.has(name))
-        throw new Error(`Function "${name}" has been already registered in the browser context`);
+      await this._channel.exposeBinding({ name, needsHandle: options.handle });
       this._bindings.set(name, playwrightBinding);
-      await this._channel.exposeBinding({ name });
     });
   }
 
@@ -455,11 +478,17 @@ export class Page extends ChannelOwner<channels.PageChannel, channels.PageInitia
   }
 
   async close(options: { runBeforeUnload?: boolean } = {runBeforeUnload: undefined}) {
-    return this._wrapApiCall('page.close', async () => {
-      await this._channel.close(options);
-      if (this._ownedContext)
-        await this._ownedContext.close();
-    });
+    try {
+      await this._wrapApiCall('page.close', async () => {
+        await this._channel.close(options);
+        if (this._ownedContext)
+          await this._ownedContext.close();
+      });
+    } catch (e) {
+      if (isSafeCloseError(e))
+        return;
+      throw e;
+    }
   }
 
   isClosed(): boolean {
@@ -472,6 +501,10 @@ export class Page extends ChannelOwner<channels.PageChannel, channels.PageInitia
 
   async dblclick(selector: string, options?: channels.FrameDblclickOptions) {
     return this._attributeToPage(() => this._mainFrame.dblclick(selector, options));
+  }
+
+  async tap(selector: string, options?: channels.FrameTapOptions) {
+    return this._attributeToPage(() => this._mainFrame.tap(selector, options));
   }
 
   async fill(selector: string, value: string, options?: channels.FrameFillOptions) {
@@ -587,8 +620,10 @@ export class Page extends ChannelOwner<channels.PageChannel, channels.PageInitia
     }
     const result = await this._channel.pdf(transportOptions);
     const buffer = Buffer.from(result.pdf, 'base64');
-    if (options.path)
+    if (options.path) {
+      await mkdirAsync(path.dirname(options.path), { recursive: true });
       await fsWriteFileAsync(options.path, buffer);
+    }
     return buffer;
   }
 }
@@ -610,7 +645,11 @@ export class BindingCall extends ChannelOwner<channels.BindingCallChannel, chann
         page: frame._page!,
         frame
       };
-      const result = await func(source, ...this._initializer.args.map(parseResult));
+      let result: any;
+      if (this._initializer.handle)
+        result = await func(source, JSHandle.from(this._initializer.handle));
+      else
+        result = await func(source, ...this._initializer.args!.map(parseResult));
       this._channel.resolve({ result: serializeArgument(result) });
     } catch (e) {
       this._channel.reject({ error: serializeError(e) });

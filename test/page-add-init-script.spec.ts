@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import { it, expect } from './playwright.fixtures';
+import { it, expect } from './fixtures';
 import path from 'path';
 
 it('should evaluate before anything else on the page', async ({ page, server }) => {
@@ -39,7 +39,8 @@ it('should work with content', async ({ page, server }) => {
 });
 
 it('should throw without path and content', async ({ page, server }) => {
-  const error = await page.addInitScript({ foo: 'bar' } as any).catch(e => e);
+  // @ts-expect-error foo is not a real option of addInitScript
+  const error = await page.addInitScript({ foo: 'bar' }).catch(e => e);
   expect(error.message).toContain('Either path or content property must be present');
 });
 

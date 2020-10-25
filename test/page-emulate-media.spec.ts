@@ -15,8 +15,8 @@
  * limitations under the License.
  */
 
-import { it, expect } from './playwright.fixtures';
-import utils from './utils';
+import { it, expect } from './fixtures';
+import { attachFrame } from './utils';
 
 it('should emulate type', async ({page, server}) => {
   expect(await page.evaluate(() => matchMedia('screen').matches)).toBe(true);
@@ -34,7 +34,8 @@ it('should emulate type', async ({page, server}) => {
 
 it('should throw in case of bad type argument', async ({page, server}) => {
   let error = null;
-  await page.emulateMedia({ media: 'bad' as any}).catch(e => error = e);
+  // @ts-expect-error 'bad' is not a valid media type
+  await page.emulateMedia({ media: 'bad'}).catch(e => error = e);
   expect(error.message).toContain('media: expected one of (screen|print|null)');
 });
 
@@ -62,7 +63,8 @@ it('should default to light', async ({page, server}) => {
 
 it('should throw in case of bad argument', async ({page, server}) => {
   let error = null;
-  await page.emulateMedia({ colorScheme: 'bad' as any}).catch(e => error = e);
+  // @ts-expect-error 'bad' is not a valid media type
+  await page.emulateMedia({ colorScheme: 'bad' }).catch(e => error = e);
   expect(error.message).toContain('colorScheme: expected one of (dark|light|no-preference|null)');
 });
 
@@ -108,7 +110,7 @@ it('should work in popup', async ({browser, server}) => {
 it('should work in cross-process iframe', async ({browser, server}) => {
   const page = await browser.newPage({ colorScheme: 'dark' });
   await page.goto(server.EMPTY_PAGE);
-  await utils.attachFrame(page, 'frame1', server.CROSS_PROCESS_PREFIX + '/empty.html');
+  await attachFrame(page, 'frame1', server.CROSS_PROCESS_PREFIX + '/empty.html');
   const frame = page.frames()[1];
   expect(await frame.evaluate(() => matchMedia('(prefers-color-scheme: dark)').matches)).toBe(true);
   await page.close();

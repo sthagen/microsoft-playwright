@@ -14,22 +14,37 @@
  * limitations under the License.
  */
 
-import { registerFixture } from '@playwright/test-runner';
+import { folio as base } from './fixtures';
 
 import path from 'path';
 import { spawn } from 'child_process';
 import type { BrowserType, Browser, LaunchOptions } from '..';
 
-declare global {
-  interface TestState {
-    remoteServer: RemoteServer;
-    stallingRemoteServer: RemoteServer;
-  }
-}
+type ServerFixtures = {
+  remoteServer: RemoteServer;
+  stallingRemoteServer: RemoteServer;
+};
+const fixtures = base.extend<ServerFixtures>();
+
+fixtures.remoteServer.init(async ({ browserType, browserOptions }, run) => {
+  const remoteServer = new RemoteServer();
+  await remoteServer._start(browserType, browserOptions);
+  await run(remoteServer);
+  await remoteServer.close();
+});
+
+fixtures.stallingRemoteServer.init(async ({ browserType, browserOptions }, run) => {
+  const remoteServer = new RemoteServer();
+  await remoteServer._start(browserType, browserOptions, { stallOnClose: true });
+  await run(remoteServer);
+  await remoteServer.close();
+});
+
+export const folio = fixtures.build();
 
 const playwrightPath = path.join(__dirname, '..');
 
-class RemoteServer {
+export class RemoteServer {
   _output: Map<any, any>;
   _outputCallback: Map<any, any>;
   _browserType: BrowserType<Browser>;
@@ -40,17 +55,17 @@ class RemoteServer {
   _didExit: boolean;
   _wsEndpoint: string;
 
-  async _start(browserType: BrowserType<Browser>, defaultBrowserOptions: LaunchOptions, extraOptions?: { stallOnClose: boolean; }) {
+  async _start(browserType: BrowserType<Browser>, browserOptions: LaunchOptions, extraOptions?: { stallOnClose: boolean; }) {
     this._output = new Map();
     this._outputCallback = new Map();
     this._didExit = false;
 
     this._browserType = browserType;
-    const launchOptions = {...defaultBrowserOptions,
+    const launchOptions = {...browserOptions,
       handleSIGINT: true,
       handleSIGTERM: true,
       handleSIGHUP: true,
-      executablePath: defaultBrowserOptions.executablePath || browserType.executablePath(),
+      executablePath: browserOptions.executablePath || browserType.executablePath(),
       logger: undefined,
     };
     const options = {
@@ -115,17 +130,3 @@ class RemoteServer {
     return await this.childExitCode();
   }
 }
-
-registerFixture('remoteServer', async ({browserType, defaultBrowserOptions}, test) => {
-  const remoteServer = new RemoteServer();
-  await remoteServer._start(browserType, defaultBrowserOptions);
-  await test(remoteServer);
-  await remoteServer.close();
-});
-
-registerFixture('stallingRemoteServer', async ({browserType, defaultBrowserOptions}, test) => {
-  const remoteServer = new RemoteServer();
-  await remoteServer._start(browserType, defaultBrowserOptions, { stallOnClose: true });
-  await test(remoteServer);
-  await remoteServer.close();
-});

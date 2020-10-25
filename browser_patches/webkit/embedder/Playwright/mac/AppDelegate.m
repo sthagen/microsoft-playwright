@@ -237,7 +237,7 @@ const NSActivityOptions ActivityOptions =
         configuration.preferences._requestAnimationFrameEnabled = YES;
         _WKProcessPoolConfiguration *processConfiguration = [[[_WKProcessPoolConfiguration alloc] init] autorelease];
         processConfiguration.forceOverlayScrollbars = YES;
-        configuration.processPool = [[[WKProcessPool alloc] _initWithConfiguration:processConfiguration AndDataStore:configuration.websiteDataStore] autorelease];
+        configuration.processPool = [[[WKProcessPool alloc] _initWithConfiguration:processConfiguration] autorelease];
     }
     return configuration;
 }
@@ -333,7 +333,7 @@ const NSActivityOptions ActivityOptions =
     if (!proxyBypassList || ![proxyBypassList length])
         proxyBypassList = _proxyBypassList;
     [dataStoreConfiguration setProxyConfiguration:[self proxyConfiguration:proxyServer WithBypassList:proxyBypassList]];
-    browserContext.dataStore = [[WKWebsiteDataStore alloc] _initWithConfiguration:dataStoreConfiguration];
+    browserContext.dataStore = [[[WKWebsiteDataStore alloc] _initWithConfiguration:dataStoreConfiguration] autorelease];
     browserContext.processPool = [[[WKProcessPool alloc] _initWithConfiguration:processConfiguration] autorelease];
     [browserContext.processPool _setDownloadDelegate:self];
     [_browserContexts addObject:browserContext];

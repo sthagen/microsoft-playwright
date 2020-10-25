@@ -13,41 +13,39 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import { it, expect, options } from '../playwright.fixtures';
+import { it, expect } from '../fixtures';
 
 import path from 'path';
-import utils from '../utils';
 import type { ChromiumBrowser, ChromiumBrowserContext } from '../..';
-const { makeUserDataDir, removeUserDataDir } = utils;
 
-it('should throw with remote-debugging-pipe argument', test => {
-  test.skip(options.WIRE || !options.CHROMIUM);
-}, async ({browserType, defaultBrowserOptions}) => {
-  const options = Object.assign({}, defaultBrowserOptions);
+it('should throw with remote-debugging-pipe argument', (test, { browserName, wire }) => {
+  test.skip(wire || browserName !== 'chromium');
+}, async ({browserType, browserOptions}) => {
+  const options = Object.assign({}, browserOptions);
   options.args = ['--remote-debugging-pipe'].concat(options.args || []);
   const error = await browserType.launchServer(options).catch(e => e);
   expect(error.message).toContain('Playwright manages remote debugging connection itself');
 });
 
-it('should not throw with remote-debugging-port argument', test => {
-  test.skip(options.WIRE || !options.CHROMIUM);
-}, async ({browserType, defaultBrowserOptions}) => {
-  const options = Object.assign({}, defaultBrowserOptions);
+it('should not throw with remote-debugging-port argument', (test, { browserName, wire }) => {
+  test.skip(wire || browserName !== 'chromium');
+}, async ({browserType, browserOptions}) => {
+  const options = Object.assign({}, browserOptions);
   options.args = ['--remote-debugging-port=0'].concat(options.args || []);
   const browser = await browserType.launchServer(options);
   await browser.close();
 });
 
-it('should open devtools when "devtools: true" option is given', test => {
-  test.skip(!options.CHROMIUM || options.WIRE || WIN);
-}, async ({browserType, defaultBrowserOptions}) => {
+it('should open devtools when "devtools: true" option is given', (test, { wire, browserName, platform}) => {
+  test.skip(browserName !== 'chromium' || wire || platform === 'win32');
+}, async ({browserType, browserOptions}) => {
   let devtoolsCallback;
   const devtoolsPromise = new Promise(f => devtoolsCallback = f);
   const __testHookForDevTools = devtools => devtools.__testHookOnBinding = parsed => {
     if (parsed.method === 'getPreferences')
       devtoolsCallback();
   };
-  const browser = await browserType.launch({...defaultBrowserOptions, headless: false, devtools: true, __testHookForDevTools} as any);
+  const browser = await browserType.launch({...browserOptions, headless: false, devtools: true, __testHookForDevTools} as any);
   const context = await browser.newContext();
   await Promise.all([
     devtoolsPromise,
@@ -56,12 +54,12 @@ it('should open devtools when "devtools: true" option is given', test => {
   await browser.close();
 });
 
-it('should return background pages', test => {
-  test.skip(!options.CHROMIUM);
-}, async ({browserType, defaultBrowserOptions}) => {
-  const userDataDir = await makeUserDataDir();
+it('should return background pages', (test, { browserName }) => {
+  test.skip(browserName !== 'chromium');
+}, async ({browserType, browserOptions, createUserDataDir}) => {
+  const userDataDir = await createUserDataDir();
   const extensionPath = path.join(__dirname, '..', 'assets', 'simple-extension');
-  const extensionOptions = {...defaultBrowserOptions,
+  const extensionOptions = {...browserOptions,
     headless: false,
     args: [
       `--disable-extensions-except=${extensionPath}`,
@@ -77,13 +75,12 @@ it('should return background pages', test => {
   expect(context.backgroundPages()).toContain(backgroundPage);
   expect(context.pages()).not.toContain(backgroundPage);
   await context.close();
-  await removeUserDataDir(userDataDir);
 });
 
-it('should not create pages automatically', test => {
-  test.skip(!options.CHROMIUM);
-}, async ({browserType, defaultBrowserOptions}) => {
-  const browser = await browserType.launch(defaultBrowserOptions);
+it('should not create pages automatically', (test, { browserName }) => {
+  test.skip(browserName !== 'chromium');
+}, async ({browserType, browserOptions}) => {
+  const browser = await browserType.launch(browserOptions);
   const browserSession = await (browser as ChromiumBrowser).newBrowserCDPSession();
   const targets = [];
   browserSession.on('Target.targetCreated', async ({targetInfo}) => {

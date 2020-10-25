@@ -12,6 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+
+# This object can be send with any rpc call in the "metadata" field.
+Metadata:
+  type: object
+  properties:
+    stack: string?
+
+
 SerializedValue:
   type: object
   # Exactly one of the properties must be present.
@@ -159,6 +167,16 @@ RemoteBrowser:
     browser: Browser
     selectors: Selectors
 
+  events:
+
+    # Video stream blocks owner context from closing until the stream is closed.
+    # Make sure to close the stream!
+    video:
+      parameters:
+        context: BrowserContext
+        stream: Stream
+        relativePath: string
+
 
 Selectors:
   type: interface
@@ -212,7 +230,6 @@ BrowserType:
             username: string?
             password: string?
         downloadsPath: string?
-        _videosPath: string?
         firefoxUserPrefs: json?
         chromiumSandbox: boolean?
         slowMo: number?
@@ -251,7 +268,6 @@ BrowserType:
             username: string?
             password: string?
         downloadsPath: string?
-        _videosPath: string?
         chromiumSandbox: boolean?
         slowMo: number?
         noDefaultViewport: boolean?
@@ -298,6 +314,14 @@ BrowserType:
           - dark
           - no-preference
         acceptDownloads: boolean?
+        _traceResourcesPath: string?
+        _tracePath: string?
+        videosPath: string?
+        videoSize:
+          type: object?
+          properties:
+            width: number
+            height: number
       returns:
         context: BrowserContext
 
@@ -359,7 +383,10 @@ Browser:
           - light
           - no-preference
         acceptDownloads: boolean?
-        _recordVideos:
+        _traceResourcesPath: string?
+        _tracePath: string?
+        videosPath: string?
+        videoSize:
           type: object?
           properties:
             width: number
@@ -458,6 +485,7 @@ BrowserContext:
     exposeBinding:
       parameters:
         name: string
+        needsHandle: boolean?
 
     grantPermissions:
       parameters:
@@ -557,6 +585,7 @@ Page:
         width: number
         height: number
     isClosed: boolean
+    videoRelativePath: string?
 
   commands:
 
@@ -601,6 +630,7 @@ Page:
     exposeBinding:
       parameters:
         name: string
+        needsHandle: boolean?
 
     goBack:
       parameters:
@@ -746,6 +776,11 @@ Page:
           - middle
         clickCount: number?
 
+    touchscreenTap:
+      parameters:
+        x: number
+        y: number
+
     accessibilitySnapshot:
       parameters:
         interestingOnly: boolean?
@@ -885,10 +920,12 @@ Page:
       parameters:
         request: Request
         failureText: string?
+        responseEndTiming: number
 
     requestFinished:
       parameters:
         request: Request
+        responseEndTiming: number
 
     response:
       parameters:
@@ -899,9 +936,9 @@ Page:
         route: Route
         request: Request
 
-    videoStarted:
+    video:
       parameters:
-        video: Video
+        relativePath: string
 
     worker:
       parameters:
@@ -1040,6 +1077,11 @@ Frame:
         expression: string
         isFunction: boolean
         arg: SerializedArgument
+        world:
+          type: enum?
+          literals:
+          - main
+          - utility
       returns:
         value: SerializedValue
 
@@ -1048,6 +1090,11 @@ Frame:
         expression: string
         isFunction: boolean
         arg: SerializedArgument
+        world:
+          type: enum?
+          literals:
+          - main
+          - utility
       returns:
         handle: JSHandle
 
@@ -1191,6 +1238,27 @@ Frame:
         timeout: number?
         noWaitAfter: boolean?
 
+    tap:
+      parameters:
+        selector: string
+        force: boolean?
+        noWaitAfter: boolean?
+        modifiers:
+          type: array?
+          items:
+            type: enum
+            literals:
+            - Alt
+            - Control
+            - Meta
+            - Shift
+        position:
+          type: object?
+          properties:
+            x: number
+            y: number
+        timeout: number?
+
     textContent:
       parameters:
         selector: string
@@ -1241,6 +1309,14 @@ Frame:
           - hidden
       returns:
         element: ElementHandle?
+
+    extendInjectedScript:
+      experimental: True
+      parameters:
+        source: string
+        arg: SerializedArgument
+      returns:
+        handle: JSHandle
 
   events:
 
@@ -1579,6 +1655,26 @@ ElementHandle:
         timeout: number?
         noWaitAfter: boolean?
 
+    tap:
+      parameters:
+        force: boolean?
+        noWaitAfter: boolean?
+        modifiers:
+          type: array?
+          items:
+            type: enum
+            literals:
+            - Alt
+            - Control
+            - Meta
+            - Shift
+        position:
+          type: object?
+          properties:
+            x: number
+            y: number
+        timeout: number?
+
     textContent:
       returns:
         value: string?
@@ -1695,6 +1791,17 @@ Route:
         isBase64: boolean?
 
 
+ResourceTiming:
+  type: object
+  properties:
+    startTime: number
+    domainLookupStart: number
+    domainLookupEnd: number
+    connectStart: number
+    secureConnectionStart: number
+    connectEnd: number
+    requestStart: number
+    responseStart: number
 
 Response:
   type: interface
@@ -1704,6 +1811,13 @@ Response:
     url: string
     status: number
     statusText: string
+    requestHeaders:
+      type: array
+      items:
+        type: object
+        properties:
+          name: string
+          value: string
     headers:
       type: array
       items:
@@ -1711,6 +1825,8 @@ Response:
         properties:
           name: string
           value: string
+    timing: ResourceTiming
+
 
   commands:
 
@@ -1721,7 +1837,6 @@ Response:
     finished:
       returns:
         error: string?
-
 
 
 ConsoleMessage:
@@ -1749,8 +1864,9 @@ BindingCall:
     frame: Frame
     name: string
     args:
-      type: array
+      type: array?
       items: SerializedValue
+    handle: JSHandle?
 
   commands:
 
@@ -1779,17 +1895,6 @@ Dialog:
         promptText: string?
 
     dismiss:
-
-
-
-Video:
-  type: interface
-
-  commands:
-
-    path:
-      returns:
-        value: string
 
 
 

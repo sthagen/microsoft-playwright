@@ -19,7 +19,7 @@ import * as channels from '../protocol/channels';
 import type { Connection } from './connection';
 import type { Logger } from './types';
 import { debugLogger } from '../utils/debugLogger';
-import { isDevMode } from '../utils/utils';
+import { rewriteErrorMessage } from '../utils/stackTrace';
 
 export abstract class ChannelOwner<T extends channels.Channel = channels.Channel, Initializer = {}> extends EventEmitter {
   private _connection: Connection;
@@ -48,7 +48,7 @@ export abstract class ChannelOwner<T extends channels.Channel = channels.Channel
     const base = new EventEmitter();
     this._channel = new Proxy(base, {
       get: (obj: any, prop) => {
-        if (String(prop).startsWith('_') && String(prop) !== '_enableScreencast' && String(prop) !== '_disableScreencast')
+        if (String(prop).startsWith('_'))
           return obj[prop];
         if (prop === 'then')
           return obj.then;
@@ -62,6 +62,8 @@ export abstract class ChannelOwner<T extends channels.Channel = channels.Channel
           return obj.addListener;
         if (prop === 'removeEventListener')
           return obj.removeListener;
+        if (prop === 'domain') // https://github.com/microsoft/playwright/issues/3848
+          return obj.domain;
         return (params: any) => this._connection.sendMessageToServer(this._type, guid, String(prop), params);
       },
     });
@@ -89,9 +91,6 @@ export abstract class ChannelOwner<T extends channels.Channel = channels.Channel
   }
 
   protected async _wrapApiCall<T>(apiName: string, func: () => Promise<T>, logger?: Logger): Promise<T> {
-    const stackObject: any = {};
-    Error.captureStackTrace(stackObject);
-    const stack = stackObject.stack.startsWith('Error') ? stackObject.stack.substring(5) : stackObject.stack;
     logger = logger || this._logger;
     try {
       logApiCall(logger, `=> ${apiName} started`);
@@ -100,9 +99,7 @@ export abstract class ChannelOwner<T extends channels.Channel = channels.Channel
       return result;
     } catch (e) {
       logApiCall(logger, `<= ${apiName} failed`);
-      const innerStack = (isDevMode() && e.stack) ? e.stack.substring(e.stack.indexOf(e.message) + e.message.length) : '';
-      e.message = `${apiName}: ` + e.message;
-      e.stack = e.message + innerStack + stack;
+      rewriteErrorMessage(e, `${apiName}: ` + e.message);
       throw e;
     }
   }

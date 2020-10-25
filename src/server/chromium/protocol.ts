@@ -211,6 +211,42 @@ children, if requested.
     export type getFullAXTreeReturnValue = {
       nodes: AXNode[];
     }
+    /**
+     * Query a DOM node's accessibility subtree for accessible name and role.
+This command computes the name and role for all nodes in the subtree, including those that are
+ignored for accessibility, and returns those that mactch the specified name and role. If no DOM
+node is specified, or the DOM node does not exist, the command returns an error. If neither
+`accessibleName` or `role` is specified, it returns all the accessibility nodes in the subtree.
+     */
+    export type queryAXTreeParameters = {
+      /**
+       * Identifier of the node for the root to query.
+       */
+      nodeId?: DOM.NodeId;
+      /**
+       * Identifier of the backend node for the root to query.
+       */
+      backendNodeId?: DOM.BackendNodeId;
+      /**
+       * JavaScript object id of the node wrapper for the root to query.
+       */
+      objectId?: Runtime.RemoteObjectId;
+      /**
+       * Find nodes with this computed name.
+       */
+      accessibleName?: string;
+      /**
+       * Find nodes with this computed role.
+       */
+      role?: string;
+    }
+    export type queryAXTreeReturnValue = {
+      /**
+       * A list of `Accessibility.AXNode` matching the specified attributes,
+including nodes that are ignored for accessibility.
+       */
+      nodes: AXNode[];
+    }
   }
   
   export module Animation {
@@ -650,7 +686,7 @@ associated with some application cache.
     export interface AffectedFrame {
       frameId: Page.FrameId;
     }
-    export type SameSiteCookieExclusionReason = "ExcludeSameSiteUnspecifiedTreatedAsLax"|"ExcludeSameSiteNoneInsecure";
+    export type SameSiteCookieExclusionReason = "ExcludeSameSiteUnspecifiedTreatedAsLax"|"ExcludeSameSiteNoneInsecure"|"ExcludeSameSiteLax"|"ExcludeSameSiteStrict";
     export type SameSiteCookieWarningReason = "WarnSameSiteUnspecifiedCrossSiteContext"|"WarnSameSiteNoneInsecure"|"WarnSameSiteUnspecifiedLaxAllowUnsafe"|"WarnSameSiteStrictLaxDowngradeStrict"|"WarnSameSiteStrictCrossDowngradeStrict"|"WarnSameSiteStrictCrossDowngradeLax"|"WarnSameSiteLaxCrossDowngradeStrict"|"WarnSameSiteLaxCrossDowngradeLax";
     export type SameSiteCookieOperation = "SetCookie"|"ReadCookie";
     /**
@@ -715,7 +751,8 @@ some CSP errors in the future.
      */
     export interface BlockedByResponseIssueDetails {
       request: AffectedRequest;
-      frame?: AffectedFrame;
+      parentFrame?: AffectedFrame;
+      blockedFrame?: AffectedFrame;
       reason: BlockedByResponseReason;
     }
     export type HeavyAdResolutionStatus = "HeavyAdBlocked"|"HeavyAdWarning";
@@ -752,6 +789,7 @@ some CSP errors in the future.
       contentSecurityPolicyViolationType: ContentSecurityPolicyViolationType;
       frameAncestor?: AffectedFrame;
       sourceCodeLocation?: SourceCodeLocation;
+      violatingNodeId?: DOM.BackendNodeId;
     }
     /**
      * A unique identifier for the type of issue. Each type may use one of the
@@ -990,10 +1028,6 @@ See https://cs.chromium.org/chromium/src/third_party/blink/renderer/modules/perm
 Note that userVisibleOnly = true is the only currently supported type.
        */
       userVisibleOnly?: boolean;
-      /**
-       * For "wake-lock" permission, must specify type as either "screen" or "system".
-       */
-      type?: string;
       /**
        * For "clipboard" permission, may specify allowWithoutSanitization.
        */
@@ -1406,10 +1440,14 @@ document.written STYLE tags.
       /**
        * Whether this stylesheet is mutable. Inline stylesheets become mutable
 after they have been modified via CSSOM API.
-<link> element's stylesheets are never mutable. Constructed stylesheets
-(new CSSStyleSheet()) are mutable immediately after creation.
+<link> element's stylesheets become mutable only if DevTools modifies them.
+Constructed stylesheets (new CSSStyleSheet()) are mutable immediately after creation.
        */
       isMutable: boolean;
+      /**
+       * Whether this stylesheet is a constructed stylesheet (created using new CSSStyleSheet()).
+       */
+      isConstructed: boolean;
       /**
        * Line offset of the stylesheet within the resource (zero based).
        */
@@ -2036,6 +2074,30 @@ node.
        * The stylesheet text.
        */
       text: string;
+    }
+    /**
+     * Starts tracking the given computed styles for updates. The specified array of properties
+replaces the one previously specified. Pass empty array to disable tracking.
+Use takeComputedStyleUpdates to retrieve the list of nodes that had properties modified.
+The changes to computed style properties are only tracked for nodes pushed to the front-end
+by the DOM agent. If no changes to the tracked properties occur after the node has been pushed
+to the front-end, no updates will be issued for the node.
+     */
+    export type trackComputedStyleUpdatesParameters = {
+      propertiesToTrack: CSSComputedStyleProperty[];
+    }
+    export type trackComputedStyleUpdatesReturnValue = {
+    }
+    /**
+     * Polls the next batch of computed style updates.
+     */
+    export type takeComputedStyleUpdatesParameters = {
+    }
+    export type takeComputedStyleUpdatesReturnValue = {
+      /**
+       * The list of node Ids that have their tracked computed styles updated
+       */
+      nodeIds: DOM.NodeId[];
     }
     /**
      * Find a rule with the given active property for the given node and set the new value for this
@@ -2669,6 +2731,16 @@ fire DOM events for nodes known to the client.
        */
       height: number;
     }
+    export interface CSSComputedStyleProperty {
+      /**
+       * Computed style property name.
+       */
+      name: string;
+      /**
+       * Computed style property value.
+       */
+      value: string;
+    }
     
     /**
      * Fired when `Element`'s attribute is modified.
@@ -3079,6 +3151,8 @@ entire subtree or provide an integer larger than 0.
     }
     /**
      * Returns the root DOM node (and optionally the subtree) to the caller.
+Deprecated, as it is not designed to work well with the rest of the DOM agent.
+Use DOMSnapshot.captureSnapshot instead.
      */
     export type getFlattenedDocumentParameters = {
       /**
@@ -3097,6 +3171,30 @@ entire subtree or provide an integer larger than 0.
        * Resulting node.
        */
       nodes: Node[];
+    }
+    /**
+     * Finds nodes with a given computed style in a subtree.
+     */
+    export type getNodesForSubtreeByStyleParameters = {
+      /**
+       * Node ID pointing to the root of a subtree.
+       */
+      nodeId: NodeId;
+      /**
+       * The style to filter nodes by (includes nodes if any of properties matches).
+       */
+      computedStyles: CSSComputedStyleProperty[];
+      /**
+       * Whether or not iframes and shadow roots in the same target should be traversed when returning the
+results (default is false).
+       */
+      pierce?: boolean;
+    }
+    export type getNodesForSubtreeByStyleReturnValue = {
+      /**
+       * Resulting nodes.
+       */
+      nodeIds: NodeId[];
     }
     /**
      * Returns node id at given location. Depending on whether DOM domain is enabled, nodeId is
@@ -4787,6 +4885,28 @@ unavailable.
       accuracy?: number;
     }
     export type setGeolocationOverrideReturnValue = {
+    }
+    /**
+     * Overrides the Idle state.
+     */
+    export type setIdleOverrideParameters = {
+      /**
+       * Mock isUserActive
+       */
+      isUserActive: boolean;
+      /**
+       * Mock isScreenUnlocked
+       */
+      isScreenUnlocked: boolean;
+    }
+    export type setIdleOverrideReturnValue = {
+    }
+    /**
+     * Clears Idle state overrides.
+     */
+    export type clearIdleOverrideParameters = {
+    }
+    export type clearIdleOverrideReturnValue = {
     }
     /**
      * Overrides value returned by the javascript navigator object.
@@ -6862,6 +6982,11 @@ If the opcode isn't 1, then payloadData is a base64 encoded string representing 
 module) (0-based).
        */
       lineNumber?: number;
+      /**
+       * Initiator column number, set for Parser type or for Script type (when script is importing
+module) (0-based).
+       */
+      columnNumber?: number;
     }
     /**
      * Cookie object
@@ -7173,6 +7298,52 @@ https://wicg.github.io/webpackage/draft-yasskin-httpbis-origin-signed-exchanges-
        * Errors occurred while handling the signed exchagne.
        */
       errors?: SignedExchangeError[];
+    }
+    export type CrossOriginOpenerPolicyValue = "SameOrigin"|"SameOriginAllowPopups"|"UnsafeNone"|"SameOriginPlusCoep";
+    export interface CrossOriginOpenerPolicyStatus {
+      value: CrossOriginOpenerPolicyValue;
+      reportOnlyValue: CrossOriginOpenerPolicyValue;
+      reportingEndpoint?: string;
+      reportOnlyReportingEndpoint?: string;
+    }
+    export type CrossOriginEmbedderPolicyValue = "None"|"RequireCorp";
+    export interface CrossOriginEmbedderPolicyStatus {
+      value: CrossOriginEmbedderPolicyValue;
+      reportOnlyValue: CrossOriginEmbedderPolicyValue;
+      reportingEndpoint?: string;
+      reportOnlyReportingEndpoint?: string;
+    }
+    export interface SecurityIsolationStatus {
+      coop: CrossOriginOpenerPolicyStatus;
+      coep: CrossOriginEmbedderPolicyStatus;
+    }
+    /**
+     * An object providing the result of a network resource load.
+     */
+    export interface LoadNetworkResourcePageResult {
+      success: boolean;
+      /**
+       * Optional values used for error reporting.
+       */
+      netError?: number;
+      netErrorName?: string;
+      httpStatusCode?: number;
+      /**
+       * If successful, one of the following two fields holds the result.
+       */
+      stream?: IO.StreamHandle;
+      /**
+       * Response headers.
+       */
+      headers?: Network.Headers;
+    }
+    /**
+     * An options object that may be extended later to better support CORS,
+CORB and streaming.
+     */
+    export interface LoadNetworkResourceOptions {
+      disableCache: boolean;
+      includeCredentials: boolean;
     }
     
     /**
@@ -8014,7 +8185,7 @@ default domain and path values of the created cookie.
     }
     export type setCookieReturnValue = {
       /**
-       * True if successfully set cookie.
+       * Always set to true. If an error occurs, the response indicates protocol error.
        */
       success: boolean;
     }
@@ -8056,6 +8227,17 @@ default domain and path values of the created cookie.
     export type setExtraHTTPHeadersReturnValue = {
     }
     /**
+     * Specifies whether to sned a debug header to all outgoing requests.
+     */
+    export type setAttachDebugHeaderParameters = {
+      /**
+       * Whether to send a debug header.
+       */
+      enabled: boolean;
+    }
+    export type setAttachDebugHeaderReturnValue = {
+    }
+    /**
      * Sets the requests to intercept that match the provided patterns and optionally resource types.
 Deprecated, please use Fetch.enable instead.
      */
@@ -8091,12 +8273,57 @@ continueInterceptedRequest call.
     }
     export type setUserAgentOverrideReturnValue = {
     }
+    /**
+     * Returns information about the COEP/COOP isolation status.
+     */
+    export type getSecurityIsolationStatusParameters = {
+      /**
+       * If no frameId is provided, the status of the target is provided.
+       */
+      frameId?: Page.FrameId;
+    }
+    export type getSecurityIsolationStatusReturnValue = {
+      status: SecurityIsolationStatus;
+    }
+    /**
+     * Fetches the resource and returns the content.
+     */
+    export type loadNetworkResourceParameters = {
+      /**
+       * Frame id to get the resource for.
+       */
+      frameId: Page.FrameId;
+      /**
+       * URL of the resource to get content for.
+       */
+      url: string;
+      /**
+       * Options for the request.
+       */
+      options: LoadNetworkResourceOptions;
+    }
+    export type loadNetworkResourceReturnValue = {
+      resource: LoadNetworkResourcePageResult;
+    }
   }
   
   /**
    * This domain provides various functionality related to drawing atop the inspected page.
    */
   export module Overlay {
+    /**
+     * Configuration data for drawing the source order of an elements children.
+     */
+    export interface SourceOrderConfig {
+      /**
+       * the color to outline the givent element in.
+       */
+      parentOutlineColor: DOM.RGBA;
+      /**
+       * the color to outline the child elements in.
+       */
+      childOutlineColor: DOM.RGBA;
+    }
     /**
      * Configuration data for the highlighting of Grid elements.
      */
@@ -8130,17 +8357,33 @@ continueInterceptedRequest call.
        */
       gridBorderColor?: DOM.RGBA;
       /**
-       * The cell border color (default: transparent).
+       * The cell border color (default: transparent). Deprecated, please use rowLineColor and columnLineColor instead.
        */
       cellBorderColor?: DOM.RGBA;
+      /**
+       * The row line color (default: transparent).
+       */
+      rowLineColor?: DOM.RGBA;
+      /**
+       * The column line color (default: transparent).
+       */
+      columnLineColor?: DOM.RGBA;
       /**
        * Whether the grid border is dashed (default: false).
        */
       gridBorderDash?: boolean;
       /**
-       * Whether the cell border is dashed (default: false).
+       * Whether the cell border is dashed (default: false). Deprecated, please us rowLineDash and columnLineDash instead.
        */
       cellBorderDash?: boolean;
+      /**
+       * Whether row lines are dashed (default: false).
+       */
+      rowLineDash?: boolean;
+      /**
+       * Whether column lines are dashed (default: false).
+       */
+      columnLineDash?: boolean;
       /**
        * The row gap highlight fill color (default: transparent).
        */
@@ -8161,6 +8404,10 @@ continueInterceptedRequest call.
        * The named grid areas border color (Default: transparent).
        */
       areaBorderColor?: DOM.RGBA;
+      /**
+       * The grid container background color (Default: transparent).
+       */
+      gridBackgroundColor?: DOM.RGBA;
     }
     /**
      * Configuration data for the highlighting of page elements.
@@ -8351,6 +8598,21 @@ user manually inspects an element.
       highlights: { [key: string]: string };
     }
     /**
+     * For Source Order Viewer testing.
+     */
+    export type getSourceOrderHighlightObjectForTestParameters = {
+      /**
+       * Id of the node to highlight.
+       */
+      nodeId: DOM.NodeId;
+    }
+    export type getSourceOrderHighlightObjectForTestReturnValue = {
+      /**
+       * Source order highlight data for the node id provided.
+       */
+      highlight: { [key: string]: string };
+    }
+    /**
      * Hides any highlight.
      */
     export type hideHighlightParameters = {
@@ -8453,6 +8715,30 @@ objectId must be specified.
       outlineColor?: DOM.RGBA;
     }
     export type highlightRectReturnValue = {
+    }
+    /**
+     * Highlights the source order of the children of the DOM node with given id or with the given
+JavaScript object wrapper. Either nodeId or objectId must be specified.
+     */
+    export type highlightSourceOrderParameters = {
+      /**
+       * A descriptor for the appearance of the overlay drawing.
+       */
+      sourceOrderConfig: SourceOrderConfig;
+      /**
+       * Identifier of the node to highlight.
+       */
+      nodeId?: DOM.NodeId;
+      /**
+       * Identifier of the backend node to highlight.
+       */
+      backendNodeId?: DOM.BackendNodeId;
+      /**
+       * JavaScript object id of the node to be highlighted.
+       */
+      objectId?: Runtime.RemoteObjectId;
+    }
+    export type highlightSourceOrderReturnValue = {
     }
     /**
      * Enters the 'inspect' mode. In this mode, elements that user is hovering over are highlighted.
@@ -8604,6 +8890,14 @@ Backend then generates 'inspectNodeRequested' event upon element selection.
      */
     export type AdFrameType = "none"|"child"|"root";
     /**
+     * Indicates whether the frame is a secure context and why it is the case.
+     */
+    export type SecureContextType = "Secure"|"SecureLocalhost"|"InsecureScheme"|"InsecureAncestor";
+    /**
+     * Indicates whether the frame is cross-origin isolated and why it is the case.
+     */
+    export type CrossOriginIsolatedContextType = "Isolated"|"NotIsolated"|"NotIsolatedFeatureDisabled";
+    /**
      * Information about the Frame on the page.
      */
     export interface Frame {
@@ -8632,6 +8926,13 @@ Backend then generates 'inspectNodeRequested' event upon element selection.
        */
       urlFragment?: string;
       /**
+       * Frame document's registered domain, taking the public suffixes list into account.
+Extracted from the Frame's url.
+Example URLs: http://www.google.com/file.html -> "google.com"
+              http://a.b.co.uk/file.html      -> "b.co.uk"
+       */
+      domainAndRegistry: string;
+      /**
        * Frame document's security origin.
        */
       securityOrigin: string;
@@ -8647,6 +8948,14 @@ Backend then generates 'inspectNodeRequested' event upon element selection.
        * Indicates whether this frame was tagged as an ad.
        */
       adFrameType?: AdFrameType;
+      /**
+       * Indicates whether the main document is a secure context and explains why that is the case.
+       */
+      secureContextType: SecureContextType;
+      /**
+       * Indicates whether this is a cross origin isolated context.
+       */
+      crossOriginIsolatedContextType: CrossOriginIsolatedContextType;
     }
     /**
      * Information about the Resource on the page.
@@ -11054,6 +11363,14 @@ supported.
        * Opener target Id
        */
       openerId?: TargetID;
+      /**
+       * Whether the target has access to the originating window.
+       */
+      canAccessOpener: boolean;
+      /**
+       * Frame id of originating window (is only set if target has an opener).
+       */
+      openerFrameId?: Page.FrameId;
       browserContextId?: Browser.BrowserContextID;
     }
     export interface RemoteLocation {
@@ -11179,6 +11496,9 @@ and eventually retire it. See crbug.com/991325.
       targetId: TargetID;
     }
     export type closeTargetReturnValue = {
+      /**
+       * Always set to true. If an error occurs, the response indicates protocol error.
+       */
       success: boolean;
     }
     /**
@@ -12007,7 +12327,7 @@ capacity and glitch may occur.
       sampleRate: number;
     }
     /**
-     * Protocol object for AudioListner
+     * Protocol object for AudioListener
      */
     export interface AudioListener {
       listenerId: GraphObjectId;
@@ -12181,6 +12501,12 @@ API.
        * Defaults to false.
        */
       hasUserVerification?: boolean;
+      /**
+       * If set to true, the authenticator will support the largeBlob extension.
+https://w3c.github.io/webauthn#largeBlob
+Defaults to false.
+       */
+      hasLargeBlob?: boolean;
       /**
        * If set to true, tests of user presence will succeed immediately.
 Otherwise, they will not be resolved. Defaults to true.
@@ -12534,6 +12860,14 @@ breakpoints, stepping through execution, exploring stack traces, etc.
     export interface ScriptPosition {
       lineNumber: number;
       columnNumber: number;
+    }
+    /**
+     * Location range within one script.
+     */
+    export interface LocationRange {
+      scriptId: Runtime.ScriptId;
+      start: ScriptPosition;
+      end: ScriptPosition;
     }
     /**
      * JavaScript call frame. Array of call frames form the call stack.
@@ -13385,6 +13719,10 @@ scope types are allowed. Other scopes could be manipulated manually.
 before next pause.
        */
       breakOnAsyncCall?: boolean;
+      /**
+       * The skipList specifies location ranges that should be skipped on step into.
+       */
+      skipList?: LocationRange[];
     }
     export type stepIntoReturnValue = {
     }
@@ -13399,6 +13737,10 @@ before next pause.
      * Steps over the statement.
      */
     export type stepOverParameters = {
+      /**
+       * The skipList specifies location ranges that should be skipped on step over.
+       */
+      skipList?: LocationRange[];
     }
     export type stepOverReturnValue = {
     }
@@ -13762,6 +14104,23 @@ profile startTime.
        */
       value: number;
     }
+    /**
+     * Runtime call counter information.
+     */
+    export interface RuntimeCallCounterInfo {
+      /**
+       * Counter name.
+       */
+      name: string;
+      /**
+       * Counter value.
+       */
+      value: number;
+      /**
+       * Counter time in seconds.
+       */
+      time: number;
+    }
     
     export type consoleProfileFinishedPayload = {
       id: string;
@@ -13928,6 +14287,31 @@ coverage needs to have started.
       result: ScriptTypeProfile[];
     }
     /**
+     * Enable counters collection.
+     */
+    export type enableCountersParameters = {
+    }
+    export type enableCountersReturnValue = {
+    }
+    /**
+     * Disable counters collection.
+     */
+    export type disableCountersParameters = {
+    }
+    export type disableCountersReturnValue = {
+    }
+    /**
+     * Retrieve counters.
+     */
+    export type getCountersParameters = {
+    }
+    export type getCountersReturnValue = {
+      /**
+       * Collected counters information.
+       */
+      result: CounterInfo[];
+    }
+    /**
      * Enable run time call stats collection.
      */
     export type enableRuntimeCallStatsParameters = {
@@ -13948,9 +14332,9 @@ coverage needs to have started.
     }
     export type getRuntimeCallStatsReturnValue = {
       /**
-       * Collected counter information.
+       * Collected runtime call counter information.
        */
-      result: CounterInfo[];
+      result: RuntimeCallCounterInfo[];
     }
   }
   
@@ -14859,15 +15243,27 @@ Will cancel the termination when the outer-most script execution ends.
      * If executionContextId is empty, adds binding with the given name on the
 global objects of all inspected contexts, including those created later,
 bindings survive reloads.
-If executionContextId is specified, adds binding only on global object of
-given execution context.
 Binding function takes exactly one argument, this argument should be string,
 in case of any other input, function throws an exception.
 Each binding function call produces Runtime.bindingCalled notification.
      */
     export type addBindingParameters = {
       name: string;
+      /**
+       * If specified, the binding would only be exposed to the specified
+execution context. If omitted and `executionContextName` is not set,
+the binding is exposed to all execution contexts of the target.
+This parameter is mutually exclusive with `executionContextName`.
+       */
       executionContextId?: ExecutionContextId;
+      /**
+       * If specified, the binding is exposed to the executionContext with
+matching name, even for contexts created after the binding is added.
+See also `ExecutionContext.name` and `worldName` parameter to
+`Page.addScriptToEvaluateOnNewDocument`.
+This parameter is mutually exclusive with `executionContextId`.
+       */
+      executionContextName?: string;
     }
     export type addBindingReturnValue = {
     }
@@ -15074,6 +15470,7 @@ unsubscribes current runtime agent from Runtime.bindingCalled notifications.
     "Accessibility.enable": Accessibility.enableParameters;
     "Accessibility.getPartialAXTree": Accessibility.getPartialAXTreeParameters;
     "Accessibility.getFullAXTree": Accessibility.getFullAXTreeParameters;
+    "Accessibility.queryAXTree": Accessibility.queryAXTreeParameters;
     "Animation.disable": Animation.disableParameters;
     "Animation.enable": Animation.enableParameters;
     "Animation.getCurrentTime": Animation.getCurrentTimeParameters;
@@ -15123,6 +15520,8 @@ unsubscribes current runtime agent from Runtime.bindingCalled notifications.
     "CSS.getMediaQueries": CSS.getMediaQueriesParameters;
     "CSS.getPlatformFontsForNode": CSS.getPlatformFontsForNodeParameters;
     "CSS.getStyleSheetText": CSS.getStyleSheetTextParameters;
+    "CSS.trackComputedStyleUpdates": CSS.trackComputedStyleUpdatesParameters;
+    "CSS.takeComputedStyleUpdates": CSS.takeComputedStyleUpdatesParameters;
     "CSS.setEffectivePropertyValueForNode": CSS.setEffectivePropertyValueForNodeParameters;
     "CSS.setKeyframeKey": CSS.setKeyframeKeyParameters;
     "CSS.setMediaText": CSS.setMediaTextParameters;
@@ -15156,6 +15555,7 @@ unsubscribes current runtime agent from Runtime.bindingCalled notifications.
     "DOM.getContentQuads": DOM.getContentQuadsParameters;
     "DOM.getDocument": DOM.getDocumentParameters;
     "DOM.getFlattenedDocument": DOM.getFlattenedDocumentParameters;
+    "DOM.getNodesForSubtreeByStyle": DOM.getNodesForSubtreeByStyleParameters;
     "DOM.getNodeForLocation": DOM.getNodeForLocationParameters;
     "DOM.getOuterHTML": DOM.getOuterHTMLParameters;
     "DOM.getRelayoutBoundary": DOM.getRelayoutBoundaryParameters;
@@ -15227,6 +15627,8 @@ unsubscribes current runtime agent from Runtime.bindingCalled notifications.
     "Emulation.setEmulatedMedia": Emulation.setEmulatedMediaParameters;
     "Emulation.setEmulatedVisionDeficiency": Emulation.setEmulatedVisionDeficiencyParameters;
     "Emulation.setGeolocationOverride": Emulation.setGeolocationOverrideParameters;
+    "Emulation.setIdleOverride": Emulation.setIdleOverrideParameters;
+    "Emulation.clearIdleOverride": Emulation.clearIdleOverrideParameters;
     "Emulation.setNavigatorOverrides": Emulation.setNavigatorOverridesParameters;
     "Emulation.setPageScaleFactor": Emulation.setPageScaleFactorParameters;
     "Emulation.setScriptExecutionDisabled": Emulation.setScriptExecutionDisabledParameters;
@@ -15312,17 +15714,22 @@ unsubscribes current runtime agent from Runtime.bindingCalled notifications.
     "Network.setCookies": Network.setCookiesParameters;
     "Network.setDataSizeLimitsForTest": Network.setDataSizeLimitsForTestParameters;
     "Network.setExtraHTTPHeaders": Network.setExtraHTTPHeadersParameters;
+    "Network.setAttachDebugHeader": Network.setAttachDebugHeaderParameters;
     "Network.setRequestInterception": Network.setRequestInterceptionParameters;
     "Network.setUserAgentOverride": Network.setUserAgentOverrideParameters;
+    "Network.getSecurityIsolationStatus": Network.getSecurityIsolationStatusParameters;
+    "Network.loadNetworkResource": Network.loadNetworkResourceParameters;
     "Overlay.disable": Overlay.disableParameters;
     "Overlay.enable": Overlay.enableParameters;
     "Overlay.getHighlightObjectForTest": Overlay.getHighlightObjectForTestParameters;
     "Overlay.getGridHighlightObjectsForTest": Overlay.getGridHighlightObjectsForTestParameters;
+    "Overlay.getSourceOrderHighlightObjectForTest": Overlay.getSourceOrderHighlightObjectForTestParameters;
     "Overlay.hideHighlight": Overlay.hideHighlightParameters;
     "Overlay.highlightFrame": Overlay.highlightFrameParameters;
     "Overlay.highlightNode": Overlay.highlightNodeParameters;
     "Overlay.highlightQuad": Overlay.highlightQuadParameters;
     "Overlay.highlightRect": Overlay.highlightRectParameters;
+    "Overlay.highlightSourceOrder": Overlay.highlightSourceOrderParameters;
     "Overlay.setInspectMode": Overlay.setInspectModeParameters;
     "Overlay.setShowAdHighlights": Overlay.setShowAdHighlightsParameters;
     "Overlay.setPausedInDebuggerMessage": Overlay.setPausedInDebuggerMessageParameters;
@@ -15527,6 +15934,9 @@ unsubscribes current runtime agent from Runtime.bindingCalled notifications.
     "Profiler.stopTypeProfile": Profiler.stopTypeProfileParameters;
     "Profiler.takePreciseCoverage": Profiler.takePreciseCoverageParameters;
     "Profiler.takeTypeProfile": Profiler.takeTypeProfileParameters;
+    "Profiler.enableCounters": Profiler.enableCountersParameters;
+    "Profiler.disableCounters": Profiler.disableCountersParameters;
+    "Profiler.getCounters": Profiler.getCountersParameters;
     "Profiler.enableRuntimeCallStats": Profiler.enableRuntimeCallStatsParameters;
     "Profiler.disableRuntimeCallStats": Profiler.disableRuntimeCallStatsParameters;
     "Profiler.getRuntimeCallStats": Profiler.getRuntimeCallStatsParameters;
@@ -15559,6 +15969,7 @@ unsubscribes current runtime agent from Runtime.bindingCalled notifications.
     "Accessibility.enable": Accessibility.enableReturnValue;
     "Accessibility.getPartialAXTree": Accessibility.getPartialAXTreeReturnValue;
     "Accessibility.getFullAXTree": Accessibility.getFullAXTreeReturnValue;
+    "Accessibility.queryAXTree": Accessibility.queryAXTreeReturnValue;
     "Animation.disable": Animation.disableReturnValue;
     "Animation.enable": Animation.enableReturnValue;
     "Animation.getCurrentTime": Animation.getCurrentTimeReturnValue;
@@ -15608,6 +16019,8 @@ unsubscribes current runtime agent from Runtime.bindingCalled notifications.
     "CSS.getMediaQueries": CSS.getMediaQueriesReturnValue;
     "CSS.getPlatformFontsForNode": CSS.getPlatformFontsForNodeReturnValue;
     "CSS.getStyleSheetText": CSS.getStyleSheetTextReturnValue;
+    "CSS.trackComputedStyleUpdates": CSS.trackComputedStyleUpdatesReturnValue;
+    "CSS.takeComputedStyleUpdates": CSS.takeComputedStyleUpdatesReturnValue;
     "CSS.setEffectivePropertyValueForNode": CSS.setEffectivePropertyValueForNodeReturnValue;
     "CSS.setKeyframeKey": CSS.setKeyframeKeyReturnValue;
     "CSS.setMediaText": CSS.setMediaTextReturnValue;
@@ -15641,6 +16054,7 @@ unsubscribes current runtime agent from Runtime.bindingCalled notifications.
     "DOM.getContentQuads": DOM.getContentQuadsReturnValue;
     "DOM.getDocument": DOM.getDocumentReturnValue;
     "DOM.getFlattenedDocument": DOM.getFlattenedDocumentReturnValue;
+    "DOM.getNodesForSubtreeByStyle": DOM.getNodesForSubtreeByStyleReturnValue;
     "DOM.getNodeForLocation": DOM.getNodeForLocationReturnValue;
     "DOM.getOuterHTML": DOM.getOuterHTMLReturnValue;
     "DOM.getRelayoutBoundary": DOM.getRelayoutBoundaryReturnValue;
@@ -15712,6 +16126,8 @@ unsubscribes current runtime agent from Runtime.bindingCalled notifications.
     "Emulation.setEmulatedMedia": Emulation.setEmulatedMediaReturnValue;
     "Emulation.setEmulatedVisionDeficiency": Emulation.setEmulatedVisionDeficiencyReturnValue;
     "Emulation.setGeolocationOverride": Emulation.setGeolocationOverrideReturnValue;
+    "Emulation.setIdleOverride": Emulation.setIdleOverrideReturnValue;
+    "Emulation.clearIdleOverride": Emulation.clearIdleOverrideReturnValue;
     "Emulation.setNavigatorOverrides": Emulation.setNavigatorOverridesReturnValue;
     "Emulation.setPageScaleFactor": Emulation.setPageScaleFactorReturnValue;
     "Emulation.setScriptExecutionDisabled": Emulation.setScriptExecutionDisabledReturnValue;
@@ -15797,17 +16213,22 @@ unsubscribes current runtime agent from Runtime.bindingCalled notifications.
     "Network.setCookies": Network.setCookiesReturnValue;
     "Network.setDataSizeLimitsForTest": Network.setDataSizeLimitsForTestReturnValue;
     "Network.setExtraHTTPHeaders": Network.setExtraHTTPHeadersReturnValue;
+    "Network.setAttachDebugHeader": Network.setAttachDebugHeaderReturnValue;
     "Network.setRequestInterception": Network.setRequestInterceptionReturnValue;
     "Network.setUserAgentOverride": Network.setUserAgentOverrideReturnValue;
+    "Network.getSecurityIsolationStatus": Network.getSecurityIsolationStatusReturnValue;
+    "Network.loadNetworkResource": Network.loadNetworkResourceReturnValue;
     "Overlay.disable": Overlay.disableReturnValue;
     "Overlay.enable": Overlay.enableReturnValue;
     "Overlay.getHighlightObjectForTest": Overlay.getHighlightObjectForTestReturnValue;
     "Overlay.getGridHighlightObjectsForTest": Overlay.getGridHighlightObjectsForTestReturnValue;
+    "Overlay.getSourceOrderHighlightObjectForTest": Overlay.getSourceOrderHighlightObjectForTestReturnValue;
     "Overlay.hideHighlight": Overlay.hideHighlightReturnValue;
     "Overlay.highlightFrame": Overlay.highlightFrameReturnValue;
     "Overlay.highlightNode": Overlay.highlightNodeReturnValue;
     "Overlay.highlightQuad": Overlay.highlightQuadReturnValue;
     "Overlay.highlightRect": Overlay.highlightRectReturnValue;
+    "Overlay.highlightSourceOrder": Overlay.highlightSourceOrderReturnValue;
     "Overlay.setInspectMode": Overlay.setInspectModeReturnValue;
     "Overlay.setShowAdHighlights": Overlay.setShowAdHighlightsReturnValue;
     "Overlay.setPausedInDebuggerMessage": Overlay.setPausedInDebuggerMessageReturnValue;
@@ -16012,6 +16433,9 @@ unsubscribes current runtime agent from Runtime.bindingCalled notifications.
     "Profiler.stopTypeProfile": Profiler.stopTypeProfileReturnValue;
     "Profiler.takePreciseCoverage": Profiler.takePreciseCoverageReturnValue;
     "Profiler.takeTypeProfile": Profiler.takeTypeProfileReturnValue;
+    "Profiler.enableCounters": Profiler.enableCountersReturnValue;
+    "Profiler.disableCounters": Profiler.disableCountersReturnValue;
+    "Profiler.getCounters": Profiler.getCountersReturnValue;
     "Profiler.enableRuntimeCallStats": Profiler.enableRuntimeCallStatsReturnValue;
     "Profiler.disableRuntimeCallStats": Profiler.disableRuntimeCallStatsReturnValue;
     "Profiler.getRuntimeCallStats": Profiler.getRuntimeCallStatsReturnValue;

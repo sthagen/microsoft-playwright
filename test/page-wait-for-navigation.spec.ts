@@ -15,10 +15,9 @@
  * limitations under the License.
  */
 
-import { it, expect } from './playwright.fixtures';
-
-import utils from './utils';
-import type { Frame } from '..';
+import { it, expect } from './fixtures';
+import type { Frame } from '../index';
+import { expectedSSLError } from './utils';
 
 it('should work', async ({page, server}) => {
   await page.goto(server.EMPTY_PAGE);
@@ -79,7 +78,7 @@ it('should work with clicking on links which do not commit navigation', async ({
     page.waitForNavigation().catch(e => e),
     page.click('a'),
   ]);
-  utils.expectSSLError(browserName, error.message);
+  expect(error.message).toContain(expectedSSLError(browserName));
 });
 
 it('should work with history.pushState()', async ({page, server}) => {

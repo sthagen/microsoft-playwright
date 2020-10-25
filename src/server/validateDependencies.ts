@@ -20,6 +20,7 @@ import * as os from 'os';
 import { spawn } from 'child_process';
 import { getUbuntuVersion } from '../utils/ubuntuVersion';
 import { linuxLddDirectories, windowsExeAndDllDirectories, BrowserDescriptor } from '../utils/browserPaths.js';
+import { printDepsWindowsExecutable } from '../utils/binaryPaths';
 
 const accessAsync = util.promisify(fs.access.bind(fs));
 const checkExecutable = (filePath: string) => accessAsync(filePath, fs.constants.X_OK).then(() => true).catch(e => false);
@@ -88,6 +89,9 @@ async function validateDependenciesWindows(browserPath: string, browser: Browser
         `as Administrator:`,
         ``,
         `    Install-WindowsFeature Server-Media-Foundation`,
+        ``,
+        `For Windows N editions visit:`,
+        `https://support.microsoft.com/en-us/help/3145500/media-feature-pack-list-for-windows-n-editions`,
         ``);
   }
 
@@ -111,8 +115,6 @@ async function validateDependenciesLinux(browserPath: string, browser: BrowserDe
       missingDeps.add(dep);
   }
   for (const dep of (await missingDLOPENLibraries(browser)))
-    missingDeps.add(dep);
-  for (const dep of (await missingSystemBinaries(browser)))
     missingDeps.add(dep);
   if (!missingDeps.size)
     return;
@@ -189,9 +191,12 @@ async function executablesOrSharedLibraries(directoryPath: string): Promise<stri
 }
 
 async function missingFileDependenciesWindows(filePath: string): Promise<Array<string>> {
+  const executable = printDepsWindowsExecutable();
+  if (!executable)
+    return [];
+
   const dirname = path.dirname(filePath);
-  const printDepsWindowsExecutable = process.env.PW_PRINT_DEPS_WINDOWS_EXECUTABLE || path.join(__dirname, '../../bin/PrintDeps.exe');
-  const {stdout, code} = await spawnAsync(printDepsWindowsExecutable, [filePath], {
+  const {stdout, code} = await spawnAsync(executable, [filePath], {
     cwd: dirname,
     env: {
       ...process.env,
@@ -200,7 +205,7 @@ async function missingFileDependenciesWindows(filePath: string): Promise<Array<s
   });
   if (code !== 0)
     return [];
-  const missingDeps = stdout.split('\n').map(line => line.trim()).filter(line => line.endsWith('not found') && line.includes('=>')).map(line => line.split('=>')[0].trim());
+  const missingDeps = stdout.split('\n').map(line => line.trim()).filter(line => line.endsWith('not found') && line.includes('=>')).map(line => line.split('=>')[0].trim().toLowerCase());
   return missingDeps;
 }
 
@@ -233,17 +238,7 @@ async function missingDLOPENLibraries(browser: BrowserDescriptor): Promise<strin
   return libraries.filter(library => !isLibraryAvailable(library));
 }
 
-async function missingSystemBinaries(browser: BrowserDescriptor): Promise<string[]> {
-  if (browser.name !== 'chromium')
-    return [];
-  // Look for ffmpeg in PATH.
-  const {code, error} = await spawnAsync('ffmpeg', ['-version'], {});
-  if (code !== 0 || error)
-    return ['ffmpeg'];
-  return [];
-}
-
-function spawnAsync(cmd: string, args: string[], options: any): Promise<{stdout: string, stderr: string, code: number, error?: Error}> {
+export function spawnAsync(cmd: string, args: string[], options: any): Promise<{stdout: string, stderr: string, code: number, error?: Error}> {
   const process = spawn(cmd, args, options);
 
   return new Promise(resolve => {
@@ -436,6 +431,4 @@ const MANUAL_LIBRARY_TO_PACKAGE_NAME_UBUNTU: { [s: string]: string} = {
   // and if it's missing recommend installing missing gstreamer lib.
   // gstreamer1.0-libav -> libavcodec57 -> libx264-152
   'libx264.so': 'gstreamer1.0-libav',
-  // Required for screencast in Chromium.
-  'ffmpeg': 'ffmpeg',
 };

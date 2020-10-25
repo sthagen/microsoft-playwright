@@ -14,28 +14,22 @@
  * limitations under the License.
  */
 
-import { options } from '../playwright.fixtures';
-import { it, expect, describe, registerFixture } from '@playwright/test-runner';
-
+import { folio } from '../fixtures';
 import fs from 'fs';
 import path from 'path';
 import type { ChromiumBrowser } from '../..';
 
-declare global {
-  interface TestState {
-    outputTraceFile: string;
-  }
-}
-
-registerFixture('outputTraceFile', async ({tmpDir}, test) => {
-  const outputTraceFile = path.join(tmpDir, `trace.json`);
-  await test(outputTraceFile);
-  if (fs.existsSync(outputTraceFile))
-    fs.unlinkSync(outputTraceFile);
+type TestState = {
+  outputTraceFile: string;
+};
+const fixtures = folio.extend<TestState>();
+fixtures.outputTraceFile.init(async ({ testInfo }, run) => {
+  await run(testInfo.outputPath(path.join(`trace.json`)));
 });
+const { it, expect, describe } = fixtures.build();
 
-describe('oopif', suite => {
-  suite.skip(!options.CHROMIUM);
+describe('oopif', (suite, { browserName }) => {
+  suite.skip(browserName !== 'chromium');
 }, () => {
   it('should output a trace', async ({browser, page, server, outputTraceFile}) => {
     await (browser as ChromiumBrowser).startTracing(page, {screenshots: true, path: outputTraceFile});
@@ -44,8 +38,8 @@ describe('oopif', suite => {
     expect(fs.existsSync(outputTraceFile)).toBe(true);
   });
 
-  it('should create directories as needed', async ({browser, page, server, tmpDir}) => {
-    const filePath = path.join(tmpDir, 'these', 'are', 'directories');
+  it('should create directories as needed', async ({browser, page, server, testInfo}) => {
+    const filePath = testInfo.outputPath(path.join('these', 'are', 'directories', 'trace.json'));
     await (browser as ChromiumBrowser).startTracing(page, {screenshots: true, path: filePath});
     await page.goto(server.PREFIX + '/grid.html');
     await (browser as ChromiumBrowser).stopTracing();

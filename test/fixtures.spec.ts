@@ -15,50 +15,49 @@
  * limitations under the License.
  */
 
-import { it, expect, describe, options } from './playwright.fixtures';
-import './remoteServer.fixture';
-import { registerFixture } from '@playwright/test-runner';
-
+import { folio, RemoteServer } from './remoteServer.fixture';
 import { execSync } from 'child_process';
 import path from 'path';
 
-declare global {
-  interface TestState {
-    connectedRemoteServer: TestState['remoteServer'];
-    stallingConnectedRemoteServer: TestState['stallingRemoteServer'];
-  }
-}
+type FixturesFixtures = {
+  connectedRemoteServer: RemoteServer;
+  stallingConnectedRemoteServer: RemoteServer;
+};
+const fixtures = folio.extend<FixturesFixtures>();
 
-registerFixture('connectedRemoteServer', async ({browserType, remoteServer, server}, test) => {
+fixtures.connectedRemoteServer.init(async ({browserType, remoteServer, server}, run) => {
   const browser = await browserType.connect({ wsEndpoint: remoteServer.wsEndpoint() });
   const page = await browser.newPage();
   await page.goto(server.EMPTY_PAGE);
-  await test(remoteServer);
+  await run(remoteServer);
   await browser.close();
 });
 
-registerFixture('stallingConnectedRemoteServer', async ({browserType, stallingRemoteServer, server}, test) => {
+fixtures.stallingConnectedRemoteServer.init(async ({browserType, stallingRemoteServer, server}, run) => {
   const browser = await browserType.connect({ wsEndpoint: stallingRemoteServer.wsEndpoint() });
   const page = await browser.newPage();
   await page.goto(server.EMPTY_PAGE);
-  await test(stallingRemoteServer);
+  await run(stallingRemoteServer);
   await browser.close();
 });
 
+const { it, describe, expect } = fixtures.build();
+
 it('should close the browser when the node process closes', test => {
   test.slow();
-}, async ({connectedRemoteServer}) => {
-  if (WIN)
+  test.flaky('Flakes at least on WebKit Linux');
+}, async ({connectedRemoteServer, isWindows}) => {
+  if (isWindows)
     execSync(`taskkill /pid ${connectedRemoteServer.child().pid} /T /F`);
   else
     process.kill(connectedRemoteServer.child().pid);
-  expect(await connectedRemoteServer.childExitCode()).toBe(WIN ? 1 : 0);
+  expect(await connectedRemoteServer.childExitCode()).toBe(isWindows ? 1 : 0);
   // We might not get browser exitCode in time when killing the parent node process,
   // so we don't check it here.
 });
 
-describe('fixtures', suite => {
-  suite.skip(WIN || !options.HEADLESS);
+describe('fixtures', (suite, { platform, headful }) => {
+  suite.skip(platform === 'win32' || headful);
   suite.slow();
 }, () => {
   // Cannot reliably send signals on Windows.

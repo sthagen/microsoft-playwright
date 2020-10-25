@@ -16,6 +16,8 @@
 
 const {runCommands} = require('.');
 const Source = require('../Source');
+const { folio } = require('folio');
+const { describe, it, expect } = folio;
 
 describe('runCommands', function() {
   const OPTIONS_REL = {

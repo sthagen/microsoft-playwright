@@ -25,7 +25,7 @@ type SnapshotResult = {
   frameElements: Element[],
 };
 
-export function takeSnapshotInFrame(guid: string, removeNoScript: boolean): SnapshotResult {
+export function takeSnapshotInFrame(guid: string, removeNoScript: boolean, target: Node | undefined): SnapshotResult {
   const shadowAttribute = 'playwright-shadow-root';
   const win = window;
   const doc = win.document;
@@ -161,6 +161,8 @@ export function takeSnapshotInFrame(guid: string, removeNoScript: boolean): Snap
       const element = node as Element;
       builder.push('<');
       builder.push(nodeName);
+      if (node === target)
+        builder.push(' __playwright_target__="true"');
       for (let i = 0; i < element.attributes.length; i++) {
         const name = element.attributes[i].name;
         let value = element.attributes[i].value;
@@ -194,9 +196,9 @@ export function takeSnapshotInFrame(guid: string, removeNoScript: boolean): Snap
         builder.push(escapeAttribute(value));
         builder.push('"');
       }
-      if (nodeName === 'INPUT' || nodeName === 'TEXTAREA') {
+      if (nodeName === 'INPUT') {
         builder.push(' value="');
-        builder.push(escapeAttribute((element as HTMLInputElement | HTMLTextAreaElement).value));
+        builder.push(escapeAttribute((element as HTMLInputElement).value));
         builder.push('"');
       }
       if ((element as any).checked)
@@ -237,8 +239,12 @@ export function takeSnapshotInFrame(guid: string, removeNoScript: boolean): Snap
       }
       builder.push('>');
     }
-    for (let child = node.firstChild; child; child = child.nextSibling)
-      visit(child, builder);
+    if (nodeName === 'TEXTAREA') {
+      builder.push(escapeText((node as HTMLTextAreaElement).value));
+    } else {
+      for (let child = node.firstChild; child; child = child.nextSibling)
+        visit(child, builder);
+    }
     if (node.nodeName === 'BODY' && chunks.size) {
       builder.push('<script>');
       const shadowChunks = Array.from(chunks).map(([chunkId, html]) => {

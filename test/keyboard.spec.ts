@@ -15,8 +15,8 @@
  * limitations under the License.
  */
 
-import { it, expect, options } from './playwright.fixtures';
-import utils from './utils';
+import { it, expect } from './fixtures';
+import { attachFrame } from './utils';
 
 it('should type into a textarea', async ({page}) => {
   await page.evaluate(() => {
@@ -83,8 +83,8 @@ it('insertText should only emit input event', async ({page, server}) => {
   expect(await events.jsonValue()).toEqual(['input']);
 });
 
-it('should report shiftKey', test => {
-  test.fail(options.FIREFOX && MAC);
+it('should report shiftKey', (test, { browserName, platform }) => {
+  test.fail(browserName === 'firefox' && platform === 'darwin');
 }, async ({page, server}) => {
   await page.goto(server.PREFIX + '/input/keyboard.html');
   const keyboard = page.keyboard;
@@ -305,18 +305,18 @@ it('should type emoji', async ({page, server}) => {
 
 it('should type emoji into an iframe', async ({page, server}) => {
   await page.goto(server.EMPTY_PAGE);
-  await utils.attachFrame(page, 'emoji-test', server.PREFIX + '/input/textarea.html');
+  await attachFrame(page, 'emoji-test', server.PREFIX + '/input/textarea.html');
   const frame = page.frames()[1];
   const textarea = await frame.$('textarea');
   await textarea.type('👹 Tokyo street Japan 🇯🇵');
   expect(await frame.$eval('textarea', textarea => textarea.value)).toBe('👹 Tokyo street Japan 🇯🇵');
 });
 
-it('should handle selectAll', async ({page, server}) => {
+it('should handle selectAll', async ({page, server, isMac}) => {
   await page.goto(server.PREFIX + '/input/textarea.html');
   const textarea = await page.$('textarea');
   await textarea.type('some text');
-  const modifier = MAC ? 'Meta' : 'Control';
+  const modifier = isMac ? 'Meta' : 'Control';
   await page.keyboard.down(modifier);
   await page.keyboard.press('a');
   await page.keyboard.up(modifier);
@@ -324,7 +324,7 @@ it('should handle selectAll', async ({page, server}) => {
   expect(await page.$eval('textarea', textarea => textarea.value)).toBe('');
 });
 
-it('should be able to prevent selectAll', async ({page, server}) => {
+it('should be able to prevent selectAll', async ({page, server, isMac}) => {
   await page.goto(server.PREFIX + '/input/textarea.html');
   const textarea = await page.$('textarea');
   await textarea.type('some text');
@@ -334,7 +334,7 @@ it('should be able to prevent selectAll', async ({page, server}) => {
         event.preventDefault();
     }, false);
   });
-  const modifier = MAC ? 'Meta' : 'Control';
+  const modifier = isMac ? 'Meta' : 'Control';
   await page.keyboard.down(modifier);
   await page.keyboard.press('a');
   await page.keyboard.up(modifier);
@@ -342,8 +342,8 @@ it('should be able to prevent selectAll', async ({page, server}) => {
   expect(await page.$eval('textarea', textarea => textarea.value)).toBe('some tex');
 });
 
-it('should support MacOS shortcuts', test => {
-  test.skip(!MAC);
+it('should support MacOS shortcuts', (test, { platform }) => {
+  test.skip(platform !== 'darwin');
 }, async ({page, server}) => {
   await page.goto(server.PREFIX + '/input/textarea.html');
   const textarea = await page.$('textarea');
@@ -354,21 +354,21 @@ it('should support MacOS shortcuts', test => {
   expect(await page.$eval('textarea', textarea => textarea.value)).toBe('some ');
 });
 
-it('should press the meta key', async ({page}) => {
+it('should press the meta key', async ({page, isFirefox, isMac}) => {
   const lastEvent = await captureLastKeydown(page);
   await page.keyboard.press('Meta');
   const {key, code, metaKey} = await lastEvent.jsonValue();
-  if (options.FIREFOX && !MAC)
+  if (isFirefox && !isMac)
     expect(key).toBe('OS');
   else
     expect(key).toBe('Meta');
 
-  if (options.FIREFOX)
+  if (isFirefox)
     expect(code).toBe('OSLeft');
   else
     expect(code).toBe('MetaLeft');
 
-  if (options.FIREFOX && !MAC)
+  if (isFirefox && !isMac)
     expect(metaKey).toBe(false);
   else
     expect(metaKey).toBe(true);
@@ -384,9 +384,9 @@ it('should work after a cross origin navigation', async ({page, server}) => {
 });
 
 // event.keyIdentifier has been removed from all browsers except WebKit
-it('should expose keyIdentifier in webkit', test => {
-  test.skip(!options.WEBKIT);
-}, async ({page, server}) => {
+it('should expose keyIdentifier in webkit', (test, { browserName }) => {
+  test.skip(browserName !== 'webkit');
+}, async ({page}) => {
   const lastEvent = await captureLastKeydown(page);
   const keyMap = {
     'ArrowUp': 'Up',

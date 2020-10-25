@@ -15,12 +15,12 @@
  * limitations under the License.
  */
 
-import { it, expect, describe, options } from './playwright.fixtures';
-import utils from './utils';
-import './remoteServer.fixture';
+import { folio } from './remoteServer.fixture';
+import * as fs from 'fs';
+const { it, expect, describe } = folio;
 
-describe('connect', suite => {
-  suite.skip(options.WIRE);
+describe('connect', (suite, { wire }) => {
+  suite.skip(wire);
   suite.slow();
 }, () => {
   it('should be able to reconnect to a browser', async ({browserType, remoteServer, server}) => {
@@ -174,13 +174,13 @@ describe('connect', suite => {
       }
     });
     // Register one engine before connecting.
-    await utils.registerEngine(playwright, 'mycss1', mycss);
+    await playwright.selectors.register('mycss1', mycss);
 
     const browser1 = await browserType.connect({ wsEndpoint: remoteServer.wsEndpoint() });
     const context1 = await browser1.newContext();
 
     // Register another engine after creating context.
-    await utils.registerEngine(playwright, 'mycss2', mycss);
+    await playwright.selectors.register('mycss2', mycss);
 
     const page1 = await context1.newPage();
     await page1.setContent(`<div>hello</div>`);
@@ -191,7 +191,7 @@ describe('connect', suite => {
     const browser2 = await browserType.connect({ wsEndpoint: remoteServer.wsEndpoint() });
 
     // Register third engine after second connect.
-    await utils.registerEngine(playwright, 'mycss3', mycss);
+    await playwright.selectors.register('mycss3', mycss);
 
     const page2 = await browser2.newPage();
     await page2.setContent(`<div>hello</div>`);
@@ -201,5 +201,54 @@ describe('connect', suite => {
     expect(await page2.innerHTML('mycss3=div')).toBe('hello');
 
     await browser1.close();
+  });
+
+  it('should not throw on close after disconnect', async ({browserType, remoteServer, server}) => {
+    const remote = await browserType.connect({ wsEndpoint: remoteServer.wsEndpoint() });
+    await remote.newPage();
+    await Promise.all([
+      new Promise(f => remote.on('disconnected', f)),
+      remoteServer.close()
+    ]);
+    await remote.close();
+  });
+
+  it('should not throw on context.close after disconnect', async ({browserType, remoteServer, server}) => {
+    const remote = await browserType.connect({ wsEndpoint: remoteServer.wsEndpoint() });
+    const context = await remote.newContext();
+    await context.newPage();
+    await Promise.all([
+      new Promise(f => remote.on('disconnected', f)),
+      remoteServer.close()
+    ]);
+    await context.close();
+  });
+
+  it('should not throw on page.close after disconnect', async ({browserType, remoteServer, server}) => {
+    const remote = await browserType.connect({ wsEndpoint: remoteServer.wsEndpoint() });
+    const page = await remote.newPage();
+    await Promise.all([
+      new Promise(f => remote.on('disconnected', f)),
+      remoteServer.close()
+    ]);
+    await page.close();
+  });
+
+  it('should save videos from remote browser', (test, {browserName, platform}) => {
+    test.flaky(browserName === 'firefox' && platform === 'win32');
+  }, async ({browserType, remoteServer, testInfo}) => {
+    const remote = await browserType.connect({ wsEndpoint: remoteServer.wsEndpoint() });
+    const videosPath = testInfo.outputPath();
+    const context = await remote.newContext({
+      videosPath,
+      videoSize: { width: 320, height: 240 },
+    });
+    const page = await context.newPage();
+    await page.evaluate(() => document.body.style.backgroundColor = 'red');
+    await new Promise(r => setTimeout(r, 1000));
+    await context.close();
+
+    const files = fs.readdirSync(videosPath);
+    expect(files.some(file => file.endsWith('webm'))).toBe(true);
   });
 });

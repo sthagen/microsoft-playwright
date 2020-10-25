@@ -13,11 +13,11 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import { it, expect, describe, options } from '../playwright.fixtures';
+import { it, expect, describe } from '../fixtures';
 import type { ChromiumBrowserContext } from '../..';
 
-describe('chromium', suite => {
-  suite.skip(!options.CHROMIUM);
+describe('chromium', (suite, { browserName }) => {
+  suite.skip(browserName !== 'chromium');
 }, () => {
   it('should create a worker from a service worker', async ({page, server, context}) => {
     const [worker] = await Promise.all([

@@ -15,18 +15,17 @@
  * limitations under the License.
  */
 
-import { it, expect, options } from './playwright.fixtures';
-
-import utils from './utils';
 import path from 'path';
 import url from 'url';
+import { expect, it } from './fixtures';
+import { expectedSSLError } from './utils';
 
 it('should work', async ({page, server}) => {
   await page.goto(server.EMPTY_PAGE);
   expect(page.url()).toBe(server.EMPTY_PAGE);
 });
 
-it('should work with file URL', async ({page, server}) => {
+it('should work with file URL', async ({page}) => {
   const fileurl = url.pathToFileURL(path.join(__dirname, 'assets', 'frames', 'two-frames.html')).href;
   await page.goto(fileurl);
   expect(page.url().toLowerCase()).toBe(fileurl.toLowerCase());
@@ -134,7 +133,7 @@ it('should work with subframes return 204 with domcontentloaded', async ({page, 
   await page.goto(server.PREFIX + '/frames/one-frame.html', { waitUntil: 'domcontentloaded' });
 });
 
-it('should fail when server returns 204', async ({page, server}) => {
+it('should fail when server returns 204', async ({page, server, isChromium, isWebKit}) => {
   // Webkit just loads an empty page.
   server.setRoute('/empty.html', (req, res) => {
     res.statusCode = 204;
@@ -143,9 +142,9 @@ it('should fail when server returns 204', async ({page, server}) => {
   let error = null;
   await page.goto(server.EMPTY_PAGE).catch(e => error = e);
   expect(error).not.toBe(null);
-  if (options.CHROMIUM)
+  if (isChromium)
     expect(error.message).toContain('net::ERR_ABORTED');
-  else if (options.WEBKIT)
+  else if (isWebKit)
     expect(error.message).toContain('Aborted: 204 No Content');
   else
     expect(error.message).toContain('NS_BINDING_ABORTED');
@@ -165,16 +164,16 @@ it('should work when page calls history API in beforeunload', async ({page, serv
   expect(response.status()).toBe(200);
 });
 
-it('should fail when navigating to bad url', async ({page}) => {
+it('should fail when navigating to bad url', async ({page, isChromium, isWebKit}) => {
   let error = null;
   await page.goto('asdfasdf').catch(e => error = e);
-  if (options.CHROMIUM || options.WEBKIT)
+  if (isChromium || isWebKit)
     expect(error.message).toContain('Cannot navigate to invalid URL');
   else
     expect(error.message).toContain('Invalid url');
 });
 
-it('should fail when navigating to bad SSL', async ({page, httpsServer, browserName}) => {
+it('should fail when navigating to bad SSL', async ({page, browserName, httpsServer}) => {
   // Make sure that network events do not emit 'undefined'.
   // @see https://crbug.com/750469
   page.on('request', request => expect(request).toBeTruthy());
@@ -182,15 +181,15 @@ it('should fail when navigating to bad SSL', async ({page, httpsServer, browserN
   page.on('requestfailed', request => expect(request).toBeTruthy());
   let error = null;
   await page.goto(httpsServer.EMPTY_PAGE).catch(e => error = e);
-  utils.expectSSLError(browserName, error.message);
+  expect(error.message).toContain(expectedSSLError(browserName));
 });
 
-it('should fail when navigating to bad SSL after redirects', async ({page, server, httpsServer, browserName}) => {
+it('should fail when navigating to bad SSL after redirects', async ({page, browserName, server, httpsServer}) => {
   server.setRedirect('/redirect/1.html', '/redirect/2.html');
   server.setRedirect('/redirect/2.html', '/empty.html');
   let error = null;
   await page.goto(httpsServer.PREFIX + '/redirect/1.html').catch(e => error = e);
-  utils.expectSSLError(browserName, error.message);
+  expect(error.message).toContain(expectedSSLError(browserName));
 });
 
 it('should not crash when navigating to bad SSL after a cross origin navigation', async ({page, server, httpsServer}) => {
@@ -199,23 +198,25 @@ it('should not crash when navigating to bad SSL after a cross origin navigation'
 });
 
 it('should not throw if networkidle0 is passed as an option', async ({page, server}) => {
-  await page.goto(server.EMPTY_PAGE, {waitUntil: 'networkidle0' as any});
+  // @ts-expect-error networkidle0 is undocumented
+  await page.goto(server.EMPTY_PAGE, {waitUntil: 'networkidle0'});
 });
 
 it('should throw if networkidle2 is passed as an option', async ({page, server}) => {
   let error = null;
-  await page.goto(server.EMPTY_PAGE, {waitUntil: 'networkidle2' as any}).catch(err => error = err);
+  // @ts-expect-error networkidle2 is not allowed
+  await page.goto(server.EMPTY_PAGE, {waitUntil: 'networkidle2'}).catch(err => error = err);
   expect(error.message).toContain(`waitUntil: expected one of (load|domcontentloaded|networkidle)`);
 });
 
-it('should fail when main resources failed to load', async ({page}) => {
+it('should fail when main resources failed to load', async ({page, isChromium, isWebKit, isWindows}) => {
   let error = null;
   await page.goto('http://localhost:44123/non-existing-url').catch(e => error = e);
-  if (options.CHROMIUM)
+  if (isChromium)
     expect(error.message).toContain('net::ERR_CONNECTION_REFUSED');
-  else if (options.WEBKIT && WIN)
+  else if (isWebKit && isWindows)
     expect(error.message).toContain(`Couldn\'t connect to server`);
-  else if (options.WEBKIT)
+  else if (isWebKit)
     expect(error.message).toContain('Could not connect');
   else
     expect(error.message).toContain('NS_ERROR_CONNECTION_REFUSED');
@@ -298,7 +299,7 @@ it('should disable timeout when its set to 0', async ({page, server}) => {
   expect(loaded).toBe(true);
 });
 
-it('should fail when replaced by another navigation', async ({page, server}) => {
+it('should fail when replaced by another navigation', async ({page, server, isChromium, isWebKit}) => {
   let anotherPromise;
   server.setRoute('/empty.html', (req, res) => {
     anotherPromise = page.goto(server.PREFIX + '/one-style.html');
@@ -306,9 +307,9 @@ it('should fail when replaced by another navigation', async ({page, server}) => 
   });
   const error = await page.goto(server.PREFIX + '/empty.html').catch(e => e);
   await anotherPromise;
-  if (options.CHROMIUM)
+  if (isChromium)
     expect(error.message).toContain('net::ERR_ABORTED');
-  else if (options.WEBKIT)
+  else if (isWebKit)
     expect(error.message).toContain('cancelled');
   else
     expect(error.message).toContain('NS_BINDING_ABORTED');
@@ -359,7 +360,9 @@ it('should not leak listeners during bad navigation', async ({page, server}) => 
   expect(warning).toBe(null);
 });
 
-it('should not leak listeners during navigation of 20 pages', async ({page, context, server}) => {
+it('should not leak listeners during navigation of 20 pages', (test, parameters) => {
+  test.slow('We open 20 pages here');
+}, async ({page, context, server}) => {
   let warning = null;
   const warningHandler = w => warning = w;
   process.on('warning', warningHandler);
@@ -474,7 +477,7 @@ it('should fail when canceled by another navigation', async ({page, server}) => 
   expect(error.message).toBeTruthy();
 });
 
-it('extraHttpHeaders should be pushed to provisional page', test => {
+it('extraHttpHeaders should be pushed to provisional page', (test, parameters) => {
   test.flaky('This test is flaky, because we cannot await page.setExtraHTTPHeaders.');
   // We need a way to test our implementation by more than just public api.
 }, async ({page, server}) => {
@@ -496,4 +499,17 @@ it('extraHttpHeaders should be pushed to provisional page', test => {
 it('should work with lazy loading iframes', async ({page, server}) => {
   await page.goto(server.PREFIX + '/frames/lazy-frame.html');
   expect(page.frames().length).toBe(2);
+});
+
+it('should report raw buffer for main resource', (test, { browserName, platform }) => {
+  test.fail(browserName === 'chromium', 'Chromium sends main resource as text');
+  test.fail(browserName === 'webkit' && platform === 'win32', 'Same here');
+}, async ({page, server, playwright}) => {
+  server.setRoute('/empty.html', (req, res) => {
+    res.statusCode = 200;
+    res.end(Buffer.from('Ü (lowercase ü)', 'utf-8'));
+  });
+  const response = await page.goto(server.PREFIX + '/empty.html');
+  const body = await response.body();
+  expect(body.toString()).toBe('Ü (lowercase ü)');
 });

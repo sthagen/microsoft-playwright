@@ -27,11 +27,10 @@ import { getAccessibilityTree } from './ffAccessibility';
 import { FFBrowserContext } from './ffBrowser';
 import { FFSession, FFSessionEvents } from './ffConnection';
 import { FFExecutionContext } from './ffExecutionContext';
-import { RawKeyboardImpl, RawMouseImpl } from './ffInput';
+import { RawKeyboardImpl, RawMouseImpl, RawTouchscreenImpl } from './ffInput';
 import { FFNetworkManager } from './ffNetworkManager';
 import { Protocol } from './protocol';
 import { rewriteErrorMessage } from '../../utils/stackTrace';
-import { Video } from '../browserContext';
 
 const UTILITY_WORLD_NAME = '__playwright_utility_world__';
 
@@ -39,6 +38,7 @@ export class FFPage implements PageDelegate {
   readonly cspErrorsAsynchronousForInlineScipts = true;
   readonly rawMouse: RawMouseImpl;
   readonly rawKeyboard: RawKeyboardImpl;
+  readonly rawTouchscreen: RawTouchscreenImpl;
   readonly _session: FFSession;
   readonly _page: Page;
   readonly _networkManager: FFNetworkManager;
@@ -50,13 +50,13 @@ export class FFPage implements PageDelegate {
   private readonly _contextIdToContext: Map<string, dom.FrameExecutionContext>;
   private _eventListeners: RegisteredListener[];
   private _workers = new Map<string, { frameId: string, session: FFSession }>();
-  private readonly _idToScreencast = new Map<string, Video>();
 
   constructor(session: FFSession, browserContext: FFBrowserContext, opener: FFPage | null) {
     this._session = session;
     this._opener = opener;
     this.rawKeyboard = new RawKeyboardImpl(session);
     this.rawMouse = new RawMouseImpl(session);
+    this.rawTouchscreen = new RawTouchscreenImpl(session);
     this._contextIdToContext = new Map();
     this._browserContext = browserContext;
     this._page = new Page(this, browserContext);
@@ -258,11 +258,7 @@ export class FFPage implements PageDelegate {
   }
 
   _onScreencastStarted(event: Protocol.Page.screencastStartedPayload) {
-    const video = this._browserContext._browser._videoStarted(event.screencastId, event.file);
-    this.pageOrError().then(pageOrError => {
-      if (pageOrError instanceof Page)
-        pageOrError.emit(Page.Events.VideoStarted, video);
-    }).catch(() => {});
+    this._browserContext._browser._videoStarted(this._browserContext, event.screencastId, event.file, this.pageOrError());
   }
 
   async exposeBinding(binding: PageBinding) {
@@ -492,7 +488,7 @@ export class FFPage implements PageDelegate {
     const parent = frame.parentFrame();
     if (!parent)
       throw new Error('Frame has been detached.');
-    const handles = await this._page.selectors._queryAll(parent, 'iframe', undefined, true /* allowUtilityContext */);
+    const handles = await this._page.selectors._queryAll(parent, 'iframe', undefined);
     const items = await Promise.all(handles.map(async handle => {
       const frame = await handle.contentFrame().catch(e => null);
       return { handle, frame };

@@ -15,10 +15,10 @@
  * limitations under the License.
  */
 
-import { it, expect, options } from './playwright.fixtures';
+import { it, expect } from './fixtures';
 
-it('should fail without credentials', test => {
-  test.fail(options.CHROMIUM && !options.HEADLESS);
+it('should fail without credentials', (test, { browserName, headful}) => {
+  test.fail(browserName === 'chromium' && headful);
 }, async ({browser, server}) => {
   server.setAuth('/empty.html', 'user', 'pass');
   const context = await browser.newContext();
@@ -28,8 +28,8 @@ it('should fail without credentials', test => {
   await context.close();
 });
 
-it('should work with setHTTPCredentials', test => {
-  test.fail(options.CHROMIUM && !options.HEADLESS);
+it('should work with setHTTPCredentials', (test, { browserName, headful }) => {
+  test.fail(browserName === 'chromium' && headful);
 }, async ({browser, server}) => {
   server.setAuth('/empty.html', 'user', 'pass');
   const context = await browser.newContext();

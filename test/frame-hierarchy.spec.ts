@@ -15,12 +15,29 @@
  * limitations under the License.
  */
 
-import { it, expect, options } from './playwright.fixtures';
-import utils from './utils';
+import { it, expect } from './fixtures';
+import { attachFrame, detachFrame } from './utils';
+import type { Frame } from '../index';
+
+function dumpFrames(frame: Frame, indentation: string = ''): string[] {
+  let description = frame.url().replace(/:\d{4}\//, ':<PORT>/');
+  if (frame.name())
+    description += ' (' + frame.name() + ')';
+  const result = [indentation + description];
+  const childFrames = frame.childFrames();
+  childFrames.sort((a, b) => {
+    if (a.url() !== b.url())
+      return a.url() < b.url() ? -1 : 1;
+    return a.name() < b.name() ? -1 : 1;
+  });
+  for (const child of childFrames)
+    result.push(...dumpFrames(child, '    ' + indentation));
+  return result;
+}
 
 it('should handle nested frames', async ({page, server}) => {
   await page.goto(server.PREFIX + '/frames/nested-frames.html');
-  expect(utils.dumpFrames(page.mainFrame())).toEqual([
+  expect(dumpFrames(page.mainFrame())).toEqual([
     'http://localhost:<PORT>/frames/nested-frames.html',
     '    http://localhost:<PORT>/frames/frame.html (aframe)',
     '    http://localhost:<PORT>/frames/two-frames.html (2frames)',
@@ -34,7 +51,7 @@ it('should send events when frames are manipulated dynamically', async ({page, s
   // validate frameattached events
   const attachedFrames = [];
   page.on('frameattached', frame => attachedFrames.push(frame));
-  await utils.attachFrame(page, 'frame1', './assets/frame.html');
+  await attachFrame(page, 'frame1', './assets/frame.html');
   expect(attachedFrames.length).toBe(1);
   expect(attachedFrames[0].url()).toContain('/assets/frame.html');
 
@@ -52,7 +69,7 @@ it('should send events when frames are manipulated dynamically', async ({page, s
   // validate framedetached events
   const detachedFrames = [];
   page.on('framedetached', frame => detachedFrames.push(frame));
-  await utils.detachFrame(page, 'frame1');
+  await detachFrame(page, 'frame1');
   expect(detachedFrames.length).toBe(1);
   expect(detachedFrames[0].isDetached()).toBe(true);
 });
@@ -136,7 +153,7 @@ it('should report frame from-inside shadow DOM', async ({page, server}) => {
 });
 
 it('should report frame.name()', async ({page, server}) => {
-  await utils.attachFrame(page, 'theFrameId', server.EMPTY_PAGE);
+  await attachFrame(page, 'theFrameId', server.EMPTY_PAGE);
   await page.evaluate(url => {
     const frame = document.createElement('iframe');
     frame.name = 'theFrameName';
@@ -150,15 +167,15 @@ it('should report frame.name()', async ({page, server}) => {
 });
 
 it('should report frame.parent()', async ({page, server}) => {
-  await utils.attachFrame(page, 'frame1', server.EMPTY_PAGE);
-  await utils.attachFrame(page, 'frame2', server.EMPTY_PAGE);
+  await attachFrame(page, 'frame1', server.EMPTY_PAGE);
+  await attachFrame(page, 'frame2', server.EMPTY_PAGE);
   expect(page.frames()[0].parentFrame()).toBe(null);
   expect(page.frames()[1].parentFrame()).toBe(page.mainFrame());
   expect(page.frames()[2].parentFrame()).toBe(page.mainFrame());
 });
 
 it('should report different frame instance when frame re-attaches', async ({page, server}) => {
-  const frame1 = await utils.attachFrame(page, 'frame1', server.EMPTY_PAGE);
+  const frame1 = await attachFrame(page, 'frame1', server.EMPTY_PAGE);
   await page.evaluate(() => {
     window['frame'] = document.querySelector('#frame1');
     window['frame'].remove();
@@ -172,8 +189,8 @@ it('should report different frame instance when frame re-attaches', async ({page
   expect(frame1).not.toBe(frame2);
 });
 
-it('should refuse to display x-frame-options:deny iframe', test => {
-  test.fixme(options.FIREFOX);
+it('should refuse to display x-frame-options:deny iframe', (test, { browserName }) => {
+  test.fixme(browserName === 'firefox');
 }, async ({page, server}) => {
   server.setRoute('/x-frame-options-deny.html', async (req, res) => {
     res.setHeader('Content-Type', 'text/html');

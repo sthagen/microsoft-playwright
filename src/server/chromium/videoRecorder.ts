@@ -14,50 +14,55 @@
  * limitations under the License.
  */
 
-import { launchProcess } from '../processLauncher';
 import { ChildProcess } from 'child_process';
-import { Progress, runAbortableTask } from '../progress';
+import { ffmpegExecutable } from '../../utils/binaryPaths';
+import { assert, monotonicTime } from '../../utils/utils';
+import { launchProcess } from '../processLauncher';
+import { Progress, ProgressController } from '../progress';
 import * as types from '../types';
-import { assert } from '../../utils/utils';
 
 const fps = 25;
 
 export class VideoRecorder {
   private _process: ChildProcess | null = null;
   private _gracefullyClose: (() => Promise<void>) | null = null;
-  private _lastWritePromise: Promise<void>;
+  private _lastWritePromise: Promise<void> = Promise.resolve();
   private _lastFrameTimestamp: number = 0;
   private _lastFrameBuffer: Buffer | null = null;
   private _lastWriteTimestamp: number = 0;
   private readonly _progress: Progress;
-  private readonly _ffmpegPath: string;
+  private _frameQueue: Buffer[] = [];
+  private _isStopped = false;
 
-  static async launch(ffmpegPath: string, options: types.PageScreencastOptions): Promise<VideoRecorder> {
+  static async launch(options: types.PageScreencastOptions): Promise<VideoRecorder> {
     if (!options.outputFile.endsWith('.webm'))
       throw new Error('File must have .webm extension');
 
-    return await runAbortableTask(async progress => {
-      const recorder = new VideoRecorder(ffmpegPath, progress);
+    const controller = new ProgressController();
+    controller.setLogName('browser');
+    return await controller.run(async progress => {
+      const recorder = new VideoRecorder(progress);
       await recorder._launch(options);
       return recorder;
-    }, 0, 'browser');
+    });
   }
 
-  private constructor(ffmpegPath: string, progress: Progress) {
+  private constructor(progress: Progress) {
     this._progress = progress;
-    this._ffmpegPath = ffmpegPath;
-    this._lastWritePromise = Promise.resolve();
   }
 
   private async _launch(options: types.PageScreencastOptions) {
-    assert(!this._isRunning());
     const w = options.width;
     const h = options.height;
-    const args = `-loglevel error -f image2pipe -c:v mjpeg -i - -y -an -r ${fps} -c:v vp8 -vf pad=${w}:${h}:0:0:gray,crop=${w}:${h}:0:0`.split(' ');
+    const args = `-loglevel error -f image2pipe -c:v mjpeg -i - -y -an -r ${fps} -c:v vp8 -qmin 0 -qmax 50 -crf 8 -b:v 1M -vf pad=${w}:${h}:0:0:gray,crop=${w}:${h}:0:0`.split(' ');
     args.push(options.outputFile);
     const progress = this._progress;
+
+    const executablePath = ffmpegExecutable();
+    if (!executablePath)
+      throw new Error('ffmpeg executable was not found');
     const { launchedProcess, gracefullyClose } = await launchProcess({
-      executablePath: this._ffmpegPath,
+      executablePath,
       args,
       pipeStdin: true,
       progress,
@@ -80,50 +85,43 @@ export class VideoRecorder {
     this._gracefullyClose = gracefullyClose;
   }
 
-  async writeFrame(frame: Buffer, timestamp: number) {
+  writeFrame(frame: Buffer, timestamp: number) {
     assert(this._process);
-    if (!this._isRunning())
+    if (this._isStopped)
       return;
-    const duration = this._lastFrameTimestamp ? Math.max(1, Math.round(25 * (timestamp - this._lastFrameTimestamp))) : 1;
-    this._progress.log(`writing ${duration} frame(s)`);
+    this._progress.log(`writing frame ` + timestamp);
+
+    if (this._lastFrameBuffer) {
+      const durationSec = timestamp - this._lastFrameTimestamp;
+      const repeatCount = Math.max(1, Math.round(fps * durationSec));
+      for (let i = 0; i < repeatCount; ++i)
+        this._frameQueue.push(this._lastFrameBuffer);
+      this._lastWritePromise = this._lastWritePromise.then(() => this._sendFrames());
+    }
+
     this._lastFrameBuffer = frame;
     this._lastFrameTimestamp = timestamp;
-    this._lastWriteTimestamp = Date.now();
+    this._lastWriteTimestamp = monotonicTime();
+  }
 
-    const previousWrites = this._lastWritePromise;
-    let finishedWriting: () => void;
-    this._lastWritePromise = new Promise(fulfill => finishedWriting = fulfill);
-    const writePromise = this._lastWritePromise;
-    await previousWrites;
-    for (let i = 0; i < duration; i++) {
-      const callFinish = i === (duration - 1);
-      this._process.stdin.write(frame, (error: Error | null | undefined) => {
-        if (error)
-          this._progress.log(`ffmpeg failed to write: ${error}`);
-        if (callFinish)
-          finishedWriting();
-      });
-    }
-    return writePromise;
+  private async _sendFrames() {
+    while (this._frameQueue.length)
+      await this._sendFrame(this._frameQueue.shift()!);
+  }
+
+  private async _sendFrame(frame: Buffer) {
+    return new Promise(f => this._process!.stdin.write(frame, f)).then(error => {
+      if (error)
+        this._progress.log(`ffmpeg failed to write: ${error}`);
+    });
   }
 
   async stop() {
-    if (!this._gracefullyClose)
+    if (this._isStopped)
       return;
-
-    if (this._lastWriteTimestamp) {
-      const durationSec = (Date.now() - this._lastWriteTimestamp) / 1000;
-      if (durationSec > 1 / fps)
-        this.writeFrame(this._lastFrameBuffer!, this._lastFrameTimestamp + durationSec);
-    }
-
-    const close = this._gracefullyClose;
-    this._gracefullyClose = null;
+    this.writeFrame(Buffer.from([]), this._lastFrameTimestamp + (monotonicTime() - this._lastWriteTimestamp) / 1000);
+    this._isStopped = true;
     await this._lastWritePromise;
-    await close();
-  }
-
-  private _isRunning(): boolean {
-    return !!this._gracefullyClose;
+    await this._gracefullyClose!();
   }
 }

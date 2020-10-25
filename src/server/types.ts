@@ -238,10 +238,10 @@ export type BrowserContextOptions = {
   hasTouch?: boolean,
   colorScheme?: ColorScheme,
   acceptDownloads?: boolean,
-  _recordVideos?: {
-    width: number,
-    height: number
-  }
+  videosPath?: string,
+  videoSize?: Size,
+  _tracePath?: string,
+  _traceResourcesPath?: string,
 };
 
 export type EnvArray = { name: string, value: string }[];
@@ -260,7 +260,6 @@ type LaunchOptionsBase = {
   devtools?: boolean,
   proxy?: ProxySettings,
   downloadsPath?: string,
-  _videosPath?: string,
   chromiumSandbox?: boolean,
   slowMo?: number,
 };

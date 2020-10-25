@@ -15,10 +15,8 @@
  * limitations under the License.
  */
 
-import { it, expect, options } from './playwright.fixtures';
+import { it, expect } from './fixtures';
 import fs from 'fs';
-import utils from './utils';
-const { removeUserDataDir, makeUserDataDir } = utils;
 
 it('should support hasTouch option', async ({server, launchPersistent}) => {
   const {page} = await launchPersistent({hasTouch: true});
@@ -26,8 +24,8 @@ it('should support hasTouch option', async ({server, launchPersistent}) => {
   expect(await page.evaluate(() => 'ontouchstart' in window)).toBe(true);
 });
 
-it('should work in persistent context', test => {
-  test.skip(options.FIREFOX);
+it('should work in persistent context', (test, { browserName }) => {
+  test.skip(browserName === 'firefox');
 }, async ({server, launchPersistent}) => {
   // Firefox does not support mobile.
   const {page} = await launchPersistent({viewport: {width: 320, height: 480}, isMobile: true});
@@ -42,7 +40,7 @@ it('should support colorScheme option', async ({launchPersistent}) => {
 });
 
 it('should support timezoneId option', async ({launchPersistent}) => {
-  const {page} = await launchPersistent({timezoneId: 'America/Jamaica'});
+  const {page} = await launchPersistent({locale: 'en-US', timezoneId: 'America/Jamaica'});
   expect(await page.evaluate(() => new Date(1479579154987).toString())).toBe('Sat Nov 19 2016 13:12:34 GMT-0500 (Eastern Standard Time)');
 });
 
@@ -68,8 +66,8 @@ it('should support ignoreHTTPSErrors option', async ({httpsServer, launchPersist
   expect(response.ok()).toBe(true);
 });
 
-it('should support extraHTTPHeaders option', test => {
-  test.flaky(options.FIREFOX && !options.HEADLESS && LINUX, 'Intermittent timeout on bots');
+it('should support extraHTTPHeaders option', (test, { browserName, platform, headful }) => {
+  test.flaky(browserName === 'firefox' && headful && platform === 'linux', 'Intermittent timeout on bots');
 }, async ({server, launchPersistent}) => {
   const {page} = await launchPersistent({extraHTTPHeaders: { foo: 'bar' }});
   const [request] = await Promise.all([
@@ -79,52 +77,46 @@ it('should support extraHTTPHeaders option', test => {
   expect(request.headers['foo']).toBe('bar');
 });
 
-it('should accept userDataDir', test => {
-  test.flaky(options.CHROMIUM);
-}, async ({launchPersistent, tmpDir}) => {
-  const {context} = await launchPersistent();
-  // Note: we need an open page to make sure its functional.
-  expect(fs.readdirSync(tmpDir).length).toBeGreaterThan(0);
+it('should accept userDataDir', (test, { browserName }) => {
+  test.flaky(browserName === 'chromium');
+}, async ({createUserDataDir, browserType, browserOptions}) => {
+  const userDataDir = await createUserDataDir();
+  const context = await browserType.launchPersistentContext(userDataDir, browserOptions);
+  expect(fs.readdirSync(userDataDir).length).toBeGreaterThan(0);
   await context.close();
-  expect(fs.readdirSync(tmpDir).length).toBeGreaterThan(0);
-  // This might throw. See https://github.com/GoogleChrome/puppeteer/issues/2778
-  await removeUserDataDir(tmpDir);
+  expect(fs.readdirSync(userDataDir).length).toBeGreaterThan(0);
 });
 
-it('should restore state from userDataDir', test => {
+it('should restore state from userDataDir', (test, { browserName }) => {
   test.slow();
-}, async ({browserType, defaultBrowserOptions, server, launchPersistent}) => {
-  const userDataDir = await makeUserDataDir();
-  const browserContext = await browserType.launchPersistentContext(userDataDir, defaultBrowserOptions);
+}, async ({browserType, browserOptions, server, createUserDataDir}) => {
+  const userDataDir = await createUserDataDir();
+  const browserContext = await browserType.launchPersistentContext(userDataDir, browserOptions);
   const page = await browserContext.newPage();
   await page.goto(server.EMPTY_PAGE);
   await page.evaluate(() => localStorage.hey = 'hello');
   await browserContext.close();
 
-  const browserContext2 = await browserType.launchPersistentContext(userDataDir, defaultBrowserOptions);
+  const browserContext2 = await browserType.launchPersistentContext(userDataDir, browserOptions);
   const page2 = await browserContext2.newPage();
   await page2.goto(server.EMPTY_PAGE);
   expect(await page2.evaluate(() => localStorage.hey)).toBe('hello');
   await browserContext2.close();
 
-  const userDataDir2 = await makeUserDataDir();
-  const browserContext3 = await browserType.launchPersistentContext(userDataDir2, defaultBrowserOptions);
+  const userDataDir2 = await createUserDataDir();
+  const browserContext3 = await browserType.launchPersistentContext(userDataDir2, browserOptions);
   const page3 = await browserContext3.newPage();
   await page3.goto(server.EMPTY_PAGE);
   expect(await page3.evaluate(() => localStorage.hey)).not.toBe('hello');
   await browserContext3.close();
-
-  // This might throw. See https://github.com/GoogleChrome/puppeteer/issues/2778
-  await removeUserDataDir(userDataDir);
-  await removeUserDataDir(userDataDir2);
 });
 
-it('should restore cookies from userDataDir', test => {
+it('should restore cookies from userDataDir', (test, { browserName }) => {
   test.slow();
-  test.flaky(options.CHROMIUM);
-}, async ({browserType, defaultBrowserOptions,  server, launchPersistent}) => {
-  const userDataDir = await makeUserDataDir();
-  const browserContext = await browserType.launchPersistentContext(userDataDir, defaultBrowserOptions);
+  test.flaky(browserName === 'chromium');
+}, async ({browserType, browserOptions,  server, createUserDataDir}) => {
+  const userDataDir = await createUserDataDir();
+  const browserContext = await browserType.launchPersistentContext(userDataDir, browserOptions);
   const page = await browserContext.newPage();
   await page.goto(server.EMPTY_PAGE);
   const documentCookie = await page.evaluate(() => {
@@ -134,22 +126,18 @@ it('should restore cookies from userDataDir', test => {
   expect(documentCookie).toBe('doSomethingOnlyOnce=true');
   await browserContext.close();
 
-  const browserContext2 = await browserType.launchPersistentContext(userDataDir, defaultBrowserOptions);
+  const browserContext2 = await browserType.launchPersistentContext(userDataDir, browserOptions);
   const page2 = await browserContext2.newPage();
   await page2.goto(server.EMPTY_PAGE);
   expect(await page2.evaluate(() => document.cookie)).toBe('doSomethingOnlyOnce=true');
   await browserContext2.close();
 
-  const userDataDir2 = await makeUserDataDir();
-  const browserContext3 = await browserType.launchPersistentContext(userDataDir2, defaultBrowserOptions);
+  const userDataDir2 = await createUserDataDir();
+  const browserContext3 = await browserType.launchPersistentContext(userDataDir2, browserOptions);
   const page3 = await browserContext3.newPage();
   await page3.goto(server.EMPTY_PAGE);
   expect(await page3.evaluate(() => document.cookie)).not.toBe('doSomethingOnlyOnce=true');
   await browserContext3.close();
-
-  // This might throw. See https://github.com/GoogleChrome/puppeteer/issues/2778
-  await removeUserDataDir(userDataDir);
-  await removeUserDataDir(userDataDir2);
 });
 
 it('should have default URL when launching browser', async ({launchPersistent}) => {
@@ -158,24 +146,25 @@ it('should have default URL when launching browser', async ({launchPersistent}) 
   expect(urls).toEqual(['about:blank']);
 });
 
-it('should throw if page argument is passed', test => {
-  test.skip(options.FIREFOX);
-}, async ({browserType, defaultBrowserOptions, server, tmpDir}) => {
-  const options = {...defaultBrowserOptions, args: [server.EMPTY_PAGE] };
-  const error = await browserType.launchPersistentContext(tmpDir, options).catch(e => e);
+it('should throw if page argument is passed', (test, { browserName }) => {
+  test.skip(browserName === 'firefox');
+}, async ({browserType, browserOptions, server, createUserDataDir}) => {
+  const options = {...browserOptions, args: [server.EMPTY_PAGE] };
+  const error = await browserType.launchPersistentContext(await createUserDataDir(), options).catch(e => e);
   expect(error.message).toContain('can not specify page');
 });
 
-it('should have passed URL when launching with ignoreDefaultArgs: true', test => {
-  test.skip(options.WIRE);
-}, async ({browserType, defaultBrowserOptions, server, tmpDir, toImpl}) => {
-  const args = toImpl(browserType)._defaultArgs(defaultBrowserOptions, 'persistent', tmpDir, 0).filter(a => a !== 'about:blank');
+it('should have passed URL when launching with ignoreDefaultArgs: true', (test, { wire }) => {
+  test.skip(wire);
+}, async ({browserType, browserOptions, server, createUserDataDir, toImpl}) => {
+  const userDataDir = await createUserDataDir();
+  const args = toImpl(browserType)._defaultArgs(browserOptions, 'persistent', userDataDir, 0).filter(a => a !== 'about:blank');
   const options = {
-    ...defaultBrowserOptions,
+    ...browserOptions,
     args: [...args, server.EMPTY_PAGE],
     ignoreDefaultArgs: true,
   };
-  const browserContext = await browserType.launchPersistentContext(tmpDir, options);
+  const browserContext = await browserType.launchPersistentContext(userDataDir, options);
   if (!browserContext.pages().length)
     await browserContext.waitForEvent('page');
   await browserContext.pages()[0].waitForLoadState();
@@ -184,20 +173,20 @@ it('should have passed URL when launching with ignoreDefaultArgs: true', test =>
   await browserContext.close();
 });
 
-it('should handle timeout', test => {
-  test.skip(options.WIRE);
-}, async ({browserType, defaultBrowserOptions, tmpDir}) => {
-  const options = { ...defaultBrowserOptions, timeout: 5000, __testHookBeforeCreateBrowser: () => new Promise(f => setTimeout(f, 6000)) };
-  const error = await browserType.launchPersistentContext(tmpDir, options).catch(e => e);
+it('should handle timeout', (test, { wire }) => {
+  test.skip(wire);
+}, async ({browserType, browserOptions, createUserDataDir}) => {
+  const options = { ...browserOptions, timeout: 5000, __testHookBeforeCreateBrowser: () => new Promise(f => setTimeout(f, 6000)) };
+  const error = await browserType.launchPersistentContext(await createUserDataDir(), options).catch(e => e);
   expect(error.message).toContain(`browserType.launchPersistentContext: Timeout 5000ms exceeded.`);
 });
 
-it('should handle exception', test => {
-  test.skip(options.WIRE);
-}, async ({browserType, defaultBrowserOptions, tmpDir}) => {
+it('should handle exception', (test, { wire }) => {
+  test.skip(wire);
+}, async ({browserType, browserOptions, createUserDataDir}) => {
   const e = new Error('Dummy');
-  const options = { ...defaultBrowserOptions, __testHookBeforeCreateBrowser: () => { throw e; } };
-  const error = await browserType.launchPersistentContext(tmpDir, options).catch(e => e);
+  const options = { ...browserOptions, __testHookBeforeCreateBrowser: () => { throw e; } };
+  const error = await browserType.launchPersistentContext(await createUserDataDir(), options).catch(e => e);
   expect(error.message).toContain('Dummy');
 });
 
@@ -209,8 +198,8 @@ it('should fire close event for a persistent context', async ({launchPersistent}
   expect(closed).toBe(true);
 });
 
-it('coverage should work', test => {
-  test.skip(!options.CHROMIUM);
+it('coverage should work', (test, { browserName }) => {
+  test.skip(browserName !== 'chromium');
 }, async ({server, launchPersistent}) => {
   const {page} = await launchPersistent();
   await page.coverage.startJSCoverage();
@@ -221,8 +210,8 @@ it('coverage should work', test => {
   expect(coverage[0].functions.find(f => f.functionName === 'foo').ranges[0].count).toEqual(1);
 });
 
-it('coverage should be missing', test => {
-  test.skip(options.CHROMIUM);
+it('coverage should be missing', (test, { browserName }) => {
+  test.skip(browserName === 'chromium');
 }, async ({launchPersistent}) => {
   const {page} = await launchPersistent();
   expect(page.coverage).toBe(null);
@@ -240,7 +229,7 @@ it('should respect selectors', async ({playwright, launchPersistent}) => {
       return Array.from(root.querySelectorAll(selector));
     }
   });
-  await utils.registerEngine(playwright, 'defaultContextCSS', defaultContextCSS);
+  await playwright.selectors.register('defaultContextCSS', defaultContextCSS);
 
   await page.setContent(`<div>hello</div>`);
   expect(await page.innerHTML('css=div')).toBe('hello');

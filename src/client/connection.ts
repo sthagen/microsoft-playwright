@@ -40,7 +40,7 @@ import { WebKitBrowser } from './webkitBrowser';
 import { FirefoxBrowser } from './firefoxBrowser';
 import { debugLogger } from '../utils/debugLogger';
 import { SelectorsOwner } from './selectors';
-import { Video } from './video';
+import { isUnderTest } from '../utils/utils';
 
 class Root extends ChannelOwner<channels.Channel, {}> {
   constructor(connection: Connection) {
@@ -71,12 +71,22 @@ export class Connection {
   }
 
   async sendMessageToServer(type: string, guid: string, method: string, params: any): Promise<any> {
+    const stackObject: any = {};
+    Error.captureStackTrace(stackObject);
+    const stack = stackObject.stack.startsWith('Error') ? stackObject.stack.substring(5) : stackObject.stack;
     const id = ++this._lastId;
     const validated = method === 'debugScopeState' ? params : validateParams(type, method, params);
     const converted = { id, guid, method, params: validated };
+    // Do not include metadata in debug logs to avoid noise.
     debugLogger.log('channel:command', converted);
-    this.onmessage(converted);
-    return new Promise((resolve, reject) => this._callbacks.set(id, { resolve, reject }));
+    this.onmessage({ ...converted, metadata: { stack } });
+    try {
+      return await new Promise((resolve, reject) => this._callbacks.set(id, { resolve, reject }));
+    } catch (e) {
+      const innerStack = (isUnderTest() && e.stack) ? e.stack.substring(e.stack.indexOf(e.message) + e.message.length) : '';
+      e.stack = e.message + innerStack + stack;
+      throw e;
+    }
   }
 
   _debugScopeState(): any {
@@ -133,7 +143,9 @@ export class Connection {
   }
 
   private _createRemoteObject(parentGuid: string, type: string, guid: string, initializer: any): any {
-    const parent = this._objects.get(parentGuid)!;
+    const parent = this._objects.get(parentGuid);
+    if (!parent)
+      throw new Error(`Cannot find parent object ${parentGuid} to create ${guid}`);
     let result: ChannelOwner<any, any>;
     initializer = this._replaceGuidsWithChannels(initializer);
     switch (type) {
@@ -207,9 +219,6 @@ export class Connection {
         break;
       case 'Route':
         result = new Route(parent, type, guid, initializer);
-        break;
-      case 'Video':
-        result = new Video(parent, type, guid, initializer);
         break;
       case 'Stream':
         result = new Stream(parent, type, guid, initializer);

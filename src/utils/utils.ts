@@ -62,7 +62,7 @@ export function assert(value: any, message?: string): asserts value {
 }
 
 export function debugAssert(value: any, message?: string): asserts value {
-  if (isDevMode() && !value)
+  if (isUnderTest() && !value)
     throw new Error(message);
 }
 
@@ -87,19 +87,24 @@ export function isDebugMode(): boolean {
   return isInDebugMode;
 }
 
-let _isDevMode = false;
-export function setDevMode() {
-  _isDevMode = true;
+let _isUnderTest = false;
+export function setUnderTest() {
+  _isUnderTest = true;
 }
-export function isDevMode(): boolean {
-  return _isDevMode;
+export function isUnderTest(): boolean {
+  return _isUnderTest;
 }
 
-export function getFromENV(name: string) {
+export function getFromENV(name: string): string | undefined {
   let value = process.env[name];
-  value = value || process.env[`npm_config_${name.toLowerCase()}`];
-  value = value || process.env[`npm_package_config_${name.toLowerCase()}`];
+  value = value === undefined ? process.env[`npm_config_${name.toLowerCase()}`] : value;
+  value = value === undefined ?  process.env[`npm_package_config_${name.toLowerCase()}`] : value;
   return value;
+}
+
+export function getAsBooleanFromENV(name: string): boolean {
+  const value = getFromENV(name);
+  return !!value && value !== 'false' && value !== '0';
 }
 
 export async function mkdirIfNeeded(filePath: string) {
@@ -128,7 +133,7 @@ export function headersArrayToObject(headers: HeadersArray, lowerCase: boolean):
 
 export function monotonicTime(): number {
   const [seconds, nanoseconds] = process.hrtime();
-  return seconds * 1000 + (nanoseconds / 1000000 | 0);
+  return seconds * 1000 + (nanoseconds / 1000 | 0) / 1000;
 }
 
 export function calculateSha1(buffer: Buffer): string {

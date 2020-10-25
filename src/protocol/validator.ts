@@ -33,6 +33,9 @@ export function createScheme(tChannel: (name: string) => Validator): Scheme {
     };
   };
 
+  scheme.Metadata = tObject({
+    stack: tOptional(tString),
+  });
   scheme.SerializedValue = tObject({
     n: tOptional(tNumber),
     b: tOptional(tBoolean),
@@ -118,7 +121,6 @@ export function createScheme(tChannel: (name: string) => Validator): Scheme {
       password: tOptional(tString),
     })),
     downloadsPath: tOptional(tString),
-    _videosPath: tOptional(tString),
     firefoxUserPrefs: tOptional(tAny),
     chromiumSandbox: tOptional(tBoolean),
     slowMo: tOptional(tNumber),
@@ -146,7 +148,6 @@ export function createScheme(tChannel: (name: string) => Validator): Scheme {
       password: tOptional(tString),
     })),
     downloadsPath: tOptional(tString),
-    _videosPath: tOptional(tString),
     chromiumSandbox: tOptional(tBoolean),
     slowMo: tOptional(tNumber),
     noDefaultViewport: tOptional(tBoolean),
@@ -180,6 +181,13 @@ export function createScheme(tChannel: (name: string) => Validator): Scheme {
     hasTouch: tOptional(tBoolean),
     colorScheme: tOptional(tEnum(['light', 'dark', 'no-preference'])),
     acceptDownloads: tOptional(tBoolean),
+    _traceResourcesPath: tOptional(tString),
+    _tracePath: tOptional(tString),
+    videosPath: tOptional(tString),
+    videoSize: tOptional(tObject({
+      width: tNumber,
+      height: tNumber,
+    })),
   });
   scheme.BrowserCloseParams = tOptional(tObject({}));
   scheme.BrowserNewContextParams = tObject({
@@ -214,7 +222,10 @@ export function createScheme(tChannel: (name: string) => Validator): Scheme {
     hasTouch: tOptional(tBoolean),
     colorScheme: tOptional(tEnum(['dark', 'light', 'no-preference'])),
     acceptDownloads: tOptional(tBoolean),
-    _recordVideos: tOptional(tObject({
+    _traceResourcesPath: tOptional(tString),
+    _tracePath: tOptional(tString),
+    videosPath: tOptional(tString),
+    videoSize: tOptional(tObject({
       width: tNumber,
       height: tNumber,
     })),
@@ -251,6 +262,7 @@ export function createScheme(tChannel: (name: string) => Validator): Scheme {
   });
   scheme.BrowserContextExposeBindingParams = tObject({
     name: tString,
+    needsHandle: tOptional(tBoolean),
   });
   scheme.BrowserContextGrantPermissionsParams = tObject({
     permissions: tArray(tString),
@@ -312,6 +324,7 @@ export function createScheme(tChannel: (name: string) => Validator): Scheme {
   });
   scheme.PageExposeBindingParams = tObject({
     name: tString,
+    needsHandle: tOptional(tBoolean),
   });
   scheme.PageGoBackParams = tObject({
     timeout: tOptional(tNumber),
@@ -390,6 +403,10 @@ export function createScheme(tChannel: (name: string) => Validator): Scheme {
     delay: tOptional(tNumber),
     button: tOptional(tEnum(['left', 'right', 'middle'])),
     clickCount: tOptional(tNumber),
+  });
+  scheme.PageTouchscreenTapParams = tObject({
+    x: tNumber,
+    y: tNumber,
   });
   scheme.PageAccessibilitySnapshotParams = tObject({
     interestingOnly: tOptional(tBoolean),
@@ -489,11 +506,13 @@ export function createScheme(tChannel: (name: string) => Validator): Scheme {
     expression: tString,
     isFunction: tBoolean,
     arg: tType('SerializedArgument'),
+    world: tOptional(tEnum(['main', 'utility'])),
   });
   scheme.FrameEvaluateExpressionHandleParams = tObject({
     expression: tString,
     isFunction: tBoolean,
     arg: tType('SerializedArgument'),
+    world: tOptional(tEnum(['main', 'utility'])),
   });
   scheme.FrameFillParams = tObject({
     selector: tString,
@@ -574,6 +593,17 @@ export function createScheme(tChannel: (name: string) => Validator): Scheme {
     timeout: tOptional(tNumber),
     noWaitAfter: tOptional(tBoolean),
   });
+  scheme.FrameTapParams = tObject({
+    selector: tString,
+    force: tOptional(tBoolean),
+    noWaitAfter: tOptional(tBoolean),
+    modifiers: tOptional(tArray(tEnum(['Alt', 'Control', 'Meta', 'Shift']))),
+    position: tOptional(tObject({
+      x: tNumber,
+      y: tNumber,
+    })),
+    timeout: tOptional(tNumber),
+  });
   scheme.FrameTextContentParams = tObject({
     selector: tString,
     timeout: tOptional(tNumber),
@@ -603,6 +633,10 @@ export function createScheme(tChannel: (name: string) => Validator): Scheme {
     selector: tString,
     timeout: tOptional(tNumber),
     state: tOptional(tEnum(['attached', 'detached', 'visible', 'hidden'])),
+  });
+  scheme.FrameExtendInjectedScriptParams = tObject({
+    source: tString,
+    arg: tType('SerializedArgument'),
   });
   scheme.WorkerEvaluateExpressionParams = tObject({
     expression: tString,
@@ -748,6 +782,16 @@ export function createScheme(tChannel: (name: string) => Validator): Scheme {
     timeout: tOptional(tNumber),
     noWaitAfter: tOptional(tBoolean),
   });
+  scheme.ElementHandleTapParams = tObject({
+    force: tOptional(tBoolean),
+    noWaitAfter: tOptional(tBoolean),
+    modifiers: tOptional(tArray(tEnum(['Alt', 'Control', 'Meta', 'Shift']))),
+    position: tOptional(tObject({
+      x: tNumber,
+      y: tNumber,
+    })),
+    timeout: tOptional(tNumber),
+  });
   scheme.ElementHandleTextContentParams = tOptional(tObject({}));
   scheme.ElementHandleTypeParams = tObject({
     text: tString,
@@ -793,6 +837,16 @@ export function createScheme(tChannel: (name: string) => Validator): Scheme {
     body: tOptional(tString),
     isBase64: tOptional(tBoolean),
   });
+  scheme.ResourceTiming = tObject({
+    startTime: tNumber,
+    domainLookupStart: tNumber,
+    domainLookupEnd: tNumber,
+    connectStart: tNumber,
+    secureConnectionStart: tNumber,
+    connectEnd: tNumber,
+    requestStart: tNumber,
+    responseStart: tNumber,
+  });
   scheme.ResponseBodyParams = tOptional(tObject({}));
   scheme.ResponseFinishedParams = tOptional(tObject({}));
   scheme.BindingCallRejectParams = tObject({
@@ -805,7 +859,6 @@ export function createScheme(tChannel: (name: string) => Validator): Scheme {
     promptText: tOptional(tString),
   });
   scheme.DialogDismissParams = tOptional(tObject({}));
-  scheme.VideoPathParams = tOptional(tObject({}));
   scheme.DownloadPathParams = tOptional(tObject({}));
   scheme.DownloadSaveAsParams = tObject({
     path: tString,

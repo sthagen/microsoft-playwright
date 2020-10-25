@@ -20,6 +20,8 @@ import { BrowserContext } from './browserContext';
 import { ChannelOwner } from './channelOwner';
 import { LaunchOptions, LaunchServerOptions, ConnectOptions, LaunchPersistentContextOptions } from './types';
 import * as WebSocket from 'ws';
+import * as path from 'path';
+import * as fs from 'fs';
 import { Connection } from './connection';
 import { serializeError } from '../protocol/serializers';
 import { Events } from './events';
@@ -27,8 +29,10 @@ import { TimeoutSettings } from '../utils/timeoutSettings';
 import { ChildProcess } from 'child_process';
 import { envObjectToArray } from './clientHelper';
 import { validateHeaders } from './network';
-import { assert, makeWaitForNextTask, headersObjectToArray } from '../utils/utils';
+import { assert, makeWaitForNextTask, headersObjectToArray, mkdirIfNeeded } from '../utils/utils';
 import { SelectorsOwner, sharedSelectors } from './selectors';
+import { kBrowserClosedError } from '../utils/errors';
+import { Stream } from './stream';
 
 export interface BrowserServerLauncher {
   launchServer(options?: LaunchServerOptions): Promise<BrowserServer>;
@@ -54,6 +58,8 @@ export class BrowserType extends ChannelOwner<channels.BrowserTypeChannel, chann
   }
 
   executablePath(): string {
+    if (!this._initializer.executablePath)
+      throw new Error('Browser is not supported on current platform');
     return this._initializer.executablePath;
   }
 
@@ -63,7 +69,6 @@ export class BrowserType extends ChannelOwner<channels.BrowserTypeChannel, chann
 
   async launch(options: LaunchOptions = {}): Promise<Browser> {
     const logger = options.logger;
-    options = { ...options, logger: undefined };
     return this._wrapApiCall('browserType.launch', async () => {
       assert(!(options as any).userDataDir, 'userDataDir option is not supported in `browserType.launch`. Use `browserType.launchPersistentContext` instead');
       assert(!(options as any).port, 'Cannot specify a port without launching as a server.');
@@ -87,8 +92,8 @@ export class BrowserType extends ChannelOwner<channels.BrowserTypeChannel, chann
 
   async launchPersistentContext(userDataDir: string, options: LaunchPersistentContextOptions = {}): Promise<BrowserContext> {
     const logger = options.logger;
-    options = { ...options, logger: undefined };
     return this._wrapApiCall('browserType.launchPersistentContext', async () => {
+      assert(!(options as any).port, 'Cannot specify a port without launching as a server.');
       if (options.extraHTTPHeaders)
         validateHeaders(options.extraHTTPHeaders);
       const persistentOptions: channels.BrowserTypeLaunchPersistentContextParams = {
@@ -103,6 +108,7 @@ export class BrowserType extends ChannelOwner<channels.BrowserTypeChannel, chann
       };
       const result = await this._channel.launchPersistentContext(persistentOptions);
       const context = BrowserContext.from(result.context);
+      context._options = persistentOptions;
       context._logger = logger;
       return context;
     }, logger);
@@ -126,7 +132,7 @@ export class BrowserType extends ChannelOwner<channels.BrowserTypeChannel, chann
       connection.onmessage = message => {
         if (ws.readyState !== WebSocket.OPEN) {
           setTimeout(() => {
-            connection.dispatch({ id: (message as any).id, error: serializeError(new Error('Browser has been closed')) });
+            connection.dispatch({ id: (message as any).id, error: serializeError(new Error(kBrowserClosedError)) });
           }, 0);
           return;
         }
@@ -181,4 +187,14 @@ export class BrowserType extends ChannelOwner<channels.BrowserTypeChannel, chann
 }
 
 export class RemoteBrowser extends ChannelOwner<channels.RemoteBrowserChannel, channels.RemoteBrowserInitializer> {
+  constructor(parent: ChannelOwner, type: string, guid: string, initializer: channels.RemoteBrowserInitializer) {
+    super(parent, type, guid, initializer);
+    this._channel.on('video', ({ context, stream, relativePath }) => this._onVideo(BrowserContext.from(context), Stream.from(stream), relativePath));
+  }
+
+  private async _onVideo(context: BrowserContext, stream: Stream, relativePath: string) {
+    const videoFile = path.join(context._options.videosPath!, relativePath);
+    await mkdirIfNeeded(videoFile);
+    stream.stream().pipe(fs.createWriteStream(videoFile));
+  }
 }

@@ -13,11 +13,11 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import { it, expect, describe, options } from '../playwright.fixtures';
+import { it, expect, describe } from '../fixtures';
 import type { ChromiumBrowserContext, ChromiumBrowser } from '../../types/types';
 
-describe('session', suite => {
-  suite.skip(!options.CHROMIUM);
+describe('session', (suite, { browserName }) => {
+  suite.skip(browserName !== 'chromium');
 }, () => {
   it('should work', async function({page}) {
     const client = await (page.context() as ChromiumBrowserContext).newCDPSession(page);
@@ -40,7 +40,8 @@ describe('session', suite => {
   });
 
   it('should only accept a page', async function({page}) {
-    const error = await (page.context() as ChromiumBrowserContext).newCDPSession(page.context() as any).catch(e => e);
+    // @ts-expect-error newCDPSession expects a Page
+    const error = await (page.context() as ChromiumBrowserContext).newCDPSession(page.context()).catch(e => e);
     expect(error.message).toContain('page: expected Page');
   });
 
@@ -84,7 +85,8 @@ describe('session', suite => {
     expect(error.message).toContain('ThisCommand.DoesNotExist');
 
     async function theSourceOfTheProblems() {
-      await client.send('ThisCommand.DoesNotExist' as any);
+      // @ts-expect-error invalid command
+      await client.send('ThisCommand.DoesNotExist');
     }
   });
 

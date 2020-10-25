@@ -15,14 +15,27 @@
  * limitations under the License.
  */
 
-import { it, expect, options } from './playwright.fixtures';
+import domain from 'domain';
+import { folio } from './fixtures';
 import type { ChromiumBrowser } from '..';
+
+const fixtures = folio.extend<{}, { domain: any }>();
+fixtures.domain.init(async ({ }, run) => {
+  const local = domain.create();
+  local.run(() => { });
+  let err;
+  local.on('error', e => err = e);
+  await run(null);
+  if (err)
+    throw err;
+}, { scope: 'worker' });
+const { it, expect } = fixtures.build();
 
 it('should work', async ({browser}) => {
   expect(!!browser['_connection']).toBeTruthy();
 });
 
-it('should scope context handles', async ({browserType, browser, server}) => {
+it('should scope context handles', async ({browser, server}) => {
   const GOLDEN_PRECONDITION = {
     _guid: '',
     objects: [
@@ -66,8 +79,8 @@ it('should scope context handles', async ({browserType, browser, server}) => {
   await expectScopeState(browser, GOLDEN_PRECONDITION);
 });
 
-it('should scope CDPSession handles', test => {
-  test.skip(!options.CHROMIUM);
+it('should scope CDPSession handles', (test, { browserName }) => {
+  test.skip(browserName !== 'chromium');
 }, async ({browserType, browser}) => {
   const GOLDEN_PRECONDITION = {
     _guid: '',
@@ -105,13 +118,16 @@ it('should scope CDPSession handles', test => {
   await expectScopeState(browserType, GOLDEN_PRECONDITION);
 });
 
-it('should scope browser handles', async ({browserType, defaultBrowserOptions}) => {
+it('should scope browser handles', async ({browserType, browserOptions}) => {
   const GOLDEN_PRECONDITION = {
     _guid: '',
     objects: [
       { _guid: 'BrowserType', objects: [] },
       { _guid: 'BrowserType', objects: [] },
-      { _guid: 'BrowserType', objects: [] },
+      { _guid: 'BrowserType', objects: [
+        { _guid: 'Browser', objects: [] },
+      ]
+      },
       { _guid: 'Playwright', objects: [] },
       { _guid: 'Selectors', objects: [] },
       { _guid: 'Electron', objects: [] },
@@ -119,12 +135,13 @@ it('should scope browser handles', async ({browserType, defaultBrowserOptions}) 
   };
   await expectScopeState(browserType, GOLDEN_PRECONDITION);
 
-  const browser = await browserType.launch(defaultBrowserOptions);
+  const browser = await browserType.launch(browserOptions);
   await browser.newContext();
   await expectScopeState(browserType, {
     _guid: '',
     objects: [
       { _guid: 'BrowserType', objects: [
+        { _guid: 'Browser', objects: [] },
         {
           _guid: 'Browser', objects: [
             { _guid: 'BrowserContext', objects: [] }
@@ -142,6 +159,14 @@ it('should scope browser handles', async ({browserType, defaultBrowserOptions}) 
 
   await browser.close();
   await expectScopeState(browserType, GOLDEN_PRECONDITION);
+});
+
+it('should work with the domain module', async ({ domain, browserType, browserOptions }) => {
+  const browser = await browserType.launch(browserOptions);
+  const page = await browser.newPage();
+  const result = await page.evaluate(() => 1 + 1);
+  expect(result).toBe(2);
+  await browser.close();
 });
 
 async function expectScopeState(object, golden) {

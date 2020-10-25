@@ -31,6 +31,7 @@ export type ContextDestroyedTraceEvent = {
 export type NetworkResourceTraceEvent = {
   type: 'resource',
   contextId: string,
+  pageId: string,
   frameId: string,
   url: string,
   contentType: string,
@@ -38,9 +39,63 @@ export type NetworkResourceTraceEvent = {
   sha1: string,
 };
 
-export type SnapshotTraceEvent = {
-  type: 'snapshot',
+export type PageCreatedTraceEvent = {
+  type: 'page-created',
   contextId: string,
-  label: string,
-  sha1: string,
+  pageId: string,
+};
+
+export type PageDestroyedTraceEvent = {
+  type: 'page-destroyed',
+  contextId: string,
+  pageId: string,
+};
+
+export type PageVideoTraceEvent = {
+  type: 'page-video',
+  contextId: string,
+  pageId: string,
+  fileName: string,
+};
+
+export type ActionTraceEvent = {
+  type: 'action',
+  contextId: string,
+  action: string,
+  pageId?: string,
+  selector?: string,
+  label?: string,
+  value?: string,
+  startTime?: number,
+  endTime?: number,
+  logs?: string[],
+  snapshot?: {
+    sha1: string,
+    duration: number,
+  },
+  stack?: string,
+  error?: string,
+};
+
+export type TraceEvent =
+    ContextCreatedTraceEvent |
+    ContextDestroyedTraceEvent |
+    PageCreatedTraceEvent |
+    PageDestroyedTraceEvent |
+    PageVideoTraceEvent |
+    NetworkResourceTraceEvent |
+    ActionTraceEvent;
+
+
+export type FrameSnapshot = {
+  frameId: string,
+  url: string,
+  html: string,
+  resourceOverrides: { url: string, sha1: string }[],
+};
+
+export type PageSnapshot = {
+  viewportSize?: { width: number, height: number },
+  // First frame is the main frame.
+  frames: FrameSnapshot[],
 };

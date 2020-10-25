@@ -15,17 +15,18 @@
  * limitations under the License.
  */
 
-import { it, expect, options } from './playwright.fixtures';
-
-import utils from './utils';
+import { it, expect } from './fixtures';
+import { verifyViewport } from './utils';
 
 it('should create new context', async function({browser}) {
   expect(browser.contexts().length).toBe(0);
   const context = await browser.newContext();
   expect(browser.contexts().length).toBe(1);
   expect(browser.contexts().indexOf(context) !== -1).toBe(true);
+  expect(browser).toBe(context.browser());
   await context.close();
   expect(browser.contexts().length).toBe(0);
+  expect(browser).toBe(context.browser());
 });
 
 it('window.open should use parent tab context', async function({browser, server}) {
@@ -88,7 +89,7 @@ it('should isolate localStorage and cookies', async function({browser, server}) 
 it('should propagate default viewport to the page', async ({ browser }) => {
   const context = await browser.newContext({ viewport: { width: 456, height: 789 } });
   const page = await context.newPage();
-  await utils.verifyViewport(page, 456, 789);
+  await verifyViewport(page, 456, 789);
   await context.close();
 });
 
@@ -97,7 +98,7 @@ it('should make a copy of default viewport', async ({ browser }) => {
   const context = await browser.newContext({ viewport });
   viewport.width = 567;
   const page = await context.newPage();
-  await utils.verifyViewport(page, 456, 789);
+  await verifyViewport(page, 456, 789);
   await context.close();
 });
 
@@ -178,14 +179,14 @@ it('should close all belonging pages once closing context', async function({brow
   expect(context.pages().length).toBe(0);
 });
 
-it('should disable javascript', async ({browser}) => {
+it('should disable javascript', async ({browser, isWebKit}) => {
   {
     const context = await browser.newContext({ javaScriptEnabled: false });
     const page = await context.newPage();
     await page.goto('data:text/html, <script>var something = "forbidden"</script>');
     let error = null;
     await page.evaluate('something').catch(e => error = e);
-    if (options.WEBKIT)
+    if (isWebKit)
       expect(error.message).toContain('Can\'t find variable: something');
     else
       expect(error.message).toContain('something is not defined');

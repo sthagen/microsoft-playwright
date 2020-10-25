@@ -196,20 +196,14 @@ class FrameTree {
     const isStart = flag & Ci.nsIWebProgressListener.STATE_START;
     const isTransferring = flag & Ci.nsIWebProgressListener.STATE_TRANSFERRING;
     const isStop = flag & Ci.nsIWebProgressListener.STATE_STOP;
-
-    let isDownload = false;
-    try {
-      isDownload = (channel.contentDisposition === Ci.nsIChannel.DISPOSITION_ATTACHMENT);
-    } catch(e) {
-      // The method is expected to throw if it's not an attachment.
-    }
+    const isDocument = flag & Ci.nsIWebProgressListener.STATE_IS_DOCUMENT;
 
     if (isStart) {
       // Starting a new navigation.
       frame._pendingNavigationId = this._channelId(channel);
       frame._pendingNavigationURL = channel.URI.spec;
       this.emit(FrameTree.Events.NavigationStarted, frame);
-    } else if (isTransferring || (isStop && frame._pendingNavigationId && !status && !isDownload)) {
+    } else if (isTransferring || (isStop && frame._pendingNavigationId && !status)) {
       // Navigation is committed.
       for (const subframe of frame._children)
         this._detachFrame(subframe);
@@ -221,17 +215,20 @@ class FrameTree {
       this.emit(FrameTree.Events.NavigationCommitted, frame);
       if (frame === this._mainFrame)
         this.forcePageReady();
-    } else if (isStop && frame._pendingNavigationId && (status || isDownload)) {
+    } else if (isStop && frame._pendingNavigationId && status) {
       // Navigation is aborted.
       const navigationId = frame._pendingNavigationId;
       frame._pendingNavigationId = null;
       frame._pendingNavigationURL = null;
       // Always report download navigation as failure to match other browsers.
-      const errorText = isDownload ? 'Will download to file' : helper.getNetworkErrorStatusText(status);
+      const errorText = helper.getNetworkErrorStatusText(status);
       this.emit(FrameTree.Events.NavigationAborted, frame, navigationId, errorText);
-      if (frame === this._mainFrame && status !== Cr.NS_BINDING_ABORTED && !isDownload)
+      if (frame === this._mainFrame && status !== Cr.NS_BINDING_ABORTED)
         this.forcePageReady();
     }
+
+    if (isStop && isDocument)
+      this.emit(FrameTree.Events.Load, frame);
   }
 
   onFrameLocationChange(progress, request, location, flags) {
@@ -245,9 +242,9 @@ class FrameTree {
   }
 
   _channelId(channel) {
-    if (channel instanceof Ci.nsIHttpChannel) {
-      const httpChannel = channel.QueryInterface(Ci.nsIHttpChannel);
-      return String(httpChannel.channelId);
+    if (channel instanceof Ci.nsIIdentChannel) {
+      const identChannel = channel.QueryInterface(Ci.nsIIdentChannel);
+      return String(identChannel.channelId);
     }
     return helper.generateId();
   }
@@ -310,6 +307,7 @@ FrameTree.Events = {
   NavigationAborted: 'navigationaborted',
   SameDocumentNavigation: 'samedocumentnavigation',
   PageReady: 'pageready',
+  Load: 'load',
 };
 
 class Frame {
@@ -318,7 +316,7 @@ class Frame {
     this._runtime = runtime;
     this._docShell = docShell;
     this._children = new Set();
-    this._frameId = helper.generateId();
+    this._frameId = helper.browsingContextToFrameId(this._docShell.browsingContext);
     this._parentFrame = null;
     this._url = '';
     if (docShell.domWindow && docShell.domWindow.location)

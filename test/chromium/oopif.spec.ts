@@ -14,20 +14,21 @@
  * limitations under the License.
  */
 
-import { options } from '../playwright.fixtures';
-import { it, expect, describe, registerWorkerFixture } from '@playwright/test-runner';
+import { folio } from '../fixtures';
 
-registerWorkerFixture('browser', async ({browserType, defaultBrowserOptions}, test) => {
+const fixtures = folio.extend();
+fixtures.browser.override(async ({browserType, browserOptions}, run) => {
   const browser = await browserType.launch({
-    ...defaultBrowserOptions,
-    args: (defaultBrowserOptions.args || []).concat(['--site-per-process'])
+    ...browserOptions,
+    args: (browserOptions.args || []).concat(['--site-per-process'])
   });
-  await test(browser);
+  await run(browser);
   await browser.close();
 });
+const { it, expect, describe } = fixtures.build();
 
-describe('oopif', suite => {
-  suite.skip(!options.CHROMIUM);
+describe('oopif', (suite, { browserName }) => {
+  suite.skip(browserName !== 'chromium');
 }, () => {
   it('should report oopif frames', async function({browser, page, server}) {
     await page.goto(server.PREFIX + '/dynamic-oopif.html');
@@ -68,9 +69,9 @@ describe('oopif', suite => {
     expect(await countOOPIFs(browser)).toBe(1);
   });
 
-  it('should get the proper viewport', test => {
-    test.fixme(options.CHROMIUM);
-    test.skip(!options.CHROMIUM);
+  it('should get the proper viewport', (test, { browserName }) => {
+    test.fixme(browserName === 'chromium');
+    test.skip(browserName !== 'chromium');
   }, async ({browser, page, server}) => {
     expect(page.viewportSize()).toEqual({width: 1280, height: 720});
     await page.goto(server.PREFIX + '/dynamic-oopif.html');
@@ -156,12 +157,12 @@ describe('oopif', suite => {
     expect(intercepted).toBe(true);
   });
 
-  it('should take screenshot', async ({browser, page, server, golden}) => {
+  it('should take screenshot', async ({browser, page, server}) => {
     await page.setViewportSize({width: 500, height: 500});
     await page.goto(server.PREFIX + '/dynamic-oopif.html');
     expect(page.frames().length).toBe(2);
     expect(await countOOPIFs(browser)).toBe(1);
-    expect(await page.screenshot()).toMatchImage(golden('screenshot-oopif.png'), { threshold: 0.3 });
+    expect(await page.screenshot()).toMatchSnapshot('screenshot-oopif.png', { threshold: 0.3 });
   });
 
   it('should load oopif iframes with subresources and route', async function({browser, page, server, context}) {
@@ -239,10 +240,10 @@ describe('oopif', suite => {
     expect(await page.evaluate(() => window['BUTTON_CLICKED'])).toBe(true);
   });
 
-  it('should report google.com frame with headful', async ({browserType, defaultBrowserOptions, server}) => {
+  it('should report google.com frame with headful', async ({browserType, browserOptions, server}) => {
     // @see https://github.com/GoogleChrome/puppeteer/issues/2548
     // https://google.com is isolated by default in Chromium embedder.
-    const browser = await browserType.launch({...defaultBrowserOptions, headless: false});
+    const browser = await browserType.launch({...browserOptions, headless: false});
     const page = await browser.newPage();
     await page.goto(server.EMPTY_PAGE);
     await page.route('**/*', route => {

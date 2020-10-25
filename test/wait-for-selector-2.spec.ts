@@ -15,8 +15,8 @@
  * limitations under the License.
  */
 
-import { it, expect } from './playwright.fixtures';
-import utils from './utils';
+import { it, expect } from './fixtures';
+import { attachFrame, detachFrame } from './utils';
 
 const addElement = tag => document.body.appendChild(document.createElement(tag));
 
@@ -146,25 +146,29 @@ it('should have correct stack trace for timeout', async ({page, server}) => {
 
 it('should throw for unknown state option', async ({page, server}) => {
   await page.setContent('<section>test</section>');
-  const error = await page.waitForSelector('section', { state: 'foo' as any}).catch(e => e);
+  // @ts-expect-error state is not an option of waitForSelector
+  const error = await page.waitForSelector('section', { state: 'foo'}).catch(e => e);
   expect(error.message).toContain('state: expected one of (attached|detached|visible|hidden)');
 });
 
 it('should throw for visibility option', async ({page, server}) => {
   await page.setContent('<section>test</section>');
-  const error = await page.waitForSelector('section', { visibility: 'hidden' } as any).catch(e => e);
+  // @ts-expect-error visibility is not an option of waitForSelector
+  const error = await page.waitForSelector('section', { visibility: 'hidden' }).catch(e => e);
   expect(error.message).toContain('options.visibility is not supported, did you mean options.state?');
 });
 
 it('should throw for true state option', async ({page, server}) => {
   await page.setContent('<section>test</section>');
-  const error = await page.waitForSelector('section', { state: true as any }).catch(e => e);
+  // @ts-expect-error state is not an option of waitForSelector
+  const error = await page.waitForSelector('section', { state: true }).catch(e => e);
   expect(error.message).toContain('state: expected one of (attached|detached|visible|hidden)');
 });
 
 it('should throw for false state option', async ({page, server}) => {
   await page.setContent('<section>test</section>');
-  const error = await page.waitForSelector('section', { state: false as any }).catch(e => e);
+  // @ts-expect-error state is not an option of waitForSelector
+  const error = await page.waitForSelector('section', { state: false }).catch(e => e);
   expect(error.message).toContain('state: expected one of (attached|detached|visible|hidden)');
 });
 
@@ -213,8 +217,8 @@ it('should respect timeout xpath', async ({page, playwright}) => {
 });
 
 it('should run in specified frame xpath', async ({page, server}) => {
-  await utils.attachFrame(page, 'frame1', server.EMPTY_PAGE);
-  await utils.attachFrame(page, 'frame2', server.EMPTY_PAGE);
+  await attachFrame(page, 'frame1', server.EMPTY_PAGE);
+  await attachFrame(page, 'frame2', server.EMPTY_PAGE);
   const frame1 = page.frames()[1];
   const frame2 = page.frames()[2];
   const waitForXPathPromise = frame2.waitForSelector('//div', { state: 'attached' });
@@ -225,11 +229,11 @@ it('should run in specified frame xpath', async ({page, server}) => {
 });
 
 it('should throw when frame is detached xpath', async ({page, server}) => {
-  await utils.attachFrame(page, 'frame1', server.EMPTY_PAGE);
+  await attachFrame(page, 'frame1', server.EMPTY_PAGE);
   const frame = page.frames()[1];
   let waitError = null;
   const waitPromise = frame.waitForSelector('//*[@class="box"]').catch(e => waitError = e);
-  await utils.detachFrame(page, 'frame1');
+  await detachFrame(page, 'frame1');
   await waitPromise;
   expect(waitError).toBeTruthy();
   expect(waitError.message).toContain('waitForFunction failed: frame got detached.');

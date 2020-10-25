@@ -6,6 +6,7 @@ const uuidGen = Cc["@mozilla.org/uuid-generator;1"].getService(Ci.nsIUUIDGenerat
 const {Services} = ChromeUtils.import("resource://gre/modules/Services.jsm");
 
 class Helper {
+
   addObserver(handler, topic) {
     Services.obs.addObserver(handler, topic);
     return () => Services.obs.removeObserver(handler, topic);
@@ -19,6 +20,15 @@ class Helper {
   addEventListener(receiver, eventName, handler) {
     receiver.addEventListener(eventName, handler);
     return () => receiver.removeEventListener(eventName, handler);
+  }
+
+  awaitEvent(receiver, eventName) {
+    return new Promise(resolve => {
+      receiver.addEventListener(eventName, function listener() {
+        receiver.removeEventListener(eventName, listener);
+        resolve();
+      });
+    });
   }
 
   on(receiver, eventName, handler) {
@@ -111,6 +121,12 @@ class Helper {
       }
     }
     return '<unknown error>';
+  }
+
+  browsingContextToFrameId(browsingContext) {
+    if (!browsingContext)
+      return undefined;
+    return 'frame-' + browsingContext.id;
   }
 }
 

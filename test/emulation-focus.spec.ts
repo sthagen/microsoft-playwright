@@ -15,8 +15,8 @@
  * limitations under the License.
  */
 
-import { it, expect, options } from './playwright.fixtures';
-import utils from './utils';
+import { it, expect } from './fixtures';
+import { attachFrame } from './utils';
 
 it('should think that it is focused by default', async ({page}) => {
   expect(await page.evaluate('document.hasFocus()')).toBe(true);
@@ -101,9 +101,9 @@ it('should change document.activeElement', async ({page, server}) => {
   expect(active).toEqual(['INPUT', 'TEXTAREA']);
 });
 
-it('should not affect screenshots', test => {
-  test.skip(options.FIREFOX && !options.HEADLESS);
-}, async ({page, server, golden}) => {
+it('should not affect screenshots', (test, { browserName, headful }) => {
+  test.skip(browserName === 'firefox' && headful);
+}, async ({page, server}) => {
   // Firefox headful produces a different image.
   const page2 = await page.context().newPage();
   await Promise.all([
@@ -120,15 +120,15 @@ it('should not affect screenshots', test => {
     page.screenshot(),
     page2.screenshot(),
   ]);
-  expect(screenshots[0]).toMatchImage(golden('screenshot-sanity.png'));
-  expect(screenshots[1]).toMatchImage(golden('grid-cell-0.png'));
+  expect(screenshots[0]).toMatchSnapshot('screenshot-sanity.png');
+  expect(screenshots[1]).toMatchSnapshot('grid-cell-0.png');
 });
 
 it('should change focused iframe', async ({page, server}) => {
   await page.goto(server.EMPTY_PAGE);
   const [frame1, frame2] = await Promise.all([
-    utils.attachFrame(page, 'frame1', server.PREFIX + '/input/textarea.html'),
-    utils.attachFrame(page, 'frame2', server.PREFIX + '/input/textarea.html'),
+    attachFrame(page, 'frame1', server.PREFIX + '/input/textarea.html'),
+    attachFrame(page, 'frame2', server.PREFIX + '/input/textarea.html'),
   ]);
   function logger() {
     self['_events'] = [];

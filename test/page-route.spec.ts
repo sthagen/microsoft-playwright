@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import { it, expect, options } from './playwright.fixtures';
+import { it, expect } from './fixtures';
 
 it('should intercept', async ({page, server}) => {
   let intercepted = false;
@@ -97,20 +97,19 @@ it('should work when header manipulation headers with redirect', async ({page, s
 });
 // @see https://github.com/GoogleChrome/puppeteer/issues/4743
 it('should be able to remove headers', async ({page, server}) => {
+  await page.goto(server.EMPTY_PAGE);
   await page.route('**/*', route => {
     const headers = Object.assign({}, route.request().headers(), {
-      foo: 'bar',
-      origin: undefined, // remove "origin" header
+      foo: undefined, // remove "foo" header
     });
     route.continue({ headers });
   });
 
   const [serverRequest] = await Promise.all([
-    server.waitForRequest('/empty.html'),
-    page.goto(server.PREFIX + '/empty.html')
+    server.waitForRequest('/title.html'),
+    page.evaluate(url => fetch(url, { headers: {foo: 'bar'} }), server.PREFIX + '/title.html')
   ]);
-
-  expect(serverRequest.headers.origin).toBe(undefined);
+  expect(serverRequest.headers.foo).toBe(undefined);
 });
 
 it('should contain referer header', async ({page, server}) => {
@@ -183,15 +182,15 @@ it('should be abortable', async ({page, server}) => {
   expect(failed).toBe(true);
 });
 
-it('should be abortable with custom error codes', async ({page, server}) => {
+it('should be abortable with custom error codes', async ({page, server, isWebKit, isFirefox}) => {
   await page.route('**/*', route => route.abort('internetdisconnected'));
   let failedRequest = null;
   page.on('requestfailed', request => failedRequest = request);
   await page.goto(server.EMPTY_PAGE).catch(e => {});
   expect(failedRequest).toBeTruthy();
-  if (options.WEBKIT)
+  if (isWebKit)
     expect(failedRequest.failure().errorText).toBe('Request intercepted');
-  else if (options.FIREFOX)
+  else if (isFirefox)
     expect(failedRequest.failure().errorText).toBe('NS_ERROR_OFFLINE');
   else
     expect(failedRequest.failure().errorText).toBe('net::ERR_INTERNET_DISCONNECTED');
@@ -209,14 +208,14 @@ it('should send referer', async ({page, server}) => {
   expect(request.headers['referer']).toBe('http://google.com/');
 });
 
-it('should fail navigation when aborting main resource', async ({page, server}) => {
+it('should fail navigation when aborting main resource', async ({page, server, isWebKit, isFirefox}) => {
   await page.route('**/*', route => route.abort());
   let error = null;
   await page.goto(server.EMPTY_PAGE).catch(e => error = e);
   expect(error).toBeTruthy();
-  if (options.WEBKIT)
+  if (isWebKit)
     expect(error.message).toContain('Request intercepted');
-  else if (options.FIREFOX)
+  else if (isFirefox)
     expect(error.message).toContain('NS_ERROR_FAILURE');
   else
     expect(error.message).toContain('net::ERR_FAILED');

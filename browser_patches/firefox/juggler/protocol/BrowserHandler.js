@@ -4,9 +4,11 @@
 
 "use strict";
 
+const {AddonManager} = ChromeUtils.import("resource://gre/modules/AddonManager.jsm");
 const {Services} = ChromeUtils.import("resource://gre/modules/Services.jsm");
 const {TargetRegistry} = ChromeUtils.import("chrome://juggler/content/TargetRegistry.js");
 const {Helper} = ChromeUtils.import('chrome://juggler/content/Helper.js');
+const {PageHandler} = ChromeUtils.import("chrome://juggler/content/protocol/PageHandler.js");
 
 const helper = new Helper();
 
@@ -23,24 +25,11 @@ class BrowserHandler {
     this._onclose = onclose;
   }
 
-  async enable({attachToDefaultContext}) {
+  async ['Browser.enable']({attachToDefaultContext}) {
     if (this._enabled)
       return;
     this._enabled = true;
     this._attachToDefaultContext = attachToDefaultContext;
-
-    for (const target of this._targetRegistry.targets()) {
-      if (!this._shouldAttachToTarget(target))
-        continue;
-      const session = this._dispatcher.createSession();
-      this._attachedSessions.set(target, session);
-      this._session.emitEvent('Browser.attachedToTarget', {
-        sessionId: session.sessionId(),
-        targetInfo: target.info()
-      });
-      target.initSession(session);
-      target.connectSession(session);
-    }
 
     this._eventListeners = [
       helper.on(this._targetRegistry, TargetRegistry.Events.TargetCreated, this._onTargetCreated.bind(this)),
@@ -54,9 +43,24 @@ class BrowserHandler {
     };
     Services.obs.addObserver(onScreencastStopped, 'juggler-screencast-stopped');
     this._eventListeners.push(() => Services.obs.removeObserver(onScreencastStopped, 'juggler-screencast-stopped'));
+
+    for (const target of this._targetRegistry.targets())
+      this._onTargetCreated(target);
+
+    // Wait to complete initialization of addon manager and search
+    // service before returning from this method. Failing to do so will result
+    // in a broken shutdown sequence and multiple errors in browser STDERR log.
+    //
+    // NOTE: we have to put this here as well as in the `Browser.close` handler
+    // since browser shutdown can be initiated when the last tab is closed, e.g.
+    // with persistent context.
+    await Promise.all([
+      waitForAddonManager(),
+      waitForSearchService(),
+    ]);
   }
 
-  async createBrowserContext({removeOnDetach}) {
+  async ['Browser.createBrowserContext']({removeOnDetach}) {
     if (!this._enabled)
       throw new Error('Browser domain is not enabled');
     const browserContext = this._targetRegistry.createBrowserContext(removeOnDetach);
@@ -64,7 +68,7 @@ class BrowserHandler {
     return {browserContextId: browserContext.browserContextId};
   }
 
-  async removeBrowserContext({browserContextId}) {
+  async ['Browser.removeBrowserContext']({browserContextId}) {
     if (!this._enabled)
       throw new Error('Browser domain is not enabled');
     await this._targetRegistry.browserContextForId(browserContextId).destroy();
@@ -73,10 +77,8 @@ class BrowserHandler {
 
   dispose() {
     helper.removeListeners(this._eventListeners);
-    for (const [target, session] of this._attachedSessions) {
-      target.disconnectSession(session);
+    for (const [target, session] of this._attachedSessions)
       this._dispatcher.destroySession(session);
-    }
     this._attachedSessions.clear();
     for (const browserContextId of this._createdBrowserContextIds) {
       const browserContext = this._targetRegistry.browserContextForId(browserContextId);
@@ -87,24 +89,22 @@ class BrowserHandler {
   }
 
   _shouldAttachToTarget(target) {
-    if (!target._browserContext)
-      return false;
     if (this._createdBrowserContextIds.has(target._browserContext.browserContextId))
       return true;
     return this._attachToDefaultContext && target._browserContext === this._targetRegistry.defaultContext();
   }
 
-  _onTargetCreated({sessions, target}) {
+  _onTargetCreated(target) {
     if (!this._shouldAttachToTarget(target))
       return;
+    const channel = target.channel();
     const session = this._dispatcher.createSession();
     this._attachedSessions.set(target, session);
     this._session.emitEvent('Browser.attachedToTarget', {
       sessionId: session.sessionId(),
       targetInfo: target.info()
     });
-    target.initSession(session);
-    sessions.push(session);
+    session.setHandler(new PageHandler(target, session, channel));
   }
 
   _onTargetDestroyed(target) {
@@ -127,125 +127,131 @@ class BrowserHandler {
     this._session.emitEvent('Browser.downloadFinished', downloadInfo);
   }
 
-  async newPage({browserContextId}) {
+  async ['Browser.newPage']({browserContextId}) {
     const targetId = await this._targetRegistry.newPage({browserContextId});
     return {targetId};
   }
 
-  async close() {
+  async ['Browser.close']() {
     let browserWindow = Services.wm.getMostRecentWindow(
       "navigator:browser"
     );
     if (browserWindow && browserWindow.gBrowserInit) {
       await browserWindow.gBrowserInit.idleTasksFinishedPromise;
     }
+    // Try to fully initialize browser before closing.
+    // See comment in `Browser.enable`.
+    await Promise.all([
+      waitForAddonManager(),
+      waitForSearchService(),
+    ]);
     this._onclose();
     Services.startup.quit(Ci.nsIAppStartup.eForceQuit);
   }
 
-  async grantPermissions({browserContextId, origin, permissions}) {
+  async ['Browser.grantPermissions']({browserContextId, origin, permissions}) {
     await this._targetRegistry.browserContextForId(browserContextId).grantPermissions(origin, permissions);
   }
 
-  resetPermissions({browserContextId}) {
+  async ['Browser.resetPermissions']({browserContextId}) {
     this._targetRegistry.browserContextForId(browserContextId).resetPermissions();
   }
 
-  setExtraHTTPHeaders({browserContextId, headers}) {
+  ['Browser.setExtraHTTPHeaders']({browserContextId, headers}) {
     this._targetRegistry.browserContextForId(browserContextId).extraHTTPHeaders = headers;
   }
 
-  setHTTPCredentials({browserContextId, credentials}) {
+  ['Browser.setHTTPCredentials']({browserContextId, credentials}) {
     this._targetRegistry.browserContextForId(browserContextId).httpCredentials = nullToUndefined(credentials);
   }
 
-  async setBrowserProxy({type, host, port, bypass, username, password}) {
+  async ['Browser.setBrowserProxy']({type, host, port, bypass, username, password}) {
     this._targetRegistry.setBrowserProxy({ type, host, port, bypass, username, password});
   }
 
-  async setContextProxy({browserContextId, type, host, port, bypass, username, password}) {
+  async ['Browser.setContextProxy']({browserContextId, type, host, port, bypass, username, password}) {
     const browserContext = this._targetRegistry.browserContextForId(browserContextId);
     browserContext.setProxy({ type, host, port, bypass, username, password });
   }
 
-  setRequestInterception({browserContextId, enabled}) {
+  ['Browser.setRequestInterception']({browserContextId, enabled}) {
     this._targetRegistry.browserContextForId(browserContextId).requestInterceptionEnabled = enabled;
   }
 
-  setIgnoreHTTPSErrors({browserContextId, ignoreHTTPSErrors}) {
+  ['Browser.setIgnoreHTTPSErrors']({browserContextId, ignoreHTTPSErrors}) {
     this._targetRegistry.browserContextForId(browserContextId).setIgnoreHTTPSErrors(nullToUndefined(ignoreHTTPSErrors));
   }
 
-  setDownloadOptions({browserContextId, downloadOptions}) {
+  ['Browser.setDownloadOptions']({browserContextId, downloadOptions}) {
     this._targetRegistry.browserContextForId(browserContextId).downloadOptions = nullToUndefined(downloadOptions);
   }
 
-  async setGeolocationOverride({browserContextId, geolocation}) {
+  async ['Browser.setGeolocationOverride']({browserContextId, geolocation}) {
     await this._targetRegistry.browserContextForId(browserContextId).applySetting('geolocation', nullToUndefined(geolocation));
   }
 
-  async setOnlineOverride({browserContextId, override}) {
+  async ['Browser.setOnlineOverride']({browserContextId, override}) {
     await this._targetRegistry.browserContextForId(browserContextId).applySetting('onlineOverride', nullToUndefined(override));
   }
 
-  async setColorScheme({browserContextId, colorScheme}) {
+  async ['Browser.setColorScheme']({browserContextId, colorScheme}) {
     await this._targetRegistry.browserContextForId(browserContextId).applySetting('colorScheme', nullToUndefined(colorScheme));
   }
 
-  async setScreencastOptions({browserContextId, dir, width, height, scale}) {
+  async ['Browser.setScreencastOptions']({browserContextId, dir, width, height, scale}) {
     await this._targetRegistry.browserContextForId(browserContextId).setScreencastOptions({dir, width, height, scale});
   }
 
-  async setUserAgentOverride({browserContextId, userAgent}) {
-    await this._targetRegistry.browserContextForId(browserContextId).applySetting('userAgent', nullToUndefined(userAgent));
+  async ['Browser.setUserAgentOverride']({browserContextId, userAgent}) {
+    await this._targetRegistry.browserContextForId(browserContextId).setDefaultUserAgent(userAgent);
   }
 
-  async setBypassCSP({browserContextId, bypassCSP}) {
+  async ['Browser.setBypassCSP']({browserContextId, bypassCSP}) {
     await this._targetRegistry.browserContextForId(browserContextId).applySetting('bypassCSP', nullToUndefined(bypassCSP));
   }
 
-  async setJavaScriptDisabled({browserContextId, javaScriptDisabled}) {
+  async ['Browser.setJavaScriptDisabled']({browserContextId, javaScriptDisabled}) {
     await this._targetRegistry.browserContextForId(browserContextId).applySetting('javaScriptDisabled', nullToUndefined(javaScriptDisabled));
   }
 
-  async setLocaleOverride({browserContextId, locale}) {
+  async ['Browser.setLocaleOverride']({browserContextId, locale}) {
     await this._targetRegistry.browserContextForId(browserContextId).applySetting('locale', nullToUndefined(locale));
   }
 
-  async setTimezoneOverride({browserContextId, timezoneId}) {
+  async ['Browser.setTimezoneOverride']({browserContextId, timezoneId}) {
     await this._targetRegistry.browserContextForId(browserContextId).applySetting('timezoneId', nullToUndefined(timezoneId));
   }
 
-  async setTouchOverride({browserContextId, hasTouch}) {
+  async ['Browser.setTouchOverride']({browserContextId, hasTouch}) {
     await this._targetRegistry.browserContextForId(browserContextId).applySetting('hasTouch', nullToUndefined(hasTouch));
   }
 
-  async setDefaultViewport({browserContextId, viewport}) {
+  async ['Browser.setDefaultViewport']({browserContextId, viewport}) {
     await this._targetRegistry.browserContextForId(browserContextId).setDefaultViewport(nullToUndefined(viewport));
   }
 
-  async addScriptToEvaluateOnNewDocument({browserContextId, script}) {
+  async ['Browser.addScriptToEvaluateOnNewDocument']({browserContextId, script}) {
     await this._targetRegistry.browserContextForId(browserContextId).addScriptToEvaluateOnNewDocument(script);
   }
 
-  async addBinding({browserContextId, name, script}) {
+  async ['Browser.addBinding']({browserContextId, name, script}) {
     await this._targetRegistry.browserContextForId(browserContextId).addBinding(name, script);
   }
 
-  setCookies({browserContextId, cookies}) {
+  ['Browser.setCookies']({browserContextId, cookies}) {
     this._targetRegistry.browserContextForId(browserContextId).setCookies(cookies);
   }
 
-  clearCookies({browserContextId}) {
+  ['Browser.clearCookies']({browserContextId}) {
     this._targetRegistry.browserContextForId(browserContextId).clearCookies();
   }
 
-  getCookies({browserContextId}) {
+  ['Browser.getCookies']({browserContextId}) {
     const cookies = this._targetRegistry.browserContextForId(browserContextId).getCookies();
     return {cookies};
   }
 
-  async getInfo() {
+  async ['Browser.getInfo']() {
     const version = Components.classes["@mozilla.org/xre/app-info;1"]
                               .getService(Components.interfaces.nsIXULAppInfo)
                               .version;
@@ -254,6 +260,26 @@ class BrowserHandler {
                                 .userAgent;
     return {version: 'Firefox/' + version, userAgent};
   }
+}
+
+async function waitForSearchService() {
+  const searchService = Components.classes["@mozilla.org/browser/search-service;1"].getService(Components.interfaces.nsISearchService);
+  await searchService.init();
+}
+
+async function waitForAddonManager() {
+  if (AddonManager.isReady)
+    return;
+  await new Promise(resolve => {
+    let listener = {
+      onStartup() {
+        AddonManager.removeManagerListener(listener);
+        resolve();
+      },
+      onShutdown() { },
+    };
+    AddonManager.addManagerListener(listener);
+  });
 }
 
 function nullToUndefined(value) {

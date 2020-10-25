@@ -32,7 +32,6 @@ export interface BrowserProcess {
 export type BrowserOptions = types.UIOptions & {
   name: string,
   downloadsPath?: string,
-  _videosPath?: string,
   headful?: boolean,
   persistent?: types.BrowserContextOptions,  // Undefined means no persistent context.
   browserProcess: BrowserProcess,
@@ -48,7 +47,7 @@ export abstract class Browser extends EventEmitter {
   private _downloads = new Map<string, Download>();
   _defaultContext: BrowserContext | null = null;
   private _startedClosing = false;
-  private readonly _idToVideo = new Map<string, Video>();
+  readonly _idToVideo = new Map<string, Video>();
 
   constructor(options: BrowserOptions) {
     super();
@@ -87,16 +86,20 @@ export abstract class Browser extends EventEmitter {
     this._downloads.delete(uuid);
   }
 
-  _videoStarted(videoId: string, file: string): Video {
-    const video = new Video(file);
+  _videoStarted(context: BrowserContext, videoId: string, path: string, pageOrError: Promise<Page | Error>) {
+    const video = new Video(context, videoId, path);
     this._idToVideo.set(videoId, video);
-    return video;
+    context.emit(BrowserContext.Events.VideoStarted, video);
+    pageOrError.then(pageOrError => {
+      if (pageOrError instanceof Page)
+        pageOrError.videoStarted(video);
+    });
   }
 
   _videoFinished(videoId: string) {
-    const video = this._idToVideo.get(videoId);
+    const video = this._idToVideo.get(videoId)!;
     this._idToVideo.delete(videoId);
-    video!._finishCallback();
+    video._finish();
   }
 
   _didClose() {

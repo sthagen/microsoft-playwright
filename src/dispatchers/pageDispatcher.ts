@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { BrowserContext } from '../server/browserContext';
+import { BrowserContext, runAction, Video } from '../server/browserContext';
 import { Frame } from '../server/frames';
 import { Request } from '../server/network';
 import { Page, Worker } from '../server/page';
@@ -26,11 +26,11 @@ import { DialogDispatcher } from './dialogDispatcher';
 import { DownloadDispatcher } from './downloadDispatcher';
 import { FrameDispatcher } from './frameDispatcher';
 import { RequestDispatcher, ResponseDispatcher, RouteDispatcher } from './networkDispatchers';
-import { serializeResult, parseArgument } from './jsHandleDispatcher';
+import { serializeResult, parseArgument, JSHandleDispatcher } from './jsHandleDispatcher';
 import { ElementHandleDispatcher, createHandle } from './elementHandlerDispatcher';
 import { FileChooser } from '../server/fileChooser';
 import { CRCoverage } from '../server/chromium/crCoverage';
-import { VideoDispatcher } from './videoDispatcher';
+import { JSHandle } from '../server/javascript';
 
 export class PageDispatcher extends Dispatcher<Page, channels.PageInitializer> implements channels.PageChannel {
   private _page: Page;
@@ -40,6 +40,7 @@ export class PageDispatcher extends Dispatcher<Page, channels.PageInitializer> i
     // If we split pageCreated and pageReady, there should be no main frame during pageCreated.
     super(scope, page, 'Page', {
       mainFrame: FrameDispatcher.from(scope, page.mainFrame()),
+      videoRelativePath: page._video ? page._video._relativePath : undefined,
       viewportSize: page.viewportSize() || undefined,
       isClosed: page.isClosed()
     });
@@ -62,11 +63,15 @@ export class PageDispatcher extends Dispatcher<Page, channels.PageInitializer> i
     page.on(Page.Events.Request, request => this._dispatchEvent('request', { request: RequestDispatcher.from(this._scope, request) }));
     page.on(Page.Events.RequestFailed, (request: Request) => this._dispatchEvent('requestFailed', {
       request: RequestDispatcher.from(this._scope, request),
-      failureText: request._failureText
+      failureText: request._failureText,
+      responseEndTiming: request._responseEndTiming
     }));
-    page.on(Page.Events.RequestFinished, request => this._dispatchEvent('requestFinished', { request: RequestDispatcher.from(scope, request) }));
+    page.on(Page.Events.RequestFinished, (request: Request) => this._dispatchEvent('requestFinished', {
+      request: RequestDispatcher.from(scope, request),
+      responseEndTiming: request._responseEndTiming
+    }));
     page.on(Page.Events.Response, response => this._dispatchEvent('response', { response: new ResponseDispatcher(this._scope, response) }));
-    page.on(Page.Events.VideoStarted, screencast => this._dispatchEvent('videoStarted', { video: new VideoDispatcher(this._scope, screencast) }));
+    page.on(Page.Events.VideoStarted, (video: Video) => this._dispatchEvent('video', {  relativePath: video._relativePath }));
     page.on(Page.Events.Worker, worker => this._dispatchEvent('worker', { worker: new WorkerDispatcher(this._scope, worker) }));
   }
 
@@ -83,8 +88,8 @@ export class PageDispatcher extends Dispatcher<Page, channels.PageInitializer> i
   }
 
   async exposeBinding(params: channels.PageExposeBindingParams): Promise<void> {
-    await this._page.exposeBinding(params.name, (source, ...args) => {
-      const binding = new BindingCallDispatcher(this._scope, params.name, source, args);
+    await this._page.exposeBinding(params.name, !!params.needsHandle, (source, ...args) => {
+      const binding = new BindingCallDispatcher(this._scope, params.name, !!params.needsHandle, source, args);
       this._dispatchEvent('bindingCall', { binding });
       return binding.promise();
     });
@@ -94,16 +99,22 @@ export class PageDispatcher extends Dispatcher<Page, channels.PageInitializer> i
     await this._page.setExtraHTTPHeaders(params.headers);
   }
 
-  async reload(params: channels.PageReloadParams): Promise<channels.PageReloadResult> {
-    return { response: lookupNullableDispatcher<ResponseDispatcher>(await this._page.reload(params)) };
+  async reload(params: channels.PageReloadParams, metadata?: channels.Metadata): Promise<channels.PageReloadResult> {
+    return await runAction(async controller => {
+      return { response: lookupNullableDispatcher<ResponseDispatcher>(await this._page.reload(controller, params)) };
+    }, { ...metadata, type: 'reload', page: this._page });
   }
 
-  async goBack(params: channels.PageGoBackParams): Promise<channels.PageGoBackResult> {
-    return { response: lookupNullableDispatcher<ResponseDispatcher>(await this._page.goBack(params)) };
+  async goBack(params: channels.PageGoBackParams, metadata?: channels.Metadata): Promise<channels.PageGoBackResult> {
+    return await runAction(async controller => {
+      return { response: lookupNullableDispatcher<ResponseDispatcher>(await this._page.goBack(controller, params)) };
+    }, { ...metadata, type: 'goBack', page: this._page });
   }
 
-  async goForward(params: channels.PageGoForwardParams): Promise<channels.PageGoForwardResult> {
-    return { response: lookupNullableDispatcher<ResponseDispatcher>(await this._page.goForward(params)) };
+  async goForward(params: channels.PageGoForwardParams, metadata?: channels.Metadata): Promise<channels.PageGoForwardResult> {
+    return await runAction(async controller => {
+      return { response: lookupNullableDispatcher<ResponseDispatcher>(await this._page.goForward(controller, params)) };
+    }, { ...metadata, type: 'goForward', page: this._page });
   }
 
   async emulateMedia(params: channels.PageEmulateMediaParams): Promise<void> {
@@ -179,6 +190,10 @@ export class PageDispatcher extends Dispatcher<Page, channels.PageInitializer> i
     await this._page.mouse.click(params.x, params.y, params);
   }
 
+  async touchscreenTap(params: channels.PageTouchscreenTapParams): Promise<void> {
+    await this._page.touchscreen.tap(params.x, params.y);
+  }
+
   async accessibilitySnapshot(params: channels.PageAccessibilitySnapshotParams): Promise<channels.PageAccessibilitySnapshotResult> {
     const rootAXNode = await this._page.accessibility.snapshot({
       interestingOnly: params.interestingOnly,
@@ -250,11 +265,12 @@ export class BindingCallDispatcher extends Dispatcher<{}, channels.BindingCallIn
   private _reject: ((error: any) => void) | undefined;
   private _promise: Promise<any>;
 
-  constructor(scope: DispatcherScope, name: string, source: { context: BrowserContext, page: Page, frame: Frame }, args: any[]) {
+  constructor(scope: DispatcherScope, name: string, needsHandle: boolean, source: { context: BrowserContext, page: Page, frame: Frame }, args: any[]) {
     super(scope, {}, 'BindingCall', {
       frame: lookupDispatcher<FrameDispatcher>(source.frame),
       name,
-      args: args.map(serializeResult),
+      args: needsHandle ? undefined : args.map(serializeResult),
+      handle: needsHandle ? new JSHandleDispatcher(scope, args[0] as JSHandle) : undefined,
     });
     this._promise = new Promise((resolve, reject) => {
       this._resolve = resolve;

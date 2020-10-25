@@ -15,25 +15,25 @@
  * limitations under the License.
  */
 
-import { it, expect, describe, options } from './playwright.fixtures';
-import utils from './utils';
+import { it, expect, describe } from './fixtures';
+import { verifyViewport } from './utils';
 import path from 'path';
 import fs from 'fs';
+import { PNG } from 'pngjs';
 
 // Firefox headful produces a different image.
-const ffheadful = options.FIREFOX && !options.HEADLESS;
 
-describe('page screenshot', suite => {
-  suite.skip(ffheadful);
+describe('page screenshot', (suite, { browserName, headful }) => {
+  suite.skip(browserName === 'firefox' && headful);
 }, () => {
-  it('should work', async ({page, server, golden}) => {
+  it('should work', async ({page, server}) => {
     await page.setViewportSize({width: 500, height: 500});
     await page.goto(server.PREFIX + '/grid.html');
     const screenshot = await page.screenshot();
-    expect(screenshot).toMatchImage(golden('screenshot-sanity.png'));
+    expect(screenshot).toMatchSnapshot('screenshot-sanity.png');
   });
 
-  it('should clip rect', async ({page, server, golden}) => {
+  it('should clip rect', async ({page, server}) => {
     await page.setViewportSize({width: 500, height: 500});
     await page.goto(server.PREFIX + '/grid.html');
     const screenshot = await page.screenshot({
@@ -44,10 +44,10 @@ describe('page screenshot', suite => {
         height: 100
       }
     });
-    expect(screenshot).toMatchImage(golden('screenshot-clip-rect.png'));
+    expect(screenshot).toMatchSnapshot('screenshot-clip-rect.png');
   });
 
-  it('should clip rect with fullPage', async ({page, server, golden}) => {
+  it('should clip rect with fullPage', async ({page, server}) => {
     await page.setViewportSize({width: 500, height: 500});
     await page.goto(server.PREFIX + '/grid.html');
     await page.evaluate(() => window.scrollBy(150, 200));
@@ -60,10 +60,10 @@ describe('page screenshot', suite => {
         height: 100,
       },
     });
-    expect(screenshot).toMatchImage(golden('screenshot-clip-rect.png'));
+    expect(screenshot).toMatchSnapshot('screenshot-clip-rect.png');
   });
 
-  it('should clip elements to the viewport', async ({page, server, golden}) => {
+  it('should clip elements to the viewport', async ({page, server}) => {
     await page.setViewportSize({width: 500, height: 500});
     await page.goto(server.PREFIX + '/grid.html');
     const screenshot = await page.screenshot({
@@ -74,10 +74,10 @@ describe('page screenshot', suite => {
         height: 100
       }
     });
-    expect(screenshot).toMatchImage(golden('screenshot-offscreen-clip.png'));
+    expect(screenshot).toMatchSnapshot('screenshot-offscreen-clip.png');
   });
 
-  it('should throw on clip outside the viewport', async ({page, server, golden}) => {
+  it('should throw on clip outside the viewport', async ({page, server}) => {
     await page.setViewportSize({width: 500, height: 500});
     await page.goto(server.PREFIX + '/grid.html');
     const screenshotError = await page.screenshot({
@@ -91,7 +91,7 @@ describe('page screenshot', suite => {
     expect(screenshotError.message).toContain('Clipped area is either empty or outside the resulting image');
   });
 
-  it('should run in parallel', async ({page, server, golden}) => {
+  it('should run in parallel', async ({page, server}) => {
     await page.setViewportSize({width: 500, height: 500});
     await page.goto(server.PREFIX + '/grid.html');
     const promises = [];
@@ -106,16 +106,16 @@ describe('page screenshot', suite => {
       }));
     }
     const screenshots = await Promise.all(promises);
-    expect(screenshots[1]).toMatchImage(golden('grid-cell-1.png'));
+    expect(screenshots[1]).toMatchSnapshot('grid-cell-1.png');
   });
 
-  it('should take fullPage screenshots', async ({page, server, golden}) => {
+  it('should take fullPage screenshots', async ({page, server}) => {
     await page.setViewportSize({width: 500, height: 500});
     await page.goto(server.PREFIX + '/grid.html');
     const screenshot = await page.screenshot({
       fullPage: true
     });
-    expect(screenshot).toMatchImage(golden('screenshot-grid-fullpage.png'));
+    expect(screenshot).toMatchSnapshot('screenshot-grid-fullpage.png');
   });
 
   it('should restore viewport after fullPage screenshot', async ({page, server}) => {
@@ -123,10 +123,10 @@ describe('page screenshot', suite => {
     await page.goto(server.PREFIX + '/grid.html');
     const screenshot = await page.screenshot({ fullPage: true });
     expect(screenshot).toBeInstanceOf(Buffer);
-    await utils.verifyViewport(page, 500, 500);
+    await verifyViewport(page, 500, 500);
   });
 
-  it('should run in parallel in multiple pages', async ({server, context, golden}) => {
+  it('should run in parallel in multiple pages', async ({server, context}) => {
     const N = 5;
     const pages = await Promise.all(Array(N).fill(0).map(async () => {
       const page = await context.newPage();
@@ -138,13 +138,13 @@ describe('page screenshot', suite => {
       promises.push(pages[i].screenshot({ clip: { x: 50 * (i % 2), y: 0, width: 50, height: 50 } }));
     const screenshots = await Promise.all(promises);
     for (let i = 0; i < N; ++i)
-      expect(screenshots[i]).toMatchImage(golden(`grid-cell-${i % 2}.png`));
+      expect(screenshots[i]).toMatchSnapshot(`grid-cell-${i % 2}.png`);
     await Promise.all(pages.map(page => page.close()));
   });
 
-  it('should allow transparency', test => {
-    test.fail(options.FIREFOX);
-  }, async ({page, golden}) => {
+  it('should allow transparency', (test, { browserName }) => {
+    test.fail(browserName === 'firefox');
+  }, async ({page}) => {
     await page.setViewportSize({ width: 50, height: 150 });
     await page.setContent(`
       <style>
@@ -156,17 +156,17 @@ describe('page screenshot', suite => {
       <div style="background:transparent"></div>
     `);
     const screenshot = await page.screenshot({omitBackground: true});
-    expect(screenshot).toMatchImage(golden('transparent.png'));
+    expect(screenshot).toMatchSnapshot('transparent.png');
   });
 
-  it('should render white background on jpeg file', async ({page, server, golden}) => {
+  it('should render white background on jpeg file', async ({page, server}) => {
     await page.setViewportSize({ width: 100, height: 100 });
     await page.goto(server.EMPTY_PAGE);
     const screenshot = await page.screenshot({omitBackground: true, type: 'jpeg'});
-    expect(screenshot).toMatchImage(golden('white.jpg'));
+    expect(screenshot).toMatchSnapshot('white.jpg');
   });
 
-  it('should work with odd clip size on Retina displays', async ({page, golden}) => {
+  it('should work with odd clip size on Retina displays', async ({page}) => {
     const screenshot = await page.screenshot({
       clip: {
         x: 0,
@@ -175,64 +175,63 @@ describe('page screenshot', suite => {
         height: 11,
       }
     });
-    expect(screenshot).toMatchImage(golden('screenshot-clip-odd-size.png'));
+    expect(screenshot).toMatchSnapshot('screenshot-clip-odd-size.png');
   });
 
-  it('should work with a mobile viewport', test => {
-    test.skip(options.FIREFOX);
-  }, async ({browser, server, golden}) => {
+  it('should work with a mobile viewport', (test, { browserName }) => {
+    test.skip(browserName === 'firefox');
+  }, async ({browser, server}) => {
     const context = await browser.newContext({ viewport: { width: 320, height: 480 }, isMobile: true });
     const page = await context.newPage();
     await page.goto(server.PREFIX + '/overflow.html');
     const screenshot = await page.screenshot();
-    expect(screenshot).toMatchImage(golden('screenshot-mobile.png'));
+    expect(screenshot).toMatchSnapshot('screenshot-mobile.png');
     await context.close();
   });
 
-  it('should work with a mobile viewport and clip', test => {
-    test.skip(options.FIREFOX);
-  }, async ({browser, server, golden}) => {
+  it('should work with a mobile viewport and clip', (test, { browserName }) => {
+    test.skip(browserName === 'firefox');
+  }, async ({browser, server}) => {
     const context = await browser.newContext({viewport: { width: 320, height: 480 }, isMobile: true});
     const page = await context.newPage();
     await page.goto(server.PREFIX + '/overflow.html');
     const screenshot = await page.screenshot({ clip: { x: 10, y: 10, width: 100, height: 150 } });
-    expect(screenshot).toMatchImage(golden('screenshot-mobile-clip.png'));
+    expect(screenshot).toMatchSnapshot('screenshot-mobile-clip.png');
     await context.close();
   });
 
-  it('should work with a mobile viewport and fullPage', test => {
-    test.skip(options.FIREFOX);
-  }, async ({browser, server, golden}) => {
+  it('should work with a mobile viewport and fullPage', (test, { browserName }) => {
+    test.skip(browserName === 'firefox');
+  }, async ({browser, server}) => {
     const context = await browser.newContext({viewport: { width: 320, height: 480 }, isMobile: true});
     const page = await context.newPage();
     await page.goto(server.PREFIX + '/overflow-large.html');
     const screenshot = await page.screenshot({ fullPage: true });
-    expect(screenshot).toMatchImage(golden('screenshot-mobile-fullpage.png'));
+    expect(screenshot).toMatchSnapshot('screenshot-mobile-fullpage.png');
     await context.close();
   });
 
-  it('should work for canvas', async ({page, server, golden}) => {
+  it('should work for canvas', async ({page, server}) => {
     await page.setViewportSize({width: 500, height: 500});
     await page.goto(server.PREFIX + '/screenshots/canvas.html');
     const screenshot = await page.screenshot();
-    expect(screenshot).toMatchImage(golden('screenshot-canvas.png'), { threshold: 0.3 });
+    expect(screenshot).toMatchSnapshot('screenshot-canvas.png', { threshold: 0.3 });
   });
 
-  it('should work for webgl', test => {
-    test.fixme(options.FIREFOX);
-    test.fixme(options.WEBKIT && LINUX);
-  }, async ({page, server, golden}) => {
+  it('should work for webgl', (test, { browserName }) => {
+    test.fixme(browserName === 'firefox' || browserName === 'webkit');
+  }, async ({page, server}) => {
     await page.setViewportSize({width: 640, height: 480});
     await page.goto(server.PREFIX + '/screenshots/webgl.html');
     const screenshot = await page.screenshot();
-    expect(screenshot).toMatchImage(golden('screenshot-webgl.png'));
+    expect(screenshot).toMatchSnapshot('screenshot-webgl.png');
   });
 
-  it('should work for translateZ', async ({page, server, golden}) => {
+  it('should work for translateZ', async ({page, server}) => {
     await page.setViewportSize({width: 500, height: 500});
     await page.goto(server.PREFIX + '/screenshots/translateZ.html');
     const screenshot = await page.screenshot();
-    expect(screenshot).toMatchImage(golden('screenshot-translateZ.png'));
+    expect(screenshot).toMatchSnapshot('screenshot-translateZ.png');
   });
 
   it('should work while navigating', async ({page, server}) => {
@@ -248,48 +247,79 @@ describe('page screenshot', suite => {
     }
   });
 
-  it('should work with device scale factor', async ({browser, server, golden}) => {
+  it('should work with device scale factor', async ({browser, server}) => {
     const context = await browser.newContext({ viewport: { width: 320, height: 480 }, deviceScaleFactor: 2 });
     const page = await context.newPage();
     await page.goto(server.PREFIX + '/grid.html');
     const screenshot = await page.screenshot();
-    expect(screenshot).toMatchImage(golden('screenshot-device-scale-factor.png'));
+    expect(screenshot).toMatchSnapshot('screenshot-device-scale-factor.png');
     await context.close();
   });
 
-  it('should work with iframe in shadow', async ({page, server, golden}) => {
+  it('should work with iframe in shadow', async ({page, server}) => {
     await page.setViewportSize({width: 500, height: 500});
     await page.goto(server.PREFIX + '/grid-iframe-in-shadow.html');
-    expect(await page.screenshot()).toMatchImage(golden('screenshot-iframe.png'));
+    expect(await page.screenshot()).toMatchSnapshot('screenshot-iframe.png');
   });
 
-  it('path option should work', async ({page, server, golden, tmpDir}) => {
+  it('path option should work', async ({page, server, testInfo}) => {
     await page.setViewportSize({width: 500, height: 500});
     await page.goto(server.PREFIX + '/grid.html');
-    const outputPath = path.join(tmpDir, 'screenshot.png');
+    const outputPath = testInfo.outputPath('screenshot.png');
     await page.screenshot({path: outputPath});
-    expect(await fs.promises.readFile(outputPath)).toMatchImage(golden('screenshot-sanity.png'));
+    expect(await fs.promises.readFile(outputPath)).toMatchSnapshot('screenshot-sanity.png');
   });
 
-  it('path option should create subdirectories', async ({page, server, golden, tmpDir}) => {
+  it('path option should create subdirectories', async ({page, server, testInfo}) => {
     await page.setViewportSize({width: 500, height: 500});
     await page.goto(server.PREFIX + '/grid.html');
-    const outputPath = path.join(tmpDir, 'these', 'are', 'directories', 'screenshot.png');
+    const outputPath = testInfo.outputPath(path.join('these', 'are', 'directories', 'screenshot.png'));
     await page.screenshot({path: outputPath});
-    expect(await fs.promises.readFile(outputPath)).toMatchImage(golden('screenshot-sanity.png'));
+    expect(await fs.promises.readFile(outputPath)).toMatchSnapshot('screenshot-sanity.png');
   });
 
-  it('path option should detect jpeg', async ({page, server, golden, tmpDir}) => {
+  it('path option should detect jpeg', async ({page, server, testInfo}) => {
     await page.setViewportSize({ width: 100, height: 100 });
     await page.goto(server.EMPTY_PAGE);
-    const outputPath = path.join(tmpDir, 'screenshot.jpg');
+    const outputPath = testInfo.outputPath('screenshot.jpg');
     const screenshot = await page.screenshot({omitBackground: true, path: outputPath});
-    expect(await fs.promises.readFile(outputPath)).toMatchImage(golden('white.jpg'));
-    expect(screenshot).toMatchImage(golden('white.jpg'));
+    expect(await fs.promises.readFile(outputPath)).toMatchSnapshot('white.jpg');
+    expect(screenshot).toMatchSnapshot('white.jpg');
   });
 
-  it('path option should throw for unsupported mime type', async ({page, server, golden, tmpDir}) => {
+  it('path option should throw for unsupported mime type', async ({page}) => {
     const error = await page.screenshot({ path: 'file.txt' }).catch(e => e);
     expect(error.message).toContain('path: unsupported mime type "text/plain"');
+  });
+
+  it('should work with large size', (test, { browserName }) => {
+    test.fail(browserName === 'chromium', 'Upstream Chromium bug');
+  }, async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await page.evaluate(() => {
+      document.body.style.margin = '0';
+      document.body.style.padding = '0';
+      document.documentElement.style.margin = '0';
+      document.documentElement.style.padding = '0';
+      const div = document.createElement('div');
+      div.style.width = '1250px';
+      div.style.height = '8440px';
+      div.style.background = 'linear-gradient(red, blue)';
+      document.body.appendChild(div);
+    });
+    const buffer = await page.screenshot({ fullPage: true });
+    const decoded = PNG.sync.read(buffer);
+
+    const pixel = (x: number, y: number) => {
+      const dst = new PNG({ width: 1, height: 1 });
+      PNG.bitblt(decoded, dst, x, y, 1, 1);
+      const pixels = dst.data;
+      return { r: pixels[0], g: pixels[1], b: pixels[2], a: pixels[3] };
+    };
+
+    expect(pixel(0, 0).r).toBeGreaterThan(128);
+    expect(pixel(0, 0).b).toBeLessThan(128);
+    expect(pixel(0, 8339).r).toBeLessThan(128);
+    expect(pixel(0, 8339).b).toBeGreaterThan(128);
   });
 });

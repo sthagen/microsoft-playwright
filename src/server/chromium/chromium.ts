@@ -16,24 +16,21 @@
  */
 
 import * as path from 'path';
-import * as os from 'os';
 import { CRBrowser } from './crBrowser';
 import { Env } from '../processLauncher';
 import { kBrowserCloseMessageId } from './crConnection';
 import { rewriteErrorMessage } from '../../utils/stackTrace';
-import { BrowserTypeBase } from '../browserType';
+import { BrowserType } from '../browserType';
 import { ConnectionTransport, ProtocolRequest } from '../transport';
 import type { BrowserDescriptor } from '../../utils/browserPaths';
-import { browserDirectory, browsersPath, ffmpegPath} from '../../utils/browserPaths';
 import { CRDevTools } from './crDevTools';
 import { BrowserOptions } from '../browser';
 import * as types from '../types';
 import { isDebugMode, getFromENV } from '../../utils/utils';
 
-export class Chromium extends BrowserTypeBase {
+export class Chromium extends BrowserType {
   private _devtools: CRDevTools | undefined;
   private _debugPort: number | undefined;
-  private _ffmpegPath: string;
 
   constructor(packagePath: string, browser: BrowserDescriptor) {
     const debugPortStr = getFromENV('PLAYWRIGHT_CHROMIUM_DEBUG_PORT');
@@ -45,8 +42,6 @@ export class Chromium extends BrowserTypeBase {
 
     super(packagePath, browser, debugPort ? { webSocketRegex: /^DevTools listening on (ws:\/\/.*)$/, stream: 'stderr' } : null);
     this._debugPort = debugPort;
-    const browserDir = browserDirectory(browsersPath(packagePath), browser);
-    this._ffmpegPath = ffmpegPath(browserDir, browser);
     if (isDebugMode())
       this._devtools = this._createDevTools();
   }
@@ -61,7 +56,7 @@ export class Chromium extends BrowserTypeBase {
       devtools = this._createDevTools();
       await (options as any).__testHookForDevTools(devtools);
     }
-    return CRBrowser.connect(transport, options, this._ffmpegPath, devtools);
+    return CRBrowser.connect(transport, options, devtools);
   }
 
   _rewriteStartupError(error: Error): Error {
@@ -82,20 +77,6 @@ export class Chromium extends BrowserTypeBase {
 
   _amendEnvironment(env: Env, userDataDir: string, executable: string, browserArguments: string[]): Env {
     return env;
-  }
-
-  _amendArguments(browserArguments: string[]): string[] {
-    // We currently only support Linux.
-    if (os.platform() !== 'linux')
-      return browserArguments;
-
-    // If there's already --no-sandbox passed in, do nothing.
-    if (browserArguments.indexOf('--no-sandbox') !== -1)
-      return browserArguments;
-    const runningAsRoot = process.geteuid && process.geteuid() === 0;
-    if (runningAsRoot)
-      return ['--no-sandbox', ...browserArguments];
-    return browserArguments;
   }
 
   _attemptToGracefullyCloseBrowser(transport: ConnectionTransport): void {
@@ -124,10 +105,11 @@ export class Chromium extends BrowserTypeBase {
       chromeArguments.push(
           '--headless',
           '--hide-scrollbars',
-          '--mute-audio'
+          '--mute-audio',
+          '--blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4',
       );
     }
-    if (options.chromiumSandbox === false)
+    if (options.chromiumSandbox !== true)
       chromeArguments.push('--no-sandbox');
     if (proxy) {
       const proxyURL = new URL(proxy.server);

@@ -14,9 +14,11 @@
 - [class: ConsoleMessage](#class-consolemessage)
 - [class: Dialog](#class-dialog)
 - [class: Download](#class-download)
+- [class: Video](#class-video)
 - [class: FileChooser](#class-filechooser)
 - [class: Keyboard](#class-keyboard)
 - [class: Mouse](#class-mouse)
+- [class: Touchscreen](#class-touchscreen)
 - [class: Request](#class-request)
 - [class: Response](#class-response)
 - [class: Selectors](#class-selectors)
@@ -220,7 +222,8 @@ Indicates that the browser is connected.
     - `password` <[string]>
   - `colorScheme` <"light"|"dark"|"no-preference"> Emulates `'prefers-colors-scheme'` media feature, supported values are `'light'`, `'dark'`, `'no-preference'`. See [page.emulateMedia(options)](#pageemulatemediaoptions) for more details. Defaults to '`light`'.
   - `logger` <[Logger]> Logger sink for Playwright logging.
-  - `_recordVideos` <[Object]> **experimental** Enables automatic video recording for new pages. The video will have frames with the provided dimensions. Actual picture of the page will be scaled down if necessary to fit specified size.
+  - `videosPath` <[string]> Enables video recording for all pages to `videosPath` folder. If not specified, videos are not recorded. Make sure to await [`browserContext.close`](#browsercontextclose) for videos to be saved.
+  - `videoSize` <[Object]> Specifies dimensions of the automatically recorded video. Can only be used if `videosPath` is set. If not specified the size will be equal to `viewport`. If `viewport` is not configured explicitly the video size defaults to 1280x720. Actual picture of the page will be scaled down if necessary to fit specified size.
     - `width` <[number]> Video frame width.
     - `height` <[number]> Video frame height.
 - returns: <[Promise]<[BrowserContext]>>
@@ -265,7 +268,8 @@ Creates a new browser context. It won't share cookies/cache with other browser c
     - `password` <[string]>
   - `colorScheme` <"light"|"dark"|"no-preference"> Emulates `'prefers-colors-scheme'` media feature, supported values are `'light'`, `'dark'`, `'no-preference'`. See [page.emulateMedia(options)](#pageemulatemediaoptions) for more details. Defaults to '`light`'.
   - `logger` <[Logger]> Logger sink for Playwright logging.
-  - `_recordVideos` <[Object]> **experimental** Enables automatic video recording for the new page. The video will have frames with the provided dimensions. Actual picture of the page will be scaled down if necessary to fit specified size.
+  - `videosPath` <[string]> Enables video recording for all pages to `videosPath` folder. If not specified, videos are not recorded. Make sure to await [`page.close`](#pagecloseoptions) for videos to be saved.
+  - `videoSize` <[Object]> Specifies dimensions of the automatically recorded video. Can only be used if `videosPath` is set. If not specified the size will be equal to `viewport`. If `viewport` is not configured explicitly the video size defaults to 1280x720. Actual picture of the page will be scaled down if necessary to fit specified size.
     - `width` <[number]> Video frame width.
     - `height` <[number]> Video frame height.
 - returns: <[Promise]<[Page]>>
@@ -307,11 +311,12 @@ await context.close();
 - [event: 'page'](#event-page)
 - [browserContext.addCookies(cookies)](#browsercontextaddcookiescookies)
 - [browserContext.addInitScript(script[, arg])](#browsercontextaddinitscriptscript-arg)
+- [browserContext.browser()](#browsercontextbrowser)
 - [browserContext.clearCookies()](#browsercontextclearcookies)
 - [browserContext.clearPermissions()](#browsercontextclearpermissions)
 - [browserContext.close()](#browsercontextclose)
 - [browserContext.cookies([urls])](#browsercontextcookiesurls)
-- [browserContext.exposeBinding(name, playwrightBinding)](#browsercontextexposebindingname-playwrightbinding)
+- [browserContext.exposeBinding(name, playwrightBinding[, options])](#browsercontextexposebindingname-playwrightbinding-options)
 - [browserContext.exposeFunction(name, playwrightFunction)](#browsercontextexposefunctionname-playwrightfunction)
 - [browserContext.grantPermissions(permissions[][, options])](#browsercontextgrantpermissionspermissions-options)
 - [browserContext.newPage()](#browsercontextnewpage)
@@ -396,6 +401,10 @@ await browserContext.addInitScript({
 ```
 
 > **NOTE** The order of evaluation of multiple scripts installed via [browserContext.addInitScript(script[, arg])](#browsercontextaddinitscriptscript-arg) and [page.addInitScript(script[, arg])](#pageaddinitscriptscript-arg) is not defined.
+
+#### browserContext.browser()
+- returns: <[null]|[Browser]> Returns the browser instance of the context. If it was launched as a persistent context null gets returned.
+
 #### browserContext.clearCookies()
 - returns: <[Promise]>
 
@@ -436,9 +445,11 @@ will be closed.
 If no URLs are specified, this method returns all cookies.
 If URLs are specified, only cookies that affect those URLs are returned.
 
-#### browserContext.exposeBinding(name, playwrightBinding)
+#### browserContext.exposeBinding(name, playwrightBinding[, options])
 - `name` <[string]> Name of the function on the window object.
 - `playwrightBinding` <[function]> Callback function that will be called in the Playwright's context.
+- `options` <[Object]>
+  - `handle` <[boolean]> Whether to pass the argument as a handle, instead of passing by value. When passing a handle, only one argument is supported. When passing by value, multiple arguments are supported.
 - returns: <[Promise]>
 
 The method adds a function called `name` on the `window` object of every frame in every page in the context.
@@ -448,7 +459,7 @@ If the `playwrightBinding` returns a [Promise], it will be awaited.
 The first argument of the `playwrightBinding` function contains information about the caller:
 `{ browserContext: BrowserContext, page: Page, frame: Frame }`.
 
-See [page.exposeBinding(name, playwrightBinding)](#pageexposebindingname-playwrightbinding) for page-only version.
+See [page.exposeBinding(name, playwrightBinding)](#pageexposebindingname-playwrightbinding-options) for page-only version.
 
 An example of exposing page URL to all frames in all pages in the context:
 ```js
@@ -470,6 +481,20 @@ const { webkit } = require('playwright');  // Or 'chromium' or 'firefox'.
   `);
   await page.click('button');
 })();
+```
+
+An example of passing an element handle:
+```js
+await context.exposeBinding('clicked', async (source, element) => {
+  console.log(await element.textContent());
+}, { handle: true });
+await page.setContent(`
+  <script>
+    document.addEventListener('click', event => window.clicked(event.target));
+  </script>
+  <div>Click me</div>
+  <div>Or click me</div>
+`);
 ```
 
 #### browserContext.exposeFunction(name, playwrightFunction)
@@ -690,7 +715,6 @@ page.removeListener('request', logRequest);
 ```
 
 <!-- GEN:toc -->
-- [event: '_videostarted'](#event-videostarted)
 - [event: 'close'](#event-close-1)
 - [event: 'console'](#event-console)
 - [event: 'crash'](#event-crash)
@@ -729,7 +753,7 @@ page.removeListener('request', logRequest);
 - [page.emulateMedia(options)](#pageemulatemediaoptions)
 - [page.evaluate(pageFunction[, arg])](#pageevaluatepagefunction-arg)
 - [page.evaluateHandle(pageFunction[, arg])](#pageevaluatehandlepagefunction-arg)
-- [page.exposeBinding(name, playwrightBinding)](#pageexposebindingname-playwrightbinding)
+- [page.exposeBinding(name, playwrightBinding[, options])](#pageexposebindingname-playwrightbinding-options)
 - [page.exposeFunction(name, playwrightFunction)](#pageexposefunctionname-playwrightfunction)
 - [page.fill(selector, value[, options])](#pagefillselector-value-options)
 - [page.focus(selector[, options])](#pagefocusselector-options)
@@ -759,12 +783,15 @@ page.removeListener('request', logRequest);
 - [page.setExtraHTTPHeaders(headers)](#pagesetextrahttpheadersheaders)
 - [page.setInputFiles(selector, files[, options])](#pagesetinputfilesselector-files-options)
 - [page.setViewportSize(viewportSize)](#pagesetviewportsizeviewportsize)
+- [page.tap(selector[, options])](#pagetapselector-options)
 - [page.textContent(selector[, options])](#pagetextcontentselector-options)
 - [page.title()](#pagetitle)
+- [page.touchscreen](#pagetouchscreen)
 - [page.type(selector, text[, options])](#pagetypeselector-text-options)
 - [page.uncheck(selector, [options])](#pageuncheckselector-options)
 - [page.unroute(url[, handler])](#pageunrouteurl-handler)
 - [page.url()](#pageurl)
+- [page.video()](#pagevideo)
 - [page.viewportSize()](#pageviewportsize)
 - [page.waitForEvent(event[, optionsOrPredicate])](#pagewaitforeventevent-optionsorpredicate)
 - [page.waitForFunction(pageFunction[, arg, options])](#pagewaitforfunctionpagefunction-arg-options)
@@ -776,12 +803,6 @@ page.removeListener('request', logRequest);
 - [page.waitForTimeout(timeout)](#pagewaitfortimeouttimeout)
 - [page.workers()](#pageworkers)
 <!-- GEN:stop -->
-
-#### event: '_videostarted'
-- <[Object]> Video object.
-
-**experimental**
-Emitted when video recording has started for this page. The event will fire only if [`_recordVideos`](#browsernewcontextoptions) option is configured on the parent context.
 
 #### event: 'close'
 
@@ -1091,6 +1112,8 @@ Shortcut for [page.mainFrame().click(selector[, options])](#frameclickselector-o
     page handlers.
 - returns: <[Promise]>
 
+If `runBeforeUnload` is `false` the result will resolve only after the page has been closed.
+If `runBeforeUnload` is `true` the method will **not** wait for the page to close.
 By default, `page.close()` **does not** run beforeunload handlers.
 
 > **NOTE** if `runBeforeUnload` is passed as true, a `beforeunload` dialog might be summoned
@@ -1264,9 +1287,11 @@ console.log(await resultHandle.jsonValue());
 await resultHandle.dispose();
 ```
 
-#### page.exposeBinding(name, playwrightBinding)
+#### page.exposeBinding(name, playwrightBinding[, options])
 - `name` <[string]> Name of the function on the window object.
 - `playwrightBinding` <[function]> Callback function that will be called in the Playwright's context.
+- `options` <[Object]>
+  - `handle` <[boolean]> Whether to pass the argument as a handle, instead of passing by value. When passing a handle, only one argument is supported. When passing by value, multiple arguments are supported.
 - returns: <[Promise]>
 
 The method adds a function called `name` on the `window` object of every frame in this page.
@@ -1276,7 +1301,7 @@ If the `playwrightBinding` returns a [Promise], it will be awaited.
 The first argument of the `playwrightBinding` function contains information about the caller:
 `{ browserContext: BrowserContext, page: Page, frame: Frame }`.
 
-See [browserContext.exposeBinding(name, playwrightBinding)](#browsercontextexposebindingname-playwrightbinding) for the context-wide version.
+See [browserContext.exposeBinding(name, playwrightBinding)](#browsercontextexposebindingname-playwrightbinding-options) for the context-wide version.
 
 > **NOTE** Functions installed via `page.exposeBinding` survive navigations.
 
@@ -1300,6 +1325,20 @@ const { webkit } = require('playwright');  // Or 'chromium' or 'firefox'.
   `);
   await page.click('button');
 })();
+```
+
+An example of passing an element handle:
+```js
+await page.exposeBinding('clicked', async (source, element) => {
+  console.log(await element.textContent());
+}, { handle: true });
+await page.setContent(`
+  <script>
+    document.addEventListener('click', event => window.clicked(event.target));
+  </script>
+  <div>Click me</div>
+  <div>Or click me</div>
+`);
 ```
 
 #### page.exposeFunction(name, playwrightFunction)
@@ -1654,6 +1693,8 @@ Routing provides the capability to modify network requests that are made by a pa
 
 Once routing is enabled, every request matching the url pattern will stall unless it's continued, fulfilled or aborted.
 
+> **NOTE** The handler will only be called for the first url if the response is a redirect.
+
 An example of a naïve handler that aborts all image requests:
 
 ```js
@@ -1681,7 +1722,7 @@ Page routes take precedence over browser context routes (set up with [browserCon
   - `path` <[string]> The file path to save the image to. The screenshot type will be inferred from file extension. If `path` is a relative path, then it is resolved relative to [current working directory](https://nodejs.org/api/process.html#process_process_cwd). If no path is provided, the image won't be saved to the disk.
   - `type` <"png"|"jpeg"> Specify screenshot type, defaults to `png`.
   - `quality` <[number]> The quality of the image, between 0-100. Not applicable to `png` images.
-  - `fullPage` <[boolean]> When true, takes a screenshot of the full scrollable page, instead of the currently visibvle viewport. Defaults to `false`.
+  - `fullPage` <[boolean]> When true, takes a screenshot of the full scrollable page, instead of the currently visible viewport. Defaults to `false`.
   - `clip` <[Object]> An object which specifies clipping of the resulting image. Should have the following fields:
     - `x` <[number]> x-coordinate of top-left corner of clip area
     - `y` <[number]> y-coordinate of top-left corner of clip area
@@ -1795,6 +1836,31 @@ await page.setViewportSize({
 await page.goto('https://example.com');
 ```
 
+#### page.tap(selector[, options])
+- `selector` <[string]> A selector to search for element to tap. If there are multiple elements satisfying the selector, the first will be tapped. See [working with selectors](#working-with-selectors) for more details.
+- `options` <[Object]>
+  - `position` <[Object]> A point to tap relative to the top-left corner of element padding box. If not specified, taps some visible point of the element.
+    - `x` <[number]>
+    - `y` <[number]>
+  - `modifiers` <[Array]<"Alt"|"Control"|"Meta"|"Shift">> Modifier keys to press. Ensures that only these modifiers are pressed during the tap, and then restores current modifiers back. If not specified, currently pressed modifiers are used.
+  - `noWaitAfter` <[boolean]> Actions that initiate navigations are waiting for these navigations to happen and for pages to start loading. You can opt out of waiting via setting this flag. You would only need this option in the exceptional cases such as navigating to inaccessible pages. Defaults to `false`.
+  - `force` <[boolean]> Whether to bypass the [actionability](./actionability.md) checks. Defaults to `false`.
+  - `timeout` <[number]> Maximum time in milliseconds, defaults to 30 seconds, pass `0` to disable timeout. The default value can be changed by using the [browserContext.setDefaultTimeout(timeout)](#browsercontextsetdefaulttimeouttimeout) or [page.setDefaultTimeout(timeout)](#pagesetdefaulttimeouttimeout) methods.
+- returns: <[Promise]> Promise that resolves when the element matching `selector` is successfully tapped.
+
+This method taps an element matching `selector` by performing the following steps:
+1. Find an element match matching `selector`. If there is none, wait until a matching element is attached to the DOM.
+1. Wait for [actionability](./actionability.md) checks on the matched element, unless `force` option is set. If the element is detached during the checks, the whole action is retried.
+1. Scroll the element into view if needed.
+1. Use [page.touchscreen](#pagemouse) to tap the center of the element, or the specified `position`.
+1. Wait for initiated navigations to either succeed or fail, unless `noWaitAfter` option is set.
+
+When all steps combined have not finished during the specified `timeout`, this method rejects with a [TimeoutError]. Passing zero timeout disables this.
+
+> **NOTE** `page.tap()` requires that the `hasTouch` option of the browser context be set to true.
+
+Shortcut for [page.mainFrame().tap()](#framename).
+
 #### page.textContent(selector[, options])
 - `selector` <[string]> A selector to search for an element. If there are multiple elements satisfying the selector, the first will be picked. See [working with selectors](#working-with-selectors) for more details.
 - `options` <[Object]>
@@ -1803,13 +1869,14 @@ await page.goto('https://example.com');
 
 Resolves to the `element.textContent`.
 
-
 #### page.title()
 - returns: <[Promise]<[string]>> The page's title.
 
 Shortcut for [page.mainFrame().title()](#frametitle).
 
+#### page.touchscreen
 
+- returns: <[Touchscreen]>
 
 #### page.type(selector, text[, options])
 - `selector` <[string]> A selector of an element to type into. If there are multiple elements satisfying the selector, the first will be used. See [working with selectors](#working-with-selectors) for more details.
@@ -1863,6 +1930,11 @@ Removes a route created with [page.route(url, handler)](#pagerouteurl-handler). 
 - returns: <[string]>
 
 This is a shortcut for [page.mainFrame().url()](#frameurl)
+
+#### page.video()
+- returns: <[null]|[Video]>
+
+Video object associated with this page.
 
 #### page.viewportSize()
 - returns: <[null]|[Object]>
@@ -2111,6 +2183,7 @@ console.log(text);
 - [frame.selectOption(selector, values[, options])](#frameselectoptionselector-values-options)
 - [frame.setContent(html[, options])](#framesetcontenthtml-options)
 - [frame.setInputFiles(selector, files[, options])](#framesetinputfilesselector-files-options)
+- [frame.tap(selector[, options])](#frametapselector-options)
 - [frame.textContent(selector[, options])](#frametextcontentselector-options)
 - [frame.title()](#frametitle)
 - [frame.type(selector, text[, options])](#frametypeselector-text-options)
@@ -2551,6 +2624,29 @@ This method expects `selector` to point to an [input element](https://developer.
 
 Sets the value of the file input to these file paths or files. If some of the `filePaths` are relative paths, then they are resolved relative to the [current working directory](https://nodejs.org/api/process.html#process_process_cwd). For empty array, clears the selected files.
 
+#### frame.tap(selector[, options])
+- `selector` <[string]> A selector to search for element to tap. If there are multiple elements satisfying the selector, the first will be tapped. See [working with selectors](#working-with-selectors) for more details.
+- `options` <[Object]>
+  - `position` <[Object]> A point to tap relative to the top-left corner of element padding box. If not specified, taps some visible point of the element.
+    - `x` <[number]>
+    - `y` <[number]>
+  - `modifiers` <[Array]<"Alt"|"Control"|"Meta"|"Shift">> Modifier keys to press. Ensures that only these modifiers are pressed during the tap, and then restores current modifiers back. If not specified, currently pressed modifiers are used.
+  - `noWaitAfter` <[boolean]> Actions that initiate navigations are waiting for these navigations to happen and for pages to start loading. You can opt out of waiting via setting this flag. You would only need this option in the exceptional cases such as navigating to inaccessible pages. Defaults to `false`.
+  - `force` <[boolean]> Whether to bypass the [actionability](./actionability.md) checks. Defaults to `false`.
+  - `timeout` <[number]> Maximum time in milliseconds, defaults to 30 seconds, pass `0` to disable timeout. The default value can be changed by using the [browserContext.setDefaultTimeout(timeout)](#browsercontextsetdefaulttimeouttimeout) or [page.setDefaultTimeout(timeout)](#pagesetdefaulttimeouttimeout) methods.
+- returns: <[Promise]> Promise that resolves when the element matching `selector` is successfully tapped.
+
+This method taps an element matching `selector` by performing the following steps:
+1. Find an element match matching `selector`. If there is none, wait until a matching element is attached to the DOM.
+1. Wait for [actionability](./actionability.md) checks on the matched element, unless `force` option is set. If the element is detached during the checks, the whole action is retried.
+1. Scroll the element into view if needed.
+1. Use [page.touchscreen](#pagemouse) to tap the center of the element, or the specified `position`.
+1. Wait for initiated navigations to either succeed or fail, unless `noWaitAfter` option is set.
+
+When all steps combined have not finished during the specified `timeout`, this method rejects with a [TimeoutError]. Passing zero timeout disables this.
+
+> **NOTE** `frame.tap()` requires that the `hasTouch` option of the browser context be set to true.
+
 #### frame.textContent(selector[, options])
 - `selector` <[string]> A selector to search for an element. If there are multiple elements satisfying the selector, the first will be picked. See [working with selectors](#working-with-selectors) for more details.
 - `options` <[Object]>
@@ -2558,7 +2654,6 @@ Sets the value of the file input to these file paths or files. If some of the `f
 - returns: <[Promise]<[null]|[string]>>
 
 Resolves to the `element.textContent`.
-
 
 #### frame.title()
 - returns: <[Promise]<[string]>> The page's title.
@@ -2757,6 +2852,7 @@ ElementHandle instances can be used as an argument in [`page.$eval()`](#pageeval
 - [elementHandle.selectOption(values[, options])](#elementhandleselectoptionvalues-options)
 - [elementHandle.selectText([options])](#elementhandleselecttextoptions)
 - [elementHandle.setInputFiles(files[, options])](#elementhandlesetinputfilesfiles-options)
+- [elementHandle.tap([options])](#elementhandletapoptions)
 - [elementHandle.textContent()](#elementhandletextcontent)
 - [elementHandle.toString()](#elementhandletostring)
 - [elementHandle.type(text[, options])](#elementhandletypetext-options)
@@ -3076,6 +3172,29 @@ This method expects `elementHandle` to point to an [input element](https://devel
 
 Sets the value of the file input to these file paths or files. If some of the `filePaths` are relative paths, then they are resolved relative to the [current working directory](https://nodejs.org/api/process.html#process_process_cwd). For empty array, clears the selected files.
 
+#### elementHandle.tap([options])
+- `options` <[Object]>
+  - `position` <[Object]> A point to tap relative to the top-left corner of element padding box. If not specified, taps some visible point of the element.
+    - `x` <[number]>
+    - `y` <[number]>
+  - `modifiers` <[Array]<"Alt"|"Control"|"Meta"|"Shift">> Modifier keys to press. Ensures that only these modifiers are pressed during the tap, and then restores current modifiers back. If not specified, currently pressed modifiers are used.
+  - `force` <[boolean]> Whether to bypass the [actionability](./actionability.md) checks. Defaults to `false`.
+  - `noWaitAfter` <[boolean]> Actions that initiate navigations are waiting for these navigations to happen and for pages to start loading. You can opt out of waiting via setting this flag. You would only need this option in the exceptional cases such as navigating to inaccessible pages. Defaults to `false`.
+  - `timeout` <[number]> Maximum time in milliseconds, defaults to 30 seconds, pass `0` to disable timeout. The default value can be changed by using the [browserContext.setDefaultTimeout(timeout)](#browsercontextsetdefaulttimeouttimeout) or [page.setDefaultTimeout(timeout)](#pagesetdefaulttimeouttimeout) methods.
+- returns: <[Promise]> Promise that resolves when the element is successfully tapped.
+
+This method taps the element by performing the following steps:
+1. Wait for [actionability](./actionability.md) checks on the element, unless `force` option is set.
+1. Scroll the element into view if needed.
+1. Use [page.touchscreen](#pagemouse) to tap in the center of the element, or the specified `position`.
+1. Wait for initiated navigations to either succeed or fail, unless `noWaitAfter` option is set.
+
+If the element is detached from the DOM at any moment during the action, this method rejects.
+
+When all steps combined have not finished during the specified `timeout`, this method rejects with a [TimeoutError]. Passing zero timeout disables this.
+
+> **NOTE** `elementHandle.tap()` requires that the `hasTouch` option of the browser context be set to true.
+
 #### elementHandle.textContent()
 - returns: <[Promise]<[null]|[string]>> Resolves to the `node.textContent`.
 
@@ -3393,6 +3512,24 @@ Returns suggested filename for this download. It is typically computed by the br
 Returns downloaded url.
 
 
+### class: Video
+
+When browser context is created with the `videosPath` option, each page has a video object associated with it.
+
+```js
+console.log(await page.video().path());
+```
+
+<!-- GEN:toc -->
+- [video.path()](#videopath)
+<!-- GEN:stop -->
+
+#### video.path()
+- returns: <[Promise]<[string]>>
+
+Returns the file system path this video will be recorded to. The video is guaranteed to be written to the filesystem upon closing the browser context.
+
+
 ### class: FileChooser
 
 [FileChooser] objects are dispatched by the page in the ['filechooser'](#event-filechooser) event.
@@ -3640,6 +3777,17 @@ Dispatches a `mousemove` event.
 
 Dispatches a `mouseup` event.
 
+### class: Touchscreen
+
+The Touchscreen class operates in main-frame CSS pixels relative to the top-left corner of the viewport. Methods on the
+touchscreen can only be used in browser contexts that have been intialized with `hasTouch` set to true.
+
+#### touchscreen.tap(x, y)
+- `x` <[number]>
+- `y` <[number]>
+- returns: <[Promise]>
+
+Dispatches a `touchstart` and `touchend` event with a single touch at the position (`x`,`y`).
 
 ### class: Request
 
@@ -3667,6 +3815,7 @@ If request gets a 'redirect' response, the request is successfully finished with
 - [request.redirectedTo()](#requestredirectedto)
 - [request.resourceType()](#requestresourcetype)
 - [request.response()](#requestresponse)
+- [request.timing()](#requesttiming)
 - [request.url()](#requesturl)
 <!-- GEN:stop -->
 
@@ -3743,6 +3892,29 @@ ResourceType will be one of the following: `document`, `stylesheet`, `image`, `m
 
 #### request.response()
 - returns: <[Promise]<[null]|[Response]>> A matching [Response] object, or `null` if the response was not received due to error.
+
+#### request.timing()
+- returns: <[Object]>
+  - `startTime` <[number]> Request start time in milliseconds elapsed since January 1, 1970 00:00:00 UTC
+  - `domainLookupStart` <[number]> Time immediately before the browser starts the domain name lookup for the resource. The value is given in milliseconds relative to `startTime`, -1 if not available.
+  - `domainLookupEnd` <[number]> Time immediately after the browser starts the domain name lookup for the resource. The value is given in milliseconds relative to `startTime`, -1 if not available.
+  - `connectStart` <[number]> Time immediately before the user agent starts establishing the connection to the server to retrieve the resource. The value is given in milliseconds relative to `startTime`, -1 if not available.
+  - `secureConnectionStart` <[number]> immediately before the browser starts the handshake process to secure the current connection. The value is given in milliseconds relative to `startTime`, -1 if not available.
+  - `connectEnd` <[number]> Time immediately before the user agent starts establishing the connection to the server to retrieve the resource. The value is given in milliseconds relative to `startTime`, -1 if not available.
+  - `requestStart` <[number]> Time immediately before the browser starts requesting the resource from the server, cache, or local resource. The value is given in milliseconds relative to `startTime`, -1 if not available.
+  - `responseStart` <[number]> immediately after the browser starts requesting the resource from the server, cache, or local resource. The value is given in milliseconds relative to `startTime`, -1 if not available.
+  - `responseEnd` <[number]> Time immediately after the browser receives the last byte of the resource or immediately before the transport connection is closed, whichever comes first. The value is given in milliseconds relative to `startTime`, -1 if not available.
+};
+
+Returns resource timing information for given request. Most of the timing values become available upon the response, `responseEnd` becomes available when request finishes. Find more information at [Resource Timing API](https://developer.mozilla.org/en-US/docs/Web/API/PerformanceResourceTiming).
+
+```js
+const [request] = await Promise.all([
+  page.waitForEvent('requestfinished'),
+  page.goto(httpsServer.EMPTY_PAGE)
+]);
+console.log(request.timing());
+```
 
 #### request.url()
 - returns: <[string]> URL of the request.
@@ -3902,7 +4074,7 @@ Whenever a network route is set up with [page.route(url, handler)](#pagerouteurl
 Aborts the route's request.
 
 #### route.continue([overrides])
-- `overrides` <[Object]> Optional request overrides, which can be one of the following:
+- `overrides` <[Object]> Optional request overrides, can override following properties:
   - `method` <[string]> If set changes the request method (e.g. GET or POST)
   - `postData` <[string]|[Buffer]> If set changes the post data of request
   - `headers` <[Object]<[string], [string]>> If set changes the request HTTP headers. Header values will be converted to a string.
@@ -4170,8 +4342,7 @@ This methods attaches Playwright to an existing browser instance.
     - `username` <[string]> Optional username to use if HTTP proxy requires authentication.
     - `password` <[string]> Optional password to use if HTTP proxy requires authentication.
   - `downloadsPath` <[string]> If specified, accepted downloads are downloaded into this folder. Otherwise, temporary folder is created and is deleted when browser is closed.
-  - `_videosPath` <[string]> **experimental** If specified, recorded videos are saved into this folder. Otherwise, temporary folder is created and is deleted when browser is closed.
-  - `chromiumSandbox` <[boolean]> Enable Chromium sandboxing. Defaults to `true`.
+  - `chromiumSandbox` <[boolean]> Enable Chromium sandboxing. Defaults to `false`.
   - `firefoxUserPrefs` <[Object]<[string], [string]|[number]|[boolean]>> Firefox user preferences. Learn more about the Firefox user preferences at [`about:config`](https://support.mozilla.org/en-US/kb/about-config-editor-firefox).
   - `handleSIGINT` <[boolean]> Close the browser process on Ctrl-C. Defaults to `true`.
   - `handleSIGTERM` <[boolean]> Close the browser process on SIGTERM. Defaults to `true`.
@@ -4245,8 +4416,8 @@ const browser = await chromium.launch({  // Or 'firefox' or 'webkit'.
     - `username` <[string]>
     - `password` <[string]>
   - `colorScheme` <"light"|"dark"|"no-preference"> Emulates `'prefers-colors-scheme'` media feature, supported values are `'light'`, `'dark'`, `'no-preference'`. See [page.emulateMedia(options)](#pageemulatemediaoptions) for more details. Defaults to '`light`'.
-  - `_videosPath` <[string]> **experimental** If specified, recorded videos are saved into this folder. Otherwise, temporary folder is created and is deleted when browser is closed.
-  - `_recordVideos` <[Object]> **experimental** Enables automatic video recording for the new page. The video will have frames with the provided dimensions. Actual picture of the page will be scaled down if necessary to fit specified size.
+  - `videosPath` <[string]> Enables video recording for all pages to `videosPath` folder. If not specified, videos are not recorded. Make sure to await [`browserContext.close`](#browsercontextclose) for videos to be saved.
+  - `videoSize` <[Object]> Specifies dimensions of the automatically recorded video. Can only be used if `videosPath` is set. If not specified the size will be equal to `viewport`. If `viewport` is not configured explicitly the video size defaults to 1280x720. Actual picture of the page will be scaled down if necessary to fit specified size.
     - `width` <[number]> Video frame width.
     - `height` <[number]> Video frame height.
 - returns: <[Promise]<[BrowserContext]>> Promise that resolves to the persistent browser context instance.
@@ -4266,7 +4437,6 @@ Launches browser that uses persistent storage located at `userDataDir` and retur
     - `username` <[string]> Optional username to use if HTTP proxy requires authentication.
     - `password` <[string]> Optional password to use if HTTP proxy requires authentication.
   - `downloadsPath` <[string]> If specified, accepted downloads are downloaded into this folder. Otherwise, temporary folder is created and is deleted when browser is closed.
-  - `_videosPath` <[string]> **experimental** If specified, recorded videos are saved into this folder. Otherwise, temporary folder is created and is deleted when browser is closed.
   - `chromiumSandbox` <[boolean]> Enable Chromium sandboxing. Defaults to `true`.
   - `firefoxUserPrefs` <[Object]<[string], [string]|[number]|[boolean]>> Firefox user preferences. Learn more about the Firefox user preferences at [`about:config`](https://support.mozilla.org/en-US/kb/about-config-editor-firefox).
   - `handleSIGINT` <[boolean]> Close the browser process on Ctrl-C. Defaults to `true`.
@@ -4404,11 +4574,12 @@ const backgroundPage = await context.waitForEvent('backgroundpage');
 - [event: 'page'](#event-page)
 - [browserContext.addCookies(cookies)](#browsercontextaddcookiescookies)
 - [browserContext.addInitScript(script[, arg])](#browsercontextaddinitscriptscript-arg)
+- [browserContext.browser()](#browsercontextbrowser)
 - [browserContext.clearCookies()](#browsercontextclearcookies)
 - [browserContext.clearPermissions()](#browsercontextclearpermissions)
 - [browserContext.close()](#browsercontextclose)
 - [browserContext.cookies([urls])](#browsercontextcookiesurls)
-- [browserContext.exposeBinding(name, playwrightBinding)](#browsercontextexposebindingname-playwrightbinding)
+- [browserContext.exposeBinding(name, playwrightBinding[, options])](#browsercontextexposebindingname-playwrightbinding-options)
 - [browserContext.exposeFunction(name, playwrightFunction)](#browsercontextexposefunctionname-playwrightfunction)
 - [browserContext.grantPermissions(permissions[][, options])](#browsercontextgrantpermissionspermissions-options)
 - [browserContext.newPage()](#browsercontextnewpage)
@@ -4779,10 +4950,12 @@ const { chromium } = require('playwright');
 [Selectors]: #class-selectors  "Selectors"
 [Serializable]: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/JSON/stringify#Description "Serializable"
 [TimeoutError]: #class-timeouterror "TimeoutError"
+[Touchscreen]: #class-touchscreen "Touchscreen"
 [UIEvent.detail]: https://developer.mozilla.org/en-US/docs/Web/API/UIEvent/detail "UIEvent.detail"
 [URL]: https://nodejs.org/api/url.html
 [USKeyboardLayout]: ../src/usKeyboardLayout.ts "USKeyboardLayout"
 [UnixTime]: https://en.wikipedia.org/wiki/Unix_time "Unix Time"
+[Video]: #class-video "Video"
 [WebKitBrowser]: #class-webkitbrowser "WebKitBrowser"
 [WebSocket]: #class-websocket "WebSocket"
 [Worker]: #class-worker "Worker"

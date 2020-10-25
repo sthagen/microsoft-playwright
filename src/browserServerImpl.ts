@@ -15,8 +15,9 @@
  */
 
 import { LaunchServerOptions } from './client/types';
-import { BrowserTypeBase } from './server/browserType';
+import { BrowserType } from './server/browserType';
 import * as ws from 'ws';
+import * as fs from 'fs';
 import { Browser } from './server/browser';
 import { ChildProcess } from 'child_process';
 import { EventEmitter } from 'ws';
@@ -29,11 +30,13 @@ import { envObjectToArray } from './client/clientHelper';
 import { createGuid } from './utils/utils';
 import { SelectorsDispatcher } from './dispatchers/selectorsDispatcher';
 import { Selectors } from './server/selectors';
+import { BrowserContext, Video } from './server/browserContext';
+import { StreamDispatcher } from './dispatchers/streamDispatcher';
 
 export class BrowserServerLauncherImpl implements BrowserServerLauncher {
-  private _browserType: BrowserTypeBase;
+  private _browserType: BrowserType;
 
-  constructor(browserType: BrowserTypeBase) {
+  constructor(browserType: BrowserType) {
     this._browserType = browserType;
   }
 
@@ -50,12 +53,12 @@ export class BrowserServerLauncherImpl implements BrowserServerLauncher {
 
 export class BrowserServerImpl extends EventEmitter implements BrowserServer {
   private _server: ws.Server;
-  private _browserType: BrowserTypeBase;
+  private _browserType: BrowserType;
   private _browser: Browser;
   private _wsEndpoint: string;
   private _process: ChildProcess;
 
-  constructor(browserType: BrowserTypeBase, browser: Browser, port: number = 0) {
+  constructor(browserType: BrowserType, browser: Browser, port: number = 0) {
     super();
 
     this._browserType = browserType;
@@ -109,23 +112,27 @@ export class BrowserServerImpl extends EventEmitter implements BrowserServer {
     socket.on('error', () => {});
     const selectors = new Selectors();
     const scope = connection.rootDispatcher();
-    const browser = new ConnectedBrowser(scope, this._browser, selectors);
-    new RemoteBrowserDispatcher(scope, browser, selectors);
+    const remoteBrowser = new RemoteBrowserDispatcher(scope, this._browser, selectors);
     socket.on('close', () => {
       // Avoid sending any more messages over closed socket.
       connection.onmessage = () => {};
       // Cleanup contexts upon disconnect.
-      browser.close().catch(e => {});
+      remoteBrowser.connectedBrowser.close().catch(e => {});
     });
   }
 }
 
 class RemoteBrowserDispatcher extends Dispatcher<{}, channels.RemoteBrowserInitializer> implements channels.PlaywrightChannel {
-  constructor(scope: DispatcherScope, browser: ConnectedBrowser, selectors: Selectors) {
+  readonly connectedBrowser: ConnectedBrowser;
+
+  constructor(scope: DispatcherScope, browser: Browser, selectors: Selectors) {
+    const connectedBrowser = new ConnectedBrowser(scope, browser, selectors);
     super(scope, {}, 'RemoteBrowser', {
       selectors: new SelectorsDispatcher(scope, selectors),
-      browser,
+      browser: connectedBrowser,
     }, false, 'remoteBrowser');
+    this.connectedBrowser = connectedBrowser;
+    connectedBrowser._remoteBrowser = this;
   }
 }
 
@@ -133,6 +140,7 @@ class ConnectedBrowser extends BrowserDispatcher {
   private _contexts: BrowserContextDispatcher[] = [];
   private _selectors: Selectors;
   _closed = false;
+  _remoteBrowser?: RemoteBrowserDispatcher;
 
   constructor(scope: DispatcherScope, browser: Browser, selectors: Selectors) {
     super(scope, browser);
@@ -140,8 +148,13 @@ class ConnectedBrowser extends BrowserDispatcher {
   }
 
   async newContext(params: channels.BrowserNewContextParams): Promise<{ context: channels.BrowserContextChannel }> {
+    if (params.videosPath) {
+      // TODO: we should create a separate temp directory or accept a launchServer parameter.
+      params.videosPath = this._object._options.downloadsPath;
+    }
     const result = await super.newContext(params);
     const dispatcher = result.context as BrowserContextDispatcher;
+    dispatcher._object.on(BrowserContext.Events.VideoStarted, (video: Video) => this._sendVideo(dispatcher, video));
     dispatcher._object._setSelectors(this._selectors);
     this._contexts.push(dispatcher);
     return result;
@@ -161,5 +174,23 @@ class ConnectedBrowser extends BrowserDispatcher {
       this._closed = true;
       super._didClose();
     }
+  }
+
+  private _sendVideo(contextDispatcher: BrowserContextDispatcher, video: Video) {
+    video._waitForCallbackOnFinish(async () => {
+      const readable = fs.createReadStream(video._path);
+      await new Promise(f => readable.on('readable', f));
+      const stream = new StreamDispatcher(this._remoteBrowser!._scope, readable);
+      this._remoteBrowser!._dispatchEvent('video', {
+        stream,
+        context: contextDispatcher,
+        relativePath: video._relativePath
+      });
+      await new Promise<void>(resolve => {
+        readable.on('close', resolve);
+        readable.on('end', resolve);
+        readable.on('error', resolve);
+      });
+    });
   }
 }

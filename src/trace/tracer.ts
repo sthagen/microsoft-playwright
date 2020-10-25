@@ -14,73 +14,61 @@
  * limitations under the License.
  */
 
-import type { BrowserContext } from '../server/browserContext';
-import type { PageSnapshot, SanpshotterResource, SnapshotterBlob, SnapshotterDelegate } from './snapshotter';
-import { ContextCreatedTraceEvent, ContextDestroyedTraceEvent, NetworkResourceTraceEvent, SnapshotTraceEvent } from './traceTypes';
+import { ActionListener, ActionMetadata, BrowserContext, ContextListener, contextListeners, Video } from '../server/browserContext';
+import type { SnapshotterResource as SnapshotterResource, SnapshotterBlob, SnapshotterDelegate } from './snapshotter';
+import { ContextCreatedTraceEvent, ContextDestroyedTraceEvent, NetworkResourceTraceEvent, ActionTraceEvent, PageCreatedTraceEvent, PageDestroyedTraceEvent, PageVideoTraceEvent } from './traceTypes';
 import * as path from 'path';
 import * as util from 'util';
 import * as fs from 'fs';
 import { calculateSha1, createGuid, mkdirIfNeeded, monotonicTime } from '../utils/utils';
-import { InstrumentingAgent, instrumentingAgents } from '../server/instrumentation';
 import { Page } from '../server/page';
-import { Progress, runAbortableTask } from '../server/progress';
 import { Snapshotter } from './snapshotter';
-import * as types from '../server/types';
+import { ElementHandle } from '../server/dom';
+import { helper, RegisteredListener } from '../server/helper';
+import { DEFAULT_TIMEOUT } from '../utils/timeoutSettings';
+import { ProgressResult } from '../server/progress';
 
 const fsWriteFileAsync = util.promisify(fs.writeFile.bind(fs));
 const fsAppendFileAsync = util.promisify(fs.appendFile.bind(fs));
 const fsAccessAsync = util.promisify(fs.access.bind(fs));
 
-export class Tracer implements InstrumentingAgent {
+export function installTracer() {
+  contextListeners.add(new Tracer());
+}
+
+class Tracer implements ContextListener {
   private _contextTracers = new Map<BrowserContext, ContextTracer>();
 
-  constructor() {
-    instrumentingAgents.add(this);
-  }
-
-  dispose() {
-    instrumentingAgents.delete(this);
-  }
-
-  traceContext(context: BrowserContext, traceStorageDir: string, traceFile: string) {
-    const contextTracer = new ContextTracer(context, traceStorageDir, traceFile);
-    this._contextTracers.set(context, contextTracer);
-  }
-
-  async captureSnapshot(page: Page, options: types.TimeoutOptions & { label?: string } = {}): Promise<void> {
-    return runAbortableTask(async progress => {
-      const contextTracer = this._contextTracers.get(page.context());
-      if (contextTracer)
-        await contextTracer._snapshotter.takeSnapshot(progress, page, options.label || 'snapshot');
-    }, page._timeoutSettings.timeout(options));
-  }
-
   async onContextCreated(context: BrowserContext): Promise<void> {
+    if (!context._options._tracePath)
+      return;
+    const traceStorageDir = context._options._traceResourcesPath || path.join(path.dirname(context._options._tracePath), 'trace-resources');
+    const contextTracer = new ContextTracer(context, traceStorageDir, context._options._tracePath);
+    this._contextTracers.set(context, contextTracer);
   }
 
   async onContextDestroyed(context: BrowserContext): Promise<void> {
     const contextTracer = this._contextTracers.get(context);
     if (contextTracer) {
-      await contextTracer.dispose();
+      await contextTracer.dispose().catch(e => {});
       this._contextTracers.delete(context);
     }
   }
-
-  async onBeforePageAction(page: Page, progress: Progress): Promise<void> {
-    const contextTracer = this._contextTracers.get(page.context());
-    if (contextTracer)
-      await contextTracer._snapshotter.takeSnapshot(progress, page, 'progress');
-  }
 }
 
-class ContextTracer implements SnapshotterDelegate {
+class ContextTracer implements SnapshotterDelegate, ActionListener {
+  private _context: BrowserContext;
   private _contextId: string;
   private _traceStoragePromise: Promise<string>;
   private _appendEventChain: Promise<string>;
   private _writeArtifactChain: Promise<void>;
-  readonly _snapshotter: Snapshotter;
+  private _snapshotter: Snapshotter;
+  private _eventListeners: RegisteredListener[];
+  private _disposed = false;
+  private _pageToId = new Map<Page, string>();
 
   constructor(context: BrowserContext, traceStorageDir: string, traceFile: string) {
+    this._context = context;
     this._contextId = 'context@' + createGuid();
     this._traceStoragePromise = mkdirIfNeeded(path.join(traceStorageDir, 'sha1')).then(() => traceStorageDir);
     this._appendEventChain = mkdirIfNeeded(traceFile).then(() => traceFile);
@@ -95,16 +83,21 @@ class ContextTracer implements SnapshotterDelegate {
     };
     this._appendTraceEvent(event);
     this._snapshotter = new Snapshotter(context, this);
+    this._eventListeners = [
+      helper.addEventListener(context, BrowserContext.Events.Page, this._onPage.bind(this)),
+    ];
+    this._context._actionListeners.add(this);
   }
 
   onBlob(blob: SnapshotterBlob): void {
     this._writeArtifact(blob.sha1, blob.buffer);
   }
 
-  onResource(resource: SanpshotterResource): void {
+  onResource(resource: SnapshotterResource): void {
     const event: NetworkResourceTraceEvent = {
       type: 'resource',
       contextId: this._contextId,
+      pageId: resource.pageId,
       frameId: resource.frameId,
       url: resource.url,
       contentType: resource.contentType,
@@ -114,20 +107,89 @@ class ContextTracer implements SnapshotterDelegate {
     this._appendTraceEvent(event);
   }
 
-  onSnapshot(snapshot: PageSnapshot): void {
-    const buffer = Buffer.from(JSON.stringify(snapshot));
-    const sha1 = calculateSha1(buffer);
-    const event: SnapshotTraceEvent = {
-      type: 'snapshot',
+  pageId(page: Page): string {
+    return this._pageToId.get(page)!;
+  }
+
+  async onAfterAction(result: ProgressResult, metadata: ActionMetadata): Promise<void> {
+    try {
+      const snapshot = await this._takeSnapshot(metadata.page, typeof metadata.target === 'string' ? undefined : metadata.target);
+      const event: ActionTraceEvent = {
+        type: 'action',
+        contextId: this._contextId,
+        pageId: this._pageToId.get(metadata.page),
+        action: metadata.type,
+        selector: typeof metadata.target === 'string' ? metadata.target : undefined,
+        value: metadata.value,
+        snapshot,
+        startTime: result.startTime,
+        endTime: result.endTime,
+        stack: metadata.stack,
+        logs: result.logs.slice(),
+        error: result.error ? result.error.stack : undefined,
+      };
+      this._appendTraceEvent(event);
+    } catch (e) {
+    }
+  }
+
+  private _onPage(page: Page) {
+    const pageId = 'page@' + createGuid();
+    this._pageToId.set(page, pageId);
+
+    const event: PageCreatedTraceEvent = {
+      type: 'page-created',
       contextId: this._contextId,
-      label: snapshot.label,
-      sha1,
+      pageId,
     };
     this._appendTraceEvent(event);
+
+    page.on(Page.Events.VideoStarted, (video: Video) => {
+      if (this._disposed)
+        return;
+      const event: PageVideoTraceEvent = {
+        type: 'page-video',
+        contextId: this._contextId,
+        pageId,
+        fileName: path.basename(video._path),
+      };
+      this._appendTraceEvent(event);
+    });
+
+    page.once(Page.Events.Close, () => {
+      this._pageToId.delete(page);
+      if (this._disposed)
+        return;
+      const event: PageDestroyedTraceEvent = {
+        type: 'page-destroyed',
+        contextId: this._contextId,
+        pageId,
+      };
+      this._appendTraceEvent(event);
+    });
+  }
+
+  private async _takeSnapshot(page: Page, target: ElementHandle | undefined, timeout: number = 0): Promise<{ sha1: string, duration: number } | undefined> {
+    if (!timeout) {
+      // Never use zero timeout to avoid stalling because of snapshot.
+      // Use 20% of the default timeout.
+      timeout = (page._timeoutSettings.timeout({}) || DEFAULT_TIMEOUT) / 5;
+    }
+    const startTime = monotonicTime();
+    const snapshot = await this._snapshotter.takeSnapshot(page, target, timeout);
+    if (!snapshot)
+      return;
+    const buffer = Buffer.from(JSON.stringify(snapshot));
+    const sha1 = calculateSha1(buffer);
     this._writeArtifact(sha1, buffer);
+    return { sha1, duration: monotonicTime() - startTime };
   }
 
   async dispose() {
+    this._disposed = true;
+    this._context._actionListeners.delete(this);
+    helper.removeEventListeners(this._eventListeners);
+    this._pageToId.clear();
     this._snapshotter.dispose();
     const event: ContextDestroyedTraceEvent = {
       type: 'context-destroyed',

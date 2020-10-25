@@ -14,18 +14,17 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import { it, expect } from './playwright.fixtures';
-
-import utils from './utils';
+import { it, expect } from './fixtures';
+import { verifyViewport } from './utils';
 
 it('should get the proper default viewport size', async ({page, server}) => {
-  await utils.verifyViewport(page, 1280, 720);
+  await verifyViewport(page, 1280, 720);
 });
 
 it('should set the proper viewport size', async ({page, server}) => {
-  await utils.verifyViewport(page, 1280, 720);
+  await verifyViewport(page, 1280, 720);
   await page.setViewportSize({width: 123, height: 456});
-  await utils.verifyViewport(page, 123, 456);
+  await verifyViewport(page, 123, 456);
 });
 
 it('should return correct outerWidth and outerHeight', async ({page}) => {
@@ -81,6 +80,14 @@ it('should emulate device height', async ({page, server}) => {
   expect(await page.evaluate(() => matchMedia('(max-device-height: 600px)').matches)).toBe(true);
   expect(await page.evaluate(() => matchMedia('(device-height: 200px)').matches)).toBe(false);
   expect(await page.evaluate(() => matchMedia('(device-height: 500px)').matches)).toBe(true);
+});
+
+it('should emulate availWidth and availHeight', (test, { browserName, platform }) => {
+  test.fail(browserName === 'webkit' && platform !== 'linux', 'Not implemented');
+}, async ({page}) => {
+  await page.setViewportSize({width: 500, height: 600});
+  expect(await page.evaluate(() => window.screen.availWidth)).toBe(500);
+  expect(await page.evaluate(() => window.screen.availHeight)).toBe(600);
 });
 
 it('should not have touch by default', async ({page, server}) => {

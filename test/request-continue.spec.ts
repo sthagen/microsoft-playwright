@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import { it, expect } from './playwright.fixtures';
+import { it, expect } from './fixtures';
 
 it('should work', async ({page, server}) => {
   await page.route('**/*', route => route.continue());
@@ -64,6 +64,19 @@ it('should amend post data', async ({page, server}) => {
     server.waitForRequest('/sleep.zzz'),
     page.evaluate(() => fetch('/sleep.zzz', { method: 'POST', body: 'birdy' }))
   ]);
+  expect((await serverRequest.postBody).toString('utf8')).toBe('doggo');
+});
+
+it('should amend method and post data', async ({page, server}) => {
+  await page.goto(server.EMPTY_PAGE);
+  await page.route('**/*', route => {
+    route.continue({ method: 'POST', postData: 'doggo' });
+  });
+  const [serverRequest] = await Promise.all([
+    server.waitForRequest('/sleep.zzz'),
+    page.evaluate(() => fetch('/sleep.zzz', { method: 'GET' }))
+  ]);
+  expect(serverRequest.method).toBe('POST');
   expect((await serverRequest.postBody).toString('utf8')).toBe('doggo');
 });
 

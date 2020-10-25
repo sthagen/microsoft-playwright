@@ -15,10 +15,10 @@
  * limitations under the License.
  */
 
-import { it, expect, describe, options } from './playwright.fixtures';
+import { it, expect, describe } from './fixtures';
 
-describe('mobile viewport', suite => {
-  suite.skip(options.FIREFOX);
+describe('mobile viewport', (suite, { browserName }) => {
+  suite.skip(browserName === 'firefox');
 }, () => {
   it('should support mobile emulation', async ({playwright, browser, server}) => {
     const iPhone = playwright.devices['iPhone 6'];
@@ -129,5 +129,30 @@ describe('mobile viewport', suite => {
     await page.goto(server.PREFIX + '/mobile.html');
     expect(await page.evaluate(() => window.innerWidth)).toBe(320);
     await context.close();
+  });
+
+  it('should emulate the hover media feature', async ({playwright, browser}) => {
+    const iPhone = playwright.devices['iPhone 6'];
+    const mobilepage = await browser.newPage({ ...iPhone });
+    expect(await mobilepage.evaluate(() => matchMedia('(hover: hover)').matches)).toBe(false);
+    expect(await mobilepage.evaluate(() => matchMedia('(hover: none)').matches)).toBe(true);
+    expect(await mobilepage.evaluate(() => matchMedia('(any-hover: hover)').matches)).toBe(false);
+    expect(await mobilepage.evaluate(() => matchMedia('(any-hover: none)').matches)).toBe(true);
+    expect(await mobilepage.evaluate(() => matchMedia('(pointer: coarse)').matches)).toBe(true);
+    expect(await mobilepage.evaluate(() => matchMedia('(pointer: fine)').matches)).toBe(false);
+    expect(await mobilepage.evaluate(() => matchMedia('(any-pointer: coarse)').matches)).toBe(true);
+    expect(await mobilepage.evaluate(() => matchMedia('(any-pointer: fine)').matches)).toBe(false);
+    await mobilepage.close();
+
+    const desktopPage = await browser.newPage();
+    expect(await desktopPage.evaluate(() => matchMedia('(hover: none)').matches)).toBe(false);
+    expect(await desktopPage.evaluate(() => matchMedia('(hover: hover)').matches)).toBe(true);
+    expect(await desktopPage.evaluate(() => matchMedia('(any-hover: none)').matches)).toBe(false);
+    expect(await desktopPage.evaluate(() => matchMedia('(any-hover: hover)').matches)).toBe(true);
+    expect(await desktopPage.evaluate(() => matchMedia('(pointer: coarse)').matches)).toBe(false);
+    expect(await desktopPage.evaluate(() => matchMedia('(pointer: fine)').matches)).toBe(true);
+    expect(await desktopPage.evaluate(() => matchMedia('(any-pointer: coarse)').matches)).toBe(false);
+    expect(await desktopPage.evaluate(() => matchMedia('(any-pointer: fine)').matches)).toBe(true);
+    await desktopPage.close();
   });
 });

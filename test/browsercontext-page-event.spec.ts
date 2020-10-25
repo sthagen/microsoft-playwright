@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import { it, expect, options } from './playwright.fixtures';
+import { it, expect } from './fixtures';
 
 it('should have url', async ({browser, server}) => {
   const context = await browser.newContext();
@@ -157,8 +157,8 @@ it('should fire page lifecycle events', async function({browser, server}) {
   await context.close();
 });
 
-it('should work with Shift-clicking', test => {
-  test.fixme(options.WEBKIT, 'WebKit: Shift+Click does not open a new window.');
+it('should work with Shift-clicking', (test, { browserName }) => {
+  test.fixme(browserName === 'webkit', 'WebKit: Shift+Click does not open a new window.');
 }, async ({browser, server}) => {
   const context = await browser.newContext();
   const page = await context.newPage();
@@ -172,17 +172,17 @@ it('should work with Shift-clicking', test => {
   await context.close();
 });
 
-it('should work with Ctrl-clicking', test => {
-  test.fixme(options.WEBKIT, 'Ctrl+Click does not open a new tab.');
-  test.fixme(options.FIREFOX, 'Reports an opener in this case.');
-}, async ({browser, server}) => {
+it('should work with Ctrl-clicking', (test, { browserName }) => {
+  test.fixme(browserName === 'webkit', 'Ctrl+Click does not open a new tab.');
+  test.fixme(browserName === 'firefox', 'Reports an opener in this case.');
+}, async ({browser, server, isMac}) => {
   const context = await browser.newContext();
   const page = await context.newPage();
   await page.goto(server.EMPTY_PAGE);
   await page.setContent('<a href="/one-style.html">yo</a>');
   const [popup] = await Promise.all([
     context.waitForEvent('page'),
-    page.click('a', { modifiers: [ MAC ? 'Meta' : 'Control'] }),
+    page.click('a', { modifiers: [ isMac ? 'Meta' : 'Control'] }),
   ]);
   expect(await popup.opener()).toBe(null);
   await context.close();

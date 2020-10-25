@@ -19,13 +19,13 @@ import { WKBrowser } from '../webkit/wkBrowser';
 import { Env } from '../processLauncher';
 import * as path from 'path';
 import { kBrowserCloseMessageId } from './wkConnection';
-import { BrowserTypeBase } from '../browserType';
+import { BrowserType } from '../browserType';
 import { ConnectionTransport } from '../transport';
 import { BrowserOptions } from '../browser';
 import { BrowserDescriptor } from '../../utils/browserPaths';
 import * as types from '../types';
 
-export class WebKit extends BrowserTypeBase {
+export class WebKit extends BrowserType {
   constructor(packagePath: string, browser: BrowserDescriptor) {
     super(packagePath, browser, null /* use pipe not websocket */);
   }
@@ -36,10 +36,6 @@ export class WebKit extends BrowserTypeBase {
 
   _amendEnvironment(env: Env, userDataDir: string, executable: string, browserArguments: string[]): Env {
     return { ...env, CURL_COOKIE_JAR_PATH: path.join(userDataDir, 'cookiejar.db') };
-  }
-
-  _amendArguments(browserArguments: string[]): string[] {
-    return browserArguments;
   }
 
   _rewriteStartupError(error: Error): Error {

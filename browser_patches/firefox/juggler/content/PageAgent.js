@@ -20,32 +20,29 @@ const obs = Cc["@mozilla.org/observer-service;1"].getService(
 const helper = new Helper();
 
 class WorkerData {
-  constructor(pageAgent, browserChannel, sessionId, worker) {
-    this._workerRuntime = worker.channel().connect(sessionId + 'runtime');
-    this._browserWorker = browserChannel.connect(sessionId + worker.id());
+  constructor(pageAgent, browserChannel, worker) {
+    this._workerRuntime = worker.channel().connect('runtime');
+    this._browserWorker = browserChannel.connect(worker.id());
     this._worker = worker;
-    this._sessionId = sessionId;
     const emit = name => {
       return (...args) => this._browserWorker.emit(name, ...args);
     };
     this._eventListeners = [
-      worker.channel().register(sessionId + 'runtime', {
+      worker.channel().register('runtime', {
         runtimeConsole: emit('runtimeConsole'),
         runtimeExecutionContextCreated: emit('runtimeExecutionContextCreated'),
         runtimeExecutionContextDestroyed: emit('runtimeExecutionContextDestroyed'),
       }),
-      browserChannel.register(sessionId + worker.id(), {
+      browserChannel.register(worker.id(), {
         evaluate: (options) => this._workerRuntime.send('evaluate', options),
         callFunction: (options) => this._workerRuntime.send('callFunction', options),
         getObjectProperties: (options) => this._workerRuntime.send('getObjectProperties', options),
         disposeObject: (options) =>this._workerRuntime.send('disposeObject', options),
       }),
     ];
-    worker.channel().connect('').emit('attach', {sessionId});
   }
 
   dispose() {
-    this._worker.channel().connect('').emit('detach', {sessionId: this._sessionId});
     this._workerRuntime.dispose();
     this._browserWorker.dispose();
     helper.removeListeners(this._eventListeners);
@@ -112,23 +109,89 @@ class FrameData {
 }
 
 class PageAgent {
-  constructor(messageManager, browserChannel, sessionId, frameTree, networkMonitor) {
+  constructor(messageManager, browserChannel, frameTree) {
     this._messageManager = messageManager;
     this._browserChannel = browserChannel;
-    this._sessionId = sessionId;
-    this._browserPage = browserChannel.connect(sessionId + 'page');
-    this._browserRuntime = browserChannel.connect(sessionId + 'runtime');
+    this._browserPage = browserChannel.connect('page');
     this._frameTree = frameTree;
     this._runtime = frameTree.runtime();
-    this._networkMonitor = networkMonitor;
 
     this._frameData = new Map();
     this._workerData = new Map();
     this._scriptsToEvaluateOnNewDocument = new Map();
     this._isolatedWorlds = new Map();
 
+    const docShell = frameTree.mainFrame().docShell();
+    this._docShell = docShell;
+    this._initialDPPX = docShell.contentViewer.overrideDPPX;
+    this._customScrollbars = null;
+    this._dataTransfer = null;
+
+    // Dispatch frameAttached events for all initial frames
+    for (const frame of this._frameTree.frames()) {
+      this._onFrameAttached(frame);
+      if (frame.url())
+        this._onNavigationCommitted(frame);
+      if (frame.pendingNavigationId())
+        this._onNavigationStarted(frame);
+    }
+
+    // Report created workers.
+    for (const worker of this._frameTree.workers())
+      this._onWorkerCreated(worker);
+
+    // Report execution contexts.
+    for (const context of this._runtime.executionContexts())
+      this._onExecutionContextCreated(context);
+
+    if (this._frameTree.isPageReady()) {
+      this._browserPage.emit('pageReady', {});
+      const mainFrame = this._frameTree.mainFrame();
+      const domWindow = mainFrame.domWindow();
+      const document = domWindow ? domWindow.document : null;
+      const readyState = document ? document.readyState : null;
+      // Sometimes we initialize later than the first about:blank page is opened.
+      // In this case, the page might've been loaded already, and we need to issue
+      // the `DOMContentLoaded` and `load` events.
+      if (mainFrame.url() === 'about:blank' && readyState === 'complete')
+        this._emitAllEvents(this._frameTree.mainFrame());
+    }
+
     this._eventListeners = [
-      browserChannel.register(sessionId + 'page', {
+      helper.addObserver(this._linkClicked.bind(this, false), 'juggler-link-click'),
+      helper.addObserver(this._linkClicked.bind(this, true), 'juggler-link-click-sync'),
+      helper.addObserver(this._onWindowOpenInNewContext.bind(this), 'juggler-window-open-in-new-context'),
+      helper.addObserver(this._filePickerShown.bind(this), 'juggler-file-picker-shown'),
+      helper.addEventListener(this._messageManager, 'DOMContentLoaded', this._onDOMContentLoaded.bind(this)),
+      helper.addObserver(this._onDocumentOpenLoad.bind(this), 'juggler-document-open-loaded'),
+      helper.addEventListener(this._messageManager, 'error', this._onError.bind(this)),
+      helper.on(this._frameTree, 'load', this._onLoad.bind(this)),
+      helper.on(this._frameTree, 'bindingcalled', this._onBindingCalled.bind(this)),
+      helper.on(this._frameTree, 'frameattached', this._onFrameAttached.bind(this)),
+      helper.on(this._frameTree, 'framedetached', this._onFrameDetached.bind(this)),
+      helper.on(this._frameTree, 'globalobjectcreated', this._onGlobalObjectCreated.bind(this)),
+      helper.on(this._frameTree, 'navigationstarted', this._onNavigationStarted.bind(this)),
+      helper.on(this._frameTree, 'navigationcommitted', this._onNavigationCommitted.bind(this)),
+      helper.on(this._frameTree, 'navigationaborted', this._onNavigationAborted.bind(this)),
+      helper.on(this._frameTree, 'samedocumentnavigation', this._onSameDocumentNavigation.bind(this)),
+      helper.on(this._frameTree, 'pageready', () => this._browserPage.emit('pageReady', {})),
+      helper.on(this._frameTree, 'workercreated', this._onWorkerCreated.bind(this)),
+      helper.on(this._frameTree, 'workerdestroyed', this._onWorkerDestroyed.bind(this)),
+      helper.addObserver(this._onWindowOpen.bind(this), 'webNavigation-createdNavigationTarget-from-js'),
+      this._runtime.events.onErrorFromWorker((domWindow, message, stack) => {
+        const frame = this._frameTree.frameForDocShell(domWindow.docShell);
+        if (!frame)
+          return;
+        this._browserPage.emit('pageUncaughtError', {
+          frameId: frame.id(),
+          message,
+          stack,
+        });
+      }),
+      this._runtime.events.onConsoleMessage(msg => this._browserPage.emit('runtimeConsole', msg)),
+      this._runtime.events.onExecutionContextCreated(this._onExecutionContextCreated.bind(this)),
+      this._runtime.events.onExecutionContextDestroyed(this._onExecutionContextDestroyed.bind(this)),
+      browserChannel.register('page', {
         addBinding: ({ name, script }) => this._frameTree.addBinding(name, script),
         addScriptToEvaluateOnNewDocument: this._addScriptToEvaluateOnNewDocument.bind(this),
         adoptNode: this._adoptNode.bind(this),
@@ -137,6 +200,7 @@ class PageAgent {
         dispatchKeyEvent: this._dispatchKeyEvent.bind(this),
         dispatchMouseEvent: this._dispatchMouseEvent.bind(this),
         dispatchTouchEvent: this._dispatchTouchEvent.bind(this),
+        dispatchTapEvent: this._dispatchTapEvent.bind(this),
         getBoundingBox: this._getBoundingBox.bind(this),
         getContentQuads: this._getContentQuads.bind(this),
         getFullAXTree: this._getFullAXTree.bind(this),
@@ -146,32 +210,18 @@ class PageAgent {
         navigate: this._navigate.bind(this),
         reload: this._reload.bind(this),
         removeScriptToEvaluateOnNewDocument: this._removeScriptToEvaluateOnNewDocument.bind(this),
-        requestDetails: this._requestDetails.bind(this),
         screenshot: this._screenshot.bind(this),
         scrollIntoViewIfNeeded: this._scrollIntoViewIfNeeded.bind(this),
         setCacheDisabled: this._setCacheDisabled.bind(this),
         setEmulatedMedia: this._setEmulatedMedia.bind(this),
         setFileInputFiles: this._setFileInputFiles.bind(this),
         setInterceptFileChooserDialog: this._setInterceptFileChooserDialog.bind(this),
-      }),
-      browserChannel.register(sessionId + 'runtime', {
         evaluate: this._runtime.evaluate.bind(this._runtime),
         callFunction: this._runtime.callFunction.bind(this._runtime),
         getObjectProperties: this._runtime.getObjectProperties.bind(this._runtime),
         disposeObject: this._runtime.disposeObject.bind(this._runtime),
       }),
     ];
-    this._enabled = false;
-
-    const docShell = frameTree.mainFrame().docShell();
-    this._docShell = docShell;
-    this._initialDPPX = docShell.contentViewer.overrideDPPX;
-    this._customScrollbars = null;
-    this._dataTransfer = null;
-  }
-
-  _requestDetails({channelKey}) {
-    return this._networkMonitor.requestDetails(channelKey);
   }
 
   async _setEmulatedMedia({type, colorScheme}) {
@@ -214,75 +264,6 @@ class PageAgent {
     docShell.defaultLoadFlags = cacheDisabled ? disable : enable;
   }
 
-  enable() {
-    if (this._enabled)
-      return;
-
-    this._enabled = true;
-    // Dispatch frameAttached events for all initial frames
-    for (const frame of this._frameTree.frames()) {
-      this._onFrameAttached(frame);
-      if (frame.url())
-        this._onNavigationCommitted(frame);
-      if (frame.pendingNavigationId())
-        this._onNavigationStarted(frame);
-    }
-
-    for (const worker of this._frameTree.workers())
-      this._onWorkerCreated(worker);
-
-    this._eventListeners.push(...[
-      helper.addObserver(this._linkClicked.bind(this, false), 'juggler-link-click'),
-      helper.addObserver(this._linkClicked.bind(this, true), 'juggler-link-click-sync'),
-      helper.addObserver(this._onWindowOpenInNewContext.bind(this), 'juggler-window-open-in-new-context'),
-      helper.addObserver(this._filePickerShown.bind(this), 'juggler-file-picker-shown'),
-      helper.addEventListener(this._messageManager, 'DOMContentLoaded', this._onDOMContentLoaded.bind(this)),
-      helper.addEventListener(this._messageManager, 'pageshow', this._onLoad.bind(this)),
-      helper.addObserver(this._onDocumentOpenLoad.bind(this), 'juggler-document-open-loaded'),
-      helper.addEventListener(this._messageManager, 'error', this._onError.bind(this)),
-      helper.on(this._frameTree, 'bindingcalled', this._onBindingCalled.bind(this)),
-      helper.on(this._frameTree, 'frameattached', this._onFrameAttached.bind(this)),
-      helper.on(this._frameTree, 'framedetached', this._onFrameDetached.bind(this)),
-      helper.on(this._frameTree, 'globalobjectcreated', this._onGlobalObjectCreated.bind(this)),
-      helper.on(this._frameTree, 'navigationstarted', this._onNavigationStarted.bind(this)),
-      helper.on(this._frameTree, 'navigationcommitted', this._onNavigationCommitted.bind(this)),
-      helper.on(this._frameTree, 'navigationaborted', this._onNavigationAborted.bind(this)),
-      helper.on(this._frameTree, 'samedocumentnavigation', this._onSameDocumentNavigation.bind(this)),
-      helper.on(this._frameTree, 'pageready', () => this._browserPage.emit('pageReady', {})),
-      helper.on(this._frameTree, 'workercreated', this._onWorkerCreated.bind(this)),
-      helper.on(this._frameTree, 'workerdestroyed', this._onWorkerDestroyed.bind(this)),
-      helper.addObserver(this._onWindowOpen.bind(this), 'webNavigation-createdNavigationTarget-from-js'),
-      this._runtime.events.onErrorFromWorker((domWindow, message, stack) => {
-        const frame = this._frameTree.frameForDocShell(domWindow.docShell);
-        if (!frame)
-          return;
-        this._browserPage.emit('pageUncaughtError', {
-          frameId: frame.id(),
-          message,
-          stack,
-        });
-      }),
-      this._runtime.events.onConsoleMessage(msg => this._browserRuntime.emit('runtimeConsole', msg)),
-      this._runtime.events.onExecutionContextCreated(this._onExecutionContextCreated.bind(this)),
-      this._runtime.events.onExecutionContextDestroyed(this._onExecutionContextDestroyed.bind(this)),
-    ]);
-    for (const context of this._runtime.executionContexts())
-      this._onExecutionContextCreated(context);
-
-    if (this._frameTree.isPageReady()) {
-      this._browserPage.emit('pageReady', {});
-      const mainFrame = this._frameTree.mainFrame();
-      const domWindow = mainFrame.domWindow();
-      const document = domWindow ? domWindow.document : null;
-      const readyState = document ? document.readyState : null;
-      // Sometimes we initialize later than the first about:blank page is opened.
-      // In this case, the page might've been loaded already, and we need to issue
-      // the `DOMContentLoaded` and `load` events.
-      if (mainFrame.url() === 'about:blank' && readyState === 'complete')
-        this._emitAllEvents(this._frameTree.mainFrame());
-    }
-  }
-
   _emitAllEvents(frame) {
     this._browserPage.emit('pageEventFired', {
       frameId: frame.id(),
@@ -295,20 +276,20 @@ class PageAgent {
   }
 
   _onExecutionContextCreated(executionContext) {
-    this._browserRuntime.emit('runtimeExecutionContextCreated', {
+    this._browserPage.emit('runtimeExecutionContextCreated', {
       executionContextId: executionContext.id(),
       auxData: executionContext.auxData(),
     });
   }
 
   _onExecutionContextDestroyed(executionContext) {
-    this._browserRuntime.emit('runtimeExecutionContextDestroyed', {
+    this._browserPage.emit('runtimeExecutionContextDestroyed', {
       executionContextId: executionContext.id(),
     });
   }
 
   _onWorkerCreated(worker) {
-    const workerData = new WorkerData(this, this._browserChannel, this._sessionId, worker);
+    const workerData = new WorkerData(this, this._browserChannel, worker);
     this._workerData.set(worker.id(), workerData);
     this._browserPage.emit('pageWorkerCreated', {
       workerId: worker.id(),
@@ -394,7 +375,7 @@ class PageAgent {
     this._browserPage.emit('pageUncaughtError', {
       frameId: frame.id(),
       message: errorEvent.message,
-      stack: errorEvent.error ? errorEvent.error.stack : '',
+      stack: errorEvent.error && typeof errorEvent.error.stack === 'string' ? errorEvent.error.stack : '',
     });
   }
 
@@ -409,11 +390,7 @@ class PageAgent {
     });
   }
 
-  _onLoad(event) {
-    const docShell = event.target.ownerGlobal.docShell;
-    const frame = this._frameTree.frameForDocShell(docShell);
-    if (!frame)
-      return;
+  _onLoad(frame) {
     this._browserPage.emit('pageEventFired', {
       frameId: frame.id(),
       name: 'load'
@@ -730,6 +707,70 @@ class PageAgent {
       touchPoints.length,
       modifiers);
     return {defaultPrevented};
+  }
+
+  async _dispatchTapEvent({x, y, modifiers}) {
+    const {defaultPrevented: startPrevented} = await this._dispatchTouchEvent({
+      type: 'touchstart',
+      modifiers,
+      touchPoints: [{x, y}]
+    });
+    const {defaultPrevented: endPrevented} = await this._dispatchTouchEvent({
+      type: 'touchend',
+      modifiers,
+      touchPoints: [{x, y}]
+    });
+    if (startPrevented || endPrevented)
+      return;
+
+    const frame = this._frameTree.mainFrame();
+    frame.domWindow().windowUtils.sendMouseEvent(
+      'mousemove',
+      x,
+      y,
+      0 /*button*/,
+      0 /*clickCount*/,
+      modifiers,
+      false /*aIgnoreRootScrollFrame*/,
+      undefined /*pressure*/,
+      5 /*inputSource*/,
+      undefined /*isDOMEventSynthesized*/,
+      false /*isWidgetEventSynthesized*/,
+      0 /*buttons*/,
+      undefined /*pointerIdentifier*/,
+      true /*disablePointerEvent*/);
+
+    frame.domWindow().windowUtils.sendMouseEvent(
+      'mousedown',
+      x,
+      y,
+      0 /*button*/,
+      1 /*clickCount*/,
+      modifiers,
+      false /*aIgnoreRootScrollFrame*/,
+      undefined /*pressure*/,
+      5 /*inputSource*/,
+      undefined /*isDOMEventSynthesized*/,
+      false /*isWidgetEventSynthesized*/,
+      1 /*buttons*/,
+      undefined /*pointerIdentifier*/,
+      true /*disablePointerEvent*/);
+
+    frame.domWindow().windowUtils.sendMouseEvent(
+      'mouseup',
+      x,
+      y,
+      0 /*button*/,
+      1 /*clickCount*/,
+      modifiers,
+      false /*aIgnoreRootScrollFrame*/,
+      undefined /*pressure*/,
+      5 /*inputSource*/,
+      undefined /*isDOMEventSynthesized*/,
+      false /*isWidgetEventSynthesized*/,
+      0 /*buttons*/,
+      undefined /*pointerIdentifier*/,
+      true /*disablePointerEvent*/);
   }
 
   _startDragSessionIfNeeded() {

@@ -14,59 +14,51 @@
  * limitations under the License.
  */
 
-import { it, expect, registerFixture } from '@playwright/test-runner';
-import './playwright.fixtures';
+import { folio } from './fixtures';
 
-import path from 'path';
 import fs from 'fs';
-import os from 'os';
-import {mkdtempAsync, removeFolderAsync} from './utils';
 import type { Browser, BrowserContext } from '..';
 
-declare global {
-  interface TestState {
-    downloadsBrowser: Browser;
-    persistentDownloadsContext: BrowserContext;
-  }
-}
+type TestState = {
+  downloadsBrowser: Browser;
+  persistentDownloadsContext: BrowserContext;
+};
+const fixtures = folio.extend<TestState>();
 
-registerFixture('downloadsBrowser', async ({server, browserType, defaultBrowserOptions, tmpDir}, test) => {
+fixtures.downloadsBrowser.init(async ({ server, browserType, browserOptions, testInfo }, test) => {
   server.setRoute('/download', (req, res) => {
     res.setHeader('Content-Type', 'application/octet-stream');
     res.setHeader('Content-Disposition', 'attachment; filename=file.txt');
     res.end(`Hello world`);
   });
   const browser = await browserType.launch({
-    ...defaultBrowserOptions,
-    downloadsPath: tmpDir,
+    ...browserOptions,
+    downloadsPath: testInfo.outputPath(''),
   });
   await test(browser);
   await browser.close();
 });
 
-registerFixture('persistentDownloadsContext', async ({server, browserType, defaultBrowserOptions, tmpDir}, test) => {
-  const userDataDir = await mkdtempAsync(path.join(os.tmpdir(), 'playwright-test-'));
+fixtures.persistentDownloadsContext.init(async ({ server, launchPersistent, testInfo }, test) => {
   server.setRoute('/download', (req, res) => {
     res.setHeader('Content-Type', 'application/octet-stream');
     res.setHeader('Content-Disposition', 'attachment; filename=file.txt');
     res.end(`Hello world`);
   });
-  const context = await browserType.launchPersistentContext(
-      userDataDir,
+  const { context, page } = await launchPersistent(
       {
-        ...defaultBrowserOptions,
-        downloadsPath: tmpDir,
+        downloadsPath: testInfo.outputPath(''),
         acceptDownloads: true
       }
   );
-  const page = context.pages()[0];
-  page.setContent(`<a href="${server.PREFIX}/download">download</a>`);
+  await page.setContent(`<a href="${server.PREFIX}/download">download</a>`);
   await test(context);
   await context.close();
-  await removeFolderAsync(userDataDir);
 });
 
-it('should keep downloadsPath folder', async ({downloadsBrowser, tmpDir, server})  => {
+const { it, expect } = fixtures.build();
+
+it('should keep downloadsPath folder', async ({downloadsBrowser, testInfo, server})  => {
   const page = await downloadsBrowser.newPage();
   await page.setContent(`<a href="${server.PREFIX}/download">download</a>`);
   const [ download ] = await Promise.all([
@@ -78,7 +70,7 @@ it('should keep downloadsPath folder', async ({downloadsBrowser, tmpDir, server}
   await download.path().catch(e => void 0);
   await page.close();
   await downloadsBrowser.close();
-  expect(fs.existsSync(tmpDir)).toBeTruthy();
+  expect(fs.existsSync(testInfo.outputPath(''))).toBeTruthy();
 });
 
 it('should delete downloads when context closes', async ({downloadsBrowser, server}) => {
@@ -92,10 +84,9 @@ it('should delete downloads when context closes', async ({downloadsBrowser, serv
   expect(fs.existsSync(path)).toBeTruthy();
   await page.close();
   expect(fs.existsSync(path)).toBeFalsy();
-
 });
 
-it('should report downloads in downloadsPath folder', async ({downloadsBrowser, tmpDir, server}) => {
+it('should report downloads in downloadsPath folder', async ({downloadsBrowser, testInfo, server}) => {
   const page = await downloadsBrowser.newPage({ acceptDownloads: true });
   await page.setContent(`<a href="${server.PREFIX}/download">download</a>`);
   const [ download ] = await Promise.all([
@@ -103,11 +94,11 @@ it('should report downloads in downloadsPath folder', async ({downloadsBrowser, 
     page.click('a')
   ]);
   const path = await download.path();
-  expect(path.startsWith(tmpDir)).toBeTruthy();
+  expect(path.startsWith(testInfo.outputPath(''))).toBeTruthy();
   await page.close();
 });
 
-it('should accept downloads', async ({persistentDownloadsContext, tmpDir, server})  => {
+it('should accept downloads in persistent context', async ({persistentDownloadsContext, testInfo, server})  => {
   const page = persistentDownloadsContext.pages()[0];
   const [ download ] = await Promise.all([
     page.waitForEvent('download'),
@@ -116,16 +107,17 @@ it('should accept downloads', async ({persistentDownloadsContext, tmpDir, server
   expect(download.url()).toBe(`${server.PREFIX}/download`);
   expect(download.suggestedFilename()).toBe(`file.txt`);
   const path = await download.path();
-  expect(path.startsWith(tmpDir)).toBeTruthy();
+  expect(path.startsWith(testInfo.outputPath(''))).toBeTruthy();
 });
 
-it('should not delete downloads when the context closes', async ({persistentDownloadsContext}) => {
+it('should delete downloads when persistent context closes', async ({persistentDownloadsContext}) => {
   const page = persistentDownloadsContext.pages()[0];
   const [ download ] = await Promise.all([
     page.waitForEvent('download'),
     page.click('a')
   ]);
   const path = await download.path();
-  await persistentDownloadsContext.close();
   expect(fs.existsSync(path)).toBeTruthy();
+  await persistentDownloadsContext.close();
+  expect(fs.existsSync(path)).toBeFalsy();
 });

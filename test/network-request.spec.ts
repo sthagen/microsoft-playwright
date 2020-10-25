@@ -15,8 +15,8 @@
  * limitations under the License.
  */
 
-import { it, expect, options } from './playwright.fixtures';
-import utils from './utils';
+import { it, expect } from './fixtures';
+import { attachFrame } from './utils';
 
 it('should work for main frame navigation request', async ({page, server}) => {
   const requests = [];
@@ -30,33 +30,71 @@ it('should work for subframe navigation request', async ({page, server}) => {
   await page.goto(server.EMPTY_PAGE);
   const requests = [];
   page.on('request', request => requests.push(request));
-  await utils.attachFrame(page, 'frame1', server.EMPTY_PAGE);
+  await attachFrame(page, 'frame1', server.EMPTY_PAGE);
   expect(requests.length).toBe(1);
   expect(requests[0].frame()).toBe(page.frames()[1]);
 });
 
 it('should work for fetch requests', async ({page, server}) => {
   await page.goto(server.EMPTY_PAGE);
-  let requests = [];
+  const requests = [];
   page.on('request', request => requests.push(request));
   await page.evaluate(() => fetch('/digits/1.png'));
-  requests = requests.filter(request => !request.url().includes('favicon'));
   expect(requests.length).toBe(1);
   expect(requests[0].frame()).toBe(page.mainFrame());
 });
 
-it('should return headers', async ({page, server}) => {
+it('should work for a redirect', async ({page, server}) => {
+  server.setRedirect('/foo.html', '/empty.html');
+  const requests = [];
+  page.on('request', request => requests.push(request));
+  await page.goto(server.PREFIX + '/foo.html');
+
+  expect(requests.length).toBe(2);
+  expect(requests[0].url()).toBe(server.PREFIX + '/foo.html');
+  expect(requests[1].url()).toBe(server.PREFIX + '/empty.html');
+});
+
+// https://github.com/microsoft/playwright/issues/3993
+it('should not work for a redirect and interception', async ({page, server}) => {
+  server.setRedirect('/foo.html', '/empty.html');
+  const requests = [];
+  await page.route('**', route => {
+    requests.push(route.request());
+    route.continue();
+  });
+  await page.goto(server.PREFIX + '/foo.html');
+
+  expect(page.url()).toBe(server.PREFIX + '/empty.html');
+
+  expect(requests.length).toBe(1);
+  expect(requests[0].url()).toBe(server.PREFIX + '/foo.html');
+});
+
+it('should return headers', async ({page, server, isChromium, isFirefox, isWebKit}) => {
   const response = await page.goto(server.EMPTY_PAGE);
-  if (options.CHROMIUM)
+  if (isChromium)
     expect(response.request().headers()['user-agent']).toContain('Chrome');
-  else if (options.FIREFOX)
+  else if (isFirefox)
     expect(response.request().headers()['user-agent']).toContain('Firefox');
-  else if (options.WEBKIT)
+  else if (isWebKit)
     expect(response.request().headers()['user-agent']).toContain('WebKit');
 });
 
-it('should get the same headers as the server', test => {
-  test.fail(options.CHROMIUM || options.WEBKIT);
+it('should get the same headers as the server', (test, { browserName }) => {
+  test.fail(browserName === 'webkit', 'Provisional headers differ from those in network stack');
+}, async ({ page, server }) => {
+  let serverRequest;
+  server.setRoute('/empty.html', (request, response) => {
+    serverRequest = request;
+    response.end('done');
+  });
+  const response = await page.goto(server.PREFIX + '/empty.html');
+  expect(response.request().headers()).toEqual(serverRequest.headers);
+});
+
+it('should get the same headers as the server CORP', (test, { browserName }) => {
+  test.fail(browserName === 'webkit', 'Provisional headers differ from those in network stack');
 }, async ({page, server}) => {
   await page.goto(server.PREFIX + '/empty.html');
   let serverRequest;
@@ -65,14 +103,14 @@ it('should get the same headers as the server', test => {
     response.writeHead(200, { 'Access-Control-Allow-Origin': '*' });
     response.end('done');
   });
-  const requestPromise = page.waitForEvent('request');
+  const responsePromise = page.waitForEvent('response');
   const text = await page.evaluate(async url => {
     const data = await fetch(url);
     return data.text();
   }, server.CROSS_PROCESS_PREFIX + '/something');
-  const request = await requestPromise;
+  const response = await responsePromise;
   expect(text).toBe('done');
-  expect(request.headers()).toEqual(serverRequest.headers);
+  expect(response.request().headers()).toEqual(serverRequest.headers);
 });
 
 it('should return postData', async ({page, server}) => {

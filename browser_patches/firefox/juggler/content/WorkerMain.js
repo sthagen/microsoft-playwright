@@ -6,8 +6,6 @@
 loadSubScript('chrome://juggler/content/content/Runtime.js');
 loadSubScript('chrome://juggler/content/SimpleChannel.js');
 
-const runtimeAgents = new Map();
-
 const channel = new SimpleChannel('worker::worker');
 const eventListener = event => channel._onMessage(JSON.parse(event.data));
 this.addEventListener('message', eventListener);
@@ -34,22 +32,24 @@ const runtime = new Runtime(true /* isWorker */);
 })();
 
 class RuntimeAgent {
-  constructor(runtime, channel, sessionId) {
+  constructor(runtime, channel) {
     this._runtime = runtime;
-    this._browserRuntime = channel.connect(sessionId + 'runtime');
+    this._browserRuntime = channel.connect('runtime');
+
+    for (const context of this._runtime.executionContexts())
+      this._onExecutionContextCreated(context);
+
     this._eventListeners = [
-      channel.register(sessionId + 'runtime', {
+      this._runtime.events.onConsoleMessage(msg => this._browserRuntime.emit('runtimeConsole', msg)),
+      this._runtime.events.onExecutionContextCreated(this._onExecutionContextCreated.bind(this)),
+      this._runtime.events.onExecutionContextDestroyed(this._onExecutionContextDestroyed.bind(this)),
+      channel.register('runtime', {
         evaluate: this._runtime.evaluate.bind(this._runtime),
         callFunction: this._runtime.callFunction.bind(this._runtime),
         getObjectProperties: this._runtime.getObjectProperties.bind(this._runtime),
         disposeObject: this._runtime.disposeObject.bind(this._runtime),
       }),
-      this._runtime.events.onConsoleMessage(msg => this._browserRuntime.emit('runtimeConsole', msg)),
-      this._runtime.events.onExecutionContextCreated(this._onExecutionContextCreated.bind(this)),
-      this._runtime.events.onExecutionContextDestroyed(this._onExecutionContextDestroyed.bind(this)),
     ];
-    for (const context of this._runtime.executionContexts())
-      this._onExecutionContextCreated(context);
   }
 
   _onExecutionContextCreated(executionContext) {
@@ -72,16 +72,5 @@ class RuntimeAgent {
   }
 }
 
-channel.register('', {
-  attach: ({sessionId}) => {
-    const runtimeAgent = new RuntimeAgent(runtime, channel, sessionId);
-    runtimeAgents.set(sessionId, runtimeAgent);
-  },
-
-  detach: ({sessionId}) => {
-    const runtimeAgent = runtimeAgents.get(sessionId);
-    runtimeAgents.delete(sessionId);
-    runtimeAgent.dispose();
-  },
-});
+new RuntimeAgent(runtime, channel);
 

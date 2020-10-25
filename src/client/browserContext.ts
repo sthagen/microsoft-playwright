@@ -15,8 +15,7 @@
  * limitations under the License.
  */
 
-import * as frames from './frame';
-import { Page, BindingCall } from './page';
+import { Page, BindingCall, FunctionWithSource } from './page';
 import * as network from './network';
 import * as channels from '../protocol/channels';
 import { ChannelOwner } from './channelOwner';
@@ -26,18 +25,19 @@ import { Events } from './events';
 import { TimeoutSettings } from '../utils/timeoutSettings';
 import { Waiter } from './waiter';
 import { URLMatch, Headers, WaitForEventOptions } from './types';
-import { isDevMode, headersObjectToArray } from '../utils/utils';
+import { isUnderTest, headersObjectToArray } from '../utils/utils';
+import { isSafeCloseError } from '../utils/errors';
 
 export class BrowserContext extends ChannelOwner<channels.BrowserContextChannel, channels.BrowserContextInitializer> {
   _pages = new Set<Page>();
   private _routes: { url: URLMatch, handler: network.RouteHandler }[] = [];
-  readonly _browser: Browser | undefined;
+  readonly _browser: Browser | null = null;
   readonly _browserName: string;
-  readonly _bindings = new Map<string, frames.FunctionWithSource>();
+  readonly _bindings = new Map<string, FunctionWithSource>();
   _timeoutSettings = new TimeoutSettings();
   _ownerPage: Page | undefined;
-  private _isClosedOrClosing = false;
   private _closedPromise: Promise<void>;
+  _options: channels.BrowserNewContextParams = {};
 
   static from(context: channels.BrowserContextChannel): BrowserContext {
     return (context as any)._object;
@@ -90,6 +90,10 @@ export class BrowserContext extends ChannelOwner<channels.BrowserContextChannel,
   setDefaultTimeout(timeout: number) {
     this._timeoutSettings.setDefaultTimeout(timeout);
     this._channel.setDefaultTimeoutNoReply({ timeout });
+  }
+
+  browser(): Browser | null {
+    return this._browser;
   }
 
   pages(): Page[] {
@@ -158,7 +162,7 @@ export class BrowserContext extends ChannelOwner<channels.BrowserContextChannel,
   }
 
   async setHTTPCredentials(httpCredentials: { username: string, password: string } | null): Promise<void> {
-    if (!isDevMode())
+    if (!isUnderTest())
       deprecate(`context.setHTTPCredentials`, `warning: method |context.setHTTPCredentials()| is deprecated. Instead of changing credentials, create another browser context with new credentials.`);
     return this._wrapApiCall('browserContext.setHTTPCredentials', async () => {
       await this._channel.setHTTPCredentials({ httpCredentials: httpCredentials || undefined });
@@ -172,21 +176,19 @@ export class BrowserContext extends ChannelOwner<channels.BrowserContextChannel,
     });
   }
 
-  async exposeBinding(name: string, playwrightBinding: frames.FunctionWithSource): Promise<void> {
+  async exposeBinding(name: string, playwrightBinding: FunctionWithSource, options: { handle?: boolean } = {}): Promise<void> {
     return this._wrapApiCall('browserContext.exposeBinding', async () => {
-      for (const page of this.pages()) {
-        if (page._bindings.has(name))
-          throw new Error(`Function "${name}" has been already registered in one of the pages`);
-      }
-      if (this._bindings.has(name))
-        throw new Error(`Function "${name}" has been already registered`);
+      await this._channel.exposeBinding({ name, needsHandle: options.handle });
       this._bindings.set(name, playwrightBinding);
-      await this._channel.exposeBinding({ name });
     });
   }
 
   async exposeFunction(name: string, playwrightFunction: Function): Promise<void> {
-    await this.exposeBinding(name, (source, ...args) => playwrightFunction(...args));
+    return this._wrapApiCall('browserContext.exposeFunction', async () => {
+      await this._channel.exposeBinding({ name });
+      const binding: FunctionWithSource = (source, ...args) => playwrightFunction(...args);
+      this._bindings.set(name, binding);
+    });
   }
 
   async route(url: URLMatch, handler: network.RouteHandler): Promise<void> {
@@ -218,19 +220,21 @@ export class BrowserContext extends ChannelOwner<channels.BrowserContextChannel,
   }
 
   async _onClose() {
-    this._isClosedOrClosing = true;
     if (this._browser)
       this._browser._contexts.delete(this);
     this.emit(Events.BrowserContext.Close);
   }
 
   async close(): Promise<void> {
-    return this._wrapApiCall('browserContext.close', async () => {
-      if (!this._isClosedOrClosing) {
-        this._isClosedOrClosing = true;
+    try {
+      await this._wrapApiCall('browserContext.close', async () => {
         await this._channel.close();
-      }
-      await this._closedPromise;
-    });
+        await this._closedPromise;
+      });
+    } catch (e) {
+      if (isSafeCloseError(e))
+        return;
+      throw e;
+    }
   }
 }

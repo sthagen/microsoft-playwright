@@ -19,6 +19,13 @@ import { assert, monotonicTime } from '../utils/utils';
 import { rewriteErrorMessage } from '../utils/stackTrace';
 import { debugLogger, LogName } from '../utils/debugLogger';
 
+export type ProgressResult = {
+  logs: string[],
+  startTime: number,
+  endTime: number,
+  error?: Error,
+};
+
 export interface Progress {
   readonly aborted: Promise<void>;
   log(message: string): void;
@@ -28,9 +35,9 @@ export interface Progress {
   throwIfAborted(): void;
 }
 
-export async function runAbortableTask<T>(task: (progress: Progress) => Promise<T>, timeout: number, logName: LogName = 'api'): Promise<T> {
-  const controller = new ProgressController(timeout, logName);
-  return controller.run(task);
+export async function runAbortableTask<T>(task: (progress: Progress) => Promise<T>, timeout: number): Promise<T> {
+  const controller = new ProgressController();
+  return controller.run(task, timeout);
 }
 
 export class ProgressController {
@@ -47,23 +54,33 @@ export class ProgressController {
   // Cleanups to be run only in the case of abort.
   private _cleanups: (() => any)[] = [];
 
-  private _logName: LogName;
+  private _logName: LogName = 'api';
   private _state: 'before' | 'running' | 'aborted' | 'finished' = 'before';
-  private _deadline: number;
-  private _timeout: number;
-  private _logRecordring: string[] = [];
+  private _deadline: number = 0;
+  private _timeout: number = 0;
+  private _logRecording: string[] = [];
+  private _listener?: (result: ProgressResult) => Promise<void>;
 
-  constructor(timeout: number, logName: LogName = 'api') {
-    this._logName = logName;
-    this._timeout = timeout;
-    this._deadline = timeout ? monotonicTime() + timeout : 0;
-
+  constructor() {
     this._forceAbortPromise = new Promise((resolve, reject) => this._forceAbort = reject);
     this._forceAbortPromise.catch(e => null);  // Prevent unhandle promsie rejection.
     this._abortedPromise = new Promise(resolve => this._aborted = resolve);
   }
 
-  async run<T>(task: (progress: Progress) => Promise<T>): Promise<T> {
+  setLogName(logName: LogName) {
+    this._logName = logName;
+  }
+
+  setListener(listener: (result: ProgressResult) => Promise<void>) {
+    this._listener = listener;
+  }
+
+  async run<T>(task: (progress: Progress) => Promise<T>, timeout?: number): Promise<T> {
+    if (timeout) {
+      this._timeout = timeout;
+      this._deadline = timeout ? monotonicTime() + timeout : 0;
+    }
+
     assert(this._state === 'before');
     this._state = 'running';
 
@@ -71,7 +88,7 @@ export class ProgressController {
       aborted: this._abortedPromise,
       log: message => {
         if (this._state === 'running')
-          this._logRecordring.push(message);
+          this._logRecording.push(message);
         debugLogger.log(this._logName, message);
       },
       timeUntilDeadline: () => this._deadline ? this._deadline - monotonicTime() : 2147483647, // 2^31-1 safe setTimeout in Node.
@@ -90,23 +107,39 @@ export class ProgressController {
 
     const timeoutError = new TimeoutError(`Timeout ${this._timeout}ms exceeded.`);
     const timer = setTimeout(() => this._forceAbort(timeoutError), progress.timeUntilDeadline());
+    const startTime = monotonicTime();
     try {
       const promise = task(progress);
       const result = await Promise.race([promise, this._forceAbortPromise]);
       clearTimeout(timer);
       this._state = 'finished';
-      this._logRecordring = [];
+      if (this._listener) {
+        await this._listener({
+          startTime,
+          endTime: monotonicTime(),
+          logs: this._logRecording,
+        });
+      }
+      this._logRecording = [];
       return result;
     } catch (e) {
       this._aborted();
-      rewriteErrorMessage(e,
-          e.message +
-          formatLogRecording(this._logRecordring) +
-          kLoggingNote);
       clearTimeout(timer);
       this._state = 'aborted';
-      this._logRecordring = [];
       await Promise.all(this._cleanups.splice(0).map(cleanup => runCleanup(cleanup)));
+      if (this._listener) {
+        await this._listener({
+          startTime,
+          endTime: monotonicTime(),
+          logs: this._logRecording,
+          error: e,
+        });
+      }
+      rewriteErrorMessage(e,
+          e.message +
+          formatLogRecording(this._logRecording) +
+          kLoggingNote);
+      this._logRecording = [];
       throw e;
     }
   }

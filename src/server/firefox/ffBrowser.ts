@@ -47,6 +47,7 @@ export class FFBrowser extends Browser {
     }
     if (options.proxy) {
       const proxyServer = new URL(options.proxy.server);
+      let proxyPort = parseInt(proxyServer.port, 10);
       let aType: 'http'|'https'|'socks'|'socks4' = 'http';
       if (proxyServer.protocol === 'socks5:')
         aType = 'socks';
@@ -54,11 +55,17 @@ export class FFBrowser extends Browser {
         aType = 'socks4';
       else if (proxyServer.protocol === 'https:')
         aType = 'https';
+      if (proxyServer.port === '') {
+        if (proxyServer.protocol === 'http:')
+          proxyPort = 80;
+        else if (proxyServer.protocol === 'https:')
+          proxyPort = 443;
+      }
       promises.push(browser._connection.send('Browser.setBrowserProxy', {
         type: aType,
         bypass: options.proxy.bypass ? options.proxy.bypass.split(',').map(domain => domain.trim()) : [],
         host: proxyServer.hostname,
-        port: parseInt(proxyServer.port, 10),
+        port: proxyPort,
         username: options.proxy.username,
         password: options.proxy.password,
       }));
@@ -92,7 +99,7 @@ export class FFBrowser extends Browser {
   }
 
   async newContext(options: types.BrowserContextOptions = {}): Promise<BrowserContext> {
-    validateBrowserContextOptions(options);
+    validateBrowserContextOptions(options, this._options);
     if (options.isMobile)
       throw new Error('options.isMobile is not supported in Firefox');
     const { browserContextId } = await this._connection.send('Browser.createBrowserContext', { removeOnDetach: true });
@@ -222,12 +229,15 @@ export class FFBrowserContext extends BrowserContext {
       promises.push(this.setOffline(this._options.offline));
     if (this._options.colorScheme)
       promises.push(this._browser._connection.send('Browser.setColorScheme', { browserContextId, colorScheme: this._options.colorScheme }));
-    if (this._options._recordVideos) {
-      await this._browser._connection.send('Browser.setScreencastOptions', {
-        ...this._options._recordVideos,
-        dir: this._browser._options._videosPath!,
-        browserContextId: this._browserContextId
-      });
+    if (this._options.videosPath) {
+      const size = this._options.videoSize || this._options.viewport || { width: 1280, height: 720 };
+      promises.push(this._ensureVideosPath().then(() => {
+        return this._browser._connection.send('Browser.setScreencastOptions', {
+          ...size,
+          dir: this._options.videosPath!,
+          browserContextId: this._browserContextId
+        });
+      }));
     }
 
     await Promise.all(promises);

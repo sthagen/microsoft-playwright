@@ -50,34 +50,12 @@ class PageNetwork {
   constructor(target) {
     EventEmitter.decorate(this);
     this._target = target;
-    this._sessionCount = 0;
     this._extraHTTPHeaders = null;
-    this._responseStorage = null;
+    this._responseStorage = new ResponseStorage(MAX_RESPONSE_STORAGE_SIZE, MAX_RESPONSE_STORAGE_SIZE / 10);
     this._requestInterceptionEnabled = false;
     // This is requestId => NetworkRequest map, only contains requests that are
     // awaiting interception action (abort, resume, fulfill) over the protocol.
     this._interceptedRequests = new Map();
-  }
-
-  addSession() {
-    if (this._sessionCount === 0)
-      this._responseStorage = new ResponseStorage(MAX_RESPONSE_STORAGE_SIZE, MAX_RESPONSE_STORAGE_SIZE / 10);
-    ++this._sessionCount;
-    return () => this._stopTracking();
-  }
-
-  _stopTracking() {
-    --this._sessionCount;
-    if (this._sessionCount === 0) {
-      this._extraHTTPHeaders = null;
-      this._responseStorage = null;
-      this._requestInterceptionEnabled = false;
-      this._interceptedRequests.clear();
-    }
-  }
-
-  _isActive() {
-    return this._sessionCount > 0;
   }
 
   setExtraHTTPHeaders(headers) {
@@ -128,11 +106,32 @@ class NetworkRequest {
     this.httpChannel = httpChannel;
     this._networkObserver._channelToRequest.set(this.httpChannel, this);
 
+    const loadInfo = this.httpChannel.loadInfo;
+    let browsingContext = loadInfo?.frameBrowsingContext || loadInfo?.browsingContext;
+    // TODO: Unfortunately, requests from web workers don't have frameBrowsingContext or
+    // browsingContext.
+    //
+    // We fail to attribute them to the original frames on the browser side, but we
+    // can use load context top frame to attribute them to the top frame at least.
+    if (!browsingContext) {
+      const loadContext = helper.getLoadContext(this.httpChannel);
+      browsingContext = loadContext?.topFrameElement?.browsingContext;
+    }
+
+    this._frameId = helper.browsingContextToFrameId(browsingContext);
+
     this.requestId = httpChannel.channelId + '';
     this.navigationId = httpChannel.isMainDocumentChannel ? this.requestId : undefined;
 
+    const internalCauseType = this.httpChannel.loadInfo ? this.httpChannel.loadInfo.internalContentPolicyType : Ci.nsIContentPolicy.TYPE_OTHER;
+
     this._redirectedIndex = 0;
-    if (redirectedFrom) {
+    const ignoredRedirect = redirectedFrom && !redirectedFrom._sentOnResponse;
+    if (ignoredRedirect) {
+      // We just ignore redirect that did not hit the network before being redirected.
+      // This happens, for example, for automatic http->https redirects.
+      this.navigationId = redirectedFrom.navigationId;
+    } else if (redirectedFrom) {
       this.redirectedFromId = redirectedFrom.requestId;
       this._redirectedIndex = redirectedFrom._redirectedIndex + 1;
       this.requestId = this.requestId + '-redirect' + this._redirectedIndex;
@@ -157,7 +156,7 @@ class NetworkRequest {
 
     httpChannel.QueryInterface(Ci.nsITraceableChannel);
     this._originalListener = httpChannel.setNewListener(this);
-    if (redirectedFrom && this._originalListener === redirectedFrom) {
+    if (redirectedFrom) {
       // Listener is inherited for regular redirects, so we'd like to avoid
       // calling into previous NetworkRequest.
       this._originalListener = redirectedFrom._originalListener;
@@ -458,7 +457,7 @@ class NetworkRequest {
   }
 
   _activePageNetwork() {
-    if (!this._maybeInactivePageNetwork || !this._maybeInactivePageNetwork._isActive())
+    if (!this._maybeInactivePageNetwork)
       return undefined;
     return this._maybeInactivePageNetwork;
   }
@@ -479,10 +478,12 @@ class NetworkRequest {
     const pageNetwork = this._activePageNetwork();
     if (!pageNetwork)
       return;
-    const causeType = this.httpChannel.loadInfo ? this.httpChannel.loadInfo.externalContentPolicyType : Ci.nsIContentPolicy.TYPE_OTHER;
-    const internalCauseType = this.httpChannel.loadInfo ? this.httpChannel.loadInfo.internalContentPolicyType : Ci.nsIContentPolicy.TYPE_OTHER;
+    const loadInfo = this.httpChannel.loadInfo;
+    const causeType = loadInfo?.externalContentPolicyType || Ci.nsIContentPolicy.TYPE_OTHER;
+    const internalCauseType = loadInfo?.internalContentPolicyType || Ci.nsIContentPolicy.TYPE_OTHER;
     pageNetwork.emit(PageNetwork.Events.Request, {
       url: this.httpChannel.URI.spec,
+      frameId: this._frameId,
       isIntercepted,
       requestId: this.requestId,
       redirectedFrom: this.redirectedFromId,
@@ -492,7 +493,7 @@ class NetworkRequest {
       navigationId: this.navigationId,
       cause: causeTypeToString(causeType),
       internalCause: causeTypeToString(internalCauseType),
-    }, this.httpChannel.channelId + ':' + internalCauseType);
+    }, this._frameId);
   }
 
   _sendOnResponse(fromCache) {
@@ -506,10 +507,31 @@ class NetworkRequest {
       return;
 
     this.httpChannel.QueryInterface(Ci.nsIHttpChannelInternal);
+    this.httpChannel.QueryInterface(Ci.nsITimedChannel);
+    const timing = {
+      startTime: this.httpChannel.channelCreationTime,
+      domainLookupStart: this.httpChannel.domainLookupStartTime,
+      domainLookupEnd: this.httpChannel.domainLookupEndTime,
+      connectStart: this.httpChannel.connectStartTime,
+      secureConnectionStart: this.httpChannel.secureConnectionStartTime,
+      connectEnd: this.httpChannel.connectEndTime,
+      requestStart: this.httpChannel.requestStartTime,
+      responseStart: this.httpChannel.responseStartTime,
+    };
+
     const headers = [];
-    this.httpChannel.visitResponseHeaders({
-      visitHeader: (name, value) => headers.push({name, value}),
-    });
+    let status = 0;
+    let statusText = '';
+    try {
+      status = this.httpChannel.responseStatus;
+      statusText = this.httpChannel.responseStatusText;
+      this.httpChannel.visitResponseHeaders({
+        visitHeader: (name, value) => headers.push({name, value}),
+      });
+    } catch (e) {
+      // Response headers, status and/or statusText are not available
+      // when redirect did not actually hit the network.
+    }
 
     let remoteIPAddress = undefined;
     let remotePort = undefined;
@@ -527,9 +549,10 @@ class NetworkRequest {
       headers,
       remoteIPAddress,
       remotePort,
-      status: this.httpChannel.responseStatus,
-      statusText: this.httpChannel.responseStatusText,
-    });
+      status,
+      statusText,
+      timing,
+    }, this._frameId);
   }
 
   _sendOnRequestFailed(error) {
@@ -538,7 +561,7 @@ class NetworkRequest {
       pageNetwork.emit(PageNetwork.Events.RequestFailed, {
         requestId: this.requestId,
         errorCode: helper.getNetworkErrorStatusText(error),
-      });
+      }, this._frameId);
     }
     this._networkObserver._channelToRequest.delete(this.httpChannel);
   }
@@ -548,7 +571,8 @@ class NetworkRequest {
     if (pageNetwork) {
       pageNetwork.emit(PageNetwork.Events.RequestFinished, {
         requestId: this.requestId,
-      });
+        responseEndTime: this.httpChannel.responseEndTime,
+      }, this._frameId);
     }
     this._networkObserver._channelToRequest.delete(this.httpChannel);
   }

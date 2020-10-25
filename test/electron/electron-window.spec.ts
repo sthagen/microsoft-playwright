@@ -14,11 +14,11 @@
  * limitations under the License.
  */
 
-import { it, expect, describe, options } from '../playwright.fixtures';
-import './electron.fixture';
+import { folio } from './electron.fixture';
+const { it, expect, describe } = folio;
 
-describe('electron window', suite => {
-  suite.skip(!options.CHROMIUM);
+describe('electron window', (suite, { browserName }) => {
+  suite.skip(browserName !== 'chromium');
 }, () => {
   it('should click the button', async ({window, server}) => {
     await window.goto(server.PREFIX + '/input/button.html');

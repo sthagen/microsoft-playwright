@@ -15,8 +15,8 @@
  * limitations under the License.
  */
 
-import { it, expect } from './playwright.fixtures';
-import utils from './utils';
+import { it, expect } from './fixtures';
+import { attachFrame, detachFrame } from './utils';
 
 async function giveItTimeToLog(frame) {
   await frame.evaluate(() => new Promise(f => requestAnimationFrame(() => requestAnimationFrame(f))));
@@ -28,14 +28,16 @@ const addElement = tag => document.body.appendChild(document.createElement(tag))
 it('should throw on waitFor', async ({page, server}) => {
   await page.goto(server.EMPTY_PAGE);
   let error;
-  await page.waitForSelector('*', { waitFor: 'attached' } as any).catch(e => error = e);
+  // @ts-expect-error waitFor is undocumented
+  await page.waitForSelector('*', { waitFor: 'attached' }).catch(e => error = e);
   expect(error.message).toContain('options.waitFor is not supported, did you mean options.state?');
 });
 
 it('should tolerate waitFor=visible', async ({page, server}) => {
   await page.goto(server.EMPTY_PAGE);
   let error = false;
-  await page.waitForSelector('*', { waitFor: 'visible' } as any).catch(() => error = true);
+  // @ts-expect-error waitFor is undocumented
+  await page.waitForSelector('*', { waitFor: 'visible' }).catch(() => error = true);
   expect(error).toBe(false);
 });
 
@@ -195,7 +197,7 @@ it('should work when node is added through innerHTML', async ({page, server}) =>
 
 it('page.waitForSelector is shortcut for main frame', async ({page, server}) => {
   await page.goto(server.EMPTY_PAGE);
-  await utils.attachFrame(page, 'frame1', server.EMPTY_PAGE);
+  await attachFrame(page, 'frame1', server.EMPTY_PAGE);
   const otherFrame = page.frames()[1];
   const watchdog = page.waitForSelector('div', { state: 'attached' });
   await otherFrame.evaluate(addElement, 'div');
@@ -205,8 +207,8 @@ it('page.waitForSelector is shortcut for main frame', async ({page, server}) => 
 });
 
 it('should run in specified frame', async ({page, server}) => {
-  await utils.attachFrame(page, 'frame1', server.EMPTY_PAGE);
-  await utils.attachFrame(page, 'frame2', server.EMPTY_PAGE);
+  await attachFrame(page, 'frame1', server.EMPTY_PAGE);
+  await attachFrame(page, 'frame2', server.EMPTY_PAGE);
   const frame1 = page.frames()[1];
   const frame2 = page.frames()[2];
   const waitForSelectorPromise = frame2.waitForSelector('div', { state: 'attached' });
@@ -217,11 +219,11 @@ it('should run in specified frame', async ({page, server}) => {
 });
 
 it('should throw when frame is detached', async ({page, server}) => {
-  await utils.attachFrame(page, 'frame1', server.EMPTY_PAGE);
+  await attachFrame(page, 'frame1', server.EMPTY_PAGE);
   const frame = page.frames()[1];
   let waitError = null;
   const waitPromise = frame.waitForSelector('.box').catch(e => waitError = e);
-  await utils.detachFrame(page, 'frame1');
+  await detachFrame(page, 'frame1');
   await waitPromise;
   expect(waitError).toBeTruthy();
   expect(waitError.message).toContain('waitForFunction failed: frame got detached.');
