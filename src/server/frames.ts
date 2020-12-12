@@ -69,6 +69,7 @@ export class FrameManager {
   private _mainFrame: Frame;
   readonly _consoleMessageTags = new Map<string, ConsoleTagHandler>();
   readonly _signalBarriers = new Set<SignalBarrier>();
+  private _webSockets = new Map<string, network.WebSocket>();
 
   constructor(page: Page) {
     this._page = page;
@@ -165,6 +166,7 @@ export class FrameManager {
   frameCommittedNewDocumentNavigation(frameId: string, url: string, name: string, documentId: string, initial: boolean) {
     const frame = this._frames.get(frameId)!;
     this.removeChildFramesRecursively(frame);
+    this.clearWebSockets(frame);
     frame._url = url;
     frame._name = name;
 
@@ -197,7 +199,7 @@ export class FrameManager {
     frame.emit(Frame.Events.Navigation, navigationEvent);
     if (!initial) {
       debugLogger.log('api', `  navigated to "${url}"`);
-      this._page.emit(Page.Events.FrameNavigated, frame);
+      this._page.frameNavigated(frame);
     }
     // Restore pending if any - see comments above about keepPending.
     frame._pendingDocument = keepPending;
@@ -211,7 +213,7 @@ export class FrameManager {
     const navigationEvent: NavigationEvent = { url, name: frame._name };
     frame.emit(Frame.Events.Navigation, navigationEvent);
     debugLogger.log('api', `  navigated to "${url}"`);
-    this._page.emit(Page.Events.FrameNavigated, frame);
+    this._page.frameNavigated(frame);
   }
 
   frameAbortedNavigation(frameId: string, errorText: string, documentId?: string) {
@@ -294,7 +296,8 @@ export class FrameManager {
     this.removeChildFramesRecursively(frame);
     frame._onDetached();
     this._frames.delete(frame._id);
-    this._page.emit(Page.Events.FrameDetached, frame);
+    if (!this._page.isClosed())
+      this._page.emit(Page.Events.FrameDetached, frame);
   }
 
   private _inflightRequestFinished(request: network.Request) {
@@ -327,6 +330,57 @@ export class FrameManager {
     this._consoleMessageTags.delete(tag);
     handler();
     return true;
+  }
+
+  clearWebSockets(frame: Frame) {
+    // TODO: attribute sockets to frames.
+    if (frame.parentFrame())
+      return;
+    this._webSockets.clear();
+  }
+
+  onWebSocketCreated(requestId: string, url: string) {
+    const ws = new network.WebSocket(url);
+    this._webSockets.set(requestId, ws);
+  }
+
+  onWebSocketRequest(requestId: string) {
+    const ws = this._webSockets.get(requestId);
+    if (ws)
+      this._page.emit(Page.Events.WebSocket, ws);
+  }
+
+  onWebSocketResponse(requestId: string, status: number, statusText: string) {
+    const ws = this._webSockets.get(requestId);
+    if (status < 400)
+      return;
+    if (ws)
+      ws.error(`${statusText}: ${status}`);
+  }
+
+  onWebSocketFrameSent(requestId: string, opcode: number, data: string) {
+    const ws = this._webSockets.get(requestId);
+    if (ws)
+      ws.frameSent(opcode, data);
+  }
+
+  webSocketFrameReceived(requestId: string, opcode: number, data: string) {
+    const ws = this._webSockets.get(requestId);
+    if (ws)
+      ws.frameReceived(opcode, data);
+  }
+
+  webSocketClosed(requestId: string) {
+    const ws = this._webSockets.get(requestId);
+    if (ws)
+      ws.closed();
+    this._webSockets.delete(requestId);
+  }
+
+  webSocketError(requestId: string, errorMessage: string): void {
+    const ws = this._webSockets.get(requestId);
+    if (ws)
+      ws.error(errorMessage);
   }
 }
 
@@ -1002,7 +1056,10 @@ export class Frame extends EventEmitter {
 
   _startNetworkIdleTimer() {
     assert(!this._networkIdleTimer);
-    if (this._firedLifecycleEvents.has('networkidle'))
+    // We should not start a timer and report networkidle in detached frames.
+    // This happens at least in Firefox for child frames, where we may get requestFinished
+    // after the frame was detached - probably a race in the Firefox itself.
+    if (this._firedLifecycleEvents.has('networkidle') || this._detached)
       return;
     this._networkIdleTimer = setTimeout(() => this._onLifecycleEvent('networkidle'), 500);
   }

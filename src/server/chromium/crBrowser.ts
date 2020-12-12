@@ -19,7 +19,7 @@ import { Browser, BrowserOptions } from '../browser';
 import { assertBrowserContextIsNotOwned, BrowserContext, validateBrowserContextOptions, verifyGeolocation } from '../browserContext';
 import { assert } from '../../utils/utils';
 import * as network from '../network';
-import { Page, PageBinding, Worker } from '../page';
+import { Page, PageBinding, PageDelegate, Worker } from '../page';
 import { ConnectionTransport } from '../transport';
 import * as types from '../types';
 import { ConnectionEvents, CRConnection, CRSession } from './crConnection';
@@ -46,7 +46,7 @@ export class CRBrowser extends Browser {
   private _tracingClient: CRSession | undefined;
 
   static async connect(transport: ConnectionTransport, options: BrowserOptions, devtools?: CRDevTools): Promise<CRBrowser> {
-    const connection = new CRConnection(transport);
+    const connection = new CRConnection(transport, options.protocolLogger, options.browserLogsCollector);
     const browser = new CRBrowser(connection, options);
     browser._devtools = devtools;
     const session = connection.rootSession;
@@ -99,7 +99,11 @@ export class CRBrowser extends Browser {
 
   async newContext(options: types.BrowserContextOptions = {}): Promise<BrowserContext> {
     validateBrowserContextOptions(options, this._options);
-    const { browserContextId } = await this._session.send('Target.createBrowserContext', { disposeOnDetach: true });
+    const { browserContextId } = await this._session.send('Target.createBrowserContext', {
+      disposeOnDetach: true,
+      proxyServer: options.proxy ? options.proxy.server : undefined,
+      proxyBypassList: options.proxy ? options.proxy.bypass : undefined,
+    });
     const context = new CRBrowserContext(this, browserContextId, options);
     await context._initialize();
     this._contexts.set(browserContextId, context);
@@ -112,6 +116,10 @@ export class CRBrowser extends Browser {
 
   version(): string {
     return this._version;
+  }
+
+  isClank(): boolean {
+    return this._options.name === 'clank';
   }
 
   _onAttachedToTarget({targetInfo, sessionId, waitingForDebugger}: Protocol.Target.attachedToTargetPayload) {
@@ -158,18 +166,7 @@ export class CRBrowser extends Browser {
       const opener = targetInfo.openerId ? this._crPages.get(targetInfo.openerId) || null : null;
       const crPage = new CRPage(session, targetInfo.targetId, context, opener, true);
       this._crPages.set(targetInfo.targetId, crPage);
-      crPage.pageOrError().then(pageOrError => {
-        const page = crPage._page;
-        if (pageOrError instanceof Error)
-          page._setIsError();
-        context!.emit(BrowserContext.Events.Page, page);
-        if (opener) {
-          opener.pageOrError().then(openerPage => {
-            if (openerPage instanceof Page && !openerPage.isClosed())
-              openerPage.emit(Page.Events.Popup, page);
-          });
-        }
-      });
+      crPage._page.reportAsNew();
       return;
     }
 
@@ -317,17 +314,10 @@ export class CRBrowserContext extends BrowserContext {
     return result;
   }
 
-  async newPage(): Promise<Page> {
+  async newPageDelegate(): Promise<PageDelegate> {
     assertBrowserContextIsNotOwned(this);
     const { targetId } = await this._browser._session.send('Target.createTarget', { url: 'about:blank', browserContextId: this._browserContextId });
-    const crPage = this._browser._crPages.get(targetId)!;
-    const result = await crPage.pageOrError();
-    if (result instanceof Page) {
-      if (result.isClosed())
-        throw new Error('Page has been closed.');
-      return result;
-    }
-    throw result;
+    return this._browser._crPages.get(targetId)!;
   }
 
   async _doCookies(urls: string[]): Promise<types.NetworkCookie[]> {

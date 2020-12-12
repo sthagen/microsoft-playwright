@@ -18,7 +18,7 @@ import * as dom from './dom';
 import * as frames from './frames';
 import * as js from './javascript';
 import * as types from './types';
-import { ParsedSelector, parseSelector } from './common/selectorParser';
+import { ParsedSelector, parseSelector, selectorsV2Enabled, selectorsV2EngineNames } from './common/selectorParser';
 
 export type SelectorInfo = {
   parsed: ParsedSelector,
@@ -29,6 +29,7 @@ export type SelectorInfo = {
 export class Selectors {
   readonly _builtinEngines: Set<string>;
   readonly _engines: Map<string, { source: string, contentScript: boolean }>;
+  readonly _engineNames: Set<string>;
 
   constructor() {
     // Note: keep in sync with SelectorEvaluator class.
@@ -39,9 +40,14 @@ export class Selectors {
       'id', 'id:light',
       'data-testid', 'data-testid:light',
       'data-test-id', 'data-test-id:light',
-      'data-test', 'data-test:light'
+      'data-test', 'data-test:light',
     ]);
+    if (selectorsV2Enabled()) {
+      for (const name of selectorsV2EngineNames())
+        this._builtinEngines.add(name);
+    }
     this._engines = new Map();
+    this._engineNames = new Set(this._builtinEngines);
   }
 
   async register(name: string, source: string, contentScript: boolean = false): Promise<void> {
@@ -53,6 +59,7 @@ export class Selectors {
     if (this._engines.has(name))
       throw new Error(`"${name}" selector engine has been already registered`);
     this._engines.set(name, { source, contentScript });
+    this._engineNames.add(name);
   }
 
   async _query(frame: frames.Frame, selector: string, scope?: dom.ElementHandle): Promise<dom.ElementHandle<Element> | null> {
@@ -114,21 +121,9 @@ export class Selectors {
     return adopted;
   }
 
-  async _createSelector(name: string, handle: dom.ElementHandle<Element>): Promise<string | undefined> {
-    const mainContext = await handle._page.mainFrame()._mainContext();
-    const injectedScript = await mainContext.injectedScript();
-    return injectedScript.evaluate((injected, { target, name }) => {
-      return injected.engines.get(name)!.create(document.documentElement, target);
-    }, { target: handle, name });
-  }
-
   _parseSelector(selector: string): SelectorInfo {
-    const parsed = parseSelector(selector);
-    for (const {name} of parsed.parts) {
-      if (!this._builtinEngines.has(name) && !this._engines.has(name))
-        throw new Error(`Unknown engine "${name}" while parsing selector ${selector}`);
-    }
-    const needsMainWorld = parsed.parts.some(({name}) => {
+    const parsed = parseSelector(selector, this._engineNames);
+    const needsMainWorld = parsed.names.some(name => {
       const custom = this._engines.get(name);
       return custom ? !custom.contentScript : false;
     });

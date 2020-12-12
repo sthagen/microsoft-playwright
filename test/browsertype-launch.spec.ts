@@ -57,9 +57,7 @@ it('should throw if page argument is passed', (test, { browserName }) => {
   expect(waitError.message).toContain('can not specify page');
 });
 
-it('should reject if launched browser fails immediately', (test, parameters) => {
-  test.fixme(`I'm getting ENCONRESET on this one.`);
-}, async ({browserType, browserOptions}) => {
+it('should reject if launched browser fails immediately', async ({browserType, browserOptions}) => {
   const options = Object.assign({}, browserOptions, {executablePath: path.join(__dirname, 'assets', 'dummy_bad_browser_executable.js')});
   let waitError = null;
   await browserType.launch(options).catch(e => waitError = e);
@@ -73,8 +71,8 @@ it('should reject if executable path is invalid', async ({browserType, browserOp
   expect(waitError.message).toContain('Failed to launch');
 });
 
-it('should handle timeout', (test, { wire }) => {
-  test.skip(wire);
+it('should handle timeout', (test, { mode }) => {
+  test.skip(mode !== 'default');
 }, async ({browserType, browserOptions}) => {
   const options = { ...browserOptions, timeout: 5000, __testHookBeforeCreateBrowser: () => new Promise(f => setTimeout(f, 6000)) };
   const error = await browserType.launch(options).catch(e => e);
@@ -83,8 +81,8 @@ it('should handle timeout', (test, { wire }) => {
   expect(error.message).toContain(`<launched> pid=`);
 });
 
-it('should handle exception', (test, { wire }) => {
-  test.skip(wire);
+it('should handle exception', (test, { mode }) => {
+  test.skip(mode !== 'default');
 }, async ({browserType, browserOptions}) => {
   const e = new Error('Dummy');
   const options = { ...browserOptions, __testHookBeforeCreateBrowser: () => { throw e; }, timeout: 9000 };
@@ -92,8 +90,8 @@ it('should handle exception', (test, { wire }) => {
   expect(error.message).toContain('Dummy');
 });
 
-it('should report launch log', (test, { wire }) => {
-  test.skip(wire);
+it('should report launch log', (test, { mode }) => {
+  test.skip(mode !== 'default');
 }, async ({browserType, browserOptions}) => {
   const e = new Error('Dummy');
   const options = { ...browserOptions, __testHookBeforeCreateBrowser: () => { throw e; }, timeout: 9000 };

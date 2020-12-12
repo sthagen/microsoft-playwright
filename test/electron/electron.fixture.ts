@@ -15,7 +15,7 @@
  */
 
 import { folio as base } from '../fixtures';
-import type { ElectronApplication, ElectronLauncher, ElectronPage } from '../../electron-types';
+import type { ElectronApplication, ElectronPage } from '../../electron-types';
 import path from 'path';
 
 const electronName = process.platform === 'win32' ? 'electron.cmd' : 'electron';
@@ -28,7 +28,7 @@ const fixtures = base.extend<TestState>();
 
 fixtures.application.init(async ({ playwright }, run) => {
   const electronPath = path.join(__dirname, '..', '..', 'node_modules', '.bin', electronName);
-  const application = await playwright.electron.launch(electronPath, {
+  const application = await playwright._electron.launch(electronPath, {
     args: [path.join(__dirname, 'testApp.js')],
   });
   await run(application);
@@ -42,7 +42,3 @@ fixtures.window.init(async ({ application }, run) => {
 });
 
 export const folio = fixtures.build();
-
-declare module '../../index' {
-  const electron: ElectronLauncher;
-}

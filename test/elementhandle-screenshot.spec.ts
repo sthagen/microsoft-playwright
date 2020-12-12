@@ -289,8 +289,8 @@ describe('element screenshot', (suite, parameters) => {
     await context.close();
   });
 
-  it('should restore viewport after page screenshot and exception', (test, { wire }) => {
-    test.skip(wire);
+  it('should restore viewport after page screenshot and exception', (test, { mode }) => {
+    test.skip(mode !== 'default');
   }, async ({ browser, server }) => {
     const context = await browser.newContext({ viewport: { width: 350, height: 360 } });
     const page = await context.newPage();
@@ -302,8 +302,8 @@ describe('element screenshot', (suite, parameters) => {
     await context.close();
   });
 
-  it('should restore viewport after page screenshot and timeout', (test, { wire }) => {
-    test.skip(wire);
+  it('should restore viewport after page screenshot and timeout', (test, { mode }) => {
+    test.skip(mode !== 'default');
   }, async ({ browser, server }) => {
     const context = await browser.newContext({ viewport: { width: 350, height: 360 } });
     const page = await context.newPage();
@@ -348,8 +348,8 @@ describe('element screenshot', (suite, parameters) => {
     await context.close();
   });
 
-  it('should restore viewport after element screenshot and exception', (test, { wire }) => {
-    test.skip(wire);
+  it('should restore viewport after element screenshot and exception', (test, { mode }) => {
+    test.skip(mode !== 'default');
   }, async ({browser}) => {
     const context = await browser.newContext({ viewport: { width: 350, height: 360 } });
     const page = await context.newPage();
@@ -392,5 +392,15 @@ describe('element screenshot', (suite, parameters) => {
     const outputPath = testInfo.outputPath(path.join('these', 'are', 'directories', 'screenshot.png'));
     await elementHandle.screenshot({path: outputPath});
     expect(await fs.promises.readFile(outputPath)).toMatchSnapshot('screenshot-element-bounding-box.png');
+  });
+
+  it('should prefer type over extension', async ({page, server, testInfo}) => {
+    await page.setViewportSize({width: 500, height: 500});
+    await page.goto(server.PREFIX + '/grid.html');
+    await page.evaluate(() => window.scrollBy(50, 100));
+    const elementHandle = await page.$('.box:nth-of-type(3)');
+    const outputPath = testInfo.outputPath('file.png');
+    const buffer = await elementHandle.screenshot({ path: outputPath, type: 'jpeg' });
+    expect([buffer[0], buffer[1], buffer[2]]).toEqual([0xFF, 0xD8, 0xFF]);
   });
 });

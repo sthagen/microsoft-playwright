@@ -81,8 +81,8 @@ it('should return headers', async ({page, server, isChromium, isFirefox, isWebKi
     expect(response.request().headers()['user-agent']).toContain('WebKit');
 });
 
-it('should get the same headers as the server', (test, { browserName }) => {
-  test.fail(browserName === 'webkit', 'Provisional headers differ from those in network stack');
+it('should get the same headers as the server', (test, { browserName, platform }) => {
+  test.fail(browserName === 'webkit' && platform === 'win32', 'Curl does not show accept-encoding and accept-language');
 }, async ({ page, server }) => {
   let serverRequest;
   server.setRoute('/empty.html', (request, response) => {
@@ -93,8 +93,8 @@ it('should get the same headers as the server', (test, { browserName }) => {
   expect(response.request().headers()).toEqual(serverRequest.headers);
 });
 
-it('should get the same headers as the server CORP', (test, { browserName }) => {
-  test.fail(browserName === 'webkit', 'Provisional headers differ from those in network stack');
+it('should get the same headers as the server CORP', (test, { browserName, platform }) => {
+  test.fail(browserName === 'webkit' && platform === 'win32', 'Curl does not show accept-encoding and accept-language');
 }, async ({page, server}) => {
   await page.goto(server.PREFIX + '/empty.html');
   let serverRequest;
@@ -152,6 +152,28 @@ it('should work with binary post data and interception', async ({page, server}) 
   expect(buffer.length).toBe(256);
   for (let i = 0; i < 256; ++i)
     expect(buffer[i]).toBe(i);
+});
+
+it('should override post data content type', async ({page, server}) => {
+  await page.goto(server.EMPTY_PAGE);
+  let request = null;
+  server.setRoute('/post', (req, res) => {
+    request = req;
+    res.end();
+  });
+  await page.route('**/post', (route, request) => {
+    const headers = request.headers();
+    headers['content-type'] = 'application/x-www-form-urlencoded; charset=UTF-8';
+    route.continue({
+      headers,
+      postData: request.postData()
+    });
+  });
+  await page.evaluate(async () => {
+    await fetch('./post', { method: 'POST', body: 'foo=bar' });
+  });
+  expect(request).toBeTruthy();
+  expect(request.headers['content-type']).toBe('application/x-www-form-urlencoded; charset=UTF-8');
 });
 
 it('should be |undefined| when there is no post data', async ({page, server}) => {

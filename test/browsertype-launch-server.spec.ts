@@ -15,10 +15,11 @@
  * limitations under the License.
  */
 
-import { it, expect, describe } from './fixtures';
+import { folio } from './remoteServer.fixture';
+const { it, expect, describe } = folio;
 
-describe('lauch server', (suite, { wire }) => {
-  suite.skip(wire);
+describe('lauch server', (suite, { mode }) => {
+  suite.skip(mode !== 'default');
 }, () => {
   it('should work', async ({browserType, browserOptions}) => {
     const browserServer = await browserType.launchServer(browserOptions);
@@ -61,5 +62,29 @@ describe('lauch server', (suite, { wire }) => {
     ]);
     expect(result['exitCode']).toBe(0);
     expect(result['signal']).toBe(null);
+  });
+
+  it('should log protocol', async ({browserType, browserOptions}) => {
+    const logs: string[] = [];
+    const logger = {
+      isEnabled(name: string) {
+        return true;
+      },
+      log(name: string, severity: string, message: string) {
+        logs.push(`${name}:${severity}:${message}`);
+      }
+    };
+
+    const browserServer = await browserType.launchServer({ ...browserOptions, logger });
+    await browserServer.close();
+
+    expect(logs.some(log => log.startsWith('protocol:verbose:SEND ►'))).toBe(true);
+    expect(logs.some(log => log.startsWith('protocol:verbose:◀ RECV'))).toBe(true);
+  });
+
+  it('should work with cluster', async ({browserType, clusterRemoteServer}) => {
+    const browser = await browserType.connect({ wsEndpoint: clusterRemoteServer.wsEndpoint() });
+    const page = await browser.newPage();
+    expect(await page.evaluate('1 + 2')).toBe(3);
   });
 });

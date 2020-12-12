@@ -30,12 +30,21 @@ export type Headers = { [key: string]: string };
 export type Env = { [key: string]: string | number | boolean | undefined };
 export type URLMatch = string | RegExp | ((url: URL) => boolean);
 
+export type TimeoutOptions = { timeout?: number };
 export type WaitForEventOptions = Function | { predicate?: Function, timeout?: number };
 export type WaitForFunctionOptions = { timeout?: number, polling?: 'raf' | number };
 
 export type SelectOption = { value?: string, label?: string, index?: number };
 export type SelectOptionOptions = { timeout?: number, noWaitAfter?: boolean };
 export type FilePayload = { name: string, mimeType: string, buffer: Buffer };
+export type StorageState = {
+  cookies: channels.NetworkCookie[],
+  origins: channels.OriginStorage[]
+};
+export type SetStorageState = {
+  cookies?: channels.SetNetworkCookie[],
+  origins?: channels.OriginStorage[]
+};
 
 export type LifecycleEvent = 'load' | 'domcontentloaded' | 'networkidle';
 export const kLifecycleEvents: Set<LifecycleEvent> = new Set(['load', 'domcontentloaded', 'networkidle']);
@@ -44,6 +53,8 @@ export type BrowserContextOptions = Omit<channels.BrowserNewContextOptions, 'vie
   viewport?: Size | null,
   extraHTTPHeaders?: Headers,
   logger?: Logger,
+  videosPath?: string,
+  videoSize?: Size,
 };
 
 type LaunchOverrides = {
@@ -56,7 +67,7 @@ type FirefoxUserPrefs = {
 };
 type LaunchOptionsBase = Omit<channels.BrowserTypeLaunchOptions, 'ignoreAllDefaultArgs' | 'ignoreDefaultArgs' | 'env' | 'firefoxUserPrefs'> & LaunchOverrides;
 export type LaunchOptions = LaunchOptionsBase & FirefoxUserPrefs;
-export type LaunchPersistentContextOptions = LaunchOptionsBase & BrowserContextOptions;
+export type LaunchPersistentContextOptions = Omit<LaunchOptionsBase & BrowserContextOptions, 'storageState'>;
 
 export type ConnectOptions = {
   wsEndpoint: string,

@@ -16,8 +16,11 @@
  */
 
 import { it, expect } from './fixtures';
+import * as path from 'path';
 
-it('query', async ({page, isWebKit}) => {
+const { selectorsV2Enabled } = require(path.join(__dirname, '..', 'lib', 'server', 'common', 'selectorParser'));
+
+it('should work', async ({page}) => {
   await page.setContent(`<div>yo</div><div>ya</div><div>\nye  </div>`);
   expect(await page.$eval(`text=ya`, e => e.outerHTML)).toBe('<div>ya</div>');
   expect(await page.$eval(`text="ya"`, e => e.outerHTML)).toBe('<div>ya</div>');
@@ -59,9 +62,9 @@ it('query', async ({page, isWebKit}) => {
   expect(await page.$eval(`"x"`, e => e.outerHTML)).toBe('<div>x</div>');
   expect(await page.$eval(`'x'`, e => e.outerHTML)).toBe('<div>x</div>');
   let error = await page.$(`"`).catch(e => e);
-  expect(error.message).toContain(isWebKit ? 'SyntaxError' : 'querySelector');
+  expect(error).toBeInstanceOf(Error);
   error = await page.$(`'`).catch(e => e);
-  expect(error.message).toContain(isWebKit ? 'SyntaxError' : 'querySelector');
+  expect(error).toBeInstanceOf(Error);
 
   await page.setContent(`<div> ' </div><div> " </div>`);
   expect(await page.$eval(`text="`, e => e.outerHTML)).toBe('<div> " </div>');
@@ -94,22 +97,34 @@ it('query', async ({page, isWebKit}) => {
   });
   expect(await page.$eval(`text=lowo`, e => e.outerHTML)).toBe('<div>helloworld</div>');
   expect(await page.$$eval(`text=lowo`, els => els.map(e => e.outerHTML).join(''))).toBe('<div>helloworld</div><span>helloworld</span>');
+
+  await page.setContent(`<span>Sign&nbsp;in</span><span>Hello\n \nworld</span>`);
+  expect(await page.$eval(`text=Sign in`, e => e.outerHTML)).toBe('<span>Sign&nbsp;in</span>');
+  expect((await page.$$(`text=Sign \tin`)).length).toBe(1);
+  expect(await page.$(`text="Sign in"`)).toBe(null);
+  expect((await page.$$(`text="Sign in"`)).length).toBe(0);
+  expect(await page.$eval(`text=lo wo`, e => e.outerHTML)).toBe('<span>Hello\n \nworld</span>');
+  expect(await page.$(`text="lo wo"`)).toBe(null);
+  expect((await page.$$(`text=lo \nwo`)).length).toBe(1);
+  expect((await page.$$(`text="lo wo"`)).length).toBe(0);
 });
 
-it('create', async ({page}) => {
-  await page.setContent(`<div>yo</div><div>"ya</div><div>ye ye</div>`);
-  expect(await (await page.$('div') as any)._createSelectorForTest('text')).toBe('yo');
-  expect(await (await page.$('div:nth-child(2)') as any)._createSelectorForTest('text')).toBe('"\\"ya"');
-  expect(await (await page.$('div:nth-child(3)') as any)._createSelectorForTest('text')).toBe('"ye ye"');
-
-  await page.setContent(`<div>yo</div><div>yo<div>ya</div>hey</div>`);
-  expect(await (await page.$('div:nth-child(2)') as any)._createSelectorForTest('text')).toBe('hey');
-
-  await page.setContent(`<div> yo <div></div>ya</div>`);
-  expect(await (await page.$('div') as any)._createSelectorForTest('text')).toBe('yo');
-
-  await page.setContent(`<div> "yo <div></div>ya</div>`);
-  expect(await (await page.$('div') as any)._createSelectorForTest('text')).toBe('" \\"yo "');
+it('should work in v2', async ({page}) => {
+  if (!selectorsV2Enabled())
+    return; // Selectors v1 do not support this.
+  await page.setContent(`<div>yo</div><div>ya</div><div>\nHELLO   \n world  </div>`);
+  expect(await page.$eval(`:text("ya")`, e => e.outerHTML)).toBe('<div>ya</div>');
+  expect(await page.$eval(`:text-is("ya")`, e => e.outerHTML)).toBe('<div>ya</div>');
+  expect(await page.$eval(`:text("y")`, e => e.outerHTML)).toBe('<div>yo</div>');
+  expect(await page.$(`:text-is("y")`)).toBe(null);
+  expect(await page.$eval(`:text("hello world")`, e => e.outerHTML)).toBe('<div>\nHELLO   \n world  </div>');
+  expect(await page.$eval(`:text-is("hello world")`, e => e.outerHTML)).toBe('<div>\nHELLO   \n world  </div>');
+  expect(await page.$eval(`:text("lo wo")`, e => e.outerHTML)).toBe('<div>\nHELLO   \n world  </div>');
+  expect(await page.$(`:text-is("lo wo")`)).toBe(null);
+  expect(await page.$eval(`:text-matches("^[ay]+$")`, e => e.outerHTML)).toBe('<div>ya</div>');
+  expect(await page.$eval(`:text-matches("y", "g")`, e => e.outerHTML)).toBe('<div>yo</div>');
+  expect(await page.$eval(`:text-matches("Y", "i")`, e => e.outerHTML)).toBe('<div>yo</div>');
+  expect(await page.$(`:text-matches("^y$")`)).toBe(null);
 });
 
 it('should be case sensitive if quotes are specified', async ({page}) => {

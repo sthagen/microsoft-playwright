@@ -20,7 +20,9 @@ import { ConnectionTransport, ProtocolRequest, ProtocolResponse } from '../trans
 import { Protocol } from './protocol';
 import { EventEmitter } from 'events';
 import { rewriteErrorMessage } from '../../utils/stackTrace';
-import { debugLogger } from '../../utils/debugLogger';
+import { debugLogger, RecentLogsCollector } from '../../utils/debugLogger';
+import { ProtocolLogger } from '../types';
+import { helper } from '../helper';
 
 export const ConnectionEvents = {
   Disconnected: Symbol('ConnectionEvents.Disconnected')
@@ -34,12 +36,16 @@ export class CRConnection extends EventEmitter {
   private _lastId = 0;
   private readonly _transport: ConnectionTransport;
   private readonly _sessions = new Map<string, CRSession>();
+  private readonly _protocolLogger: ProtocolLogger;
+  private readonly _browserLogsCollector: RecentLogsCollector;
   readonly rootSession: CRSession;
   _closed = false;
 
-  constructor(transport: ConnectionTransport) {
+  constructor(transport: ConnectionTransport, protocolLogger: ProtocolLogger, browserLogsCollector: RecentLogsCollector) {
     super();
     this._transport = transport;
+    this._protocolLogger = protocolLogger;
+    this._browserLogsCollector = browserLogsCollector;
     this._transport.onmessage = this._onMessage.bind(this);
     this._transport.onclose = this._onClose.bind(this);
     this.rootSession = new CRSession(this, '', 'browser', '');
@@ -59,15 +65,13 @@ export class CRConnection extends EventEmitter {
     const message: ProtocolRequest = { id, method, params };
     if (sessionId)
       message.sessionId = sessionId;
-    if (debugLogger.isEnabled('protocol'))
-      debugLogger.log('protocol', 'SEND ► ' + JSON.stringify(message));
+    this._protocolLogger('send', message);
     this._transport.send(message);
     return id;
   }
 
   async _onMessage(message: ProtocolResponse) {
-    if (debugLogger.isEnabled('protocol'))
-      debugLogger.log('protocol', '◀ RECV ' + JSON.stringify(message));
+    this._protocolLogger('receive', message);
     if (message.id === kBrowserCloseMessageId)
       return;
     if (message.method === 'Target.attachedToTarget') {
@@ -78,7 +82,7 @@ export class CRConnection extends EventEmitter {
     } else if (message.method === 'Target.detachedFromTarget') {
       const session = this._sessions.get(message.params.sessionId);
       if (session) {
-        session._onClosed();
+        session._onClosed(undefined);
         this._sessions.delete(message.params.sessionId);
       }
     }
@@ -91,8 +95,9 @@ export class CRConnection extends EventEmitter {
     this._closed = true;
     this._transport.onmessage = undefined;
     this._transport.onclose = undefined;
+    const browserDisconnectedLogs = helper.formatBrowserLogs(this._browserLogsCollector.recentLogs());
     for (const session of this._sessions.values())
-      session._onClosed();
+      session._onClosed(browserDisconnectedLogs);
     this._sessions.clear();
     Promise.resolve().then(() => this.emit(ConnectionEvents.Disconnected));
   }
@@ -125,6 +130,7 @@ export class CRSession extends EventEmitter {
   private readonly _sessionId: string;
   private readonly _rootSessionId: string;
   private _crashed: boolean = false;
+  private _browserDisconnectedLogs: string | undefined;
   on: <T extends keyof Protocol.Events | symbol>(event: T, listener: (payload: T extends symbol ? any : Protocol.Events[T extends keyof Protocol.Events ? T : never]) => void) => this;
   addListener: <T extends keyof Protocol.Events | symbol>(event: T, listener: (payload: T extends symbol ? any : Protocol.Events[T extends keyof Protocol.Events ? T : never]) => void) => this;
   off: <T extends keyof Protocol.Events | symbol>(event: T, listener: (payload: T extends symbol ? any : Protocol.Events[T extends keyof Protocol.Events ? T : never]) => void) => this;
@@ -155,6 +161,8 @@ export class CRSession extends EventEmitter {
   ): Promise<Protocol.CommandReturnValues[T]> {
     if (this._crashed)
       throw new Error('Target crashed');
+    if (this._browserDisconnectedLogs !== undefined)
+      throw new Error(`Protocol error (${method}): Browser closed.` + this._browserDisconnectedLogs);
     if (!this._connection)
       throw new Error(`Protocol error (${method}): Session closed. Most likely the ${this._targetType} has been closed.`);
     const id = this._connection._rawSend(this._sessionId, method, params);
@@ -194,9 +202,11 @@ export class CRSession extends EventEmitter {
     await rootSession.send('Target.detachFromTarget', { sessionId: this._sessionId });
   }
 
-  _onClosed() {
+  _onClosed(browserDisconnectedLogs: string | undefined) {
+    this._browserDisconnectedLogs = browserDisconnectedLogs;
+    const errorMessage = browserDisconnectedLogs !== undefined ? 'Browser closed.' + browserDisconnectedLogs : 'Target closed.';
     for (const callback of this._callbacks.values())
-      callback.reject(rewriteErrorMessage(callback.error, `Protocol error (${callback.method}): Target closed.`));
+      callback.reject(rewriteErrorMessage(callback.error, `Protocol error (${callback.method}): ` + errorMessage));
     this._callbacks.clear();
     this._connection = null;
     Promise.resolve().then(() => this.emit(CRSessionEvents.Disconnected));

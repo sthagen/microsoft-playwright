@@ -28,11 +28,12 @@ import { FatalDOMError, RetargetableDOMError } from './common/domErrors';
 export class FrameExecutionContext extends js.ExecutionContext {
   readonly frame: frames.Frame;
   private _injectedScriptPromise?: Promise<js.JSHandle>;
-  private _debugScriptPromise?: Promise<js.JSHandle | undefined>;
+  readonly world: types.World | null;
 
-  constructor(delegate: js.ExecutionContextDelegate, frame: frames.Frame) {
+  constructor(delegate: js.ExecutionContextDelegate, frame: frames.Frame, world: types.World|null) {
     super(delegate);
     this.frame = frame;
+    this.world = world;
   }
 
   adoptIfNeeded(handle: js.JSHandle): Promise<js.JSHandle> | null {
@@ -878,7 +879,7 @@ export function waitForSelectorTask(selector: SelectorInfo, state: 'attached' | 
 
 export function dispatchEventTask(selector: SelectorInfo, type: string, eventInit: Object): SchedulableTask<undefined> {
   return injectedScript => injectedScript.evaluateHandle((injected, { parsed, type, eventInit }) => {
-    return injected.pollRaf((progress, continuePolling) => {
+    return injected.pollRaf<undefined>((progress, continuePolling) => {
       const element = injected.querySelector(parsed, document);
       if (!element)
         return continuePolling;

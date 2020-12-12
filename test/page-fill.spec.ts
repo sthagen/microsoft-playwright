@@ -34,9 +34,27 @@ it('should fill input', async ({page, server}) => {
   expect(await page.evaluate(() => window['result'])).toBe('some value');
 });
 
+it('should fill input with label', async ({page}) => {
+  await page.setContent(`<label for=target>Fill me</label><input id=target>`);
+  await page.fill('text=Fill me', 'some value');
+  expect(await page.$eval('input', input => input.value)).toBe('some value');
+});
+
+it('should fill input with label 2', async ({page}) => {
+  await page.setContent(`<label>Fill me<input id=target></label>`);
+  await page.fill('text=Fill me', 'some value');
+  expect(await page.$eval('input', input => input.value)).toBe('some value');
+});
+
+it('should fill textarea with label', async ({page}) => {
+  await page.setContent(`<label for=target>Fill me</label><textarea id=target>hey</textarea>`);
+  await page.fill('text=Fill me', 'some value');
+  expect(await page.$eval('textarea', textarea => textarea.value)).toBe('some value');
+});
+
 it('should throw on unsupported inputs', async ({page, server}) => {
   await page.goto(server.PREFIX + '/input/textarea.html');
-  for (const type of ['color', 'file']) {
+  for (const type of ['button', 'checkbox', 'file', 'image', 'radio', 'range', 'reset', 'submit']) {
     await page.$eval('input', (input, type) => input.setAttribute('type', type), type);
     let error = null;
     await page.fill('input', '').catch(e => error = e);
@@ -46,7 +64,7 @@ it('should throw on unsupported inputs', async ({page, server}) => {
 
 it('should fill different input types', async ({page, server}) => {
   await page.goto(server.PREFIX + '/input/textarea.html');
-  for (const type of ['password', 'search', 'tel', 'text', 'url']) {
+  for (const type of ['password', 'search', 'tel', 'text', 'url', 'invalid-type']) {
     await page.$eval('input', (input, type) => input.setAttribute('type', type), type);
     await page.fill('input', 'text ' + type);
     expect(await page.evaluate(() => window['result'])).toBe('text ' + type);
@@ -61,7 +79,7 @@ it('should fill date input after clicking', async ({page, server}) => {
 });
 
 it('should throw on incorrect date', (test, { browserName }) => {
-  test.skip(browserName === 'webkit');
+  test.skip(browserName === 'webkit', 'WebKit does not support date inputs');
 }, async ({page}) => {
   await page.setContent('<input type=date>');
   const error = await page.fill('input', '2020-13-05').catch(e => e);
@@ -74,8 +92,36 @@ it('should fill time input', async ({page}) => {
   expect(await page.$eval('input', input => input.value)).toBe('13:15');
 });
 
+it('should fill month input', async ({page}) => {
+  await page.setContent('<input type=month>');
+  await page.fill('input', '2020-07');
+  expect(await page.$eval('input', input => input.value)).toBe('2020-07');
+});
+
+it('should throw on incorrect month', (test, { browserName }) => {
+  test.skip(browserName !== 'chromium', 'Only Chromium supports month inputs');
+}, async ({page}) => {
+  await page.setContent('<input type=month>');
+  const error = await page.fill('input', '2020-13').catch(e => e);
+  expect(error.message).toContain('Malformed value');
+});
+
+it('should fill week input', async ({page}) => {
+  await page.setContent('<input type=week>');
+  await page.fill('input', '2020-W50');
+  expect(await page.$eval('input', input => input.value)).toBe('2020-W50');
+});
+
+it('should throw on incorrect week', (test, { browserName }) => {
+  test.skip(browserName !== 'chromium', 'Only Chromium supports week inputs');
+}, async ({page}) => {
+  await page.setContent('<input type=week>');
+  const error = await page.fill('input', '2020-123').catch(e => e);
+  expect(error.message).toContain('Malformed value');
+});
+
 it('should throw on incorrect time', (test, { browserName }) => {
-  test.skip(browserName === 'webkit');
+  test.skip(browserName === 'webkit', 'WebKit does not support time inputs');
 }, async ({page}) => {
   await page.setContent('<input type=time>');
   const error = await page.fill('input', '25:05').catch(e => e);
@@ -89,7 +135,7 @@ it('should fill datetime-local input', async ({page, server}) => {
 });
 
 it('should throw on incorrect datetime-local', (test, { browserName }) => {
-  test.skip(browserName === 'webkit' || browserName === 'firefox');
+  test.skip(browserName !== 'chromium', 'Only Chromium supports datetime-local inputs');
 }, async ({page, server}) => {
   await page.setContent('<input type=datetime-local>');
   const error = await page.fill('input', 'abc').catch(e => e);

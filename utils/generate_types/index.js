@@ -125,7 +125,9 @@ function classToString(classDesc) {
 function argNameForType(type) {
   if (type === 'void')
     return null;
-  return type[0].toLowerCase() + type.slice(1);
+  if (type.includes('{'))
+    return 'data';
+  return (type[0].toLowerCase() + type.slice(1)).replace(/\|/g, 'Or');
 }
 
 /**
@@ -196,7 +198,7 @@ function classBody(classDesc) {
     if (!hasOwnMethod(classDesc, member.name))
       return '';
     if (member.templates.length)
-      console.error(`expected an override for "${classDesc.name}.${member.name}" becasue it is templated`);
+      console.error(`expected an override for "${classDesc.name}.${member.name}" because it is templated`);
     return `${jsdoc}${member.name}${args}: ${type};`
   }).filter(x => x).join('\n\n'));
   return parts.join('\n');

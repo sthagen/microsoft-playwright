@@ -14,39 +14,7 @@
  * limitations under the License.
  */
 
-import { folio as baseFolio } from './fixtures';
-
-import socks from 'socksv5';
-
-const builder = baseFolio.extend<{}, {
-  socksPort: number,
-}>();
-
-builder.socksPort.init(async ({ testWorkerIndex }, run) => {
-  const server = socks.createServer((info, accept, deny) => {
-    let socket;
-    if ((socket = accept(true))) {
-      // Catch and ignore ECONNRESET errors.
-      socket.on('error', () => {});
-      const body = '<html><title>Served by the SOCKS proxy</title></html>';
-      socket.end([
-        'HTTP/1.1 200 OK',
-        'Connection: close',
-        'Content-Type: text/html',
-        'Content-Length: ' + Buffer.byteLength(body),
-        '',
-        body
-      ].join('\r\n'));
-    }
-  });
-  const socksPort = 9107 + testWorkerIndex * 2;
-  server.listen(socksPort, 'localhost');
-  server.useAuth(socks.auth.None());
-  await run(socksPort);
-  server.close();
-}, { scope: 'worker' });
-
-const { it, expect } = builder.build();
+import { it, expect } from './fixtures';
 
 it('should throw for bad server value', async ({browserType, browserOptions}) => {
   const error = await browserType.launch({
@@ -128,7 +96,7 @@ it('should authenticate', async ({browserType, browserOptions, server}) => {
 });
 
 it('should exclude patterns', (test, { browserName, headful }) => {
-  test.flaky(browserName === 'chromium' && headful, 'Chromium headful crashes with CHECK(!in_frame_tree_) in RenderFrameImpl::OnDeleteFrame.');
+  test.fixme(browserName === 'chromium' && headful, 'Chromium headful crashes with CHECK(!in_frame_tree_) in RenderFrameImpl::OnDeleteFrame.');
 }, async ({browserType, browserOptions, server}) => {
   server.setRoute('/target.html', async (req, res) => {
     res.end('<html><title>Served by the proxy</title></html>');

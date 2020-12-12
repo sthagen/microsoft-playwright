@@ -215,7 +215,7 @@ describe('page screenshot', (suite, { browserName, headful }) => {
     await page.setViewportSize({width: 500, height: 500});
     await page.goto(server.PREFIX + '/screenshots/canvas.html');
     const screenshot = await page.screenshot();
-    expect(screenshot).toMatchSnapshot('screenshot-canvas.png', { threshold: 0.3 });
+    expect(screenshot).toMatchSnapshot('screenshot-canvas.png', { threshold: 0.4 });
   });
 
   it('should work for webgl', (test, { browserName }) => {
@@ -292,8 +292,15 @@ describe('page screenshot', (suite, { browserName, headful }) => {
     expect(error.message).toContain('path: unsupported mime type "text/plain"');
   });
 
-  it('should work with large size', (test, { browserName }) => {
-    test.fail(browserName === 'chromium', 'Upstream Chromium bug');
+  it('should prefer type over extension', async ({page, testInfo}) => {
+    const outputPath = testInfo.outputPath('file.png');
+    const buffer = await page.screenshot({ path: outputPath, type: 'jpeg' });
+    expect([buffer[0], buffer[1], buffer[2]]).toEqual([0xFF, 0xD8, 0xFF]);
+  });
+
+  it('should work with large size', (test, {browserName, headful, platform}) => {
+    test.slow('Large screenshot is slow');
+    test.fixme(browserName === 'chromium' && headful === true && platform === 'linux', 'Chromium has gpu problems on linux with large screnshots');
   }, async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 800 });
     await page.evaluate(() => {

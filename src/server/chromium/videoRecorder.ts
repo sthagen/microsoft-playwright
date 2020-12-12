@@ -64,8 +64,8 @@ export class VideoRecorder {
     const { launchedProcess, gracefullyClose } = await launchProcess({
       executablePath,
       args,
-      pipeStdin: true,
-      progress,
+      stdio: 'stdin',
+      log: (message: string) => progress.log(message),
       tempDirectories: [],
       attemptToGracefullyClose: async () => {
         progress.log('Closing stdin...');

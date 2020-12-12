@@ -31,7 +31,7 @@ import { Worker } from './worker';
 import { Frame, verifyLoadState, WaitForNavigationOptions } from './frame';
 import { Keyboard, Mouse, Touchscreen } from './input';
 import { assertMaxArguments, Func1, FuncOn, SmartHandle, serializeArgument, parseResult, JSHandle } from './jsHandle';
-import { Request, Response, Route, RouteHandler, validateHeaders } from './network';
+import { Request, Response, Route, RouteHandler, WebSocket, validateHeaders } from './network';
 import { FileChooser } from './fileChooser';
 import { Buffer } from 'buffer';
 import { ChromiumCoverage } from './chromiumCoverage';
@@ -130,6 +130,7 @@ export class Page extends ChannelOwner<channels.PageChannel, channels.PageInitia
     this._channel.on('response', ({ response }) => this.emit(Events.Page.Response, Response.from(response)));
     this._channel.on('route', ({ route, request }) => this._onRoute(Route.from(route), Request.from(request)));
     this._channel.on('video', ({ relativePath }) => this.video()!._setRelativePath(relativePath));
+    this._channel.on('webSocket', ({ webSocket }) => this.emit(Events.Page.WebSocket, WebSocket.from(webSocket)));
     this._channel.on('worker', ({ worker }) => this._onWorker(Worker.from(worker)));
 
     if (this._browserContext._browserName === 'chromium') {
@@ -214,9 +215,9 @@ export class Page extends ChannelOwner<channels.PageChannel, channels.PageInitia
     return this._mainFrame;
   }
 
-  frame(options: string | { name?: string, url?: URLMatch }): Frame | null {
-    const name = isString(options) ? options : options.name;
-    const url = isObject(options) ? options.url : undefined;
+  frame(frameSelector: string | { name?: string, url?: URLMatch }): Frame | null {
+    const name = isString(frameSelector) ? frameSelector : frameSelector.name;
+    const url = isObject(frameSelector) ? frameSelector.url : undefined;
     assert(name || url, 'Either name or url matcher should be specified');
     return this.frames().find(f => {
       if (name)
@@ -242,7 +243,7 @@ export class Page extends ChannelOwner<channels.PageChannel, channels.PageInitia
   video(): Video | null {
     if (this._video)
       return this._video;
-    if (!this._browserContext._options.videosPath)
+    if (!this._browserContext._options.recordVideo)
       return null;
     this._video = new Video(this);
     // In case of persistent profile, we already have it.
@@ -297,12 +298,12 @@ export class Page extends ChannelOwner<channels.PageChannel, channels.PageInitia
     return this._attributeToPage(() => this._mainFrame.$$(selector));
   }
 
-  async addScriptTag(options: { url?: string; path?: string; content?: string; type?: string; }): Promise<ElementHandle> {
-    return this._attributeToPage(() => this._mainFrame.addScriptTag(options));
+  async addScriptTag(script: { url?: string; path?: string; content?: string; type?: string; }): Promise<ElementHandle> {
+    return this._attributeToPage(() => this._mainFrame.addScriptTag(script));
   }
 
-  async addStyleTag(options: { url?: string; path?: string; content?: string; }): Promise<ElementHandle> {
-    return this._attributeToPage(() => this._mainFrame.addStyleTag(options));
+  async addStyleTag(style: { url?: string; path?: string; content?: string; }): Promise<ElementHandle> {
+    return this._attributeToPage(() => this._mainFrame.addStyleTag(style));
   }
 
   async exposeFunction(name: string, playwrightFunction: Function) {
@@ -404,11 +405,11 @@ export class Page extends ChannelOwner<channels.PageChannel, channels.PageInitia
     });
   }
 
-  async emulateMedia(options: { media?: 'screen' | 'print' | null, colorScheme?: 'dark' | 'light' | 'no-preference' | null }) {
+  async emulateMedia(params: { media?: 'screen' | 'print' | null, colorScheme?: 'dark' | 'light' | 'no-preference' | null }) {
     return this._wrapApiCall('page.emulateMedia', async () => {
       await this._channel.emulateMedia({
-        media: options.media === null ? 'null' : options.media,
-        colorScheme: options.colorScheme === null ? 'null' : options.colorScheme,
+        media: params.media === null ? 'null' : params.media,
+        colorScheme: params.colorScheme === null ? 'null' : params.colorScheme,
       });
     });
   }
@@ -456,8 +457,10 @@ export class Page extends ChannelOwner<channels.PageChannel, channels.PageInitia
 
   async screenshot(options: channels.PageScreenshotOptions & { path?: string } = {}): Promise<Buffer> {
     return this._wrapApiCall('page.screenshot', async () => {
-      const type = determineScreenshotType(options);
-      const result = await this._channel.screenshot({ ...options, type });
+      const copy = { ...options };
+      if (!copy.type)
+        copy.type = determineScreenshotType(options);
+      const result = await this._channel.screenshot(copy);
       const buffer = Buffer.from(result.binary, 'base64');
       if (options.path) {
         await mkdirIfNeeded(options.path);
@@ -574,19 +577,15 @@ export class Page extends ChannelOwner<channels.PageChannel, channels.PageInitia
   }
 
   on(event: string | symbol, listener: Listener): this {
-    if (event === Events.Page.FileChooser) {
-      if (!this.listenerCount(event))
-        this._channel.setFileChooserInterceptedNoReply({ intercepted: true });
-    }
+    if (event === Events.Page.FileChooser && !this.listenerCount(event))
+      this._channel.setFileChooserInterceptedNoReply({ intercepted: true });
     super.on(event, listener);
     return this;
   }
 
   addListener(event: string | symbol, listener: Listener): this {
-    if (event === Events.Page.FileChooser) {
-      if (!this.listenerCount(event))
-        this._channel.setFileChooserInterceptedNoReply({ intercepted: true });
-    }
+    if (event === Events.Page.FileChooser && !this.listenerCount(event))
+      this._channel.setFileChooserInterceptedNoReply({ intercepted: true });
     super.addListener(event, listener);
     return this;
   }
@@ -650,9 +649,9 @@ export class BindingCall extends ChannelOwner<channels.BindingCallChannel, chann
         result = await func(source, JSHandle.from(this._initializer.handle));
       else
         result = await func(source, ...this._initializer.args!.map(parseResult));
-      this._channel.resolve({ result: serializeArgument(result) });
+      this._channel.resolve({ result: serializeArgument(result) }).catch(() => {});
     } catch (e) {
-      this._channel.reject({ error: serializeError(e) });
+      this._channel.reject({ error: serializeError(e) }).catch(() => {});
     }
   }
 }

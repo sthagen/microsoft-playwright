@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { LaunchServerOptions } from './client/types';
+import { LaunchServerOptions, Logger } from './client/types';
 import { BrowserType } from './server/browserType';
 import * as ws from 'ws';
 import * as fs from 'fs';
@@ -32,6 +32,7 @@ import { SelectorsDispatcher } from './dispatchers/selectorsDispatcher';
 import { Selectors } from './server/selectors';
 import { BrowserContext, Video } from './server/browserContext';
 import { StreamDispatcher } from './dispatchers/streamDispatcher';
+import { ProtocolLogger } from './server/types';
 
 export class BrowserServerLauncherImpl implements BrowserServerLauncher {
   private _browserType: BrowserType;
@@ -46,29 +47,40 @@ export class BrowserServerLauncherImpl implements BrowserServerLauncher {
       ignoreDefaultArgs: Array.isArray(options.ignoreDefaultArgs) ? options.ignoreDefaultArgs : undefined,
       ignoreAllDefaultArgs: !!options.ignoreDefaultArgs && !Array.isArray(options.ignoreDefaultArgs),
       env: options.env ? envObjectToArray(options.env) : undefined,
-    });
-    return new BrowserServerImpl(this._browserType, browser, options.port);
+    }, toProtocolLogger(options.logger));
+    return BrowserServerImpl.start(browser, options.port);
   }
 }
 
 export class BrowserServerImpl extends EventEmitter implements BrowserServer {
   private _server: ws.Server;
-  private _browserType: BrowserType;
   private _browser: Browser;
   private _wsEndpoint: string;
   private _process: ChildProcess;
+  private _ready: Promise<void>;
 
-  constructor(browserType: BrowserType, browser: Browser, port: number = 0) {
+  static async start(browser: Browser, port: number = 0): Promise<BrowserServerImpl> {
+    const server = new BrowserServerImpl(browser, port);
+    await server._ready;
+    return server;
+  }
+
+  constructor(browser: Browser, port: number) {
     super();
 
-    this._browserType = browserType;
     this._browser = browser;
+    this._wsEndpoint = '';
+    this._process = browser._options.browserProcess.process!;
+
+    let readyCallback = () => {};
+    this._ready = new Promise<void>(f => readyCallback = f);
 
     const token = createGuid();
-    this._server = new ws.Server({ port });
-    const address = this._server.address();
-    this._wsEndpoint = typeof address === 'string' ? `${address}/${token}` : `ws://127.0.0.1:${address.port}/${token}`;
-    this._process = browser._options.browserProcess.process;
+    this._server = new ws.Server({ port }, () => {
+      const address = this._server.address();
+      this._wsEndpoint = typeof address === 'string' ? `${address}/${token}` : `ws://127.0.0.1:${address.port}/${token}`;
+      readyCallback();
+    });
 
     this._server.on('connection', (socket: ws, req) => {
       if (req.url !== '/' + token) {
@@ -148,9 +160,9 @@ class ConnectedBrowser extends BrowserDispatcher {
   }
 
   async newContext(params: channels.BrowserNewContextParams): Promise<{ context: channels.BrowserContextChannel }> {
-    if (params.videosPath) {
+    if (params.recordVideo) {
       // TODO: we should create a separate temp directory or accept a launchServer parameter.
-      params.videosPath = this._object._options.downloadsPath;
+      params.recordVideo.dir = this._object._options.downloadsPath!;
     }
     const result = await super.newContext(params);
     const dispatcher = result.context as BrowserContextDispatcher;
@@ -193,4 +205,11 @@ class ConnectedBrowser extends BrowserDispatcher {
       });
     });
   }
+}
+
+function toProtocolLogger(logger: Logger | undefined): ProtocolLogger | undefined {
+  return logger ? (direction: 'send' | 'receive', message: object) => {
+    if (logger.isEnabled('protocol', 'verbose'))
+      logger.log('protocol', 'verbose', (direction === 'send' ? 'SEND ► ' : '◀ RECV ') + JSON.stringify(message), [], {});
+  } : undefined;
 }

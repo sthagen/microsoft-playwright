@@ -159,6 +159,58 @@ it('should work with redirect inside sync XHR', async ({page, server}) => {
   expect(status).toBe(200);
 });
 
+it('should pause intercepted XHR until continue', (test, { browserName}) => {
+  test.fixme(browserName === 'webkit', 'Redirected request is not paused in WebKit');
+}, async ({page, server}) => {
+  await page.goto(server.EMPTY_PAGE);
+  let resolveRoute;
+  const routePromise = new Promise(r => resolveRoute = r);
+  await page.route('**/global-var.html', async route => resolveRoute(route));
+  let xhrFinished = false;
+  const statusPromise = page.evaluate(async () => {
+    const request = new XMLHttpRequest();
+    request.open('GET', '/global-var.html', false);  // `false` makes the request synchronous
+    request.send(null);
+    return request.status;
+  }).then(r => {
+    xhrFinished = true;
+    return r;
+  });
+  const route = await routePromise;
+  // Check that intercepted request is actually paused.
+  await new Promise(r => setTimeout(r, 500));
+  expect(xhrFinished).toBe(false);
+  const [status] = await Promise.all([
+    statusPromise,
+    (route as any).continue()
+  ]);
+  expect(status).toBe(200);
+});
+
+it('should pause intercepted fetch request until continue', async ({page, server}) => {
+  await page.goto(server.EMPTY_PAGE);
+  let resolveRoute;
+  const routePromise = new Promise(r => resolveRoute = r);
+  await page.route('**/global-var.html', async route => resolveRoute(route));
+  let fetchFinished = false;
+  const statusPromise = page.evaluate(async () => {
+    const response = await fetch('/global-var.html');
+    return response.status;
+  }).then(r => {
+    fetchFinished = true;
+    return r;
+  });
+  const route = await routePromise;
+  // Check that intercepted request is actually paused.
+  await new Promise(r => setTimeout(r, 500));
+  expect(fetchFinished).toBe(false);
+  const [status] = await Promise.all([
+    statusPromise,
+    (route as any).continue()
+  ]);
+  expect(status).toBe(200);
+});
+
 it('should work with custom referer headers', async ({page, server}) => {
   await page.setExtraHTTPHeaders({ 'referer': server.EMPTY_PAGE });
   await page.route('**/*', route => {
@@ -394,15 +446,18 @@ it('should intercept main resource during cross-process navigation', async ({pag
   expect(intercepted).toBe(true);
 });
 
-it('should create a redirect', async ({page, server}) => {
-  await page.goto(server.PREFIX + '/empty.html');
+it('should fulfill with redirect status', (test, { browserName, headful}) => {
+  test.fixme(browserName === 'webkit', 'in WebKit the redirects are handled by the network stack and we intercept before');
+}, async ({page, server}) => {
+  await page.goto(server.PREFIX + '/title.html');
+  server.setRoute('/final', (req, res) => res.end('foo'));
   await page.route('**/*', async (route, request) => {
     if (request.url() !== server.PREFIX + '/redirect_this')
       return route.continue();
     await route.fulfill({
       status: 301,
       headers: {
-        'location': '/empty.html',
+        'location': '/final',
       }
     });
   });
@@ -411,7 +466,41 @@ it('should create a redirect', async ({page, server}) => {
     const data = await fetch(url);
     return data.text();
   }, server.PREFIX + '/redirect_this');
-  expect(text).toBe('');
+  expect(text).toBe('foo');
+});
+
+it('should not fulfill with redirect status', (test, { browserName, headful}) => {
+  test.skip(browserName !== 'webkit', 'we should support fulfill with redirect in webkit and delete this test');
+}, async ({page, server}) => {
+  await page.goto(server.PREFIX + '/empty.html');
+
+  let status;
+  let fulfill;
+  let reject;
+  await page.route('**/*', async (route, request) => {
+    if (request.url() !== server.PREFIX + '/redirect_this')
+      return route.continue();
+    try {
+      await route.fulfill({
+        status,
+        headers: {
+          'location': '/empty.html',
+        }
+      });
+      reject('fullfill didn\'t throw');
+    } catch (e) {
+      fulfill(e);
+    }
+  });
+
+  for (status = 300; status < 310; status++) {
+    const exception = await Promise.race([
+      page.evaluate(url => location.href = url, server.PREFIX + '/redirect_this'),
+      new Promise((f, r) => {fulfill = f; reject = r;})
+    ]) as any;
+    expect(exception).toBeTruthy();
+    expect(exception.message.includes('Cannot fulfill with redirect status')).toBe(true);
+  }
 });
 
 it('should support cors with GET', async ({page, server}) => {

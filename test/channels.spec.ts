@@ -39,14 +39,15 @@ it('should scope context handles', async ({browser, server}) => {
   const GOLDEN_PRECONDITION = {
     _guid: '',
     objects: [
+      { _guid: 'Android', objects: [] },
+      { _guid: 'BrowserType', objects: [] },
+      { _guid: 'BrowserType', objects: [] },
       { _guid: 'BrowserType', objects: [
         { _guid: 'Browser', objects: [] }
       ] },
-      { _guid: 'BrowserType', objects: [] },
-      { _guid: 'BrowserType', objects: [] },
+      { _guid: 'Electron', objects: [] },
       { _guid: 'Playwright', objects: [] },
       { _guid: 'Selectors', objects: [] },
-      { _guid: 'Electron', objects: [] },
     ]
   };
   await expectScopeState(browser, GOLDEN_PRECONDITION);
@@ -57,21 +58,23 @@ it('should scope context handles', async ({browser, server}) => {
   await expectScopeState(browser, {
     _guid: '',
     objects: [
+      { _guid: 'Android', objects: [] },
       { _guid: 'BrowserType', objects: [] },
       { _guid: 'BrowserType', objects: [] },
       { _guid: 'BrowserType', objects: [
         { _guid: 'Browser', objects: [
           { _guid: 'BrowserContext', objects: [
             { _guid: 'Frame', objects: [] },
-            { _guid: 'Page', objects: [] },
-            { _guid: 'Request', objects: [] },
-            { _guid: 'Response', objects: [] },
+            { _guid: 'Page', objects: [
+              { _guid: 'Request', objects: [] },
+              { _guid: 'Response', objects: [] },
+            ]},
           ]},
         ] },
       ] },
+      { _guid: 'Electron', objects: [] },
       { _guid: 'Playwright', objects: [] },
       { _guid: 'Selectors', objects: [] },
-      { _guid: 'Electron', objects: [] },
     ]
   });
 
@@ -85,14 +88,15 @@ it('should scope CDPSession handles', (test, { browserName }) => {
   const GOLDEN_PRECONDITION = {
     _guid: '',
     objects: [
+      { _guid: 'Android', objects: [] },
+      { _guid: 'BrowserType', objects: [] },
+      { _guid: 'BrowserType', objects: [] },
       { _guid: 'BrowserType', objects: [
         { _guid: 'Browser', objects: [] }
       ] },
-      { _guid: 'BrowserType', objects: [] },
-      { _guid: 'BrowserType', objects: [] },
+      { _guid: 'Electron', objects: [] },
       { _guid: 'Playwright', objects: [] },
       { _guid: 'Selectors', objects: [] },
-      { _guid: 'Electron', objects: [] },
     ]
   };
   await expectScopeState(browserType, GOLDEN_PRECONDITION);
@@ -101,16 +105,17 @@ it('should scope CDPSession handles', (test, { browserName }) => {
   await expectScopeState(browserType, {
     _guid: '',
     objects: [
+      { _guid: 'Android', objects: [] },
+      { _guid: 'BrowserType', objects: [] },
+      { _guid: 'BrowserType', objects: [] },
       { _guid: 'BrowserType', objects: [
         { _guid: 'Browser', objects: [
           { _guid: 'CDPSession', objects: [] },
         ] },
       ] },
-      { _guid: 'BrowserType', objects: [] },
-      { _guid: 'BrowserType', objects: [] },
+      { _guid: 'Electron', objects: [] },
       { _guid: 'Playwright', objects: [] },
       { _guid: 'Selectors', objects: [] },
-      { _guid: 'Electron', objects: [] },
     ]
   });
 
@@ -122,15 +127,16 @@ it('should scope browser handles', async ({browserType, browserOptions}) => {
   const GOLDEN_PRECONDITION = {
     _guid: '',
     objects: [
-      { _guid: 'BrowserType', objects: [] },
+      { _guid: 'Android', objects: [] },
       { _guid: 'BrowserType', objects: [] },
       { _guid: 'BrowserType', objects: [
         { _guid: 'Browser', objects: [] },
       ]
       },
+      { _guid: 'BrowserType', objects: [] },
+      { _guid: 'Electron', objects: [] },
       { _guid: 'Playwright', objects: [] },
       { _guid: 'Selectors', objects: [] },
-      { _guid: 'Electron', objects: [] },
     ]
   };
   await expectScopeState(browserType, GOLDEN_PRECONDITION);
@@ -140,6 +146,9 @@ it('should scope browser handles', async ({browserType, browserOptions}) => {
   await expectScopeState(browserType, {
     _guid: '',
     objects: [
+      { _guid: 'Android', objects: [] },
+      { _guid: 'BrowserType', objects: [] },
+      { _guid: 'BrowserType', objects: [] },
       { _guid: 'BrowserType', objects: [
         { _guid: 'Browser', objects: [] },
         {
@@ -149,11 +158,9 @@ it('should scope browser handles', async ({browserType, browserOptions}) => {
         },
       ]
       },
-      { _guid: 'BrowserType', objects: [] },
-      { _guid: 'BrowserType', objects: [] },
+      { _guid: 'Electron', objects: [] },
       { _guid: 'Playwright', objects: [] },
       { _guid: 'Selectors', objects: [] },
-      { _guid: 'Electron', objects: [] },
     ]
   });
 
@@ -161,11 +168,26 @@ it('should scope browser handles', async ({browserType, browserOptions}) => {
   await expectScopeState(browserType, GOLDEN_PRECONDITION);
 });
 
-it('should work with the domain module', async ({ domain, browserType, browserOptions }) => {
+it('should work with the domain module', async ({ domain, browserType, browserOptions, server, isFirefox }) => {
   const browser = await browserType.launch(browserOptions);
   const page = await browser.newPage();
-  const result = await page.evaluate(() => 1 + 1);
-  expect(result).toBe(2);
+
+  expect(await page.evaluate(() => 1 + 1)).toBe(2);
+
+  // At the time of writing, we used to emit 'error' event for WebSockets,
+  // which failed with 'domain' module.
+  let callback;
+  const result = new Promise(f => callback = f);
+  page.on('websocket', ws => ws.on('socketerror', callback));
+  page.evaluate(port => {
+    new WebSocket('ws://localhost:' + port + '/bogus-ws');
+  }, server.PORT);
+  const message = await result;
+  if (isFirefox)
+    expect(message).toBe('CLOSE_ABNORMAL');
+  else
+    expect(message).toContain(': 400');
+
   await browser.close();
 });
 

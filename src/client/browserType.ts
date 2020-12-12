@@ -16,7 +16,7 @@
 
 import * as channels from '../protocol/channels';
 import { Browser } from './browser';
-import { BrowserContext } from './browserContext';
+import { BrowserContext, validateBrowserContextOptions } from './browserContext';
 import { ChannelOwner } from './channelOwner';
 import { LaunchOptions, LaunchServerOptions, ConnectOptions, LaunchPersistentContextOptions } from './types';
 import * as WebSocket from 'ws';
@@ -28,8 +28,7 @@ import { Events } from './events';
 import { TimeoutSettings } from '../utils/timeoutSettings';
 import { ChildProcess } from 'child_process';
 import { envObjectToArray } from './clientHelper';
-import { validateHeaders } from './network';
-import { assert, makeWaitForNextTask, headersObjectToArray, mkdirIfNeeded } from '../utils/utils';
+import { assert, makeWaitForNextTask, mkdirIfNeeded } from '../utils/utils';
 import { SelectorsOwner, sharedSelectors } from './selectors';
 import { kBrowserClosedError } from '../utils/errors';
 import { Stream } from './stream';
@@ -91,43 +90,38 @@ export class BrowserType extends ChannelOwner<channels.BrowserTypeChannel, chann
   }
 
   async launchPersistentContext(userDataDir: string, options: LaunchPersistentContextOptions = {}): Promise<BrowserContext> {
-    const logger = options.logger;
     return this._wrapApiCall('browserType.launchPersistentContext', async () => {
       assert(!(options as any).port, 'Cannot specify a port without launching as a server.');
-      if (options.extraHTTPHeaders)
-        validateHeaders(options.extraHTTPHeaders);
+      const contextOptions = validateBrowserContextOptions(options);
       const persistentOptions: channels.BrowserTypeLaunchPersistentContextParams = {
-        ...options,
-        viewport: options.viewport === null ? undefined : options.viewport,
-        noDefaultViewport: options.viewport === null,
+        ...contextOptions,
         ignoreDefaultArgs: Array.isArray(options.ignoreDefaultArgs) ? options.ignoreDefaultArgs : undefined,
         ignoreAllDefaultArgs: !!options.ignoreDefaultArgs && !Array.isArray(options.ignoreDefaultArgs),
         env: options.env ? envObjectToArray(options.env) : undefined,
-        extraHTTPHeaders: options.extraHTTPHeaders ? headersObjectToArray(options.extraHTTPHeaders) : undefined,
         userDataDir,
       };
       const result = await this._channel.launchPersistentContext(persistentOptions);
       const context = BrowserContext.from(result.context);
-      context._options = persistentOptions;
-      context._logger = logger;
+      context._options = contextOptions;
+      context._logger = options.logger;
       return context;
-    }, logger);
+    }, options.logger);
   }
 
-  async connect(options: ConnectOptions): Promise<Browser> {
-    const logger = options.logger;
+  async connect(params: ConnectOptions): Promise<Browser> {
+    const logger = params.logger;
     return this._wrapApiCall('browserType.connect', async () => {
       const connection = new Connection();
 
-      const ws = new WebSocket(options.wsEndpoint, [], {
+      const ws = new WebSocket(params.wsEndpoint, [], {
         perMessageDeflate: false,
         maxPayload: 256 * 1024 * 1024, // 256Mb,
-        handshakeTimeout: this._timeoutSettings.timeout(options),
+        handshakeTimeout: this._timeoutSettings.timeout(params),
       });
 
       // The 'ws' module in node sometimes sends us multiple messages in a single task.
-      const waitForNextTask = options.slowMo
-        ? (cb: () => any) => setTimeout(cb, options.slowMo)
+      const waitForNextTask = params.slowMo
+        ? (cb: () => any) => setTimeout(cb, params.slowMo)
         : makeWaitForNextTask();
       connection.onmessage = message => {
         if (ws.readyState !== WebSocket.OPEN) {
@@ -143,9 +137,9 @@ export class BrowserType extends ChannelOwner<channels.BrowserTypeChannel, chann
       });
 
       return await new Promise<Browser>(async (fulfill, reject) => {
-        if ((options as any).__testHookBeforeCreateBrowser) {
+        if ((params as any).__testHookBeforeCreateBrowser) {
           try {
-            await (options as any).__testHookBeforeCreateBrowser();
+            await (params as any).__testHookBeforeCreateBrowser();
           } catch (e) {
             reject(e);
           }
@@ -193,7 +187,7 @@ export class RemoteBrowser extends ChannelOwner<channels.RemoteBrowserChannel, c
   }
 
   private async _onVideo(context: BrowserContext, stream: Stream, relativePath: string) {
-    const videoFile = path.join(context._options.videosPath!, relativePath);
+    const videoFile = path.join(context._options.recordVideo!.dir, relativePath);
     await mkdirIfNeeded(videoFile);
     stream.stream().pipe(fs.createWriteStream(videoFile));
   }

@@ -491,6 +491,7 @@ const Network = {
     'resumeInterceptedRequest': {
       params: {
         requestId: t.String,
+        url: t.Optional(t.String),
         method: t.Optional(t.String),
         headers: t.Optional(t.Array(networkTypes.HTTPHeader)),
         postData: t.Optional(t.String),
@@ -667,6 +668,34 @@ const Page = {
     'screencastStarted': {
       screencastId: t.String,
       file: t.String,
+    },
+    'webSocketCreated': {
+      frameId: t.String,
+      wsid: t.String,
+      requestURL: t.String,
+    },
+    'webSocketOpened': {
+      frameId: t.String,
+      requestId: t.String,
+      wsid: t.String,
+      effectiveURL: t.String,
+    },
+    'webSocketClosed': {
+      frameId: t.String,
+      wsid: t.String,
+      error: t.String,
+    },
+    'webSocketFrameSent': {
+      frameId: t.String,
+      wsid: t.String,
+      opcode: t.Number,
+      data: t.String,
+    },
+    'webSocketFrameReceived': {
+      frameId: t.String,
+      wsid: t.String,
+      opcode: t.Number,
+      data: t.String,
     },
   },
 

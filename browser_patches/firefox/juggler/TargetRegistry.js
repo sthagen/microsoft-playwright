@@ -155,6 +155,7 @@ class TargetRegistry {
         throw new Error(`Internal error: cannot find context for userContextId=${userContextId}`);
       const target = new PageTarget(this, window, tab, browserContext, openerTarget);
       target.updateUserAgent();
+      target.updateTouchOverride();
       if (!hasExplicitSize)
         target.updateViewportSize();
       if (browserContext.screencastOptions)
@@ -338,12 +339,8 @@ class PageTarget {
       onLocationChange: (aWebProgress, aRequest, aLocation) => this._onNavigated(aLocation),
     };
     this._eventListeners = [
+      helper.addObserver(this._updateModalDialogs.bind(this), 'tabmodal-dialog-loaded'),
       helper.addProgressListener(tab.linkedBrowser, navigationListener, Ci.nsIWebProgress.NOTIFY_LOCATION),
-      helper.addEventListener(this._linkedBrowser, 'DOMWillOpenModalDialog', async (event) => {
-        // wait for the dialog to be actually added to DOM.
-        await Promise.resolve();
-        this._updateModalDialogs();
-      }),
       helper.addEventListener(this._linkedBrowser, 'DOMModalDialogClosed', event => this._updateModalDialogs()),
     ];
 
@@ -373,6 +370,10 @@ class PageTarget {
 
   browserContext() {
     return this._browserContext;
+  }
+
+  updateTouchOverride() {
+    this._linkedBrowser.browsingContext.touchEventsOverride = this._browserContext.touchOverride ? 'enabled' : 'none';
   }
 
   updateUserAgent() {
@@ -421,8 +422,8 @@ class PageTarget {
     await this.updateViewportSize();
   }
 
-  async close(runBeforeUnload = false) {
-    await this._gBrowser.removeTab(this._tab, {
+  close(runBeforeUnload = false) {
+    this._gBrowser.removeTab(this._tab, {
       skipPermitUnload: !runBeforeUnload,
     });
   }
@@ -520,7 +521,14 @@ class PageTarget {
     this._browserContext.pages.delete(this);
     this._registry._browserToTarget.delete(this._linkedBrowser);
     this._registry._browserBrowsingContextToTarget.delete(this._linkedBrowser.browsingContext);
-    helper.removeListeners(this._eventListeners);
+    try {
+      helper.removeListeners(this._eventListeners);
+    } catch (e) {
+      // In some cases, removing listeners from this._linkedBrowser fails
+      // because it is already half-destroyed.
+      if (e)
+        dump(e.message + '\n' + e.stack + '\n');
+    }
     this._registry.emit(TargetRegistry.Events.TargetDestroyed, this);
   }
 }
@@ -556,6 +564,7 @@ class BrowserContext {
     this.downloadOptions = undefined;
     this.defaultViewportSize = undefined;
     this.defaultUserAgent = null;
+    this.touchOverride = false;
     this.screencastOptions = undefined;
     this.scriptsToEvaluateOnNewDocument = [];
     this.bindings = [];
@@ -566,7 +575,8 @@ class BrowserContext {
   async destroy() {
     if (this.userContextId !== 0) {
       ContextualIdentityService.remove(this.userContextId);
-      ContextualIdentityService.closeContainerTabs(this.userContextId);
+      for (const page of this.pages)
+        page.close();
       if (this.pages.size) {
         await new Promise(f => {
           const listener = helper.on(this._registry, TargetRegistry.Events.TargetDestroyed, () => {
@@ -606,6 +616,12 @@ class BrowserContext {
     this.defaultUserAgent = userAgent;
     for (const page of this.pages)
       page.updateUserAgent();
+  }
+
+  setTouchOverride(touchOverride) {
+    this.touchOverride = touchOverride;
+    for (const page of this.pages)
+      page.updateTouchOverride();
   }
 
   async setDefaultViewport(viewport) {
@@ -757,9 +773,13 @@ class Dialog {
     const type = prompt.args.promptType;
     switch (type) {
       case 'alert':
+      case 'alertCheck':
+        return new Dialog(prompt, 'alert');
       case 'prompt':
+        return new Dialog(prompt, 'prompt');
       case 'confirm':
-        return new Dialog(prompt, type);
+      case 'confirmCheck':
+        return new Dialog(prompt, 'confirm');
       case 'confirmEx':
         return new Dialog(prompt, 'beforeunload');
       default:

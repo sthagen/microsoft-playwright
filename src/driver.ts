@@ -21,9 +21,9 @@ import { DispatcherConnection } from './dispatchers/dispatcher';
 import { PlaywrightDispatcher } from './dispatchers/playwrightDispatcher';
 import { installBrowsersWithProgressBar } from './install/installer';
 import { Transport } from './protocol/transport';
-import { Electron } from './server/electron/electron';
 import { Playwright } from './server/playwright';
 import { gracefullyCloseAll } from './server/processLauncher';
+import { installHarTracer } from './trace/harTracer';
 import { installTracer } from './trace/tracer';
 
 
@@ -46,6 +46,7 @@ export async function apiJson(): Promise<string> {
 export function runServer() {
   installDebugController();
   installTracer();
+  installHarTracer();
 
   const dispatcherConnection = new DispatcherConnection();
   const transport = new Transport(process.stdout, process.stdin);
@@ -60,7 +61,6 @@ export function runServer() {
   dispatcherConnection.onmessage = message => transport.send(JSON.stringify(message));
 
   const playwright = new Playwright(__dirname, require('../browsers.json')['browsers']);
-  (playwright as any).electron = new Electron();
   new PlaywrightDispatcher(dispatcherConnection.rootDispatcher(), playwright);
 }
 

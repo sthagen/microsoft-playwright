@@ -19,8 +19,8 @@ import { folio } from './remoteServer.fixture';
 import * as fs from 'fs';
 const { it, expect, describe } = folio;
 
-describe('connect', (suite, { wire }) => {
-  suite.skip(wire);
+describe('connect', (suite, { mode }) => {
+  suite.skip(mode !== 'default');
   suite.slow();
 }, () => {
   it('should be able to reconnect to a browser', async ({browserType, remoteServer, server}) => {
@@ -240,8 +240,7 @@ describe('connect', (suite, { wire }) => {
     const remote = await browserType.connect({ wsEndpoint: remoteServer.wsEndpoint() });
     const videosPath = testInfo.outputPath();
     const context = await remote.newContext({
-      videosPath,
-      videoSize: { width: 320, height: 240 },
+      recordVideo: { dir: videosPath, size: { width: 320, height: 240 } },
     });
     const page = await context.newPage();
     await page.evaluate(() => document.body.style.backgroundColor = 'red');

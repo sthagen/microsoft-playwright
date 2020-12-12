@@ -20,37 +20,35 @@ import * as path from 'path';
 import * as util from 'util';
 import { BrowserContext, normalizeProxySettings, validateBrowserContextOptions } from './browserContext';
 import * as browserPaths from '../utils/browserPaths';
-import { ConnectionTransport, WebSocketTransport } from './transport';
+import { ConnectionTransport } from './transport';
 import { BrowserOptions, Browser, BrowserProcess } from './browser';
-import { launchProcess, Env, waitForLine, envArrayToObject } from './processLauncher';
+import { launchProcess, Env, envArrayToObject } from './processLauncher';
 import { PipeTransport } from './pipeTransport';
 import { Progress, ProgressController } from './progress';
 import * as types from './types';
 import { TimeoutSettings } from '../utils/timeoutSettings';
 import { validateHostRequirements } from './validateDependencies';
 import { isDebugMode } from '../utils/utils';
+import { helper } from './helper';
+import { RecentLogsCollector } from '../utils/debugLogger';
 
 const mkdirAsync = util.promisify(fs.mkdir);
 const mkdtempAsync = util.promisify(fs.mkdtemp);
 const existsAsync = (path: string): Promise<boolean> => new Promise(resolve => fs.stat(path, err => resolve(!err)));
 const DOWNLOADS_FOLDER = path.join(os.tmpdir(), 'playwright_downloads-');
 
-type WebSocketNotPipe = { webSocketRegex: RegExp, stream: 'stdout' | 'stderr' };
-
 export abstract class BrowserType {
   private _name: string;
   private _executablePath: string;
-  private _webSocketNotPipe: WebSocketNotPipe | null;
   private _browserDescriptor: browserPaths.BrowserDescriptor;
   readonly _browserPath: string;
 
-  constructor(packagePath: string, browser: browserPaths.BrowserDescriptor, webSocketOrPipe: WebSocketNotPipe | null) {
+  constructor(packagePath: string, browser: browserPaths.BrowserDescriptor) {
     this._name = browser.name;
     const browsersPath = browserPaths.browsersPath(packagePath);
     this._browserDescriptor = browser;
     this._browserPath = browserPaths.browserDirectory(browsersPath, browser);
     this._executablePath = browserPaths.executablePath(this._browserPath, browser) || '';
-    this._webSocketNotPipe = webSocketOrPipe;
   }
 
   executablePath(): string {
@@ -61,12 +59,12 @@ export abstract class BrowserType {
     return this._name;
   }
 
-  async launch(options: types.LaunchOptions = {}): Promise<Browser> {
+  async launch(options: types.LaunchOptions, protocolLogger?: types.ProtocolLogger): Promise<Browser> {
     options = validateLaunchOptions(options);
     const controller = new ProgressController();
     controller.setLogName('browser');
     const browser = await controller.run(progress => {
-      return this._innerLaunch(progress, options, undefined).catch(e => { throw this._rewriteStartupError(e); });
+      return this._innerLaunch(progress, options, undefined, helper.debugProtocolLogger(protocolLogger)).catch(e => { throw this._rewriteStartupError(e); });
     }, TimeoutSettings.timeout(options));
     return browser;
   }
@@ -77,14 +75,15 @@ export abstract class BrowserType {
     const controller = new ProgressController();
     controller.setLogName('browser');
     const browser = await controller.run(progress => {
-      return this._innerLaunch(progress, options, persistent, userDataDir).catch(e => { throw this._rewriteStartupError(e); });
+      return this._innerLaunch(progress, options, persistent, helper.debugProtocolLogger(), userDataDir).catch(e => { throw this._rewriteStartupError(e); });
     }, TimeoutSettings.timeout(options));
     return browser._defaultContext!;
   }
 
-  async _innerLaunch(progress: Progress, options: types.LaunchOptions, persistent: types.BrowserContextOptions | undefined, userDataDir?: string): Promise<Browser> {
+  async _innerLaunch(progress: Progress, options: types.LaunchOptions, persistent: types.BrowserContextOptions | undefined, protocolLogger: types.ProtocolLogger, userDataDir?: string): Promise<Browser> {
     options.proxy = options.proxy ? normalizeProxySettings(options.proxy) : undefined;
-    const { browserProcess, downloadsPath, transport } = await this._launchProcess(progress, options, !!persistent, userDataDir);
+    const browserLogsCollector = new RecentLogsCollector();
+    const { browserProcess, downloadsPath, transport } = await this._launchProcess(progress, options, !!persistent, browserLogsCollector, userDataDir);
     if ((options as any).__testHookBeforeCreateBrowser)
       await (options as any).__testHookBeforeCreateBrowser();
     const browserOptions: BrowserOptions = {
@@ -95,6 +94,8 @@ export abstract class BrowserType {
       downloadsPath,
       browserProcess,
       proxy: options.proxy,
+      protocolLogger,
+      browserLogsCollector,
     };
     if (persistent)
       validateBrowserContextOptions(persistent, browserOptions);
@@ -106,7 +107,7 @@ export abstract class BrowserType {
     return browser;
   }
 
-  private async _launchProcess(progress: Progress, options: types.LaunchOptions, isPersistent: boolean, userDataDir?: string): Promise<{ browserProcess: BrowserProcess, downloadsPath: string, transport: ConnectionTransport }> {
+  private async _launchProcess(progress: Progress, options: types.LaunchOptions, isPersistent: boolean, browserLogsCollector: RecentLogsCollector, userDataDir?: string): Promise<{ browserProcess: BrowserProcess, downloadsPath: string, transport: ConnectionTransport }> {
     const {
       ignoreDefaultArgs,
       ignoreAllDefaultArgs,
@@ -174,8 +175,11 @@ export abstract class BrowserType {
       handleSIGINT,
       handleSIGTERM,
       handleSIGHUP,
-      progress,
-      pipe: !this._webSocketNotPipe,
+      log: (message: string) => {
+        progress.log(message);
+        browserLogsCollector.log(message);
+      },
+      stdio: 'pipe',
       tempDirectories,
       attemptToGracefullyClose: async () => {
         if ((options as any).__testHookGracefullyClose)
@@ -198,14 +202,8 @@ export abstract class BrowserType {
     };
     progress.cleanupWhenAborted(() => browserProcess && closeOrKill(browserProcess, progress.timeUntilDeadline()));
 
-    if (this._webSocketNotPipe) {
-      const match = await waitForLine(progress, launchedProcess, this._webSocketNotPipe.stream === 'stdout' ? launchedProcess.stdout : launchedProcess.stderr, this._webSocketNotPipe.webSocketRegex);
-      const innerEndpoint = match[1];
-      transport = await WebSocketTransport.connect(progress, innerEndpoint);
-    } else {
-      const stdio = launchedProcess.stdio as unknown as [NodeJS.ReadableStream, NodeJS.WritableStream, NodeJS.WritableStream, NodeJS.WritableStream, NodeJS.ReadableStream];
-      transport = new PipeTransport(stdio[3], stdio[4]);
-    }
+    const stdio = launchedProcess.stdio as unknown as [NodeJS.ReadableStream, NodeJS.WritableStream, NodeJS.WritableStream, NodeJS.WritableStream, NodeJS.ReadableStream];
+    transport = new PipeTransport(stdio[3], stdio[4]);
     return { browserProcess, downloadsPath, transport };
   }
 

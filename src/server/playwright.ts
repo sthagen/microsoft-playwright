@@ -14,15 +14,20 @@
  * limitations under the License.
  */
 
-import { Chromium } from './chromium/chromium';
-import { WebKit } from './webkit/webkit';
-import { Firefox } from './firefox/firefox';
 import * as browserPaths from '../utils/browserPaths';
+import { Android } from './android/android';
+import { AdbBackend } from './android/backendAdb';
+import { Chromium } from './chromium/chromium';
+import { Electron } from './electron/electron';
+import { Firefox } from './firefox/firefox';
 import { serverSelectors } from './selectors';
+import { WebKit } from './webkit/webkit';
 
 export class Playwright {
   readonly selectors = serverSelectors;
   readonly chromium: Chromium;
+  readonly android: Android;
+  readonly electron: Electron;
   readonly firefox: Firefox;
   readonly webkit: WebKit;
 
@@ -35,5 +40,8 @@ export class Playwright {
 
     const webkit = browsers.find(browser => browser.name === 'webkit');
     this.webkit = new WebKit(packagePath, webkit!);
+
+    this.electron = new Electron();
+    this.android = new Android(new AdbBackend());
   }
 }

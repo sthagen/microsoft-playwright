@@ -135,6 +135,24 @@ function findVideos(videoDir: string) {
   return files.filter(file => file.endsWith('webm')).map(file => path.join(videoDir, file));
 }
 
+function expectRedFrames(videoFile: string, size: { width: number, height: number }) {
+  const videoPlayer = new VideoPlayer(videoFile);
+  const duration = videoPlayer.duration;
+  expect(duration).toBeGreaterThan(0);
+
+  expect(videoPlayer.videoWidth).toBe(size.width);
+  expect(videoPlayer.videoHeight).toBe(size.height);
+
+  {
+    const pixels = videoPlayer.seekLastFrame().data;
+    expectAll(pixels, almostRed);
+  }
+  {
+    const pixels = videoPlayer.seekLastFrame({ x: size.width - 20, y: 0 }).data;
+    expectAll(pixels, almostRed);
+  }
+}
+
 describe('screencast', suite => {
   suite.slow();
 }, () => {
@@ -143,7 +161,7 @@ describe('screencast', suite => {
     expect(error.message).toContain('"videoSize" option requires "videosPath" to be specified');
   });
 
-  it('should capture static page', async ({browser, testInfo}) => {
+  it('should work with old options', async ({browser, testInfo}) => {
     const videosPath = testInfo.outputPath('');
     const size = { width: 450, height: 240 };
     const context = await browser.newContext({
@@ -158,30 +176,42 @@ describe('screencast', suite => {
     await context.close();
 
     const videoFile = await page.video().path();
-    const videoPlayer = new VideoPlayer(videoFile);
-    const duration = videoPlayer.duration;
-    expect(duration).toBeGreaterThan(0);
+    expectRedFrames(videoFile, size);
+  });
 
-    expect(videoPlayer.videoWidth).toBe(450);
-    expect(videoPlayer.videoHeight).toBe(240);
+  it('should throw without recordVideo.dir', async ({ browser }) => {
+    const error = await browser.newContext({ recordVideo: {} as any }).catch(e => e);
+    expect(error.message).toContain('recordVideo.dir: expected string, got undefined');
+  });
 
-    {
-      const pixels = videoPlayer.seekLastFrame().data;
-      expectAll(pixels, almostRed);
-    }
-    {
-      const pixels = videoPlayer.seekLastFrame({ x: 430, y: 0}).data;
-      expectAll(pixels, almostRed);
-    }
+  it('should capture static page', async ({browser, testInfo}) => {
+    const size = { width: 450, height: 240 };
+    const context = await browser.newContext({
+      recordVideo: {
+        dir: testInfo.outputPath(''),
+        size
+      },
+      viewport: size,
+    });
+    const page = await context.newPage();
+
+    await page.evaluate(() => document.body.style.backgroundColor = 'red');
+    await new Promise(r => setTimeout(r, 1000));
+    await context.close();
+
+    const videoFile = await page.video().path();
+    expectRedFrames(videoFile, size);
   });
 
   it('should expose video path', async ({browser, testInfo}) => {
     const videosPath = testInfo.outputPath('');
     const size = { width: 320, height: 240 };
     const context = await browser.newContext({
-      videosPath,
+      recordVideo: {
+        dir: videosPath,
+        size
+      },
       viewport: size,
-      videoSize: size
     });
     const page = await context.newPage();
     await page.evaluate(() => document.body.style.backgroundColor = 'red');
@@ -195,9 +225,11 @@ describe('screencast', suite => {
     const videosPath = testInfo.outputPath('');
     const size = { width: 320, height: 240 };
     const context = await browser.newContext({
-      videosPath,
+      recordVideo: {
+        dir: videosPath,
+        size
+      },
       viewport: size,
-      videoSize: size
     });
     const page = await context.newPage();
     const path = await page.video()!.path();
@@ -210,9 +242,11 @@ describe('screencast', suite => {
     const videosPath = testInfo.outputPath('');
     const size = { width: 320, height: 240 };
     const context = await browser.newContext({
-      videosPath,
+      recordVideo: {
+        dir: videosPath,
+        size
+      },
       viewport: size,
-      videoSize: size
     });
     const page = await context.newPage();
     const [popup] = await Promise.all([
@@ -226,10 +260,11 @@ describe('screencast', suite => {
   });
 
   it('should capture navigation', async ({browser, server, testInfo}) => {
-    const videosPath = testInfo.outputPath('');
     const context = await browser.newContext({
-      videosPath,
-      videoSize: { width: 1280, height: 720 }
+      recordVideo: {
+        dir: testInfo.outputPath(''),
+        size: { width: 1280, height: 720 }
+      },
     });
     const page = await context.newPage();
 
@@ -255,15 +290,16 @@ describe('screencast', suite => {
     }
   });
 
-  it('should capture css transformation', (test, { browserName, platform, headful }) => {
+  it('should capture css transformation', (test, { headful }) => {
     test.fixme(headful, 'Fails on headful');
   }, async ({browser, server, testInfo}) => {
-    const videosPath = testInfo.outputPath('');
     const size = { width: 320, height: 240 };
     // Set viewport equal to screencast frame size to avoid scaling.
     const context = await browser.newContext({
-      videosPath,
-      videoSize: size,
+      recordVideo: {
+        dir: testInfo.outputPath(''),
+        size,
+      },
       viewport: size,
     });
     const page = await context.newPage();
@@ -285,19 +321,29 @@ describe('screencast', suite => {
 
   it('should work for popups', async ({browser, testInfo, server}) => {
     const videosPath = testInfo.outputPath('');
+    const size = { width: 450, height: 240 };
     const context = await browser.newContext({
-      videosPath,
-      videoSize: { width: 320, height: 240 }
+      recordVideo: {
+        dir: videosPath,
+        size,
+      },
+      viewport: size,
     });
 
     const page = await context.newPage();
     await page.goto(server.EMPTY_PAGE);
-    await Promise.all([
+    const [popup] = await Promise.all([
       page.waitForEvent('popup'),
       page.evaluate(() => { window.open('about:blank'); }),
     ]);
+    await popup.evaluate(() => document.body.style.backgroundColor = 'red');
     await new Promise(r => setTimeout(r, 1000));
     await context.close();
+
+    const pageVideoFile = await page.video().path();
+    const popupVideoFile = await popup.video().path();
+    expect(pageVideoFile).not.toEqual(popupVideoFile);
+    expectRedFrames(popupVideoFile, size);
 
     const videoFiles = findVideos(videosPath);
     expect(videoFiles.length).toBe(2);
@@ -306,12 +352,13 @@ describe('screencast', suite => {
   it('should scale frames down to the requested size ', (test, parameters) => {
     test.fixme(parameters.headful, 'Fails on headful');
   }, async ({browser, testInfo, server}) => {
-    const videosPath = testInfo.outputPath('');
     const context = await browser.newContext({
-      videosPath,
+      recordVideo: {
+        dir: testInfo.outputPath(''),
+        // Set size to 1/2 of the viewport.
+        size: { width: 320, height: 240 },
+      },
       viewport: {width: 640, height: 480},
-      // Set size to 1/2 of the viewport.
-      videoSize: { width: 320, height: 240 },
     });
     const page = await context.newPage();
 
@@ -351,10 +398,11 @@ describe('screencast', suite => {
   });
 
   it('should use viewport as default size', async ({browser, testInfo}) => {
-    const videosPath = testInfo.outputPath('');
     const size = {width: 800, height: 600};
     const context = await browser.newContext({
-      videosPath,
+      recordVideo: {
+        dir: testInfo.outputPath(''),
+      },
       viewport: size,
     });
 
@@ -364,14 +412,15 @@ describe('screencast', suite => {
 
     const videoFile = await page.video().path();
     const videoPlayer = new VideoPlayer(videoFile);
-    expect(await videoPlayer.videoWidth).toBe(size.width);
-    expect(await videoPlayer.videoHeight).toBe(size.height);
+    expect(videoPlayer.videoWidth).toBe(size.width);
+    expect(videoPlayer.videoHeight).toBe(size.height);
   });
 
   it('should be 1280x720 by default', async ({browser, testInfo}) => {
-    const videosPath = testInfo.outputPath('');
     const context = await browser.newContext({
-      videosPath,
+      recordVideo: {
+        dir: testInfo.outputPath(''),
+      },
     });
 
     const page = await context.newPage();
@@ -380,17 +429,18 @@ describe('screencast', suite => {
 
     const videoFile = await page.video().path();
     const videoPlayer = new VideoPlayer(videoFile);
-    expect(await videoPlayer.videoWidth).toBe(1280);
-    expect(await videoPlayer.videoHeight).toBe(720);
+    expect(videoPlayer.videoWidth).toBe(1280);
+    expect(videoPlayer.videoHeight).toBe(720);
   });
 
   it('should capture static page in persistent context', async ({launchPersistent, testInfo}) => {
-    const videosPath = testInfo.outputPath('');
     const size = { width: 320, height: 240 };
     const { context, page } = await launchPersistent({
-      videosPath,
+      recordVideo: {
+        dir: testInfo.outputPath(''),
+        size,
+      },
       viewport: size,
-      videoSize: size
     });
 
     await page.evaluate(() => document.body.style.backgroundColor = 'red');

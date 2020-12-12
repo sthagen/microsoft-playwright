@@ -413,6 +413,34 @@ export module Protocol {
       screencastId: string;
       file: string;
     }
+    export type webSocketCreatedPayload = {
+      frameId: string;
+      wsid: string;
+      requestURL: string;
+    }
+    export type webSocketOpenedPayload = {
+      frameId: string;
+      requestId: string;
+      wsid: string;
+      effectiveURL: string;
+    }
+    export type webSocketClosedPayload = {
+      frameId: string;
+      wsid: string;
+      error: string;
+    }
+    export type webSocketFrameSentPayload = {
+      frameId: string;
+      wsid: string;
+      opcode: number;
+      data: string;
+    }
+    export type webSocketFrameReceivedPayload = {
+      frameId: string;
+      wsid: string;
+      opcode: number;
+      data: string;
+    }
     export type closeParameters = {
       runBeforeUnload?: boolean;
     };
@@ -857,6 +885,7 @@ export module Protocol {
     export type abortInterceptedRequestReturnValue = void;
     export type resumeInterceptedRequestParameters = {
       requestId: string;
+      url?: string;
       method?: string;
       headers?: {
         name: string;
@@ -979,6 +1008,11 @@ export module Protocol {
     "Page.workerDestroyed": Page.workerDestroyedPayload;
     "Page.dispatchMessageFromWorker": Page.dispatchMessageFromWorkerPayload;
     "Page.screencastStarted": Page.screencastStartedPayload;
+    "Page.webSocketCreated": Page.webSocketCreatedPayload;
+    "Page.webSocketOpened": Page.webSocketOpenedPayload;
+    "Page.webSocketClosed": Page.webSocketClosedPayload;
+    "Page.webSocketFrameSent": Page.webSocketFrameSentPayload;
+    "Page.webSocketFrameReceived": Page.webSocketFrameReceivedPayload;
     "Runtime.executionContextCreated": Runtime.executionContextCreatedPayload;
     "Runtime.executionContextDestroyed": Runtime.executionContextDestroyedPayload;
     "Runtime.console": Runtime.consolePayload;

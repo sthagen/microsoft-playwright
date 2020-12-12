@@ -23,13 +23,16 @@ import { Page } from '../page';
 import { TimeoutSettings } from '../../utils/timeoutSettings';
 import { WebSocketTransport } from '../transport';
 import * as types from '../types';
-import { launchProcess, waitForLine, envArrayToObject } from '../processLauncher';
+import { launchProcess, envArrayToObject } from '../processLauncher';
 import { BrowserContext } from '../browserContext';
 import type {BrowserWindow} from 'electron';
-import { ProgressController, runAbortableTask } from '../progress';
+import { Progress, ProgressController, runAbortableTask } from '../progress';
 import { EventEmitter } from 'events';
 import { helper } from '../helper';
-import { BrowserProcess } from '../browser';
+import { BrowserOptions, BrowserProcess } from '../browser';
+import * as childProcess from 'child_process';
+import * as readline from 'readline';
+import { RecentLogsCollector } from '../../utils/debugLogger';
 
 export type ElectronLaunchOptionsBase = {
   args?: string[],
@@ -155,6 +158,7 @@ export class Electron  {
           electronArguments.push('--no-sandbox');
       }
 
+      const browserLogsCollector = new RecentLogsCollector();
       const { launchedProcess, gracefullyClose, kill } = await launchProcess({
         executablePath,
         args: electronArguments,
@@ -162,19 +166,22 @@ export class Electron  {
         handleSIGINT,
         handleSIGTERM,
         handleSIGHUP,
-        progress,
-        pipe: true,
+        log: (message: string) => {
+          progress.log(message);
+          browserLogsCollector.log(message);
+        },
+        stdio: 'pipe',
         cwd: options.cwd,
         tempDirectories: [],
         attemptToGracefullyClose: () => app!.close(),
         onExit: () => {},
       });
 
-      const nodeMatch = await waitForLine(progress, launchedProcess, launchedProcess.stderr, /^Debugger listening on (ws:\/\/.*)$/);
+      const nodeMatch = await waitForLine(progress, launchedProcess, /^Debugger listening on (ws:\/\/.*)$/);
       const nodeTransport = await WebSocketTransport.connect(progress, nodeMatch[1]);
-      const nodeConnection = new CRConnection(nodeTransport);
+      const nodeConnection = new CRConnection(nodeTransport, helper.debugProtocolLogger(), browserLogsCollector);
 
-      const chromeMatch = await waitForLine(progress, launchedProcess, launchedProcess.stderr, /^DevTools listening on (ws:\/\/.*)$/);
+      const chromeMatch = await waitForLine(progress, launchedProcess, /^DevTools listening on (ws:\/\/.*)$/);
       const chromeTransport = await WebSocketTransport.connect(progress, chromeMatch[1]);
       const browserProcess: BrowserProcess = {
         onclose: undefined,
@@ -182,10 +189,46 @@ export class Electron  {
         close: gracefullyClose,
         kill
       };
-      const browser = await CRBrowser.connect(chromeTransport, { name: 'electron', headful: true, persistent: { noDefaultViewport: true }, browserProcess });
+      const browserOptions: BrowserOptions = {
+        name: 'electron',
+        headful: true,
+        persistent: { noDefaultViewport: true },
+        browserProcess,
+        protocolLogger: helper.debugProtocolLogger(),
+        browserLogsCollector,
+      };
+      const browser = await CRBrowser.connect(chromeTransport, browserOptions);
       app = new ElectronApplication(browser, nodeConnection);
       await app._init();
       return app;
     }, TimeoutSettings.timeout(options));
   }
+}
+
+function waitForLine(progress: Progress, process: childProcess.ChildProcess, regex: RegExp): Promise<RegExpMatchArray> {
+  return new Promise((resolve, reject) => {
+    const rl = readline.createInterface({ input: process.stderr });
+    const failError = new Error('Process failed to launch!');
+    const listeners = [
+      helper.addEventListener(rl, 'line', onLine),
+      helper.addEventListener(rl, 'close', reject.bind(null, failError)),
+      helper.addEventListener(process, 'exit', reject.bind(null, failError)),
+      // It is Ok to remove error handler because we did not create process and there is another listener.
+      helper.addEventListener(process, 'error', reject.bind(null, failError))
+    ];
+
+    progress.cleanupWhenAborted(cleanup);
+
+    function onLine(line: string) {
+      const match = line.match(regex);
+      if (!match)
+        return;
+      cleanup();
+      resolve(match);
+    }
+
+    function cleanup() {
+      helper.removeEventListeners(listeners);
+    }
+  });
 }

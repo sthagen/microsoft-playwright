@@ -73,8 +73,8 @@ class PageNetwork {
     this._interceptedRequests.clear();
   }
 
-  resumeInterceptedRequest(requestId, method, headers, postData) {
-    this._takeIntercepted(requestId).resume(method, headers, postData);
+  resumeInterceptedRequest(requestId, url, method, headers, postData) {
+    this._takeIntercepted(requestId).resume(url, method, headers, postData);
   }
 
   fulfillInterceptedRequest(requestId, status, statusText, headers, base64body) {
@@ -180,9 +180,10 @@ class NetworkRequest {
   }
 
   // Public interception API.
-  resume(method, headers, postData) {
+  resume(url, method, headers, postData) {
     this._expectingResumedRequest = { method, headers, postData };
-    this._interceptedChannel.resetInterception();
+    const newUri = url ? Services.io.newURI(url) : null;
+    this._interceptedChannel.resetInterceptionWithURI(newUri);
     this._interceptedChannel = undefined;
   }
 
@@ -238,9 +239,20 @@ class NetworkRequest {
       const synthesized = Cc["@mozilla.org/io/string-input-stream;1"].createInstance(Ci.nsIStringInputStream);
       const body = atob(postData);
       synthesized.setData(body, body.length);
+
+      const overridenHeader = (lowerCaseName, defaultValue) => {
+        if (headers) {
+          for (const header of headers) {
+            if (header.name.toLowerCase() === lowerCaseName) {
+              return header.value;
+            }
+          }
+        }
+        return defaultValue;
+      }
       // Clear content-length, so that upload stream resets it.
-      this.httpChannel.setRequestHeader('content-length', '', false /* merge */);
-      this.httpChannel.explicitSetUploadStream(synthesized, 'application/octet-stream', -1, this.httpChannel.requestMethod, false);
+      this.httpChannel.setRequestHeader('content-length', overridenHeader('content-length', ''), false /* merge */);
+      this.httpChannel.explicitSetUploadStream(synthesized, overridenHeader('content-type', 'application/octet-stream'), -1, this.httpChannel.requestMethod, false);
     }
   }
 
@@ -788,7 +800,7 @@ class ResponseStorage {
 
   addResponseBody(request, body) {
     if (body.length > this._maxResponseSize) {
-      this._responses.set(requestId, {
+      this._responses.set(request.requestId, {
         evicted: true,
         body: '',
       });

@@ -56,6 +56,8 @@ async function checkDeps() {
   }
 
   function allowImport(from, to) {
+    if (!to.startsWith('src' + path.sep))
+      return true;
     from = from.substring(from.indexOf('src' + path.sep)).replace(/\\/g, '/');
     to = to.substring(to.indexOf('src' + path.sep)).replace(/\\/g, '/');
     const fromDirectory = from.substring(0, from.lastIndexOf('/') + 1);
@@ -110,10 +112,12 @@ DEPS['src/server/common/'] = [];
 // Strict dependencies for injected code.
 DEPS['src/server/injected/'] = ['src/server/common/'];
 
-// Electron uses chromium internally.
+// Electron and Clank use chromium internally.
+DEPS['src/server/android/'] = [...DEPS['src/server/'], 'src/server/chromium/', 'src/protocol/transport.ts'];
 DEPS['src/server/electron/'] = [...DEPS['src/server/'], 'src/server/chromium/'];
+DEPS['src/server/clank/'] = [...DEPS['src/server/'], 'src/server/chromium/'];
 
-DEPS['src/server/playwright.ts'] = [...DEPS['src/server/'], 'src/server/chromium/', 'src/server/webkit/', 'src/server/firefox/'];
+DEPS['src/server/playwright.ts'] = [...DEPS['src/server/'], 'src/server/chromium/', 'src/server/webkit/', 'src/server/firefox/', 'src/server/android/', 'src/server/electron/'];
 DEPS['src/driver.ts'] = DEPS['src/inprocess.ts'] = DEPS['src/browserServerImpl.ts'] = ['src/**'];
 
 // Tracing is a client/server plugin, nothing should depend on it.
@@ -122,4 +126,11 @@ DEPS['src/trace/'] = ['src/utils/', 'src/client/**', 'src/server/**'];
 // Debug is a server plugin, nothing should depend on it.
 DEPS['src/debug/'] = ['src/utils/', 'src/generated/', 'src/server/**', 'src/debug/**'];
 
-checkDeps();
+// The service is a cross-cutting feature, and so it depends on a bunch of things.
+DEPS['src/remote/'] = ['src/client/', 'src/debug/', 'src/dispatchers/', 'src/server/', 'src/server/electron/', 'src/trace/'];
+DEPS['src/service.ts'] = ['src/remote/'];
+
+checkDeps().catch(e => {
+  console.error(e && e.stack ? e.stack : e);
+  process.exit(1);
+});

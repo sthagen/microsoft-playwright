@@ -62,10 +62,6 @@ const applySetting = {
     docShell.allowJavascript = !javaScriptDisabled;
   },
 
-  hasTouch: (hasTouch) => {
-    docShell.touchEventsOverride = hasTouch ? Ci.nsIDocShell.TOUCHEVENTS_OVERRIDE_ENABLED : Ci.nsIDocShell.TOUCHEVENTS_OVERRIDE_NONE;
-  },
-
   colorScheme: (colorScheme) => {
     frameTree.setColorScheme(colorScheme);
   },
@@ -92,6 +88,7 @@ function initialize() {
 
   // Enforce focused state for all top level documents.
   docShell.overrideHasFocus = true;
+  docShell.forceActiveState = true;
   frameTree = new FrameTree(docShell);
   for (const [name, value] of Object.entries(settings)) {
     if (value !== undefined)

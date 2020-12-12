@@ -24,7 +24,7 @@ import { Download } from './download';
 import * as frames from './frames';
 import { helper } from './helper';
 import * as network from './network';
-import { Page, PageBinding } from './page';
+import { Page, PageBinding, PageDelegate } from './page';
 import { Progress, ProgressController, ProgressResult } from './progress';
 import { Selectors, serverSelectors } from './selectors';
 import * as types from './types';
@@ -42,7 +42,7 @@ export class Video {
   constructor(context: BrowserContext, videoId: string, p: string) {
     this._videoId = videoId;
     this._path = p;
-    this._relativePath = path.relative(context._options.videosPath!, p);
+    this._relativePath = path.relative(context._options.recordVideo!.dir, p);
     this._context = context;
     this._finishedPromise = new Promise(fulfill => this._finishCallback = fulfill);
   }
@@ -82,7 +82,8 @@ export async function runAction<T>(task: (controller: ProgressController) => Pro
 
 export interface ContextListener {
   onContextCreated(context: BrowserContext): Promise<void>;
-  onContextDestroyed(context: BrowserContext): Promise<void>;
+  onContextWillDestroy(context: BrowserContext): Promise<void>;
+  onContextDidDestroy(context: BrowserContext): Promise<void>;
 }
 
 export const contextListeners = new Set<ContextListener>();
@@ -108,6 +109,7 @@ export abstract class BrowserContext extends EventEmitter {
   readonly _browserContextId: string | undefined;
   private _selectors?: Selectors;
   readonly _actionListeners = new Set<ActionListener>();
+  private _origins = new Set<string>();
 
   constructor(browser: Browser, options: types.BrowserContextOptions, browserContextId: string | undefined) {
     super();
@@ -132,8 +134,8 @@ export abstract class BrowserContext extends EventEmitter {
   }
 
   async _ensureVideosPath() {
-    if (this._options.videosPath)
-      await mkdirIfNeeded(path.join(this._options.videosPath, 'dummy'));
+    if (this._options.recordVideo)
+      await mkdirIfNeeded(path.join(this._options.recordVideo.dir, 'dummy'));
   }
 
   _browserClosed() {
@@ -156,7 +158,7 @@ export abstract class BrowserContext extends EventEmitter {
 
   // BrowserContext methods.
   abstract pages(): Page[];
-  abstract newPage(): Promise<Page>;
+  abstract newPageDelegate(): Promise<PageDelegate>;
   abstract _doCookies(urls: string[]): Promise<types.NetworkCookie[]>;
   abstract addCookies(cookies: types.SetNetworkCookieParam[]): Promise<void>;
   abstract clearCookies(): Promise<void>;
@@ -182,14 +184,15 @@ export abstract class BrowserContext extends EventEmitter {
   }
 
   async exposeBinding(name: string, needsHandle: boolean, playwrightBinding: frames.FunctionWithSource): Promise<void> {
+    const identifier = PageBinding.identifier(name, 'main');
+    if (this._pageBindings.has(identifier))
+      throw new Error(`Function "${name}" has been already registered`);
     for (const page of this.pages()) {
-      if (page._pageBindings.has(name))
+      if (page.getBinding(name, 'main'))
         throw new Error(`Function "${name}" has been already registered in one of the pages`);
     }
-    if (this._pageBindings.has(name))
-      throw new Error(`Function "${name}" has been already registered`);
-    const binding = new PageBinding(name, playwrightBinding, needsHandle);
-    this._pageBindings.set(name, binding);
+    const binding = new PageBinding(name, playwrightBinding, needsHandle, 'main');
+    this._pageBindings.set(identifier, binding);
     this._doExposeBinding(binding);
   }
 
@@ -219,7 +222,7 @@ export abstract class BrowserContext extends EventEmitter {
     this._timeoutSettings.setDefaultTimeout(timeout);
   }
 
-  async _loadDefaultContext(progress: Progress) {
+  async _loadDefaultContextAsIs(progress: Progress): Promise<Page[]> {
     if (!this.pages().length) {
       const waitForEvent = helper.waitForEvent(progress, this, BrowserContext.Events.Page);
       progress.cleanupWhenAborted(() => waitForEvent.dispose);
@@ -227,6 +230,11 @@ export abstract class BrowserContext extends EventEmitter {
     }
     const pages = this.pages();
     await pages[0].mainFrame()._waitForLoadState(progress, 'load');
+    return pages;
+  }
+
+  async _loadDefaultContext(progress: Progress) {
+    const pages = await this._loadDefaultContextAsIs(progress);
     if (pages.length !== 1 || pages[0].mainFrame().url() !== 'about:blank')
       throw new Error(`Arguments can not specify page to be opened (first url is ${pages[0].mainFrame().url()})`);
     if (this._options.isMobile || this._options.locale) {
@@ -240,7 +248,7 @@ export abstract class BrowserContext extends EventEmitter {
   }
 
   protected _authenticateProxyViaHeader() {
-    const proxy = this._browser._options.proxy || { username: undefined, password: undefined };
+    const proxy = this._options.proxy || this._browser._options.proxy || { username: undefined, password: undefined };
     const { username, password } = proxy;
     if (username) {
       this._options.httpCredentials = { username, password: password! };
@@ -253,7 +261,7 @@ export abstract class BrowserContext extends EventEmitter {
   }
 
   protected _authenticateProxyViaCredentials() {
-    const proxy = this._browser._options.proxy;
+    const proxy = this._options.proxy || this._browser._options.proxy;
     if (!proxy)
       return;
     const { username, password } = proxy;
@@ -266,9 +274,16 @@ export abstract class BrowserContext extends EventEmitter {
     await this._doUpdateRequestInterception();
   }
 
+  isClosingOrClosed() {
+    return this._closedStatus !== 'open';
+  }
+
   async close() {
     if (this._closedStatus === 'open') {
       this._closedStatus = 'closing';
+
+      for (const listener of contextListeners)
+        await listener.onContextWillDestroy(this);
 
       // Collect videos/downloads that we will await.
       const promises: Promise<any>[] = [];
@@ -297,10 +312,71 @@ export abstract class BrowserContext extends EventEmitter {
 
       // Bookkeeping.
       for (const listener of contextListeners)
-        await listener.onContextDestroyed(this);
+        await listener.onContextDidDestroy(this);
       this._didCloseInternal();
     }
     await this._closePromise;
+  }
+
+  async newPage(): Promise<Page> {
+    const pageDelegate = await this.newPageDelegate();
+    const pageOrError = await pageDelegate.pageOrError();
+    if (pageOrError instanceof Page) {
+      if (pageOrError.isClosed())
+        throw new Error('Page has been closed.');
+      return pageOrError;
+    }
+    throw pageOrError;
+  }
+
+  addVisitedOrigin(origin: string) {
+    this._origins.add(origin);
+  }
+
+  async storageState(): Promise<types.StorageState> {
+    const result: types.StorageState = {
+      cookies: (await this.cookies()).filter(c => c.value !== ''),
+      origins: []
+    };
+    if (this._origins.size)  {
+      const page = await this.newPage();
+      await page._setServerRequestInterceptor(handler => {
+        handler.fulfill({ body: '<html></html>' }).catch(() => {});
+      });
+      for (const origin of this._origins) {
+        const originStorage: types.OriginStorage = { origin, localStorage: [] };
+        result.origins.push(originStorage);
+        const frame = page.mainFrame();
+        await frame.goto(new ProgressController(), origin);
+        const storage = await frame._evaluateExpression(`({
+          localStorage: Object.keys(localStorage).map(name => ({ name, value: localStorage.getItem(name) })),
+        })`, false, undefined, 'utility');
+        originStorage.localStorage = storage.localStorage;
+      }
+      await page.close();
+    }
+    return result;
+  }
+
+  async setStorageState(state: types.SetStorageState) {
+    if (state.cookies)
+      await this.addCookies(state.cookies);
+    if (state.origins && state.origins.length)  {
+      const page = await this.newPage();
+      await page._setServerRequestInterceptor(handler => {
+        handler.fulfill({ body: '<html></html>' }).catch(() => {});
+      });
+      for (const originState of state.origins) {
+        const frame = page.mainFrame();
+        await frame.goto(new ProgressController(), originState.origin);
+        await frame._evaluateExpression(`
+          originState => {
+            for (const { name, value } of (originState.localStorage || []))
+              localStorage.setItem(name, value);
+          }`, true, originState, 'utility');
+      }
+      await page.close();
+    }
   }
 }
 
@@ -318,9 +394,12 @@ export function validateBrowserContextOptions(options: types.BrowserContextOptio
     throw new Error(`"isMobile" option is not supported with null "viewport"`);
   if (!options.viewport && !options.noDefaultViewport)
     options.viewport = { width: 1280, height: 720 };
+  if (options.proxy) {
+    if (!browserOptions.proxy)
+      throw new Error(`Browser needs to be launched with the global proxy. If all contexts override the proxy, global proxy will be never used and can be any string, for example "launch({ proxy: { server: 'per-context' } })"`);
+    options.proxy = normalizeProxySettings(options.proxy);
+  }
   verifyGeolocation(options.geolocation);
-  if (options.videoSize && !options.videosPath)
-    throw new Error(`"videoSize" option requires "videosPath" to be specified`);
 }
 
 export function verifyGeolocation(geolocation?: types.Geolocation) {

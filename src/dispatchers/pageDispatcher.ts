@@ -25,7 +25,7 @@ import { ConsoleMessageDispatcher } from './consoleMessageDispatcher';
 import { DialogDispatcher } from './dialogDispatcher';
 import { DownloadDispatcher } from './downloadDispatcher';
 import { FrameDispatcher } from './frameDispatcher';
-import { RequestDispatcher, ResponseDispatcher, RouteDispatcher } from './networkDispatchers';
+import { RequestDispatcher, ResponseDispatcher, RouteDispatcher, WebSocketDispatcher } from './networkDispatchers';
 import { serializeResult, parseArgument, JSHandleDispatcher } from './jsHandleDispatcher';
 import { ElementHandleDispatcher, createHandle } from './elementHandlerDispatcher';
 import { FileChooser } from '../server/fileChooser';
@@ -43,14 +43,17 @@ export class PageDispatcher extends Dispatcher<Page, channels.PageInitializer> i
       videoRelativePath: page._video ? page._video._relativePath : undefined,
       viewportSize: page.viewportSize() || undefined,
       isClosed: page.isClosed()
-    });
+    }, true);
     this._page = page;
-    page.on(Page.Events.Close, () => this._dispatchEvent('close'));
+    page.on(Page.Events.Close, () => {
+      this._dispatchEvent('close');
+      this._dispose();
+    });
     page.on(Page.Events.Console, message => this._dispatchEvent('console', { message: new ConsoleMessageDispatcher(this._scope, message) }));
     page.on(Page.Events.Crash, () => this._dispatchEvent('crash'));
     page.on(Page.Events.DOMContentLoaded, () => this._dispatchEvent('domcontentloaded'));
     page.on(Page.Events.Dialog, dialog => this._dispatchEvent('dialog', { dialog: new DialogDispatcher(this._scope, dialog) }));
-    page.on(Page.Events.Download, download => this._dispatchEvent('download', { download: new DownloadDispatcher(this._scope, download) }));
+    page.on(Page.Events.Download, download => this._dispatchEvent('download', { download: new DownloadDispatcher(scope, download) }));
     this._page.on(Page.Events.FileChooser, (fileChooser: FileChooser) => this._dispatchEvent('fileChooser', {
       element: new ElementHandleDispatcher(this._scope, fileChooser.element()),
       isMultiple: fileChooser.isMultiple()
@@ -72,6 +75,7 @@ export class PageDispatcher extends Dispatcher<Page, channels.PageInitializer> i
     }));
     page.on(Page.Events.Response, response => this._dispatchEvent('response', { response: new ResponseDispatcher(this._scope, response) }));
     page.on(Page.Events.VideoStarted, (video: Video) => this._dispatchEvent('video', {  relativePath: video._relativePath }));
+    page.on(Page.Events.WebSocket, webSocket => this._dispatchEvent('webSocket', { webSocket: new WebSocketDispatcher(this._scope, webSocket) }));
     page.on(Page.Events.Worker, worker => this._dispatchEvent('worker', { worker: new WorkerDispatcher(this._scope, worker) }));
   }
 
@@ -134,10 +138,10 @@ export class PageDispatcher extends Dispatcher<Page, channels.PageInitializer> i
 
   async setNetworkInterceptionEnabled(params: channels.PageSetNetworkInterceptionEnabledParams): Promise<void> {
     if (!params.enabled) {
-      await this._page._setRequestInterceptor(undefined);
+      await this._page._setClientRequestInterceptor(undefined);
       return;
     }
-    this._page._setRequestInterceptor((route, request) => {
+    this._page._setClientRequestInterceptor((route, request) => {
       this._dispatchEvent('route', { route: new RouteDispatcher(this._scope, route), request: RequestDispatcher.from(this._scope, request) });
     });
   }

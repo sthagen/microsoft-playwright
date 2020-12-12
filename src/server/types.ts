@@ -191,6 +191,7 @@ export type NormalizedFulfillResponse = {
 };
 
 export type NormalizedContinueOverrides = {
+  url?: string,
   method?: string,
   headers?: HeadersArray,
   postData?: Buffer,
@@ -238,8 +239,15 @@ export type BrowserContextOptions = {
   hasTouch?: boolean,
   colorScheme?: ColorScheme,
   acceptDownloads?: boolean,
-  videosPath?: string,
-  videoSize?: Size,
+  recordVideo?: {
+    dir: string,
+    size?: Size,
+  },
+  recordHar?: {
+    omitContent?: boolean,
+    path: string
+  },
+  proxy?: ProxySettings,
   _tracePath?: string,
   _traceResourcesPath?: string,
 };
@@ -267,6 +275,8 @@ export type LaunchOptions = LaunchOptionsBase & UIOptions & {
   firefoxUserPrefs?: { [key: string]: string | number | boolean },
 };
 export type LaunchPersistentOptions = LaunchOptionsBase & BrowserContextOptions;
+
+export type ProtocolLogger = (direction: 'send' | 'receive', message: object) => void;
 
 export type SerializedAXNode = {
   role: string,
@@ -319,3 +329,23 @@ export type Error = {
 export type UIOptions = {
   slowMo?: number;
 };
+
+export type NameValueList = {
+  name: string;
+  value: string;
+}[];
+
+export type OriginStorage = {
+  origin: string;
+  localStorage: NameValueList;
+};
+
+export type StorageState = {
+  cookies: NetworkCookie[],
+  origins: OriginStorage[]
+}
+
+export type SetStorageState = {
+  cookies?: SetNetworkCookieParam[],
+  origins?: OriginStorage[]
+}

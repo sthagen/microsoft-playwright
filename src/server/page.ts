@@ -46,6 +46,8 @@ export interface PageDelegate {
   exposeBinding(binding: PageBinding): Promise<void>;
   evaluateOnNewDocument(source: string): Promise<void>;
   closePage(runBeforeUnload: boolean): Promise<void>;
+  pageOrError(): Promise<Page | Error>;
+  openerDelegate(): PageDelegate | null;
 
   navigateFrame(frame: frames.Frame, url: string, referrer: string | undefined): Promise<frames.GotoResult>;
 
@@ -59,8 +61,6 @@ export interface PageDelegate {
   canScreenshotOutsideViewport(): boolean;
   resetViewport(): Promise<void>; // Only called if canScreenshotOutsideViewport() returns false.
   setBackgroundColor(color?: { r: number; g: number; b: number; a: number; }): Promise<void>;
-  startScreencast(options: types.PageScreencastOptions): Promise<void>;
-  stopScreencast(): Promise<void>;
   takeScreenshot(format: string, documentRect: types.Rect | undefined, viewportRect: types.Rect | undefined, quality: number | undefined): Promise<Buffer>;
 
   isElementHandle(remoteObject: any): boolean;
@@ -113,6 +113,7 @@ export class Page extends EventEmitter {
     FrameNavigated: 'framenavigated',
     Load: 'load',
     Popup: 'popup',
+    WebSocket: 'websocket',
     Worker: 'worker',
     VideoStarted: 'videostarted',
   };
@@ -132,7 +133,7 @@ export class Page extends EventEmitter {
   readonly _timeoutSettings: TimeoutSettings;
   readonly _delegate: PageDelegate;
   readonly _state: PageState;
-  readonly _pageBindings = new Map<string, PageBinding>();
+  private readonly _pageBindings = new Map<string, PageBinding>();
   readonly _evaluateOnNewDocumentSources: string[] = [];
   readonly _screenshotter: Screenshotter;
   readonly _frameManager: frames.FrameManager;
@@ -140,13 +141,15 @@ export class Page extends EventEmitter {
   private _workers = new Map<string, Worker>();
   readonly pdf: ((options?: types.PDFOptions) => Promise<Buffer>) | undefined;
   readonly coverage: any;
-  private _requestInterceptor?: network.RouteHandler;
+  private _clientRequestInterceptor: network.RouteHandler | undefined;
+  private _serverRequestInterceptor: network.RouteHandler | undefined;
   _ownedContext: BrowserContext | undefined;
   readonly selectors: Selectors;
   _video: Video | null = null;
 
   constructor(delegate: PageDelegate, browserContext: BrowserContext) {
     super();
+    this.setMaxListeners(0);
     this._delegate = delegate;
     this._closedCallback = () => {};
     this._closedPromise = new Promise(f => this._closedCallback = f);
@@ -172,6 +175,25 @@ export class Page extends EventEmitter {
       this.pdf = delegate.pdf.bind(delegate);
     this.coverage = delegate.coverage ? delegate.coverage() : null;
     this.selectors = browserContext.selectors();
+  }
+
+  async reportAsNew() {
+    const pageOrError = await this._delegate.pageOrError();
+    if (pageOrError instanceof Error) {
+      // Initialization error could have happened because of
+      // context/browser closure. Just ignore the page.
+      if (this._browserContext.isClosingOrClosed())
+        return;
+      this._setIsError();
+    }
+    this._browserContext.emit(BrowserContext.Events.Page, this);
+    const openerDelegate = this._delegate.openerDelegate();
+    if (openerDelegate) {
+      openerDelegate.pageOrError().then(openerPage => {
+        if (openerPage instanceof Page && !openerPage.isClosed())
+          openerPage.emit(Page.Events.Popup, this);
+      });
+    }
   }
 
   async _doSlowMo() {
@@ -236,13 +258,14 @@ export class Page extends EventEmitter {
     this._timeoutSettings.setDefaultTimeout(timeout);
   }
 
-  async exposeBinding(name: string, needsHandle: boolean, playwrightBinding: frames.FunctionWithSource) {
-    if (this._pageBindings.has(name))
+  async exposeBinding(name: string, needsHandle: boolean, playwrightBinding: frames.FunctionWithSource, world: types.World = 'main') {
+    const identifier = PageBinding.identifier(name, world);
+    if (this._pageBindings.has(identifier))
       throw new Error(`Function "${name}" has been already registered`);
-    if (this._browserContext._pageBindings.has(name))
+    if (this._browserContext._pageBindings.has(identifier))
       throw new Error(`Function "${name}" has been already registered in the browser context`);
-    const binding = new PageBinding(name, playwrightBinding, needsHandle);
-    this._pageBindings.set(name, binding);
+    const binding = new PageBinding(name, playwrightBinding, needsHandle, world);
+    this._pageBindings.set(identifier, binding);
     await this._delegate.exposeBinding(binding);
   }
 
@@ -340,11 +363,16 @@ export class Page extends EventEmitter {
   }
 
   _needsRequestInterception(): boolean {
-    return !!this._requestInterceptor || !!this._browserContext._requestInterceptor;
+    return !!this._clientRequestInterceptor || !!this._serverRequestInterceptor || !!this._browserContext._requestInterceptor;
   }
 
-  async _setRequestInterceptor(handler: network.RouteHandler | undefined): Promise<void> {
-    this._requestInterceptor = handler;
+  async _setClientRequestInterceptor(handler: network.RouteHandler | undefined): Promise<void> {
+    this._clientRequestInterceptor = handler;
+    await this._delegate.updateRequestInterception();
+  }
+
+  async _setServerRequestInterceptor(handler: network.RouteHandler | undefined): Promise<void> {
+    this._serverRequestInterceptor = handler;
     await this._delegate.updateRequestInterception();
   }
 
@@ -353,8 +381,12 @@ export class Page extends EventEmitter {
     const route = request._route();
     if (!route)
       return;
-    if (this._requestInterceptor) {
-      this._requestInterceptor(route, request);
+    if (this._serverRequestInterceptor) {
+      this._serverRequestInterceptor(route, request);
+      return;
+    }
+    if (this._clientRequestInterceptor) {
+      this._clientRequestInterceptor(route, request);
       return;
     }
     if (this._browserContext._requestInterceptor) {
@@ -377,7 +409,9 @@ export class Page extends EventEmitter {
     if (this._closedState !== 'closing') {
       this._closedState = 'closing';
       assert(!this._disconnected, 'Protocol error: Connection closed. Most likely the page has been closed.');
-      await this._delegate.closePage(runBeforeUnload);
+      // This might throw if the browser context containing the page closes
+      // while we are trying to close the page.
+      await this._delegate.closePage(runBeforeUnload).catch(e => debugLogger.log('error', e));
     }
     if (!runBeforeUnload)
       await this._closedPromise;
@@ -385,7 +419,7 @@ export class Page extends EventEmitter {
       await this._ownedContext.close();
   }
 
-  _setIsError() {
+  private _setIsError() {
     if (!this._frameManager.mainFrame())
       this._frameManager.frameAttached('<dummy>', null);
   }
@@ -421,6 +455,23 @@ export class Page extends EventEmitter {
   videoStarted(video: Video) {
     this._video = video;
     this.emit(Page.Events.VideoStarted, video);
+  }
+
+  frameNavigated(frame: frames.Frame) {
+    this.emit(Page.Events.FrameNavigated, frame);
+    const url = frame.url();
+    if (!url.startsWith('http'))
+      return;
+    this._browserContext.addVisitedOrigin(new URL(url).origin);
+  }
+
+  allBindings() {
+    return [...this._browserContext._pageBindings.values(), ...this._pageBindings.values()];
+  }
+
+  getBinding(name: string, world: types.World) {
+    const identifier = PageBinding.identifier(name, world);
+    return this._pageBindings.get(identifier) || this._browserContext._pageBindings.get(identifier);
   }
 }
 
@@ -464,26 +515,31 @@ export class PageBinding {
   readonly playwrightFunction: frames.FunctionWithSource;
   readonly source: string;
   readonly needsHandle: boolean;
+  readonly world: types.World;
 
-  constructor(name: string, playwrightFunction: frames.FunctionWithSource, needsHandle: boolean) {
+  constructor(name: string, playwrightFunction: frames.FunctionWithSource, needsHandle: boolean, world: types.World) {
     this.name = name;
     this.playwrightFunction = playwrightFunction;
     this.source = `(${addPageBinding.toString()})(${JSON.stringify(name)}, ${needsHandle})`;
     this.needsHandle = needsHandle;
+    this.world = world;
+  }
+
+  static identifier(name: string, world: types.World) {
+    return world + ':' + name;
   }
 
   static async dispatch(page: Page, payload: string, context: dom.FrameExecutionContext) {
     const {name, seq, args} = JSON.parse(payload);
     try {
-      let binding = page._pageBindings.get(name);
-      if (!binding)
-        binding = page._browserContext._pageBindings.get(name);
+      assert(context.world);
+      const binding = page.getBinding(name, context.world)!;
       let result: any;
-      if (binding!.needsHandle) {
+      if (binding.needsHandle) {
         const handle = await context.evaluateHandleInternal(takeHandle, { name, seq }).catch(e => null);
-        result = await binding!.playwrightFunction({ frame: context.frame, page, context: page._browserContext }, handle);
+        result = await binding.playwrightFunction({ frame: context.frame, page, context: page._browserContext }, handle);
       } else {
-        result = await binding!.playwrightFunction({ frame: context.frame, page, context: page._browserContext }, ...args);
+        result = await binding.playwrightFunction({ frame: context.frame, page, context: page._browserContext }, ...args);
       }
       context.evaluateInternal(deliverResult, { name, seq, result }).catch(e => debugLogger.log('error', e));
     } catch (error) {

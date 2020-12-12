@@ -418,6 +418,7 @@ static BOOL areEssentiallyEqual(double a, double b)
 }
 
 - (void)webViewDidClose:(WKWebView *)webView {
+    [self webView:webView handleJavaScriptDialog:false value:nil];
     [self.window close];
 }
 
@@ -686,7 +687,7 @@ static NSSet *dataTypes()
 
     NSString *disposition = [[httpResponse allHeaderFields] objectForKey:@"Content-Disposition"];
     if (disposition && [disposition hasPrefix:@"attachment"]) {
-        decisionHandler(_WKNavigationResponsePolicyBecomeDownload);
+        decisionHandler(WKNavigationResponsePolicyBecomeDownload);
         return;
     }
     decisionHandler(WKNavigationResponsePolicyAllow);

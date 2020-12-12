@@ -84,6 +84,11 @@ export class FFPage implements PageDelegate {
       helper.addEventListener(this._session, 'Page.dispatchMessageFromWorker', this._onDispatchMessageFromWorker.bind(this)),
       helper.addEventListener(this._session, 'Page.crashed', this._onCrashed.bind(this)),
       helper.addEventListener(this._session, 'Page.screencastStarted', this._onScreencastStarted.bind(this)),
+
+      helper.addEventListener(this._session, 'Page.webSocketCreated', this._onWebSocketCreated.bind(this)),
+      helper.addEventListener(this._session, 'Page.webSocketClosed', this._onWebSocketClosed.bind(this)),
+      helper.addEventListener(this._session, 'Page.webSocketFrameReceived', this._onWebSocketFrameReceived.bind(this)),
+      helper.addEventListener(this._session, 'Page.webSocketFrameSent', this._onWebSocketFrameSent.bind(this)),
     ];
     this._pagePromise = new Promise(f => this._pageCallback = f);
     session.once(FFSessionEvents.Disconnected, () => this._page._didDisconnect());
@@ -100,17 +105,43 @@ export class FFPage implements PageDelegate {
     return this._pagePromise;
   }
 
+  openerDelegate(): PageDelegate | null {
+    return this._opener;
+  }
+
+  _onWebSocketCreated(event: Protocol.Page.webSocketCreatedPayload) {
+    this._page._frameManager.onWebSocketCreated(webSocketId(event.frameId, event.wsid), event.requestURL);
+    this._page._frameManager.onWebSocketRequest(webSocketId(event.frameId, event.wsid));
+  }
+
+  _onWebSocketClosed(event: Protocol.Page.webSocketClosedPayload) {
+    if (event.error)
+      this._page._frameManager.webSocketError(webSocketId(event.frameId, event.wsid), event.error);
+    this._page._frameManager.webSocketClosed(webSocketId(event.frameId, event.wsid));
+  }
+
+  _onWebSocketFrameReceived(event: Protocol.Page.webSocketFrameReceivedPayload) {
+    this._page._frameManager.webSocketFrameReceived(webSocketId(event.frameId, event.wsid), event.opcode, event.data);
+  }
+
+  _onWebSocketFrameSent(event: Protocol.Page.webSocketFrameSentPayload) {
+    this._page._frameManager.onWebSocketFrameSent(webSocketId(event.frameId, event.wsid), event.opcode, event.data);
+  }
+
   _onExecutionContextCreated(payload: Protocol.Runtime.executionContextCreatedPayload) {
     const {executionContextId, auxData} = payload;
     const frame = this._page._frameManager.frame(auxData ? auxData.frameId : null);
     if (!frame)
       return;
     const delegate = new FFExecutionContext(this._session, executionContextId);
-    const context = new dom.FrameExecutionContext(delegate, frame);
+    let worldName: types.World|null = null;
     if (auxData.name === UTILITY_WORLD_NAME)
-      frame._contextCreated('utility', context);
+      worldName = 'utility';
     else if (!auxData.name)
-      frame._contextCreated('main', context);
+      worldName = 'main';
+    const context = new dom.FrameExecutionContext(delegate, frame, worldName);
+    if (worldName)
+      frame._contextCreated(worldName, context);
     this._contextIdToContext.set(executionContextId, context);
   }
 
@@ -262,6 +293,8 @@ export class FFPage implements PageDelegate {
   }
 
   async exposeBinding(binding: PageBinding) {
+    if (binding.world !== 'main')
+      throw new Error('Only main context bindings are supported in Firefox.');
     await this._session.send('Page.addBinding', { name: binding.name, script: binding.source });
   }
 
@@ -350,18 +383,6 @@ export class FFPage implements PageDelegate {
   async setBackgroundColor(color?: { r: number; g: number; b: number; a: number; }): Promise<void> {
     if (color)
       throw new Error('Not implemented');
-  }
-
-  async startScreencast(options: types.PageScreencastOptions): Promise<void> {
-    this._session.send('Page.startVideoRecording', {
-      file: options.outputFile,
-      width: options.width,
-      height: options.height,
-    });
-  }
-
-  async stopScreencast(): Promise<void> {
-    await this._session.send('Page.stopVideoRecording');
   }
 
   async takeScreenshot(format: 'png' | 'jpeg', documentRect: types.Rect | undefined, viewportRect: types.Rect | undefined, quality: number | undefined): Promise<Buffer> {
@@ -499,4 +520,8 @@ export class FFPage implements PageDelegate {
       throw new Error('Frame has been detached.');
     return result.handle;
   }
+}
+
+function webSocketId(frameId: string, wsid: string): string {
+  return `${frameId}---${wsid}`;
 }

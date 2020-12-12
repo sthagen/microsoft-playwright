@@ -21,6 +21,7 @@ import { Selectors, SelectorsOwner, sharedSelectors } from './selectors';
 import { Electron } from './electron';
 import { TimeoutError } from '../utils/errors';
 import { Size } from './types';
+import { Android } from './android';
 
 type DeviceDescriptor = {
   userAgent: string,
@@ -33,6 +34,8 @@ type DeviceDescriptor = {
 type Devices = { [name: string]: DeviceDescriptor };
 
 export class Playwright extends ChannelOwner<channels.PlaywrightChannel, channels.PlaywrightInitializer> {
+  readonly _android: Android;
+  readonly _electron: Electron;
   readonly chromium: BrowserType;
   readonly firefox: BrowserType;
   readonly webkit: BrowserType;
@@ -45,8 +48,8 @@ export class Playwright extends ChannelOwner<channels.PlaywrightChannel, channel
     this.chromium = BrowserType.from(initializer.chromium);
     this.firefox = BrowserType.from(initializer.firefox);
     this.webkit = BrowserType.from(initializer.webkit);
-    if (initializer.electron)
-      (this as any).electron = Electron.from(initializer.electron);
+    this._android = Android.from(initializer.android);
+    this._electron = Electron.from(initializer.electron);
     this.devices = {};
     for (const { name, descriptor } of initializer.deviceDescriptors)
       this.devices[name] = descriptor;

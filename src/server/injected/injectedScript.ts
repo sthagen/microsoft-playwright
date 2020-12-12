@@ -19,8 +19,9 @@ import { createCSSEngine } from './cssSelectorEngine';
 import { SelectorEngine, SelectorRoot } from './selectorEngine';
 import { createTextSelector } from './textSelectorEngine';
 import { XPathEngine } from './xpathSelectorEngine';
-import { ParsedSelector, parseSelector } from '../common/selectorParser';
+import { ParsedSelector, ParsedSelectorV1, parseSelector, selectorsV2Enabled, selectorsV2EngineNames } from '../common/selectorParser';
 import { FatalDOMError } from '../common/domErrors';
+import { SelectorEvaluatorImpl, SelectorEngine as SelectorEngineV2, QueryContext, isVisible, parentElementOrShadowHost } from './selectorEvaluator';
 
 type Predicate<T> = (progress: InjectedScriptProgress, continuePolling: symbol) => T | symbol;
 
@@ -40,46 +41,60 @@ export type InjectedScriptPoll<T> = {
 };
 
 export class InjectedScript {
-  readonly engines: Map<string, SelectorEngine>;
+  private _enginesV1: Map<string, SelectorEngine>;
+  private _evaluator: SelectorEvaluatorImpl;
+  private _engineNames: Set<string>;
 
   constructor(customEngines: { name: string, engine: SelectorEngine}[]) {
-    this.engines = new Map();
-    // Note: keep predefined names in sync with Selectors class.
-    this.engines.set('css', createCSSEngine(true));
-    this.engines.set('css:light', createCSSEngine(false));
-    this.engines.set('xpath', XPathEngine);
-    this.engines.set('xpath:light', XPathEngine);
-    this.engines.set('text', createTextSelector(true));
-    this.engines.set('text:light', createTextSelector(false));
-    this.engines.set('id', createAttributeEngine('id', true));
-    this.engines.set('id:light', createAttributeEngine('id', false));
-    this.engines.set('data-testid', createAttributeEngine('data-testid', true));
-    this.engines.set('data-testid:light', createAttributeEngine('data-testid', false));
-    this.engines.set('data-test-id', createAttributeEngine('data-test-id', true));
-    this.engines.set('data-test-id:light', createAttributeEngine('data-test-id', false));
-    this.engines.set('data-test', createAttributeEngine('data-test', true));
-    this.engines.set('data-test:light', createAttributeEngine('data-test', false));
-    for (const {name, engine} of customEngines)
-      this.engines.set(name, engine);
+    this._enginesV1 = new Map();
+    this._enginesV1.set('css', createCSSEngine(true));
+    this._enginesV1.set('css:light', createCSSEngine(false));
+    this._enginesV1.set('xpath', XPathEngine);
+    this._enginesV1.set('xpath:light', XPathEngine);
+    this._enginesV1.set('text', createTextSelector(true));
+    this._enginesV1.set('text:light', createTextSelector(false));
+    this._enginesV1.set('id', createAttributeEngine('id', true));
+    this._enginesV1.set('id:light', createAttributeEngine('id', false));
+    this._enginesV1.set('data-testid', createAttributeEngine('data-testid', true));
+    this._enginesV1.set('data-testid:light', createAttributeEngine('data-testid', false));
+    this._enginesV1.set('data-test-id', createAttributeEngine('data-test-id', true));
+    this._enginesV1.set('data-test-id:light', createAttributeEngine('data-test-id', false));
+    this._enginesV1.set('data-test', createAttributeEngine('data-test', true));
+    this._enginesV1.set('data-test:light', createAttributeEngine('data-test', false));
+    for (const { name, engine } of customEngines)
+      this._enginesV1.set(name, engine);
+
+    const wrapped = new Map<string, SelectorEngineV2>();
+    for (const { name, engine } of customEngines)
+      wrapped.set(name, wrapV2(name, engine));
+    this._evaluator = new SelectorEvaluatorImpl(wrapped);
+
+    this._engineNames = new Set(this._enginesV1.keys());
+    if (selectorsV2Enabled()) {
+      for (const name of selectorsV2EngineNames())
+        this._engineNames.add(name);
+    }
   }
 
   parseSelector(selector: string): ParsedSelector {
-    return parseSelector(selector);
+    return parseSelector(selector, this._engineNames);
   }
 
   querySelector(selector: ParsedSelector, root: Node): Element | undefined {
     if (!(root as any)['querySelector'])
       throw new Error('Node is not queryable.');
-    return this._querySelectorRecursively(root as SelectorRoot, selector, 0);
+    if (selector.v1)
+      return this._querySelectorRecursivelyV1(root as SelectorRoot, selector.v1, 0);
+    return this._evaluator.evaluate({ scope: root as Document | Element, pierceShadow: true }, selector.v2!)[0];
   }
 
-  private _querySelectorRecursively(root: SelectorRoot, selector: ParsedSelector, index: number): Element | undefined {
+  private _querySelectorRecursivelyV1(root: SelectorRoot, selector: ParsedSelectorV1, index: number): Element | undefined {
     const current = selector.parts[index];
     if (index === selector.parts.length - 1)
-      return this.engines.get(current.name)!.query(root, current.body);
-    const all = this.engines.get(current.name)!.queryAll(root, current.body);
+      return this._enginesV1.get(current.name)!.query(root, current.body);
+    const all = this._enginesV1.get(current.name)!.queryAll(root, current.body);
     for (const next of all) {
-      const result = this._querySelectorRecursively(next, selector, index + 1);
+      const result = this._querySelectorRecursivelyV1(next, selector, index + 1);
       if (result)
         return selector.capture === index ? next : result;
     }
@@ -88,6 +103,12 @@ export class InjectedScript {
   querySelectorAll(selector: ParsedSelector, root: Node): Element[] {
     if (!(root as any)['querySelectorAll'])
       throw new Error('Node is not queryable.');
+    if (selector.v1)
+      return this._querySelectorAllV1(selector.v1, root as SelectorRoot);
+    return this._evaluator.evaluate({ scope: root as Document | Element, pierceShadow: true }, selector.v2!);
+  }
+
+  private _querySelectorAllV1(selector: ParsedSelectorV1, root: SelectorRoot): Element[] {
     const capture = selector.capture === undefined ? selector.parts.length - 1 : selector.capture;
     // Query all elements up to the capture.
     const partsToQuerAll = selector.parts.slice(0, capture + 1);
@@ -97,7 +118,7 @@ export class InjectedScript {
     for (const { name, body } of partsToQuerAll) {
       const newSet = new Set<Element>();
       for (const prev of set) {
-        for (const next of this.engines.get(name)!.queryAll(prev, body)) {
+        for (const next of this._enginesV1.get(name)!.queryAll(prev, body)) {
           if (newSet.has(next))
             continue;
           newSet.add(next);
@@ -109,7 +130,7 @@ export class InjectedScript {
     if (!partsToCheckOne.length)
       return candidates;
     const partial = { parts: partsToCheckOne };
-    return candidates.filter(e => !!this._querySelectorRecursively(e, partial, 0));
+    return candidates.filter(e => !!this._querySelectorRecursivelyV1(e, partial, 0));
   }
 
   extend(source: string, params: any): any {
@@ -118,14 +139,7 @@ export class InjectedScript {
   }
 
   isVisible(element: Element): boolean {
-    // Note: this logic should be similar to waitForDisplayedAtStablePosition() to avoid surprises.
-    if (!element.ownerDocument || !element.ownerDocument.defaultView)
-      return true;
-    const style = element.ownerDocument.defaultView.getComputedStyle(element);
-    if (!style || style.visibility === 'hidden')
-      return false;
-    const rect = element.getBoundingClientRect();
-    return rect.width > 0 && rect.height > 0;
+    return isVisible(element);
   }
 
   pollRaf<T>(predicate: Predicate<T>): InjectedScriptPoll<T> {
@@ -183,6 +197,7 @@ export class InjectedScript {
   private _runAbortableTask<T>(task: (progess: InjectedScriptProgress) => Promise<T>): InjectedScriptPoll<T> {
     let unsentLogs: string[] = [];
     let takeNextLogsCallback: ((logs: string[]) => void) | undefined;
+    let taskFinished = false;
     const logReady = () => {
       if (!takeNextLogsCallback)
         return;
@@ -193,7 +208,7 @@ export class InjectedScript {
 
     const takeNextLogs = () => new Promise<string[]>(fulfill => {
       takeNextLogsCallback = fulfill;
-      if (unsentLogs.length)
+      if (unsentLogs.length || taskFinished)
         logReady();
     });
 
@@ -211,9 +226,19 @@ export class InjectedScript {
       },
     };
 
+    const result = task(progress);
+
+    // After the task has finished, there should be no more logs.
+    // Release any pending `takeNextLogs` call, and do not block any future ones.
+    // This prevents non-finished protocol evaluation calls and memory leaks.
+    result.finally(() => {
+      taskFinished = true;
+      logReady();
+    });
+
     return {
       takeNextLogs,
-      result: task(progress),
+      result,
       cancel: () => { progress.aborted = true; },
       takeLastLogs: () => unsentLogs,
     };
@@ -227,14 +252,14 @@ export class InjectedScript {
   }
 
   selectOptions(node: Node, optionsToSelect: (Node | { value?: string, label?: string, index?: number })[]): string[] | 'error:notconnected' | FatalDOMError {
-    if (node.nodeName.toLowerCase() !== 'select')
-      return 'error:notselect';
-    if (!node.isConnected)
+    const element = this.findLabelTarget(node as Element);
+    if (!element || !element.isConnected)
       return 'error:notconnected';
-    const element = node as HTMLSelectElement;
-
-    const options = Array.from(element.options);
-    element.value = undefined as any;
+    if (element.nodeName.toLowerCase() !== 'select')
+      return 'error:notselect';
+    const select = element as HTMLSelectElement;
+    const options = Array.from(select.options);
+    select.value = undefined as any;
     for (let index = 0; index < options.length; index++) {
       const option = options[index];
       option.selected = optionsToSelect.some(optionToSelect => {
@@ -249,11 +274,11 @@ export class InjectedScript {
           matches = matches && optionToSelect.index === index;
         return matches;
       });
-      if (option.selected && !element.multiple)
+      if (option.selected && !select.multiple)
         break;
     }
-    element.dispatchEvent(new Event('input', { 'bubbles': true }));
-    element.dispatchEvent(new Event('change', { 'bubbles': true }));
+    select.dispatchEvent(new Event('input', { 'bubbles': true }));
+    select.dispatchEvent(new Event('change', { 'bubbles': true }));
     return options.filter(option => option.selected).map(option => option.value);
   }
 
@@ -261,17 +286,17 @@ export class InjectedScript {
     return this.pollRaf((progress, continuePolling) => {
       if (node.nodeType !== Node.ELEMENT_NODE)
         return 'error:notelement';
-      const element = node as Element;
-      if (!element.isConnected)
+      const element = this.findLabelTarget(node as Element);
+      if (element && !element.isConnected)
         return 'error:notconnected';
-      if (!this.isVisible(element)) {
+      if (!element || !this.isVisible(element)) {
         progress.logRepeating('    element is not visible - waiting...');
         return continuePolling;
       }
       if (element.nodeName.toLowerCase() === 'input') {
         const input = element as HTMLInputElement;
-        const type = (input.getAttribute('type') || '').toLowerCase();
-        const kDateTypes = new Set(['date', 'time', 'datetime', 'datetime-local']);
+        const type = input.type.toLowerCase();
+        const kDateTypes = new Set(['date', 'time', 'datetime', 'datetime-local', 'month', 'week']);
         const kTextInputTypes = new Set(['', 'email', 'number', 'password', 'search', 'tel', 'text', 'url']);
         if (!kTextInputTypes.has(type) && !kDateTypes.has(type)) {
           progress.log(`    input of type "${type}" cannot be filled`);
@@ -438,27 +463,22 @@ export class InjectedScript {
     return 'done';
   }
 
+  findLabelTarget(element: Element): Element | undefined {
+    return element.nodeName === 'LABEL' ? (element as HTMLLabelElement).control || undefined : element;
+  }
+
   isCheckboxChecked(node: Node) {
     if (node.nodeType !== Node.ELEMENT_NODE)
       throw new Error('Not a checkbox or radio button');
-
-    let element: Element | undefined = node as Element;
+    const element = node as Element;
     if (element.getAttribute('role') === 'checkbox')
       return element.getAttribute('aria-checked') === 'true';
-
-    if (element.nodeName === 'LABEL') {
-      const forId = element.getAttribute('for');
-      if (forId && element.ownerDocument)
-        element = element.ownerDocument.querySelector(`input[id="${forId}"]`) || undefined;
-      else
-        element = element.querySelector('input[type=checkbox],input[type=radio]') || undefined;
-    }
-    if (element && element.nodeName === 'INPUT') {
-      const type = element.getAttribute('type');
-      if (type && (type.toLowerCase() === 'checkbox' || type.toLowerCase() === 'radio'))
-        return (element as HTMLInputElement).checked;
-    }
-    throw new Error('Not a checkbox');
+    const input = this.findLabelTarget(element);
+    if (!input || input.nodeName !== 'INPUT')
+      throw new Error('Not a checkbox or radio button');
+    if (!['radio', 'checkbox'].includes((input as HTMLInputElement).type.toLowerCase()))
+      throw new Error('Not a checkbox or radio button');
+    return (input as HTMLInputElement).checked;
   }
 
   setInputFiles(node: Node, payloads: { name: string, mimeType: string, buffer: string }[]) {
@@ -553,7 +573,7 @@ export class InjectedScript {
     const hitParents: Element[] = [];
     while (hitElement && hitElement !== element) {
       hitParents.push(hitElement);
-      hitElement = this._parentElementOrShadowHost(hitElement);
+      hitElement = parentElementOrShadowHost(hitElement);
     }
     if (hitElement === element)
       return 'done';
@@ -569,7 +589,7 @@ export class InjectedScript {
           rootHitTargetDescription = this.previewNode(hitParents[index - 1]);
         break;
       }
-      element = this._parentElementOrShadowHost(element);
+      element = parentElementOrShadowHost(element);
     }
     if (rootHitTargetDescription)
       return { hitTargetDescription: `${hitTargetDescription} from ${rootHitTargetDescription} subtree` };
@@ -594,15 +614,6 @@ export class InjectedScript {
   private _isElementDisabled(element: Element): boolean {
     const elementOrButton = element.closest('button, [role=button]') || element;
     return ['BUTTON', 'INPUT', 'SELECT'].includes(elementOrButton.nodeName) && elementOrButton.hasAttribute('disabled');
-  }
-
-  private _parentElementOrShadowHost(element: Element): Element | undefined {
-    if (element.parentElement)
-      return element.parentElement;
-    if (!element.parentNode)
-      return;
-    if (element.parentNode.nodeType === Node.DOCUMENT_FRAGMENT_NODE && (element.parentNode as ShadowRoot).host)
-      return (element.parentNode as ShadowRoot).host;
   }
 
   deepElementFromPoint(document: Document, x: number, y: number): Element | undefined {
@@ -654,6 +665,16 @@ export class InjectedScript {
       text = text.substring(0, 49) + '\u2026';
     return oneLine(`<${element.nodeName.toLowerCase()}${attrText}>${text}</${element.nodeName.toLowerCase()}>`);
   }
+}
+
+function wrapV2(name: string, engine: SelectorEngine): SelectorEngineV2 {
+  return {
+    query(context: QueryContext, args: string[]): Element[] {
+      if (args.length !== 1 || typeof args[0] !== 'string')
+        throw new Error(`engine "${name}" expects a single string`);
+      return engine.queryAll(context.scope, args[0]);
+    }
+  };
 }
 
 const autoClosingTags = new Set(['AREA', 'BASE', 'BR', 'COL', 'COMMAND', 'EMBED', 'HR', 'IMG', 'INPUT', 'KEYGEN', 'LINK', 'MENUITEM', 'META', 'PARAM', 'SOURCE', 'TRACK', 'WBR']);

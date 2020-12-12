@@ -26,6 +26,9 @@ import { Transport } from '../lib/protocol/transport';
 import { installCoverageHooks } from './coverage';
 import { folio as httpFolio } from './http.fixtures';
 import { folio as playwrightFolio } from './playwright.fixtures';
+import { PlaywrightClient } from '../lib/remote/playwrightClient';
+import type { Android } from '../android-types';
+import type { ElectronLauncher } from '../electron-types';
 export { expect, config } from 'folio';
 
 const removeFolderAsync = util.promisify(require('rimraf'));
@@ -40,8 +43,8 @@ const getExecutablePath = browserName => {
     return process.env.WKPATH;
 };
 
-type WireParameters = {
-  wire: boolean;
+type ModeParameters = {
+  mode: 'default' | 'driver' | 'service';
 };
 type WorkerFixtures = {
   toImpl: (rpcObject: any) => any;
@@ -51,9 +54,9 @@ type TestFixtures = {
   launchPersistent: (options?: Parameters<BrowserType<Browser>['launchPersistentContext']>[1]) => Promise<{ context: BrowserContext, page: Page }>;
 };
 
-const fixtures = playwrightFolio.union(httpFolio).extend<TestFixtures, WorkerFixtures, WireParameters>();
+const fixtures = playwrightFolio.union(httpFolio).extend<TestFixtures, WorkerFixtures, ModeParameters>();
 
-fixtures.wire.initParameter('Wire testing mode', !!process.env.PWWIRE);
+fixtures.mode.initParameter('Testing mode', process.env.PWMODE as any || 'default');
 
 fixtures.createUserDataDir.init(async ({ }, run) => {
   const dirs: string[] = [];
@@ -99,10 +102,10 @@ fixtures.browserOptions.override(async ({ browserName, headful, slowMo }, run) =
   });
 });
 
-fixtures.playwright.override(async ({ browserName, testWorkerIndex, platform, wire }, run) => {
+fixtures.playwright.override(async ({ browserName, testWorkerIndex, platform, mode }, run) => {
   assert(platform); // Depend on platform to generate all tests.
   const { coverage, uninstall } = installCoverageHooks(browserName);
-  if (wire) {
+  if (mode === 'driver') {
     require('../lib/utils/utils').setUnderTest();
     const connection = new Connection();
     const spawnedProcess = childProcess.fork(path.join(__dirname, '..', 'lib', 'driver.js'), ['serve'], {
@@ -123,6 +126,32 @@ fixtures.playwright.override(async ({ browserName, testWorkerIndex, platform, wi
     spawnedProcess.stdin.destroy();
     spawnedProcess.stdout.destroy();
     spawnedProcess.stderr.destroy();
+    await teardownCoverage();
+  } else if (mode === 'service') {
+    require('../lib/utils/utils').setUnderTest();
+    const port = 9407 + testWorkerIndex * 2;
+    const spawnedProcess = childProcess.fork(path.join(__dirname, '..', 'lib', 'service.js'), [String(port)], {
+      stdio: 'pipe'
+    });
+    spawnedProcess.stderr.pipe(process.stderr);
+    await new Promise(f => {
+      spawnedProcess.stdout.on('data', data => {
+        if (data.toString().includes('Listening on'))
+          f();
+      });
+    });
+    spawnedProcess.unref();
+    const onExit = (exitCode, signal) => {
+      throw new Error(`Server closed with exitCode=${exitCode} signal=${signal}`);
+    };
+    spawnedProcess.on('exit', onExit);
+    const client = await PlaywrightClient.connect(`ws://localhost:${port}/ws`);
+    await run(client.playwright());
+    await client.close();
+    spawnedProcess.removeListener('exit', onExit);
+    const processExited = new Promise(f => spawnedProcess.on('exit', f));
+    spawnedProcess.kill();
+    await processExited;
     await teardownCoverage();
   } else {
     const playwright = require('../index');
@@ -162,3 +191,9 @@ export const beforeEach = folio.beforeEach;
 export const afterEach = folio.afterEach;
 export const beforeAll = folio.beforeAll;
 export const afterAll = folio.afterAll;
+
+
+declare module '../index' {
+  const _android: Android;
+  const _electron: ElectronLauncher;
+}

@@ -17,7 +17,7 @@
 const path = require('path');
 const Message = require('../Message');
 
-function runCommands(sources, {libversion, chromiumVersion, firefoxVersion, onlyBrowserVersions}) {
+function runCommands(sources, {libversion, chromiumVersion, firefoxVersion}) {
   // Release version is everything that doesn't include "-".
   const isReleaseVersion = !libversion.includes('-');
 
@@ -51,8 +51,6 @@ function runCommands(sources, {libversion, chromiumVersion, firefoxVersion, only
         newText = `[![Chromium version](https://img.shields.io/badge/chromium-${chromiumVersion}-blue.svg?logo=google-chrome)](https://www.chromium.org/Home)`;
       else if (commandName === 'firefox-version-badge')
         newText = `[![Firefox version](https://img.shields.io/badge/firefox-${firefoxVersion}-blue.svg?logo=mozilla-firefox)](https://www.mozilla.org/en-US/firefox/new/)`;
-      else if (onlyBrowserVersions)
-        continue;
       else if (commandName === 'version')
         newText = isReleaseVersion ? 'v' + libversion : 'Tip-Of-Tree';
       else if (commandName === 'toc')
@@ -126,7 +124,6 @@ function autocorrectInvalidLinks(projectRoot, sources, allowedFilePaths) {
     }
     const sourceEdits = new SourceEdits(source);
     let offset = 0;
-    const edits = [];
 
     const lines = source.text().split('\n');
     lines.forEach((line, lineNumber) => {
@@ -179,6 +176,38 @@ function autocorrectInvalidLinks(projectRoot, sources, allowedFilePaths) {
       return path.resolve(projectRoot, '.' + relativePath);
     return path.resolve(path.dirname(source.filePath()), relativePath);
   }
+}
+
+function generateLinks(source, signatures, messages) {
+  const sourceEdits = new SourceEdits(source);
+  let offset = 0;
+
+  const lines = source.text().split('\n');
+  lines.forEach((line, lineNumber) => {
+    const linkRegex = /\[([^\]]+)\]\(\)/gm;
+    let match;
+    while (match = linkRegex.exec(line)) {
+      const [, name] = match;
+      const hrefOffset = offset + lineNumber + match.index + 3 + name.length;
+      const eventMatch = name.match(/.*on\('.*'\)/);
+      let replacement;
+      if (eventMatch) {
+        replacement = eventMatch[0];
+      } else {
+        const method = name.substring(0, name.length - 2);
+        let signature = signatures.get(method);
+        if (signature === undefined) {
+          messages.push(Message.error(`Bad method link: ${source.filePath()}:${lineNumber + 1}: ${method}`));
+          signature = '\u2026';
+        }
+        sourceEdits.edit(hrefOffset - 3, hrefOffset - 3, signature);
+        replacement = name + signature;
+      }
+      sourceEdits.edit(hrefOffset, hrefOffset, '#' + replacement.toLowerCase().replace(/[^a-z]/gm, ''));
+    }
+    offset += line.length;
+  });
+  sourceEdits.commit(messages);
 }
 
 class SourceEdits {
@@ -286,4 +315,4 @@ function generateTableOfContentsForSuperclass(text, name) {
   return text;
 }
 
-module.exports = {autocorrectInvalidLinks, runCommands};
+module.exports = {autocorrectInvalidLinks, runCommands, generateLinks};

@@ -21,10 +21,11 @@ import { EventEmitter } from 'events';
 import { Download } from './download';
 import { ProxySettings } from './types';
 import { ChildProcess } from 'child_process';
+import { RecentLogsCollector } from '../utils/debugLogger';
 
 export interface BrowserProcess {
   onclose: ((exitCode: number | null, signal: string | null) => void) | undefined;
-  process: ChildProcess;
+  process?: ChildProcess;
   kill(): Promise<void>;
   close(): Promise<void>;
 }
@@ -36,6 +37,8 @@ export type BrowserOptions = types.UIOptions & {
   persistent?: types.BrowserContextOptions,  // Undefined means no persistent context.
   browserProcess: BrowserProcess,
   proxy?: ProxySettings,
+  protocolLogger: types.ProtocolLogger,
+  browserLogsCollector: RecentLogsCollector,
 };
 
 export abstract class Browser extends EventEmitter {

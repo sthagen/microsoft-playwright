@@ -73,8 +73,12 @@ class PageHandler {
     this._reportedFrameIds = new Set();
     this._networkEventsForUnreportedFrameIds = new Map();
 
-    for (const dialog of this._pageTarget.dialogs())
-      this._onDialogOpened(dialog);
+    // `Page.ready` protocol event is emitted whenever page has completed initialization, e.g.
+    // finished all the transient navigations to the `about:blank`.
+    //
+    // We'd like to avoid reporting meaningful events before the `Page.ready` since they are likely
+    // to be ignored by the protocol clients.
+    this._isPageReady = false;
 
     if (this._pageTarget.screencastInfo())
       this._onScreencastStarted();
@@ -102,7 +106,7 @@ class PageHandler {
         pageNavigationAborted: emitProtocolEvent('Page.navigationAborted'),
         pageNavigationCommitted: emitProtocolEvent('Page.navigationCommitted'),
         pageNavigationStarted: emitProtocolEvent('Page.navigationStarted'),
-        pageReady: emitProtocolEvent('Page.ready'),
+        pageReady: this._onPageReady.bind(this),
         pageSameDocumentNavigation: emitProtocolEvent('Page.sameDocumentNavigation'),
         pageUncaughtError: emitProtocolEvent('Page.uncaughtError'),
         pageWorkerCreated: this._onWorkerCreated.bind(this),
@@ -110,6 +114,12 @@ class PageHandler {
         runtimeConsole: emitProtocolEvent('Runtime.console'),
         runtimeExecutionContextCreated: emitProtocolEvent('Runtime.executionContextCreated'),
         runtimeExecutionContextDestroyed: emitProtocolEvent('Runtime.executionContextDestroyed'),
+
+        webSocketCreated: emitProtocolEvent('Page.webSocketCreated'),
+        webSocketOpened: emitProtocolEvent('Page.webSocketOpened'),
+        webSocketClosed: emitProtocolEvent('Page.webSocketClosed'),
+        webSocketFrameReceived: emitProtocolEvent('Page.webSocketFrameReceived'),
+        webSocketFrameSent: emitProtocolEvent('Page.webSocketFrameSent'),
       }),
     ];
   }
@@ -124,7 +134,16 @@ class PageHandler {
     this._session.emitEvent('Page.screencastStarted', { screencastId: info.videoSessionId, file: info.file });
   }
 
+  _onPageReady(event) {
+    this._isPageReady = true;
+    this._session.emitEvent('Page.ready');
+    for (const dialog of this._pageTarget.dialogs())
+      this._onDialogOpened(dialog);
+  }
+
   _onDialogOpened(dialog) {
+    if (!this._isPageReady)
+      return;
     this._session.emitEvent('Page.dialogOpened', {
       dialogId: dialog.id(),
       type: dialog.type(),
@@ -134,6 +153,8 @@ class PageHandler {
   }
 
   _onDialogClosed(dialog) {
+    if (!this._isPageReady)
+      return;
     this._session.emitEvent('Page.dialogClosed', { dialogId: dialog.id(), });
   }
 
@@ -216,8 +237,8 @@ class PageHandler {
       this._pageNetwork.disableRequestInterception();
   }
 
-  async ['Network.resumeInterceptedRequest']({requestId, method, headers, postData}) {
-    this._pageNetwork.resumeInterceptedRequest(requestId, method, headers, postData);
+  async ['Network.resumeInterceptedRequest']({requestId, url, method, headers, postData}) {
+    this._pageNetwork.resumeInterceptedRequest(requestId, url, method, headers, postData);
   }
 
   async ['Network.abortInterceptedRequest']({requestId, errorCode}) {

@@ -15,11 +15,9 @@
  * limitations under the License.
  */
 
-import { it } from './fixtures';
+import { it, expect } from './fixtures';
 
-it('should close page with active dialog', (test, { browserName, platform }) => {
-  test.fixme(browserName === 'webkit' && platform === 'darwin', 'WebKit hangs on a Mac');
-}, async ({context}) => {
+it('should close page with active dialog', async ({context}) => {
   const page = await context.newPage();
   await page.setContent(`<button onclick="setTimeout(() => alert(1))">alert</button>`);
   page.click('button');
@@ -27,19 +25,10 @@ it('should close page with active dialog', (test, { browserName, platform }) => 
   await page.close();
 });
 
-it('should access page after beforeunload', (test, { browserName }) => {
-  test.fixme(browserName === 'firefox', 'Only works on WebKit atm');
-  test.fixme(browserName === 'chromium');
-}, async ({context}) => {
-  const page = await context.newPage();
-  await page.evaluate(() => {
-    window.addEventListener('beforeunload', event => {
-      event.preventDefault();
-      event.returnValue = 'Do you want to close page?';
-    });
-  });
-  await page.close({ runBeforeUnload: true });
+it('should not accept after close', async ({page}) => {
+  page.evaluate(() => alert()).catch(() => {});
   const dialog = await page.waitForEvent('dialog');
-  await dialog.dismiss();
-  await page.evaluate(() => document.title);
+  await page.close();
+  const e = await dialog.dismiss().catch(e => e);
+  expect(e.message).toContain('Target page, context or browser has been closed');
 });

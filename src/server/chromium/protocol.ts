@@ -17,7 +17,7 @@ export module Protocol {
     /**
      * Enum of possible native property sources (as a subtype of a particular AXValueSourceType).
      */
-    export type AXValueNativeSourceType = "figcaption"|"label"|"labelfor"|"labelwrapped"|"legend"|"tablecaption"|"title"|"other";
+    export type AXValueNativeSourceType = "figcaption"|"label"|"labelfor"|"labelwrapped"|"legend"|"rubyannotation"|"tablecaption"|"title"|"other";
     /**
      * A single source for a computed AX property.
      */
@@ -204,11 +204,26 @@ children, if requested.
       nodes: AXNode[];
     }
     /**
-     * Fetches the entire accessibility tree
+     * Fetches the entire accessibility tree for the root Document
      */
     export type getFullAXTreeParameters = {
+      /**
+       * The maximum depth at which descendants of the root node should be retrieved.
+If omitted, the full tree is returned.
+       */
+      max_depth?: number;
     }
     export type getFullAXTreeReturnValue = {
+      nodes: AXNode[];
+    }
+    /**
+     * Fetches a particular accessibility node by AXNodeId.
+Requires `enable()` to have been called previously.
+     */
+    export type getChildAXNodesParameters = {
+      id: AXNodeId;
+    }
+    export type getChildAXNodesReturnValue = {
       nodes: AXNode[];
     }
     /**
@@ -786,6 +801,7 @@ some CSP errors in the future.
        * Specific directive that is violated, causing the CSP issue.
        */
       violatedDirective: string;
+      isReportOnly: boolean;
       contentSecurityPolicyViolationType: ContentSecurityPolicyViolationType;
       frameAncestor?: AffectedFrame;
       sourceCodeLocation?: SourceCodeLocation;
@@ -1007,7 +1023,7 @@ events afterwards if enabled and recording.
        */
       windowState?: WindowState;
     }
-    export type PermissionType = "accessibilityEvents"|"audioCapture"|"backgroundSync"|"backgroundFetch"|"clipboardReadWrite"|"clipboardSanitizedWrite"|"durableStorage"|"flash"|"geolocation"|"midi"|"midiSysex"|"nfc"|"notifications"|"paymentHandler"|"periodicBackgroundSync"|"protectedMediaIdentifier"|"sensors"|"videoCapture"|"idleDetection"|"wakeLockScreen"|"wakeLockSystem";
+    export type PermissionType = "accessibilityEvents"|"audioCapture"|"backgroundSync"|"backgroundFetch"|"clipboardReadWrite"|"clipboardSanitizedWrite"|"durableStorage"|"flash"|"geolocation"|"midi"|"midiSysex"|"nfc"|"notifications"|"paymentHandler"|"periodicBackgroundSync"|"protectedMediaIdentifier"|"sensors"|"videoCapture"|"videoCapturePanTiltZoom"|"idleDetection"|"wakeLockScreen"|"wakeLockSystem";
     export type PermissionSetting = "granted"|"denied"|"prompt";
     /**
      * Definition of PermissionDescriptor defined in the Permissions API:
@@ -1032,7 +1048,15 @@ Note that userVisibleOnly = true is the only currently supported type.
        * For "clipboard" permission, may specify allowWithoutSanitization.
        */
       allowWithoutSanitization?: boolean;
+      /**
+       * For "camera" permission, may specify panTiltZoom.
+       */
+      panTiltZoom?: boolean;
     }
+    /**
+     * Browser command ids used by executeBrowserCommand.
+     */
+    export type BrowserCommandId = "openTabSearch"|"closeTabSearch";
     /**
      * Chrome histogram bucket.
      */
@@ -1308,6 +1332,14 @@ with 'left', 'top', 'width' or 'height'. Leaves unspecified fields unchanged.
       image?: binary;
     }
     export type setDockTileReturnValue = {
+    }
+    /**
+     * Invoke custom browser commands used by telemetry.
+     */
+    export type executeBrowserCommandParameters = {
+      commandId: BrowserCommandId;
+    }
+    export type executeBrowserCommandReturnValue = {
     }
   }
   
@@ -2510,7 +2542,7 @@ front-end.
     /**
      * Pseudo element type.
      */
-    export type PseudoType = "first-line"|"first-letter"|"before"|"after"|"marker"|"backdrop"|"selection"|"first-line-inherited"|"scrollbar"|"scrollbar-thumb"|"scrollbar-button"|"scrollbar-track"|"scrollbar-track-piece"|"scrollbar-corner"|"resizer"|"input-list-button";
+    export type PseudoType = "first-line"|"first-letter"|"before"|"after"|"marker"|"backdrop"|"selection"|"target-text"|"first-line-inherited"|"scrollbar"|"scrollbar-thumb"|"scrollbar-button"|"scrollbar-track"|"scrollbar-track-piece"|"scrollbar-corner"|"resizer"|"input-list-button";
     /**
      * Shadow root type.
      */
@@ -3737,6 +3769,10 @@ execution will stop on these operations as if there was a regular breakpoint set
      */
     export type DOMBreakpointType = "subtree-modified"|"attribute-modified"|"node-removed";
     /**
+     * CSP Violation type.
+     */
+    export type CSPViolationType = "trustedtype-sink-violation"|"trustedtype-policy-violation";
+    /**
      * Object event listener.
      */
     export interface EventListener {
@@ -3859,6 +3895,17 @@ entire subtree or provide an integer larger than 0.
       url: string;
     }
     export type removeXHRBreakpointReturnValue = {
+    }
+    /**
+     * Sets breakpoint on particular CSP violations.
+     */
+    export type setBreakOnCSPViolationParameters = {
+      /**
+       * CSP Violations to stop upon.
+       */
+      violationTypes: CSPViolationType[];
+    }
+    export type setBreakOnCSPViolationReturnValue = {
     }
     /**
      * Sets breakpoint on particular operation with DOM.
@@ -4675,6 +4722,10 @@ resource fetches.
       model: string;
       mobile: boolean;
     }
+    /**
+     * Enum of image types that can be disabled.
+     */
+    export type DisabledImageType = "avif"|"webp";
     
     /**
      * Notification sent after the virtual time budget for the current VirtualTimePolicy has run out.
@@ -5028,6 +5079,14 @@ on Android.
       height: number;
     }
     export type setVisibleSizeReturnValue = {
+    }
+    export type setDisabledImageTypesParameters = {
+      /**
+       * Image types to disable.
+       */
+      imageTypes: DisabledImageType[];
+    }
+    export type setDisabledImageTypesReturnValue = {
     }
     /**
      * Allows overriding user agent with the given string.
@@ -5553,6 +5612,22 @@ the top of the viewport and Y increases as it proceeds towards the bottom of the
        */
       force?: number;
       /**
+       * The normalized tangential pressure, which has a range of [-1,1] (default: 0).
+       */
+      tangentialPressure?: number;
+      /**
+       * The plane angle between the Y-Z plane and the plane containing both the stylus axis and the Y axis, in degrees of the range [-90,90], a positive tiltX is to the right (default: 0)
+       */
+      tiltX?: number;
+      /**
+       * The plane angle between the X-Z plane and the plane containing both the stylus axis and the X axis, in degrees of the range [-90,90], a positive tiltY is towards the user (default: 0).
+       */
+      tiltY?: number;
+      /**
+       * The clockwise rotation of a pen stylus around its own major axis, in degrees in the range [0,359] (default: 0).
+       */
+      twist?: number;
+      /**
        * Identifier used to track touch sources between events, must be unique within an event.
        */
       id?: number;
@@ -5690,6 +5765,26 @@ Left=1, Right=2, Middle=4, Back=8, Forward=16, None=0.
        * Number of times the mouse button was clicked (default: 0).
        */
       clickCount?: number;
+      /**
+       * The normalized pressure, which has a range of [0,1] (default: 0).
+       */
+      force?: number;
+      /**
+       * The normalized tangential pressure, which has a range of [-1,1] (default: 0).
+       */
+      tangentialPressure?: number;
+      /**
+       * The plane angle between the Y-Z plane and the plane containing both the stylus axis and the Y axis, in degrees of the range [-90,90], a positive tiltX is to the right (default: 0).
+       */
+      tiltX?: number;
+      /**
+       * The plane angle between the X-Z plane and the plane containing both the stylus axis and the X axis, in degrees of the range [-90,90], a positive tiltY is towards the user (default: 0).
+       */
+      tiltY?: number;
+      /**
+       * The clockwise rotation of a pen stylus around its own major axis, in degrees in the range [0,359] (default: 0).
+       */
+      twist?: number;
       /**
        * X delta in CSS pixels for mouse wheel event (default: 0).
        */
@@ -6500,7 +6595,7 @@ file, data and other requests and responses, their headers, bodies, timing, etc.
     /**
      * Resource type as it was perceived by the rendering engine.
      */
-    export type ResourceType = "Document"|"Stylesheet"|"Image"|"Media"|"Font"|"Script"|"TextTrack"|"XHR"|"Fetch"|"EventSource"|"WebSocket"|"Manifest"|"SignedExchange"|"Ping"|"CSPViolationReport"|"Other";
+    export type ResourceType = "Document"|"Stylesheet"|"Image"|"Media"|"Font"|"Script"|"TextTrack"|"XHR"|"Fetch"|"EventSource"|"WebSocket"|"Manifest"|"SignedExchange"|"Ping"|"CSPViolationReport"|"Preflight"|"Other";
     /**
      * Unique loader identifier.
      */
@@ -6679,6 +6774,11 @@ milliseconds relatively to this requestTime.
        * Whether is loaded via link preload.
        */
       isLinkPreload?: boolean;
+      /**
+       * Set for requests when the TrustToken API is used. Contains the parameters
+passed by the developer (e.g. via "fetch") as understood by the backend.
+       */
+      trustTokenParams?: TrustTokenParams;
     }
     /**
      * Details of a signed certificate timestamp (SCT).
@@ -6783,9 +6883,36 @@ milliseconds relatively to this requestTime.
      */
     export type BlockedReason = "other"|"csp"|"mixed-content"|"origin"|"inspector"|"subresource-filter"|"content-type"|"collapsed-by-client"|"coep-frame-resource-needs-coep-header"|"coop-sandboxed-iframe-cannot-navigate-to-coop-page"|"corp-not-same-origin"|"corp-not-same-origin-after-defaulted-to-same-origin-by-coep"|"corp-not-same-site";
     /**
+     * The reason why request was blocked.
+     */
+    export type CorsError = "DisallowedByMode"|"InvalidResponse"|"WildcardOriginNotAllowed"|"MissingAllowOriginHeader"|"MultipleAllowOriginValues"|"InvalidAllowOriginValue"|"AllowOriginMismatch"|"InvalidAllowCredentials"|"CorsDisabledScheme"|"PreflightInvalidStatus"|"PreflightDisallowedRedirect"|"PreflightWildcardOriginNotAllowed"|"PreflightMissingAllowOriginHeader"|"PreflightMultipleAllowOriginValues"|"PreflightInvalidAllowOriginValue"|"PreflightAllowOriginMismatch"|"PreflightInvalidAllowCredentials"|"PreflightMissingAllowExternal"|"PreflightInvalidAllowExternal"|"InvalidAllowMethodsPreflightResponse"|"InvalidAllowHeadersPreflightResponse"|"MethodDisallowedByPreflightResponse"|"HeaderDisallowedByPreflightResponse"|"RedirectContainsCredentials"|"InsecurePrivateNetwork";
+    export interface CorsErrorStatus {
+      corsError: CorsError;
+      failedParameter: string;
+    }
+    /**
      * Source of serviceworker response.
      */
     export type ServiceWorkerResponseSource = "cache-storage"|"http-cache"|"fallback-code"|"network";
+    /**
+     * Determines what type of Trust Token operation is executed and
+depending on the type, some additional parameters. The values
+are specified in third_party/blink/renderer/core/fetch/trust_token.idl.
+     */
+    export interface TrustTokenParams {
+      type: TrustTokenOperationType;
+      /**
+       * Only set for "token-redemption" type and determine whether
+to request a fresh SRR or use a still valid cached SRR.
+       */
+      refreshPolicy: "UseCached"|"Refresh";
+      /**
+       * Origins of issuers from whom to request tokens or redemption
+records.
+       */
+      issuers?: string[];
+    }
+    export type TrustTokenOperationType = "Issuance"|"Redemption"|"Signing";
     /**
      * HTTP response data.
      */
@@ -6968,7 +7095,7 @@ If the opcode isn't 1, then payloadData is a base64 encoded string representing 
       /**
        * Type of this initiator.
        */
-      type: "parser"|"script"|"preload"|"SignedExchange"|"other";
+      type: "parser"|"script"|"preload"|"SignedExchange"|"preflight"|"other";
       /**
        * Initiator JavaScript stack trace, set for Script only.
        */
@@ -6987,6 +7114,10 @@ module) (0-based).
 module) (0-based).
        */
       columnNumber?: number;
+      /**
+       * Set if another request triggered this request (e.g. preflight).
+       */
+      requestId?: RequestId;
     }
     /**
      * Cookie object
@@ -7040,11 +7171,11 @@ module) (0-based).
     /**
      * Types of reasons why a cookie may not be stored from a response.
      */
-    export type SetCookieBlockedReason = "SecureOnly"|"SameSiteStrict"|"SameSiteLax"|"SameSiteUnspecifiedTreatedAsLax"|"SameSiteNoneInsecure"|"UserPreferences"|"SyntaxError"|"SchemeNotSupported"|"OverwriteSecure"|"InvalidDomain"|"InvalidPrefix"|"UnknownError";
+    export type SetCookieBlockedReason = "SecureOnly"|"SameSiteStrict"|"SameSiteLax"|"SameSiteUnspecifiedTreatedAsLax"|"SameSiteNoneInsecure"|"UserPreferences"|"SyntaxError"|"SchemeNotSupported"|"OverwriteSecure"|"InvalidDomain"|"InvalidPrefix"|"UnknownError"|"SchemefulSameSiteStrict"|"SchemefulSameSiteLax"|"SchemefulSameSiteUnspecifiedTreatedAsLax";
     /**
      * Types of reasons why a cookie may not be sent with a request.
      */
-    export type CookieBlockedReason = "SecureOnly"|"NotOnPath"|"DomainMismatch"|"SameSiteStrict"|"SameSiteLax"|"SameSiteUnspecifiedTreatedAsLax"|"SameSiteNoneInsecure"|"UserPreferences"|"UnknownError";
+    export type CookieBlockedReason = "SecureOnly"|"NotOnPath"|"DomainMismatch"|"SameSiteStrict"|"SameSiteLax"|"SameSiteUnspecifiedTreatedAsLax"|"SameSiteNoneInsecure"|"UserPreferences"|"UnknownError"|"SchemefulSameSiteStrict"|"SchemefulSameSiteLax"|"SchemefulSameSiteUnspecifiedTreatedAsLax";
     /**
      * A cookie which was not stored from a response with the corresponding reason.
      */
@@ -7299,6 +7430,13 @@ https://wicg.github.io/webpackage/draft-yasskin-httpbis-origin-signed-exchanges-
        */
       errors?: SignedExchangeError[];
     }
+    export type PrivateNetworkRequestPolicy = "Allow"|"BlockFromInsecureToMorePrivate";
+    export type IPAddressSpace = "Local"|"Private"|"Public"|"Unknown";
+    export interface ClientSecurityState {
+      initiatorIsSecureContext: boolean;
+      initiatorIPAddressSpace: IPAddressSpace;
+      privateNetworkRequestPolicy: PrivateNetworkRequestPolicy;
+    }
     export type CrossOriginOpenerPolicyValue = "SameOrigin"|"SameOriginAllowPopups"|"UnsafeNone"|"SameOriginPlusCoep";
     export interface CrossOriginOpenerPolicyStatus {
       value: CrossOriginOpenerPolicyValue;
@@ -7314,8 +7452,8 @@ https://wicg.github.io/webpackage/draft-yasskin-httpbis-origin-signed-exchanges-
       reportOnlyReportingEndpoint?: string;
     }
     export interface SecurityIsolationStatus {
-      coop: CrossOriginOpenerPolicyStatus;
-      coep: CrossOriginEmbedderPolicyStatus;
+      coop?: CrossOriginOpenerPolicyStatus;
+      coep?: CrossOriginEmbedderPolicyStatus;
     }
     /**
      * An object providing the result of a network resource load.
@@ -7420,6 +7558,10 @@ CORB and streaming.
        * The reason why loading was blocked, if any.
        */
       blockedReason?: BlockedReason;
+      /**
+       * The reason why loading was blocked by CORS, if any.
+       */
+      corsErrorStatus?: CorsErrorStatus;
     }
     /**
      * Fired when HTTP request has finished loading.
@@ -7740,6 +7882,29 @@ this requestId will be the same as the requestId present in the requestWillBeSen
       request: WebSocketRequest;
     }
     /**
+     * Fired upon WebTransport creation.
+     */
+    export type webTransportCreatedPayload = {
+      /**
+       * WebTransport identifier.
+       */
+      transportId: RequestId;
+      /**
+       * WebTransport request URL.
+       */
+      url: string;
+      /**
+       * Request initiator.
+       */
+      initiator?: Initiator;
+    }
+    export type webTransportClosedPayload = {
+      /**
+       * WebTransport identifier.
+       */
+      transportId: RequestId;
+    }
+    /**
      * Fired when additional information about a requestWillBeSent event is available from the
 network stack. Not every requestWillBeSent event will have an additional
 requestWillBeSentExtraInfo fired for it, and there is no guarantee whether requestWillBeSent
@@ -7759,6 +7924,10 @@ the request and the ones not sent; the latter are distinguished by having blocke
        * Raw request headers as they will be sent over the wire.
        */
       headers: Headers;
+      /**
+       * The client security state set for the request.
+       */
+      clientSecurityState?: ClientSecurityState;
     }
     /**
      * Fired when additional information about a responseReceived event is available from the network
@@ -7785,6 +7954,35 @@ are represented by the invalid cookie line string instead of a proper cookie.
 available, such as in the case of HTTP/2 or QUIC.
        */
       headersText?: string;
+    }
+    /**
+     * Fired exactly once for each Trust Token operation. Depending on
+the type of the operation and whether the operation succeeded or
+failed, the event is fired before the corresponding request was sent
+or after the response was received.
+     */
+    export type trustTokenOperationDonePayload = {
+      /**
+       * Detailed success or error status of the operation.
+'AlreadyExists' also signifies a successful operation, as the result
+of the operation already exists und thus, the operation was abort
+preemptively (e.g. a cache hit).
+       */
+      status: "Ok"|"InvalidArgument"|"FailedPrecondition"|"ResourceExhausted"|"AlreadyExists"|"Unavailable"|"BadResponse"|"InternalError"|"UnknownError"|"FulfilledLocally";
+      type: TrustTokenOperationType;
+      requestId: RequestId;
+      /**
+       * Top level origin. The context in which the operation was attempted.
+       */
+      topLevelOrigin?: string;
+      /**
+       * Origin of the issuer in case of a "Issuance" or "Redemption" operation.
+       */
+      issuerOrigin?: string;
+      /**
+       * The number of obtained Trust Tokens on a successful "Issuance" operation.
+       */
+      issuedTokenCount?: number;
     }
     
     /**
@@ -8227,15 +8425,15 @@ default domain and path values of the created cookie.
     export type setExtraHTTPHeadersReturnValue = {
     }
     /**
-     * Specifies whether to sned a debug header to all outgoing requests.
+     * Specifies whether to attach a page script stack id in requests
      */
-    export type setAttachDebugHeaderParameters = {
+    export type setAttachDebugStackParameters = {
       /**
-       * Whether to send a debug header.
+       * Whether to attach a page script stack for debugging purpose.
        */
       enabled: boolean;
     }
-    export type setAttachDebugHeaderReturnValue = {
+    export type setAttachDebugStackReturnValue = {
     }
     /**
      * Sets the requests to intercept that match the provided patterns and optionally resource types.
@@ -8410,6 +8608,70 @@ continueInterceptedRequest call.
       gridBackgroundColor?: DOM.RGBA;
     }
     /**
+     * Configuration data for the highlighting of Flex container elements.
+     */
+    export interface FlexContainerHighlightConfig {
+      /**
+       * The style of the container border
+       */
+      containerBorder?: LineStyle;
+      /**
+       * The style of the separator between lines
+       */
+      lineSeparator?: LineStyle;
+      /**
+       * The style of the separator between items
+       */
+      itemSeparator?: LineStyle;
+      /**
+       * Style of content-distribution space on the main axis (justify-content).
+       */
+      mainDistributedSpace?: BoxStyle;
+      /**
+       * Style of content-distribution space on the cross axis (align-content).
+       */
+      crossDistributedSpace?: BoxStyle;
+      /**
+       * Style of empty space caused by row gaps (gap/row-gap).
+       */
+      rowGapSpace?: BoxStyle;
+      /**
+       * Style of empty space caused by columns gaps (gap/column-gap).
+       */
+      columnGapSpace?: BoxStyle;
+      /**
+       * Style of the self-alignment line (align-items).
+       */
+      crossAlignment?: LineStyle;
+    }
+    /**
+     * Style information for drawing a line.
+     */
+    export interface LineStyle {
+      /**
+       * The color of the line (default: transparent)
+       */
+      color?: DOM.RGBA;
+      /**
+       * The line pattern (default: solid)
+       */
+      pattern?: "dashed"|"dotted";
+    }
+    /**
+     * Style information for drawing a box.
+     */
+    export interface BoxStyle {
+      /**
+       * The background color for the box (default: transparent)
+       */
+      fillColor?: DOM.RGBA;
+      /**
+       * The hatching color for the box (default: transparent)
+       */
+      hatchColor?: DOM.RGBA;
+    }
+    export type ContrastAlgorithm = "aa"|"aaa"|"apca";
+    /**
      * Configuration data for the highlighting of page elements.
      */
     export interface HighlightConfig {
@@ -8473,6 +8735,14 @@ continueInterceptedRequest call.
        * The grid layout highlight configuration (default: all transparent).
        */
       gridHighlightConfig?: GridHighlightConfig;
+      /**
+       * The flex container highlight configuration (default: all transparent).
+       */
+      flexContainerHighlightConfig?: FlexContainerHighlightConfig;
+      /**
+       * The contrast algorithm to use for the contrast ratio (default: aa).
+       */
+      contrastAlgorithm?: ContrastAlgorithm;
     }
     export type ColorFormat = "rgb"|"hsl"|"hex";
     /**
@@ -8483,6 +8753,16 @@ continueInterceptedRequest call.
        * A descriptor for the highlight appearance.
        */
       gridHighlightConfig: GridHighlightConfig;
+      /**
+       * Identifier of the node to highlight.
+       */
+      nodeId: DOM.NodeId;
+    }
+    export interface FlexNodeHighlightConfig {
+      /**
+       * A descriptor for the highlight appearance of flex containers.
+       */
+      flexContainerHighlightConfig: FlexContainerHighlightConfig;
       /**
        * Identifier of the node to highlight.
        */
@@ -8809,6 +9089,14 @@ Backend then generates 'inspectNodeRequested' event upon element selection.
     }
     export type setShowGridOverlaysReturnValue = {
     }
+    export type setShowFlexOverlaysParameters = {
+      /**
+       * An array of node identifiers and descriptors for the highlight appearance.
+       */
+      flexNodeHighlightConfigs: FlexNodeHighlightConfig[];
+    }
+    export type setShowFlexOverlaysReturnValue = {
+    }
     /**
      * Requests that backend shows paint rectangles
      */
@@ -8897,6 +9185,7 @@ Backend then generates 'inspectNodeRequested' event upon element selection.
      * Indicates whether the frame is cross-origin isolated and why it is the case.
      */
     export type CrossOriginIsolatedContextType = "Isolated"|"NotIsolated"|"NotIsolatedFeatureDisabled";
+    export type GatedAPIFeatures = "SharedArrayBuffers"|"SharedArrayBuffersTransferAllowed"|"PerformanceMeasureMemory"|"PerformanceProfile";
     /**
      * Information about the Frame on the page.
      */
@@ -8956,6 +9245,10 @@ Example URLs: http://www.google.com/file.html -> "google.com"
        * Indicates whether this is a cross origin isolated context.
        */
       crossOriginIsolatedContextType: CrossOriginIsolatedContextType;
+      /**
+       * Indicated which gated APIs / features are available.
+       */
+      gatedAPIFeatures: GatedAPIFeatures[];
     }
     /**
      * Information about the Resource on the page.
@@ -9333,11 +9626,21 @@ Example URLs: http://www.google.com/file.html -> "google.com"
        * Id of the frame that has been detached.
        */
       frameId: FrameId;
+      reason: "remove"|"swap";
     }
     /**
      * Fired once navigation of the frame has completed. Frame is now associated with the new loader.
      */
     export type frameNavigatedPayload = {
+      /**
+       * Frame object.
+       */
+      frame: Frame;
+    }
+    /**
+     * Fired when opening document to write to.
+     */
+    export type documentOpenedPayload = {
       /**
        * Frame object.
        */
@@ -9646,6 +9949,10 @@ event is emitted.
        * Capture the screenshot from the surface, rather than the view. Defaults to true.
        */
       fromSurface?: boolean;
+      /**
+       * Capture the screenshot beyond the viewport. Defaults to false.
+       */
+      captureBeyondViewport?: boolean;
     }
     export type captureScreenshotReturnValue = {
       /**
@@ -11076,9 +11383,34 @@ For cached script it is the last time the cache entry was validated.
        */
       quota: number;
       /**
+       * Whether or not the origin has an active storage quota override
+       */
+      overrideActive: boolean;
+      /**
        * Storage usage per type (bytes).
        */
       usageBreakdown: UsageForType[];
+    }
+    /**
+     * Override quota for the specified origin
+     */
+    export type overrideQuotaForOriginParameters = {
+      /**
+       * Security origin.
+       */
+      origin: string;
+      /**
+       * The quota size (in bytes) to override the original quota with.
+If this is called multiple times, the overriden quota will be equal to
+the quotaSize provided in the final call. If this is called without
+specifying a quotaSize, the quota will be reset to the default value for
+the specified origin. If this is called multiple times with different
+origins, the override will be maintained for each origin until it is
+disabled (called without a quotaSize).
+       */
+      quotaSize?: number;
+    }
+    export type overrideQuotaForOriginReturnValue = {
     }
     /**
      * Registers origin to be notified when an update occurs to its cache storage list.
@@ -11799,6 +12131,12 @@ protocol buffer format. Note that the JSON format will be deprecated soon.
      * Compression type to use for traces returned via streams.
      */
     export type StreamCompression = "none"|"gzip";
+    /**
+     * Details exposed when memory request explicitly declared.
+Keep consistent with memory_dump_request_args.h and
+memory_instrumentation.mojom
+     */
+    export type MemoryDumpLevelOfDetail = "background"|"light"|"detailed";
     
     export type bufferUsagePayload = {
       /**
@@ -11884,6 +12222,10 @@ buffer wrapped around.
        * Enables more deterministic results by forcing garbage collection
        */
       deterministic?: boolean;
+      /**
+       * Specifies level of details in memory dump. Defaults to "detailed".
+       */
+      levelOfDetail?: MemoryDumpLevelOfDetail;
     }
     export type requestMemoryDumpReturnValue = {
       /**
@@ -12489,9 +12831,14 @@ API.
   export module WebAuthn {
     export type AuthenticatorId = string;
     export type AuthenticatorProtocol = "u2f"|"ctap2";
+    export type Ctap2Version = "ctap2_0"|"ctap2_1";
     export type AuthenticatorTransport = "usb"|"nfc"|"ble"|"cable"|"internal";
     export interface VirtualAuthenticatorOptions {
       protocol: AuthenticatorProtocol;
+      /**
+       * Defaults to ctap2_0. Ignored if |protocol| == u2f.
+       */
+      ctap2Version?: Ctap2Version;
       transport: AuthenticatorTransport;
       /**
        * Defaults to false.
@@ -12541,6 +12888,11 @@ assertion.
 See https://w3c.github.io/webauthn/#signature-counter
        */
       signCount: number;
+      /**
+       * The large blob associated with the credential.
+See https://w3c.github.io/webauthn/#sctn-large-blob-extension
+       */
+      largeBlob?: binary;
     }
     
     
@@ -13000,7 +13352,7 @@ variables as its properties.
       /**
        * Pause reason.
        */
-      reason: "ambiguous"|"assert"|"debugCommand"|"DOM"|"EventListener"|"exception"|"instrumentation"|"OOM"|"other"|"promiseRejection"|"XHR";
+      reason: "ambiguous"|"assert"|"CSPViolation"|"debugCommand"|"DOM"|"EventListener"|"exception"|"instrumentation"|"OOM"|"other"|"promiseRejection"|"XHR";
       /**
        * Object containing break-specific auxiliary properties.
        */
@@ -15370,8 +15722,11 @@ unsubscribes current runtime agent from Runtime.bindingCalled notifications.
     "Network.webSocketFrameSent": Network.webSocketFrameSentPayload;
     "Network.webSocketHandshakeResponseReceived": Network.webSocketHandshakeResponseReceivedPayload;
     "Network.webSocketWillSendHandshakeRequest": Network.webSocketWillSendHandshakeRequestPayload;
+    "Network.webTransportCreated": Network.webTransportCreatedPayload;
+    "Network.webTransportClosed": Network.webTransportClosedPayload;
     "Network.requestWillBeSentExtraInfo": Network.requestWillBeSentExtraInfoPayload;
     "Network.responseReceivedExtraInfo": Network.responseReceivedExtraInfoPayload;
+    "Network.trustTokenOperationDone": Network.trustTokenOperationDonePayload;
     "Overlay.inspectNodeRequested": Overlay.inspectNodeRequestedPayload;
     "Overlay.nodeHighlightRequested": Overlay.nodeHighlightRequestedPayload;
     "Overlay.screenshotRequested": Overlay.screenshotRequestedPayload;
@@ -15382,6 +15737,7 @@ unsubscribes current runtime agent from Runtime.bindingCalled notifications.
     "Page.frameClearedScheduledNavigation": Page.frameClearedScheduledNavigationPayload;
     "Page.frameDetached": Page.frameDetachedPayload;
     "Page.frameNavigated": Page.frameNavigatedPayload;
+    "Page.documentOpened": Page.documentOpenedPayload;
     "Page.frameResized": Page.frameResizedPayload;
     "Page.frameRequestedNavigation": Page.frameRequestedNavigationPayload;
     "Page.frameScheduledNavigation": Page.frameScheduledNavigationPayload;
@@ -15470,6 +15826,7 @@ unsubscribes current runtime agent from Runtime.bindingCalled notifications.
     "Accessibility.enable": Accessibility.enableParameters;
     "Accessibility.getPartialAXTree": Accessibility.getPartialAXTreeParameters;
     "Accessibility.getFullAXTree": Accessibility.getFullAXTreeParameters;
+    "Accessibility.getChildAXNodes": Accessibility.getChildAXNodesParameters;
     "Accessibility.queryAXTree": Accessibility.queryAXTreeParameters;
     "Animation.disable": Animation.disableParameters;
     "Animation.enable": Animation.enableParameters;
@@ -15507,6 +15864,7 @@ unsubscribes current runtime agent from Runtime.bindingCalled notifications.
     "Browser.getWindowForTarget": Browser.getWindowForTargetParameters;
     "Browser.setWindowBounds": Browser.setWindowBoundsParameters;
     "Browser.setDockTile": Browser.setDockTileParameters;
+    "Browser.executeBrowserCommand": Browser.executeBrowserCommandParameters;
     "CSS.addRule": CSS.addRuleParameters;
     "CSS.collectClassNames": CSS.collectClassNamesParameters;
     "CSS.createStyleSheet": CSS.createStyleSheetParameters;
@@ -15593,6 +15951,7 @@ unsubscribes current runtime agent from Runtime.bindingCalled notifications.
     "DOMDebugger.removeEventListenerBreakpoint": DOMDebugger.removeEventListenerBreakpointParameters;
     "DOMDebugger.removeInstrumentationBreakpoint": DOMDebugger.removeInstrumentationBreakpointParameters;
     "DOMDebugger.removeXHRBreakpoint": DOMDebugger.removeXHRBreakpointParameters;
+    "DOMDebugger.setBreakOnCSPViolation": DOMDebugger.setBreakOnCSPViolationParameters;
     "DOMDebugger.setDOMBreakpoint": DOMDebugger.setDOMBreakpointParameters;
     "DOMDebugger.setEventListenerBreakpoint": DOMDebugger.setEventListenerBreakpointParameters;
     "DOMDebugger.setInstrumentationBreakpoint": DOMDebugger.setInstrumentationBreakpointParameters;
@@ -15637,6 +15996,7 @@ unsubscribes current runtime agent from Runtime.bindingCalled notifications.
     "Emulation.setLocaleOverride": Emulation.setLocaleOverrideParameters;
     "Emulation.setTimezoneOverride": Emulation.setTimezoneOverrideParameters;
     "Emulation.setVisibleSize": Emulation.setVisibleSizeParameters;
+    "Emulation.setDisabledImageTypes": Emulation.setDisabledImageTypesParameters;
     "Emulation.setUserAgentOverride": Emulation.setUserAgentOverrideParameters;
     "HeadlessExperimental.beginFrame": HeadlessExperimental.beginFrameParameters;
     "HeadlessExperimental.disable": HeadlessExperimental.disableParameters;
@@ -15714,7 +16074,7 @@ unsubscribes current runtime agent from Runtime.bindingCalled notifications.
     "Network.setCookies": Network.setCookiesParameters;
     "Network.setDataSizeLimitsForTest": Network.setDataSizeLimitsForTestParameters;
     "Network.setExtraHTTPHeaders": Network.setExtraHTTPHeadersParameters;
-    "Network.setAttachDebugHeader": Network.setAttachDebugHeaderParameters;
+    "Network.setAttachDebugStack": Network.setAttachDebugStackParameters;
     "Network.setRequestInterception": Network.setRequestInterceptionParameters;
     "Network.setUserAgentOverride": Network.setUserAgentOverrideParameters;
     "Network.getSecurityIsolationStatus": Network.getSecurityIsolationStatusParameters;
@@ -15736,6 +16096,7 @@ unsubscribes current runtime agent from Runtime.bindingCalled notifications.
     "Overlay.setShowDebugBorders": Overlay.setShowDebugBordersParameters;
     "Overlay.setShowFPSCounter": Overlay.setShowFPSCounterParameters;
     "Overlay.setShowGridOverlays": Overlay.setShowGridOverlaysParameters;
+    "Overlay.setShowFlexOverlays": Overlay.setShowFlexOverlaysParameters;
     "Overlay.setShowPaintRects": Overlay.setShowPaintRectsParameters;
     "Overlay.setShowLayoutShiftRegions": Overlay.setShowLayoutShiftRegionsParameters;
     "Overlay.setShowScrollBottleneckRects": Overlay.setShowScrollBottleneckRectsParameters;
@@ -15823,6 +16184,7 @@ unsubscribes current runtime agent from Runtime.bindingCalled notifications.
     "Storage.setCookies": Storage.setCookiesParameters;
     "Storage.clearCookies": Storage.clearCookiesParameters;
     "Storage.getUsageAndQuota": Storage.getUsageAndQuotaParameters;
+    "Storage.overrideQuotaForOrigin": Storage.overrideQuotaForOriginParameters;
     "Storage.trackCacheStorageForOrigin": Storage.trackCacheStorageForOriginParameters;
     "Storage.trackIndexedDBForOrigin": Storage.trackIndexedDBForOriginParameters;
     "Storage.untrackCacheStorageForOrigin": Storage.untrackCacheStorageForOriginParameters;
@@ -15969,6 +16331,7 @@ unsubscribes current runtime agent from Runtime.bindingCalled notifications.
     "Accessibility.enable": Accessibility.enableReturnValue;
     "Accessibility.getPartialAXTree": Accessibility.getPartialAXTreeReturnValue;
     "Accessibility.getFullAXTree": Accessibility.getFullAXTreeReturnValue;
+    "Accessibility.getChildAXNodes": Accessibility.getChildAXNodesReturnValue;
     "Accessibility.queryAXTree": Accessibility.queryAXTreeReturnValue;
     "Animation.disable": Animation.disableReturnValue;
     "Animation.enable": Animation.enableReturnValue;
@@ -16006,6 +16369,7 @@ unsubscribes current runtime agent from Runtime.bindingCalled notifications.
     "Browser.getWindowForTarget": Browser.getWindowForTargetReturnValue;
     "Browser.setWindowBounds": Browser.setWindowBoundsReturnValue;
     "Browser.setDockTile": Browser.setDockTileReturnValue;
+    "Browser.executeBrowserCommand": Browser.executeBrowserCommandReturnValue;
     "CSS.addRule": CSS.addRuleReturnValue;
     "CSS.collectClassNames": CSS.collectClassNamesReturnValue;
     "CSS.createStyleSheet": CSS.createStyleSheetReturnValue;
@@ -16092,6 +16456,7 @@ unsubscribes current runtime agent from Runtime.bindingCalled notifications.
     "DOMDebugger.removeEventListenerBreakpoint": DOMDebugger.removeEventListenerBreakpointReturnValue;
     "DOMDebugger.removeInstrumentationBreakpoint": DOMDebugger.removeInstrumentationBreakpointReturnValue;
     "DOMDebugger.removeXHRBreakpoint": DOMDebugger.removeXHRBreakpointReturnValue;
+    "DOMDebugger.setBreakOnCSPViolation": DOMDebugger.setBreakOnCSPViolationReturnValue;
     "DOMDebugger.setDOMBreakpoint": DOMDebugger.setDOMBreakpointReturnValue;
     "DOMDebugger.setEventListenerBreakpoint": DOMDebugger.setEventListenerBreakpointReturnValue;
     "DOMDebugger.setInstrumentationBreakpoint": DOMDebugger.setInstrumentationBreakpointReturnValue;
@@ -16136,6 +16501,7 @@ unsubscribes current runtime agent from Runtime.bindingCalled notifications.
     "Emulation.setLocaleOverride": Emulation.setLocaleOverrideReturnValue;
     "Emulation.setTimezoneOverride": Emulation.setTimezoneOverrideReturnValue;
     "Emulation.setVisibleSize": Emulation.setVisibleSizeReturnValue;
+    "Emulation.setDisabledImageTypes": Emulation.setDisabledImageTypesReturnValue;
     "Emulation.setUserAgentOverride": Emulation.setUserAgentOverrideReturnValue;
     "HeadlessExperimental.beginFrame": HeadlessExperimental.beginFrameReturnValue;
     "HeadlessExperimental.disable": HeadlessExperimental.disableReturnValue;
@@ -16213,7 +16579,7 @@ unsubscribes current runtime agent from Runtime.bindingCalled notifications.
     "Network.setCookies": Network.setCookiesReturnValue;
     "Network.setDataSizeLimitsForTest": Network.setDataSizeLimitsForTestReturnValue;
     "Network.setExtraHTTPHeaders": Network.setExtraHTTPHeadersReturnValue;
-    "Network.setAttachDebugHeader": Network.setAttachDebugHeaderReturnValue;
+    "Network.setAttachDebugStack": Network.setAttachDebugStackReturnValue;
     "Network.setRequestInterception": Network.setRequestInterceptionReturnValue;
     "Network.setUserAgentOverride": Network.setUserAgentOverrideReturnValue;
     "Network.getSecurityIsolationStatus": Network.getSecurityIsolationStatusReturnValue;
@@ -16235,6 +16601,7 @@ unsubscribes current runtime agent from Runtime.bindingCalled notifications.
     "Overlay.setShowDebugBorders": Overlay.setShowDebugBordersReturnValue;
     "Overlay.setShowFPSCounter": Overlay.setShowFPSCounterReturnValue;
     "Overlay.setShowGridOverlays": Overlay.setShowGridOverlaysReturnValue;
+    "Overlay.setShowFlexOverlays": Overlay.setShowFlexOverlaysReturnValue;
     "Overlay.setShowPaintRects": Overlay.setShowPaintRectsReturnValue;
     "Overlay.setShowLayoutShiftRegions": Overlay.setShowLayoutShiftRegionsReturnValue;
     "Overlay.setShowScrollBottleneckRects": Overlay.setShowScrollBottleneckRectsReturnValue;
@@ -16322,6 +16689,7 @@ unsubscribes current runtime agent from Runtime.bindingCalled notifications.
     "Storage.setCookies": Storage.setCookiesReturnValue;
     "Storage.clearCookies": Storage.clearCookiesReturnValue;
     "Storage.getUsageAndQuota": Storage.getUsageAndQuotaReturnValue;
+    "Storage.overrideQuotaForOrigin": Storage.overrideQuotaForOriginReturnValue;
     "Storage.trackCacheStorageForOrigin": Storage.trackCacheStorageForOriginReturnValue;
     "Storage.trackIndexedDBForOrigin": Storage.trackIndexedDBForOriginReturnValue;
     "Storage.untrackCacheStorageForOrigin": Storage.untrackCacheStorageForOriginReturnValue;

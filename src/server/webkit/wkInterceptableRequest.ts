@@ -74,6 +74,9 @@ export class WKInterceptableRequest implements network.RouteDelegate {
   }
 
   async fulfill(response: types.NormalizedFulfillResponse) {
+    if (300 <= response.status && response.status < 400)
+      throw new Error('Cannot fulfill with redirect status: ' + response.status);
+
     await this._interceptedPromise;
 
     // In certain cases, protocol will return error if the request was already canceled
@@ -100,6 +103,7 @@ export class WKInterceptableRequest implements network.RouteDelegate {
     // or the page was closed. We should tolerate these errors.
     await this._session.sendMayFail('Network.interceptWithRequest', {
       requestId: this._requestId,
+      url: overrides.url,
       method: overrides.method,
       headers: overrides.headers ? headersArrayToObject(overrides.headers, false /* lowerCase */) : undefined,
       postData: overrides.postData ? Buffer.from(overrides.postData).toString('base64') : undefined
@@ -132,9 +136,9 @@ function wkMillisToRoundishMillis(value: number): number {
     return -1;
 
   // WebKit has a bug, instead of -1 it sends -1000 to be in ms.
-  if (value < 0) {
+  if (value <= 0) {
     // DNS can start before request start on Mac Network Stack
-    return 0;
+    return -1;
   }
 
   return ((value * 1000) | 0) / 1000;

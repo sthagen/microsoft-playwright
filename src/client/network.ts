@@ -18,11 +18,14 @@ import { URLSearchParams } from 'url';
 import * as channels from '../protocol/channels';
 import { ChannelOwner } from './channelOwner';
 import { Frame } from './frame';
-import { Headers } from './types';
+import { Headers, WaitForEventOptions } from './types';
 import * as fs from 'fs';
 import * as mime from 'mime';
 import * as util from 'util';
 import { isString, headersObjectToArray, headersArrayToObject } from '../utils/utils';
+import { Events } from './events';
+import { Page } from './page';
+import { Waiter } from './waiter';
 
 export type NetworkCookie = {
   name: string,
@@ -218,9 +221,10 @@ export class Route extends ChannelOwner<channels.RouteChannel, channels.RouteIni
     });
   }
 
-  async continue(overrides: { method?: string, headers?: Headers, postData?: string | Buffer } = {}) {
+  async continue(overrides: { url?: string, method?: string, headers?: Headers, postData?: string | Buffer } = {}) {
     const postDataBuffer = isString(overrides.postData) ? Buffer.from(overrides.postData, 'utf8') : overrides.postData;
     await this._channel.continue({
+      url: overrides.url,
       method: overrides.method,
       headers: overrides.headers ? headersObjectToArray(overrides.headers) : undefined,
       postData: postDataBuffer ? postDataBuffer.toString('base64') : undefined,
@@ -309,6 +313,57 @@ export class Response extends ChannelOwner<channels.ResponseChannel, channels.Re
 
   frame(): Frame {
     return this._request.frame();
+  }
+}
+
+export class WebSocket extends ChannelOwner<channels.WebSocketChannel, channels.WebSocketInitializer> {
+  private _page: Page;
+  private _isClosed: boolean;
+
+  static from(webSocket: channels.WebSocketChannel): WebSocket {
+    return (webSocket as any)._object;
+  }
+
+  constructor(parent: ChannelOwner, type: string, guid: string, initializer: channels.WebSocketInitializer) {
+    super(parent, type, guid, initializer);
+    this._isClosed = false;
+    this._page = parent as Page;
+    this._channel.on('frameSent', (event: { opcode: number, data: string }) => {
+      const payload = event.opcode === 2 ? Buffer.from(event.data, 'base64') : event.data;
+      this.emit(Events.WebSocket.FrameSent, { payload });
+    });
+    this._channel.on('frameReceived', (event: { opcode: number, data: string }) => {
+      const payload = event.opcode === 2 ? Buffer.from(event.data, 'base64') : event.data;
+      this.emit(Events.WebSocket.FrameReceived, { payload });
+    });
+    this._channel.on('socketError', ({ error }) => this.emit(Events.WebSocket.Error, error));
+    this._channel.on('close', () => {
+      this._isClosed = true;
+      this.emit(Events.WebSocket.Close);
+    });
+  }
+
+  url(): string {
+    return this._initializer.url;
+  }
+
+  isClosed(): boolean {
+    return this._isClosed;
+  }
+
+  async waitForEvent(event: string, optionsOrPredicate: WaitForEventOptions = {}): Promise<any> {
+    const timeout = this._page._timeoutSettings.timeout(typeof optionsOrPredicate === 'function' ? {} : optionsOrPredicate);
+    const predicate = typeof optionsOrPredicate === 'function' ? optionsOrPredicate : optionsOrPredicate.predicate;
+    const waiter = new Waiter();
+    waiter.rejectOnTimeout(timeout, `Timeout while waiting for event "${event}"`);
+    if (event !== Events.WebSocket.Error)
+      waiter.rejectOnEvent(this, Events.WebSocket.Error, new Error('Socket error'));
+    if (event !== Events.WebSocket.Close)
+      waiter.rejectOnEvent(this, Events.WebSocket.Close, new Error('Socket closed'));
+    waiter.rejectOnEvent(this._page, Events.Page.Close, new Error('Page closed'));
+    const result = await waiter.waitForEvent(this, event, predicate as any);
+    waiter.dispose();
+    return result;
   }
 }
 

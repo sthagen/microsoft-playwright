@@ -16,19 +16,21 @@ Playwright can record videos for all pages in a [browser context](core-concepts.
 
 ```js
 // With browser.newContext()
-const context = await browser.newContext({ videosPath: 'videos/' });
+const context = await browser.newContext({ recordVideo: { dir: 'videos/' } });
 // Make sure to await close, so that videos are saved.
 await context.close();
 
 // With browser.newPage()
-const page = await browser.newPage({ videosPath: 'videos/' });
+const page = await browser.newPage({ recordVideo: { dir: 'videos/' } });
 // Make sure to await close, so that videos are saved.
 await page.close();
 
 // [Optional] Specify video size; defaults to viewport size
 const context = await browser.newContext({
-    videosPath: 'videos/',
-    videoSize: { width: 800, height: 600 }
+  recordVideo: {
+    dir: 'videos/',
+    size: { width: 800, height: 600 },
+  }
 });
 ```
 
@@ -96,7 +98,7 @@ await msg.args[1].jsonValue() // 42
 
 - [class: ConsoleMessage](./api.md#class-consolemessage)
 - [class: Page](./api.md#class-page)
-- [event: 'console'](./api.md#event-console)
+- [page.on('console')](./api.md#pageonconsole)
 
 <br/>
 
@@ -117,7 +119,7 @@ await page.goto('data:text/html,<script>throw new Error("Test")</script>');
 #### API reference
 
 - [class: Page](./api.md#class-page)
-- [event: 'pageerror'](./api.md#event-pageerror)
+- [page.on('pageerror')](./api.md#pageonpageerror)
 
 <br/>
 
@@ -151,6 +153,6 @@ const [popup] = await Promise.all([
 #### API reference
 
 - [class: Page](./api.md#class-page)
-- [event: 'requestfailed'](./api.md#event-requestfailed)
-- [event: 'dialog'](./api.md#event-dialog)
-- [event: 'popup'](./api.md#event-popup)
+- [page.on('requestfailed')](./api.md#pageonrequestfailed)
+- [page.on('dialog')](./api.md#pageondialog)
+- [page.on('popup')](./api.md#pageonpopup)
