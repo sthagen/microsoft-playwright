@@ -18,15 +18,34 @@ import { folio } from './android.fixtures';
 const { it, expect } = folio;
 
 if (process.env.PW_ANDROID_TESTS) {
-  it('should discover device', async function({ device }) {
+  it('androidDevice.model', async function({ device }) {
     expect(device.model()).toBe('sdk_gphone_x86_arm');
   });
 
-  it('should launch browser', async function({ device }) {
+  it('androidDevice.launchBrowser', async function({ device }) {
     const context = await device.launchBrowser();
     const [page] = context.pages();
     await page.goto('data:text/html,<title>Hello world!</title>');
     expect(await page.title()).toBe('Hello world!');
+    await context.close();
+  });
+
+  it('should create new page', async function({ device }) {
+    const context = await device.launchBrowser();
+    const page = await context.newPage();
+    await page.goto('data:text/html,<title>Hello world!</title>');
+    expect(await page.title()).toBe('Hello world!');
+    await page.close();
+    await context.close();
+  });
+
+  it('should check', async function({ device }) {
+    const context = await device.launchBrowser();
+    const [page] = context.pages();
+    await page.setContent(`<input id='checkbox' type='checkbox'></input>`);
+    await page.check('input');
+    expect(await page.evaluate(() => window['checkbox'].checked)).toBe(true);
+    await page.close();
     await context.close();
   });
 }

@@ -334,6 +334,7 @@ it('should work with spaces in :nth-child and :not', async ({page, server}) => {
   expect(await page.$$eval(`css=div > :not(span)`, els => els.length)).toBe(2);
   expect(await page.$$eval(`css=body :not(span, div)`, els => els.length)).toBe(1);
   expect(await page.$$eval(`css=span, section:not(span, div)`, els => els.length)).toBe(5);
+  expect(await page.$$eval(`span:nth-child(23n+ 2) >> xpath=.`, els => els.length)).toBe(1);
 });
 
 it('should work with :is', async ({page, server}) => {
@@ -348,6 +349,8 @@ it('should work with :is', async ({page, server}) => {
   expect(await page.$$eval(`css=:is(div, span)`, els => els.length)).toBe(7);
   expect(await page.$$eval(`css=section:is(section) div:is(section div)`, els => els.length)).toBe(3);
   expect(await page.$$eval(`css=:is(div, span) > *`, els => els.length)).toBe(6);
+  expect(await page.$$eval(`css=#root1:has(:is(#root1))`, els => els.length)).toBe(0);
+  expect(await page.$$eval(`css=#root1:has(:is(:scope, #root1))`, els => els.length)).toBe(1);
 });
 
 it('should work with :has', async ({page, server}) => {

@@ -17,7 +17,7 @@
 const path = require('path');
 const Message = require('../Message');
 
-function runCommands(sources, {libversion, chromiumVersion, firefoxVersion}) {
+function runCommands(sources, {libversion, chromiumVersion, firefoxVersion, webkitVersion}) {
   // Release version is everything that doesn't include "-".
   const isReleaseVersion = !libversion.includes('-');
 
@@ -47,6 +47,8 @@ function runCommands(sources, {libversion, chromiumVersion, firefoxVersion}) {
         newText = chromiumVersion;
       else if (commandName === 'firefox-version')
         newText = firefoxVersion;
+      else if (commandName === 'webkit-version')
+        newText = webkitVersion;
       else if (commandName === 'chromium-version-badge')
         newText = `[![Chromium version](https://img.shields.io/badge/chromium-${chromiumVersion}-blue.svg?logo=google-chrome)](https://www.chromium.org/Home)`;
       else if (commandName === 'firefox-version-badge')
@@ -188,22 +190,32 @@ function generateLinks(source, signatures, messages) {
     let match;
     while (match = linkRegex.exec(line)) {
       const [, name] = match;
+      const linkOffset = offset + lineNumber + match.index;
       const hrefOffset = offset + lineNumber + match.index + 3 + name.length;
-      const eventMatch = name.match(/.*on\('.*'\)/);
       let replacement;
-      if (eventMatch) {
-        replacement = eventMatch[0];
-      } else {
-        const method = name.substring(0, name.length - 2);
+      const memberMatch = name.match(/`(event|method|namespace):\s(JS|CDP|[A-Z])([^.]+)\.(.*)`/m);
+      const paramMatch = name.match(/`(?:param|option):\s(.*)`/m);
+      if (!memberMatch && !paramMatch) {
+        messages.push(Message.error(`Bad link: ${source.filePath()}:${lineNumber + 1}: ${name}`));
+        return;
+      }
+      if (memberMatch && memberMatch[1] === 'event') {
+        replacement = `${memberMatch[2].toLowerCase() + memberMatch[3]}.on('${memberMatch[4]}')`;
+        sourceEdits.edit(linkOffset + 1, hrefOffset - 2, replacement);
+      } else if (memberMatch && memberMatch[1] === 'method') {
+        const method = memberMatch[2].toLowerCase() + memberMatch[3] + '.' + memberMatch[4];
         let signature = signatures.get(method);
         if (signature === undefined) {
           messages.push(Message.error(`Bad method link: ${source.filePath()}:${lineNumber + 1}: ${method}`));
-          signature = '\u2026';
+          signature = '(\u2026)';
         }
-        sourceEdits.edit(hrefOffset - 3, hrefOffset - 3, signature);
-        replacement = name + signature;
+        replacement = method + '(' + signature + ')';
+        sourceEdits.edit(linkOffset + 2, hrefOffset - 3, replacement);
+      } else if (paramMatch) {
+        sourceEdits.edit(linkOffset, hrefOffset + 1, '`' + paramMatch[1] + '`');
       }
-      sourceEdits.edit(hrefOffset, hrefOffset, '#' + replacement.toLowerCase().replace(/[^a-z]/gm, ''));
+      if (replacement)
+        sourceEdits.edit(hrefOffset, hrefOffset, '#' + replacement.toLowerCase().replace(/[^a-z]/gm, ''));
     }
     offset += line.length;
   });
