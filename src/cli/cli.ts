@@ -22,17 +22,18 @@ import * as path from 'path';
 import * as program from 'commander';
 import * as os from 'os';
 import * as fs from 'fs';
-import { installBrowsersWithProgressBar } from '../install/installer';
-
-// TODO: we can import from '../..' instead, but that requires generating types
-// before build, and currently type generator depends on the build.
-import type { Browser, BrowserContext, Page, BrowserType } from '../client/api';
-import type { Playwright } from '../client/playwright';
-import type { BrowserContextOptions, LaunchOptions } from '../client/types';
-const playwright = require('../inprocess') as Playwright;
+import { runServer, printApiJson, installBrowsers } from './driver';
+import { showTraceViewer } from './traceViewer/traceViewer';
+import * as playwright from '../..';
+import { BrowserContext } from '../client/browserContext';
+import { Browser } from '../client/browser';
+import { Page } from '../client/page';
+import { BrowserType } from '../client/browserType';
+import { BrowserContextOptions, LaunchOptions } from '../client/types';
 
 program
     .version('Version ' + require('../../package.json').version)
+    .name('npx playwright')
     .option('-b, --browser <browserType>', 'browser to use, one of cr, chromium, ff, firefox, wk, webkit', 'chromium')
     .option('--color-scheme <scheme>', 'emulate preferred color scheme, "light" or "dark"')
     .option('--device <deviceName>', 'emulate device, for example  "iPhone 11"')
@@ -50,7 +51,7 @@ program
     .command('open [url]')
     .description('open page in browser specified via -b, --browser')
     .action(function(url, command) {
-      open(command.parent, url);
+      open(command.parent, url, language());
     }).on('--help', function() {
       console.log('');
       console.log('Examples:');
@@ -69,8 +70,9 @@ for (const {alias, name, type} of browsers) {
   program
       .command(`${alias} [url]`)
       .description(`open page in ${name}`)
+      .option('--target <language>', `language to use, one of javascript, python, python-async, csharp`, language())
       .action(function(url, command) {
-        open({ ...command.parent, browser: type }, url);
+        open({ ...command.parent, browser: type }, url, command.target);
       }).on('--help', function() {
         console.log('');
         console.log('Examples:');
@@ -78,6 +80,22 @@ for (const {alias, name, type} of browsers) {
         console.log(`  $ ${alias} https://example.com`);
       });
 }
+
+program
+    .command('codegen [url]')
+    .description('open page and generate code for user actions')
+    .option('-o, --output <file name>', 'saves the generated script to a file')
+    .option('--target <language>', `language to use, one of javascript, python, python-async, csharp`, language())
+    .action(function(url, command) {
+      codegen(command.parent, url, command.target, command.output);
+    }).on('--help', function() {
+      console.log('');
+      console.log('Examples:');
+      console.log('');
+      console.log('  $ codegen');
+      console.log('  $ codegen --target=python');
+      console.log('  $ -b webkit codegen https://example.com');
+    });
 
 program
     .command('screenshot <url> <filename>')
@@ -109,22 +127,43 @@ program
     });
 
 program
-    .command('install')
+    .command('install [browserType...]')
     .description('Ensure browsers necessary for this version of Playwright are installed')
-    .action(function() {
-      let browsersJsonDir = path.dirname(process.execPath);
-      if (!fs.existsSync(path.join(browsersJsonDir, 'browsers.json'))) {
-        browsersJsonDir = path.join(__dirname, '..', '..');
-        if (!fs.existsSync(path.join(browsersJsonDir, 'browsers.json')))
-          throw new Error('Failed to find browsers.json in ' + browsersJsonDir);
+    .action(function(browserType) {
+      const allBrowsers = new Set(['chromium', 'firefox', 'webkit']);
+      for (const type of browserType) {
+        if (!allBrowsers.has(type)) {
+          console.log(`Invalid browser name: '${type}'. Expecting 'chromium', 'firefox' or 'webkit'.`);
+          process.exit(1);
+        }
       }
-      installBrowsersWithProgressBar(browsersJsonDir).catch((e: any) => {
+      installBrowsers(browserType.length ? browserType : undefined).catch((e: any) => {
         console.log(`Failed to install browsers\n${e}`);
         process.exit(1);
       });
     });
 
-program.parse(process.argv);
+if (process.env.PWTRACE) {
+  program
+      .command('show-trace [trace]')
+      .description('Show trace viewer')
+      .action(function(trace, command) {
+        showTraceViewer(trace);
+      }).on('--help', function() {
+        console.log('');
+        console.log('Examples:');
+        console.log('');
+        console.log('  $ show-trace --resources=resources trace/file.trace');
+        console.log('  $ show-trace trace/directory');
+      });
+}
+
+if (process.argv[2] === 'run-driver')
+  runServer();
+else if (process.argv[2] === 'print-api-json')
+  printApiJson();
+else
+  program.parse(process.argv);
 
 
 type Options = {
@@ -171,6 +210,8 @@ async function launchContext(options: Options, headless: boolean): Promise<{ bro
   if (contextOptions.isMobile && browserType.name() === 'firefox')
     contextOptions.isMobile = undefined;
 
+  if (process.env.PWTRACE)
+    (contextOptions as any)._traceDir = path.join(process.cwd(), '.trace');
 
   // Proxy
 
@@ -251,6 +292,7 @@ async function launchContext(options: Options, headless: boolean): Promise<{ bro
   }
 
   context.on('page', page => {
+    page.on('dialog', () => {});  // Prevent dialogs from being automatically dismissed.
     page.on('close', () => {
       const hasPage = browser.contexts().some(context => context.pages().length > 0);
       if (hasPage)
@@ -282,8 +324,35 @@ async function openPage(context: BrowserContext, url: string | undefined): Promi
   return page;
 }
 
-async function open(options: Options, url: string | undefined) {
-  const { context } = await launchContext(options, false);
+async function open(options: Options, url: string | undefined, language: string) {
+  const { context, launchOptions, contextOptions } = await launchContext(options, false);
+  await context._enableRecorder({
+    language,
+    launchOptions,
+    contextOptions,
+    device: options.device,
+    saveStorage: options.saveStorage,
+    terminal: !!process.stdout.columns,
+  });
+  await openPage(context, url);
+  if (process.env.PWCLI_EXIT_FOR_TEST)
+    await Promise.all(context.pages().map(p => p.close()));
+}
+
+async function codegen(options: Options, url: string | undefined, language: string, outputFile?: string) {
+  const { context, launchOptions, contextOptions } = await launchContext(options, false);
+  if (process.env.PWTRACE)
+    contextOptions._traceDir = path.join(process.cwd(), '.trace');
+  await context._enableRecorder({
+    language,
+    launchOptions,
+    contextOptions,
+    device: options.device,
+    saveStorage: options.saveStorage,
+    startRecording: true,
+    terminal: !!process.stdout.columns,
+    outputFile: outputFile ? path.resolve(outputFile) : undefined
+  });
   await openPage(context, url);
   if (process.env.PWCLI_EXIT_FOR_TEST)
     await Promise.all(context.pages().map(p => p.close()));
@@ -330,14 +399,17 @@ function lookupBrowserType(options: Options): BrowserType {
     const device = playwright.devices[options.device];
     name = device.defaultBrowserType;
   }
+  let browserType: any;
   switch (name) {
-    case 'chromium': return playwright.chromium!;
-    case 'webkit': return playwright.webkit!;
-    case 'firefox': return playwright.firefox!;
-    case 'cr': return playwright.chromium!;
-    case 'wk': return playwright.webkit!;
-    case 'ff': return playwright.firefox!;
+    case 'chromium': browserType = playwright.chromium; break;
+    case 'webkit': browserType = playwright.webkit; break;
+    case 'firefox': browserType = playwright.firefox; break;
+    case 'cr': browserType = playwright.chromium; break;
+    case 'wk': browserType = playwright.webkit; break;
+    case 'ff': browserType = playwright.firefox; break;
   }
+  if (browserType)
+    return browserType;
   program.help();
 }
 
@@ -352,4 +424,8 @@ function validateOptions(options: Options) {
     console.log('Invalid color scheme, should be one of "light", "dark"');
     process.exit(0);
   }
+}
+
+function language(): string {
+  return process.env.PW_CLI_TARGET_LANG || 'javascript';
 }

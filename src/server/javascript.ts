@@ -16,7 +16,6 @@
 
 import * as dom from './dom';
 import * as utilityScriptSource from '../generated/utilityScriptSource';
-import * as sourceMap from '../utils/sourceMap';
 import { serializeAsCallArgument } from './common/utilityScriptSerializers';
 import type UtilityScript from './injected/utilityScript';
 
@@ -64,7 +63,11 @@ export class ExecutionContext {
 
   utilityScript(): Promise<JSHandle<UtilityScript>> {
     if (!this._utilityScriptPromise) {
-      const source = `new (${utilityScriptSource.source})()`;
+      const source = `
+      (() => {
+        ${utilityScriptSource.source}
+        return new pwExport();
+      })();`;
       this._utilityScriptPromise = this._delegate.rawEvaluate(source).then(objectId => new JSHandle(this, 'object', objectId));
     }
     return this._utilityScriptPromise;
@@ -110,8 +113,8 @@ export class JSHandle<T = any> {
     return evaluate(this._context, false /* returnByValue */, pageFunction, this, arg);
   }
 
-  async _evaluateExpression(expression: string, isFunction: boolean, returnByValue: boolean, arg: any) {
-    const value = await evaluateExpression(this._context, returnByValue, expression, isFunction, this, arg);1;
+  async _evaluateExpression(expression: string, isFunction: boolean | undefined, returnByValue: boolean, arg: any) {
+    const value = await evaluateExpression(this._context, returnByValue, expression, isFunction, this, arg);
     await this._context.doSlowMo();
     return value;
   }
@@ -136,7 +139,7 @@ export class JSHandle<T = any> {
     if (!this._objectId)
       return this._value;
     const utilityScript = await this._context.utilityScript();
-    const script = `(utilityScript, ...args) => utilityScript.jsonValue(...args)` + sourceMap.generateSourceUrl();
+    const script = `(utilityScript, ...args) => utilityScript.jsonValue(...args)`;
     return this._context._delegate.evaluateWithArguments(script, true, utilityScript, [true], [this._objectId]);
   }
 
@@ -170,31 +173,9 @@ export async function evaluate(context: ExecutionContext, returnByValue: boolean
   return evaluateExpression(context, returnByValue, String(pageFunction), typeof pageFunction === 'function', ...args);
 }
 
-export async function evaluateExpression(context: ExecutionContext, returnByValue: boolean, expression: string, isFunction: boolean, ...args: any[]): Promise<any> {
+export async function evaluateExpression(context: ExecutionContext, returnByValue: boolean, expression: string, isFunction: boolean | undefined, ...args: any[]): Promise<any> {
   const utilityScript = await context.utilityScript();
-  if (!isFunction) {
-    const script = `(utilityScript, ...args) => utilityScript.evaluate(...args)` + sourceMap.generateSourceUrl();
-    return context._delegate.evaluateWithArguments(script, returnByValue, utilityScript, [returnByValue, sourceMap.ensureSourceUrl(expression)], []);
-  }
-
-  let functionText = expression;
-  try {
-    new Function('(' + functionText + ')');
-  } catch (e1) {
-    // This means we might have a function shorthand. Try another
-    // time prefixing 'function '.
-    if (functionText.startsWith('async '))
-      functionText = 'async function ' + functionText.substring('async '.length);
-    else
-      functionText = 'function ' + functionText;
-    try {
-      new Function('(' + functionText  + ')');
-    } catch (e2) {
-      // We tried hard to serialize, but there's a weird beast here.
-      throw new Error('Passed function is not well-serializable!');
-    }
-  }
-
+  expression = normalizeEvaluationExpression(expression, isFunction);
   const handles: (Promise<JSHandle>)[] = [];
   const toDispose: Promise<JSHandle>[] = [];
   const pushHandle = (handle: Promise<JSHandle>): number => {
@@ -224,11 +205,10 @@ export async function evaluateExpression(context: ExecutionContext, returnByValu
     utilityScriptObjectIds.push(handle._objectId!);
   }
 
-  functionText += await sourceMap.generateSourceMapUrl(expression, functionText);
   // See UtilityScript for arguments.
-  const utilityScriptValues = [returnByValue, functionText, args.length, ...args];
+  const utilityScriptValues = [isFunction, returnByValue, expression, args.length, ...args];
 
-  const script = `(utilityScript, ...args) => utilityScript.callFunction(...args)` + sourceMap.generateSourceUrl();
+  const script = `(utilityScript, ...args) => utilityScript.evaluate(...args)`;
   try {
     return await context._delegate.evaluateWithArguments(script, returnByValue, utilityScript, utilityScriptValues, utilityScriptObjectIds);
   } finally {
@@ -245,4 +225,31 @@ export function parseUnserializableValue(unserializableValue: string): any {
     return -Infinity;
   if (unserializableValue === '-0')
     return -0;
+}
+
+export function normalizeEvaluationExpression(expression: string, isFunction: boolean | undefined): string {
+  expression = expression.trim();
+
+  if (isFunction) {
+    try {
+      new Function('(' + expression + ')');
+    } catch (e1) {
+      // This means we might have a function shorthand. Try another
+      // time prefixing 'function '.
+      if (expression.startsWith('async '))
+        expression = 'async function ' + expression.substring('async '.length);
+      else
+        expression = 'function ' + expression;
+      try {
+        new Function('(' + expression  + ')');
+      } catch (e2) {
+        // We tried hard to serialize, but there's a weird beast here.
+        throw new Error('Passed function is not well-serializable!');
+      }
+    }
+  }
+
+  if (/^(async)?\s*function(\s|\()/.test(expression))
+    expression = '(' + expression + ')';
+  return expression;
 }

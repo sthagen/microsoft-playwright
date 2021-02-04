@@ -21,8 +21,9 @@ import { ChannelOwner } from './channelOwner';
 import { Events } from './events';
 import { BrowserContextOptions } from './types';
 import { isSafeCloseError } from '../utils/errors';
+import * as api from '../../types/types';
 
-export class Browser extends ChannelOwner<channels.BrowserChannel, channels.BrowserInitializer> {
+export class Browser extends ChannelOwner<channels.BrowserChannel, channels.BrowserInitializer> implements api.Browser {
   readonly _contexts = new Set<BrowserContext>();
   private _isConnected = true;
   private _closedPromise: Promise<void>;
@@ -44,8 +45,8 @@ export class Browser extends ChannelOwner<channels.BrowserChannel, channels.Brow
 
   async newContext(options: BrowserContextOptions = {}): Promise<BrowserContext> {
     return this._wrapApiCall('browser.newContext', async () => {
-      if (this._isRemote && options._tracePath)
-        throw new Error(`"_tracePath" is not supported in connected browser`);
+      if (this._isRemote && options._traceDir)
+        throw new Error(`"_traceDir" is not supported in connected browser`);
       const contextOptions = await prepareBrowserContextOptions(options);
       const context = BrowserContext.from((await this._channel.newContext(contextOptions)).context);
       context._options = contextOptions;
@@ -90,6 +91,6 @@ export class Browser extends ChannelOwner<channels.BrowserChannel, channels.Brow
 
   _didClose() {
     this._isConnected = false;
-    this.emit(Events.Browser.Disconnected);
+    this.emit(Events.Browser.Disconnected, this);
   }
 }

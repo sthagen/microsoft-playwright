@@ -18,6 +18,7 @@
 import { folio, RemoteServer } from './remoteServer.fixture';
 import { execSync } from 'child_process';
 import path from 'path';
+import * as stackTrace from '../src/utils/stackTrace';
 
 type FixturesFixtures = {
   connectedRemoteServer: RemoteServer;
@@ -45,7 +46,6 @@ const { it, describe, expect } = fixtures.build();
 
 it('should close the browser when the node process closes', test => {
   test.slow();
-  test.flaky('Flakes at least on WebKit Linux');
 }, async ({connectedRemoteServer, isWindows}) => {
   if (isWindows)
     execSync(`taskkill /pid ${connectedRemoteServer.child().pid} /T /F`);
@@ -129,7 +129,6 @@ describe('fixtures', (suite, { platform, headful }) => {
 });
 
 it('caller file path', async ({}) => {
-  const stackTrace = require(path.join(__dirname, '..', 'lib', 'utils', 'stackTrace'));
   const callme = require('./fixtures/callback');
   const filePath = callme(() => {
     return stackTrace.getCallerFilePath(path.join(__dirname, 'fixtures') + path.sep);

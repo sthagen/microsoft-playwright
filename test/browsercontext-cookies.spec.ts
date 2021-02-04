@@ -169,3 +169,44 @@ it('should get cookies from multiple urls', async ({context}) => {
     sameSite: 'None',
   }]);
 });
+
+it('should work with subdomain cookie', async ({context, page, server}) => {
+  await context.addCookies([{
+    domain: '.foo.com',
+    path: '/',
+    name: 'doggo',
+    value: 'woofs',
+    secure: true
+  }]);
+  expect(await context.cookies('https://foo.com')).toEqual([{
+    name: 'doggo',
+    value: 'woofs',
+    domain: '.foo.com',
+    path: '/',
+    expires: -1,
+    httpOnly: false,
+    secure: true,
+    sameSite: 'None',
+  }]);
+  expect(await context.cookies('https://sub.foo.com')).toEqual([{
+    name: 'doggo',
+    value: 'woofs',
+    domain: '.foo.com',
+    path: '/',
+    expires: -1,
+    httpOnly: false,
+    secure: true,
+    sameSite: 'None',
+  }]);
+});
+
+it('should not return cookies with empty value', async ({context, page, server}) => {
+  server.setRoute('/empty.html', (req, res) => {
+    res.setHeader('Set-Cookie', 'name=;Path=/');
+    res.end();
+  });
+  await page.goto(server.EMPTY_PAGE);
+  const cookies = await context.cookies();
+  expect(cookies.length).toBe(0);
+});
+

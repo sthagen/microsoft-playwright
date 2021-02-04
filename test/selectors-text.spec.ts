@@ -16,9 +16,6 @@
  */
 
 import { it, expect } from './fixtures';
-import * as path from 'path';
-
-const { selectorsV2Enabled } = require(path.join(__dirname, '..', 'lib', 'server', 'common', 'selectorParser'));
 
 it('should work', async ({page}) => {
   await page.setContent(`<div>yo</div><div>ya</div><div>\nye  </div>`);
@@ -29,7 +26,7 @@ it('should work', async ({page}) => {
   expect(await page.$eval(`text=ye`, e => e.outerHTML)).toBe('<div>\nye  </div>');
 
   await page.setContent(`<div> ye </div><div>ye</div>`);
-  expect(await page.$eval(`text="ye"`, e => e.outerHTML)).toBe('<div>ye</div>');
+  expect(await page.$eval(`text="ye"`, e => e.outerHTML)).toBe('<div> ye </div>');
 
   await page.setContent(`<div>yo</div><div>"ya</div><div> hello world! </div>`);
   expect(await page.$eval(`text="\\"ya"`, e => e.outerHTML)).toBe('<div>"ya</div>');
@@ -101,17 +98,15 @@ it('should work', async ({page}) => {
   await page.setContent(`<span>Sign&nbsp;in</span><span>Hello\n \nworld</span>`);
   expect(await page.$eval(`text=Sign in`, e => e.outerHTML)).toBe('<span>Sign&nbsp;in</span>');
   expect((await page.$$(`text=Sign \tin`)).length).toBe(1);
-  expect(await page.$(`text="Sign in"`)).toBe(null);
-  expect((await page.$$(`text="Sign in"`)).length).toBe(0);
+  expect((await page.$$(`text="Sign in"`)).length).toBe(1);
   expect(await page.$eval(`text=lo wo`, e => e.outerHTML)).toBe('<span>Hello\n \nworld</span>');
+  expect(await page.$eval(`text="Hello world"`, e => e.outerHTML)).toBe('<span>Hello\n \nworld</span>');
   expect(await page.$(`text="lo wo"`)).toBe(null);
   expect((await page.$$(`text=lo \nwo`)).length).toBe(1);
   expect((await page.$$(`text="lo wo"`)).length).toBe(0);
 });
 
-it('should work in v2', async ({page}) => {
-  if (!selectorsV2Enabled())
-    return; // Selectors v1 do not support this.
+it('should work with :text', async ({page}) => {
   await page.setContent(`<div>yo</div><div>ya</div><div>\nHELLO   \n world  </div>`);
   expect(await page.$eval(`:text("ya")`, e => e.outerHTML)).toBe('<div>ya</div>');
   expect(await page.$eval(`:text-is("ya")`, e => e.outerHTML)).toBe('<div>ya</div>');
@@ -125,6 +120,91 @@ it('should work in v2', async ({page}) => {
   expect(await page.$eval(`:text-matches("y", "g")`, e => e.outerHTML)).toBe('<div>yo</div>');
   expect(await page.$eval(`:text-matches("Y", "i")`, e => e.outerHTML)).toBe('<div>yo</div>');
   expect(await page.$(`:text-matches("^y$")`)).toBe(null);
+
+  const error1 = await page.$(`:text("foo", "bar")`).catch(e => e);
+  expect(error1.message).toContain(`"text" engine expects a single string`);
+  const error2 = await page.$(`:text(foo > bar)`).catch(e => e);
+  expect(error2.message).toContain(`"text" engine expects a single string`);
+});
+
+it('should work with :has-text', async ({page}) => {
+  await page.setContent(`
+    <input id=input2>
+    <div id=div1>
+      <span>  Find me  </span>
+      or
+      <wrap><span id=span2>maybe me  </span></wrap>
+      <div><input id=input1></div>
+    </div>
+  `);
+  expect(await page.$eval(`:has-text("find me")`, e => e.tagName)).toBe('HTML');
+  expect(await page.$eval(`span:has-text("find me")`, e => e.outerHTML)).toBe('<span>  Find me  </span>');
+  expect(await page.$eval(`div:has-text("find me")`, e => e.id)).toBe('div1');
+  expect(await page.$eval(`div:has-text("find me") input`, e => e.id)).toBe('input1');
+  expect(await page.$eval(`:has-text("find me") input`, e => e.id)).toBe('input2');
+  expect(await page.$eval(`div:has-text("find me or maybe me")`, e => e.id)).toBe('div1');
+  expect(await page.$(`div:has-text("find noone")`)).toBe(null);
+  expect(await page.$$eval(`:is(div,span):has-text("maybe")`, els => els.map(e => e.id).join(';'))).toBe('div1;span2');
+  expect(await page.$eval(`div:has-text("find me") :has-text("maybe me")`, e => e.tagName)).toBe('WRAP');
+  expect(await page.$eval(`div:has-text("find me") span:has-text("maybe me")`, e => e.id)).toBe('span2');
+
+  const error1 = await page.$(`:has-text("foo", "bar")`).catch(e => e);
+  expect(error1.message).toContain(`"has-text" engine expects a single string`);
+  const error2 = await page.$(`:has-text(foo > bar)`).catch(e => e);
+  expect(error2.message).toContain(`"has-text" engine expects a single string`);
+});
+
+it(':text and :has-text should work with large DOM', async ({page}) => {
+  await page.evaluate(() => {
+    let id = 0;
+    const next = (tag: string) => {
+      const e = document.createElement(tag);
+      const eid = ++id;
+      e.textContent = 'id' + eid;
+      e.id = 'id' + eid;
+      return e;
+    };
+    const generate = (depth: number) => {
+      const div = next('div');
+      const span1 = next('span');
+      const span2 = next('span');
+      div.appendChild(span1);
+      div.appendChild(span2);
+      if (depth > 0) {
+        div.appendChild(generate(depth - 1));
+        div.appendChild(generate(depth - 1));
+      }
+      return div;
+    };
+    document.body.appendChild(generate(12));
+  });
+  const selectors = [
+    ':has-text("id18")',
+    ':has-text("id12345")',
+    ':has-text("id")',
+    ':text("id18")',
+    ':text("id12345")',
+    ':text("id")',
+    '#id18',
+    '#id12345',
+    '*',
+  ];
+
+  const measure = false;
+  for (const selector of selectors) {
+    const time1 = Date.now();
+    for (let i = 0; i < (measure ? 10 : 1); i++)
+      await page.$$eval(selector, els => els.length);
+    if (measure)
+      console.log(`pw("${selector}"): ` + (Date.now() - time1));
+
+    if (measure && !selector.includes('text')) {
+      const time2 = Date.now();
+      for (let i = 0; i < (measure ? 10 : 1); i++)
+        await page.evaluate(selector => document.querySelectorAll(selector).length, selector);
+      console.log(`qs("${selector}"): ` + (Date.now() - time2));
+    }
+  }
 });
 
 it('should be case sensitive if quotes are specified', async ({page}) => {

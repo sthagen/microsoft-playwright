@@ -19,15 +19,14 @@ import fs from 'fs';
 import path from 'path';
 import { spawnSync } from 'child_process';
 import { PNG } from 'pngjs';
+import * as browserPaths from '../src/utils/browserPaths';
 
-let ffmpegName = '';
-if (process.platform === 'win32')
-  ffmpegName = process.arch === 'ia32' ? 'ffmpeg-win32' : 'ffmpeg-win64';
-else if (process.platform === 'darwin')
-  ffmpegName = 'ffmpeg-mac';
-else if (process.platform === 'linux')
-  ffmpegName = 'ffmpeg-linux';
-const ffmpeg = path.join(__dirname, '..', 'third_party', 'ffmpeg', ffmpegName);
+
+const browsersJSON = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'browsers.json'), 'utf8'));
+const ffmpegDescriptor = browsersJSON.browsers.find(({name}) => name === 'ffmpeg');
+const browsersPath = browserPaths.browsersPath(path.join(__dirname, '..'));
+const browserPath = browserPaths.browserDirectory(browsersPath, ffmpegDescriptor);
+const ffmpeg = browserPaths.executablePath(browserPath, ffmpegDescriptor) || '';
 
 export class VideoPlayer {
   fileName: string;
@@ -90,25 +89,26 @@ export class VideoPlayer {
 }
 
 function almostRed(r, g, b, alpha) {
-  expect(g).toBeLessThan(50);
-  expect(b).toBeLessThan(50);
+  expect(r).toBeGreaterThan(185);
+  expect(g).toBeLessThan(70);
+  expect(b).toBeLessThan(70);
   expect(alpha).toBe(255);
 }
 
 function almostBlack(r, g, b, alpha) {
-  expect(r).toBeLessThan(30);
-  expect(g).toBeLessThan(30);
-  expect(b).toBeLessThan(30);
+  expect(r).toBeLessThan(70);
+  expect(g).toBeLessThan(70);
+  expect(b).toBeLessThan(70);
   expect(alpha).toBe(255);
 }
 
-function almostGrey(r, g, b, alpha) {
+function almostGray(r, g, b, alpha) {
   expect(r).toBeGreaterThan(70);
   expect(g).toBeGreaterThan(70);
   expect(b).toBeGreaterThan(70);
-  expect(r).toBeLessThan(130);
-  expect(g).toBeLessThan(130);
-  expect(b).toBeLessThan(130);
+  expect(r).toBeLessThan(185);
+  expect(g).toBeLessThan(185);
+  expect(b).toBeLessThan(185);
   expect(alpha).toBe(255);
 }
 
@@ -286,12 +286,13 @@ describe('screencast', suite => {
 
     {
       const pixels = videoPlayer.seekLastFrame().data;
-      expectAll(pixels, almostGrey);
+      expectAll(pixels, almostGray);
     }
   });
 
-  it('should capture css transformation', (test, { headful }) => {
+  it('should capture css transformation', (test, { headful, browserName, platform }) => {
     test.fixme(headful, 'Fails on headful');
+    test.fixme(browserName === 'webkit' && platform === 'win32', 'Fails on headful');
   }, async ({browser, server, testInfo}) => {
     const size = { width: 320, height: 240 };
     // Set viewport equal to screencast frame size to avoid scaling.
@@ -385,11 +386,11 @@ describe('screencast', suite => {
     }
     {
       const pixels = videoPlayer.seekLastFrame({x: 300, y: 0}).data;
-      expectAll(pixels, almostGrey);
+      expectAll(pixels, almostGray);
     }
     {
       const pixels = videoPlayer.seekLastFrame({x: 0, y: 200}).data;
-      expectAll(pixels, almostGrey);
+      expectAll(pixels, almostGray);
     }
     {
       const pixels = videoPlayer.seekLastFrame({x: 300, y: 200}).data;

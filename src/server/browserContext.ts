@@ -67,14 +67,22 @@ export type ActionMetadata = {
 };
 
 export interface ActionListener {
+  onActionCheckpoint(name: string, metadata: ActionMetadata): Promise<void>;
   onAfterAction(result: ProgressResult, metadata: ActionMetadata): Promise<void>;
 }
 
 export async function runAction<T>(task: (controller: ProgressController) => Promise<T>, metadata: ActionMetadata): Promise<T> {
   const controller = new ProgressController();
-  controller.setListener(async result => {
-    for (const listener of metadata.page._browserContext._actionListeners)
-      await listener.onAfterAction(result, metadata);
+  controller.setListener({
+    onProgressCheckpoint: async (name: string): Promise<void> => {
+      for (const listener of metadata.page._browserContext._actionListeners)
+        await listener.onActionCheckpoint(name, metadata);
+    },
+
+    onProgressDone: async (result: ProgressResult): Promise<void> => {
+      for (const listener of metadata.page._browserContext._actionListeners)
+        await listener.onAfterAction(result, metadata);
+    },
   });
   const result = await task(controller);
   return result;
@@ -86,13 +94,14 @@ export interface ContextListener {
   onContextDidDestroy(context: BrowserContext): Promise<void>;
 }
 
-export const contextListeners = new Set<ContextListener>();
-
 export abstract class BrowserContext extends EventEmitter {
   static Events = {
     Close: 'close',
     Page: 'page',
     VideoStarted: 'videostarted',
+    BeforeClose: 'beforeclose',
+    StdOut: 'stdout',
+    StdErr: 'stderr',
   };
 
   readonly _timeoutSettings = new TimeoutSettings();
@@ -110,9 +119,11 @@ export abstract class BrowserContext extends EventEmitter {
   private _selectors?: Selectors;
   readonly _actionListeners = new Set<ActionListener>();
   private _origins = new Set<string>();
+  terminalSize: { rows?: number, columns?: number } = {};
 
   constructor(browser: Browser, options: types.BrowserContextOptions, browserContextId: string | undefined) {
     super();
+    this.setMaxListeners(0);
     this._browser = browser;
     this._options = options;
     this._browserContextId = browserContextId;
@@ -129,7 +140,7 @@ export abstract class BrowserContext extends EventEmitter {
   }
 
   async _initialize() {
-    for (const listener of contextListeners)
+    for (const listener of this._browser.options.contextListeners)
       await listener.onContextCreated(this);
   }
 
@@ -235,8 +246,6 @@ export abstract class BrowserContext extends EventEmitter {
 
   async _loadDefaultContext(progress: Progress) {
     const pages = await this._loadDefaultContextAsIs(progress);
-    if (pages.length !== 1 || pages[0].mainFrame().url() !== 'about:blank')
-      throw new Error(`Arguments can not specify page to be opened (first url is ${pages[0].mainFrame().url()})`);
     if (this._options.isMobile || this._options.locale) {
       // Workaround for:
       // - chromium fails to change isMobile for existing page;
@@ -248,7 +257,7 @@ export abstract class BrowserContext extends EventEmitter {
   }
 
   protected _authenticateProxyViaHeader() {
-    const proxy = this._options.proxy || this._browser._options.proxy || { username: undefined, password: undefined };
+    const proxy = this._options.proxy || this._browser.options.proxy || { username: undefined, password: undefined };
     const { username, password } = proxy;
     if (username) {
       this._options.httpCredentials = { username, password: password! };
@@ -261,7 +270,7 @@ export abstract class BrowserContext extends EventEmitter {
   }
 
   protected _authenticateProxyViaCredentials() {
-    const proxy = this._options.proxy || this._browser._options.proxy;
+    const proxy = this._options.proxy || this._browser.options.proxy;
     if (!proxy)
       return;
     const { username, password } = proxy;
@@ -280,9 +289,10 @@ export abstract class BrowserContext extends EventEmitter {
 
   async close() {
     if (this._closedStatus === 'open') {
+      this.emit(BrowserContext.Events.BeforeClose);
       this._closedStatus = 'closing';
 
-      for (const listener of contextListeners)
+      for (const listener of this._browser.options.contextListeners)
         await listener.onContextWillDestroy(this);
 
       // Collect videos/downloads that we will await.
@@ -311,7 +321,7 @@ export abstract class BrowserContext extends EventEmitter {
         await this._browser.close();
 
       // Bookkeeping.
-      for (const listener of contextListeners)
+      for (const listener of this._browser.options.contextListeners)
         await listener.onContextDidDestroy(this);
       this._didCloseInternal();
     }
@@ -377,6 +387,16 @@ export abstract class BrowserContext extends EventEmitter {
       }
       await page.close();
     }
+  }
+
+  async extendInjectedScript(source: string) {
+    const installInFrame = (frame: frames.Frame) => frame.extendInjectedScript(source).catch(e => {});
+    const installInPage = (page: Page) => {
+      page.on(Page.Events.InternalFrameNavigatedToNewDocument, installInFrame);
+      return Promise.all(page.frames().map(installInFrame));
+    };
+    this.on(BrowserContext.Events.Page, installInPage);
+    return Promise.all(this.pages().map(installInPage));
   }
 }
 

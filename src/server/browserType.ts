@@ -21,7 +21,7 @@ import * as util from 'util';
 import { BrowserContext, normalizeProxySettings, validateBrowserContextOptions } from './browserContext';
 import * as browserPaths from '../utils/browserPaths';
 import { ConnectionTransport } from './transport';
-import { BrowserOptions, Browser, BrowserProcess } from './browser';
+import { BrowserOptions, Browser, BrowserProcess, PlaywrightOptions } from './browser';
 import { launchProcess, Env, envArrayToObject } from './processLauncher';
 import { PipeTransport } from './pipeTransport';
 import { Progress, ProgressController } from './progress';
@@ -38,12 +38,14 @@ const existsAsync = (path: string): Promise<boolean> => new Promise(resolve => f
 const DOWNLOADS_FOLDER = path.join(os.tmpdir(), 'playwright_downloads-');
 
 export abstract class BrowserType {
-  private _name: string;
+  private _name: browserPaths.BrowserName;
   private _executablePath: string;
   private _browserDescriptor: browserPaths.BrowserDescriptor;
   readonly _browserPath: string;
+  readonly _playwrightOptions: PlaywrightOptions;
 
-  constructor(packagePath: string, browser: browserPaths.BrowserDescriptor) {
+  constructor(packagePath: string, browser: browserPaths.BrowserDescriptor, playwrightOptions: PlaywrightOptions) {
+    this._playwrightOptions = playwrightOptions;
     this._name = browser.name;
     const browsersPath = browserPaths.browsersPath(packagePath);
     this._browserDescriptor = browser;
@@ -64,7 +66,7 @@ export abstract class BrowserType {
     const controller = new ProgressController();
     controller.setLogName('browser');
     const browser = await controller.run(progress => {
-      return this._innerLaunch(progress, options, undefined, helper.debugProtocolLogger(protocolLogger)).catch(e => { throw this._rewriteStartupError(e); });
+      return this._innerLaunchWithRetries(progress, options, undefined, helper.debugProtocolLogger(protocolLogger)).catch(e => { throw this._rewriteStartupError(e); });
     }, TimeoutSettings.timeout(options));
     return browser;
   }
@@ -75,9 +77,23 @@ export abstract class BrowserType {
     const controller = new ProgressController();
     controller.setLogName('browser');
     const browser = await controller.run(progress => {
-      return this._innerLaunch(progress, options, persistent, helper.debugProtocolLogger(), userDataDir).catch(e => { throw this._rewriteStartupError(e); });
+      return this._innerLaunchWithRetries(progress, options, persistent, helper.debugProtocolLogger(), userDataDir).catch(e => { throw this._rewriteStartupError(e); });
     }, TimeoutSettings.timeout(options));
     return browser._defaultContext!;
+  }
+
+  async _innerLaunchWithRetries(progress: Progress, options: types.LaunchOptions, persistent: types.BrowserContextOptions | undefined, protocolLogger: types.ProtocolLogger, userDataDir?: string): Promise<Browser> {
+    try {
+      return this._innerLaunch(progress, options, persistent, protocolLogger, userDataDir);
+    } catch (error) {
+      // @see https://github.com/microsoft/playwright/issues/5214
+      const errorMessage = typeof error === 'object' && typeof error.message === 'string' ? error.message : '';
+      if (errorMessage.includes('Inconsistency detected by ld.so')) {
+        progress.log(`<restarting browser due to hitting race condition in glibc>`);
+        return this._innerLaunch(progress, options, persistent, protocolLogger, userDataDir);
+      }
+      throw error;
+    }
   }
 
   async _innerLaunch(progress: Progress, options: types.LaunchOptions, persistent: types.BrowserContextOptions | undefined, protocolLogger: types.ProtocolLogger, userDataDir?: string): Promise<Browser> {
@@ -87,7 +103,9 @@ export abstract class BrowserType {
     if ((options as any).__testHookBeforeCreateBrowser)
       await (options as any).__testHookBeforeCreateBrowser();
     const browserOptions: BrowserOptions = {
+      ...this._playwrightOptions,
       name: this._name,
+      isChromium: this._name === 'chromium',
       slowMo: options.slowMo,
       persistent,
       headful: !options.headless,

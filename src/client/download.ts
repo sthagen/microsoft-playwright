@@ -22,8 +22,9 @@ import { Browser } from './browser';
 import { BrowserContext } from './browserContext';
 import * as fs from 'fs';
 import { mkdirIfNeeded } from '../utils/utils';
+import * as api from '../../types/types';
 
-export class Download extends ChannelOwner<channels.DownloadChannel, channels.DownloadInitializer> {
+export class Download extends ChannelOwner<channels.DownloadChannel, channels.DownloadInitializer> implements api.Download {
   private _browser: Browser | null;
 
   static from(download: channels.DownloadChannel): Download {
@@ -68,18 +69,24 @@ export class Download extends ChannelOwner<channels.DownloadChannel, channels.Do
   }
 
   async failure(): Promise<string | null> {
-    return (await this._channel.failure()).error || null;
+    return this._wrapApiCall('download.failure', async () => {
+      return (await this._channel.failure()).error || null;
+    });
   }
 
   async createReadStream(): Promise<Readable | null> {
-    const result = await this._channel.stream();
-    if (!result.stream)
-      return null;
-    const stream = Stream.from(result.stream);
-    return stream.stream();
+    return this._wrapApiCall('download.createReadStream', async () => {
+      const result = await this._channel.stream();
+      if (!result.stream)
+        return null;
+      const stream = Stream.from(result.stream);
+      return stream.stream();
+    });
   }
 
   async delete(): Promise<void> {
-    return this._channel.delete();
+    return this._wrapApiCall('download.delete', async () => {
+      return this._channel.delete();
+    });
   }
 }

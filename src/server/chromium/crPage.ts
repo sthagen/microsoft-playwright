@@ -35,13 +35,13 @@ import { CRPDF } from './crPdf';
 import { CRBrowserContext } from './crBrowser';
 import * as types from '../types';
 import { ConsoleMessage } from '../console';
-import * as sourceMap from '../../utils/sourceMap';
 import { rewriteErrorMessage } from '../../utils/stackTrace';
 import { assert, headersArrayToObject, createGuid } from '../../utils/utils';
 import { VideoRecorder } from './videoRecorder';
 
 
 const UTILITY_WORLD_NAME = '__playwright_utility_world__';
+export type WindowBounds = { top?: number, left?: number, width?: number, height?: number };
 
 export class CRPage implements PageDelegate {
   readonly _mainFrameSession: FrameSession;
@@ -64,6 +64,11 @@ export class CRPage implements PageDelegate {
   // of their Page.windowOpen events is not guaranteed to match the order
   // of new popup targets.
   readonly _nextWindowOpenPopupFeatures: string[][] = [];
+
+  static mainFrameSession(page: Page): FrameSession {
+    const crPage = page._delegate as CRPage;
+    return crPage._mainFrameSession;
+  }
 
   constructor(client: CRSession, targetId: string, browserContext: CRBrowserContext, opener: CRPage | null, hasUIWindow: boolean) {
     this._targetId = targetId;
@@ -88,7 +93,17 @@ export class CRPage implements PageDelegate {
   }
 
   private async _forAllFrameSessions(cb: (frame: FrameSession) => Promise<any>) {
-    await Promise.all(Array.from(this._sessions.values()).map(frame => cb(frame)));
+    const frameSessions = Array.from(this._sessions.values());
+    await Promise.all(frameSessions.map(frameSession => {
+      if (frameSession._isMainFrame())
+        return cb(frameSession);
+      return cb(frameSession).catch(e => {
+        // Broadcasting a message to the closed iframe shoule be a noop.
+        if (e.message && (e.message.includes('Target closed.') || e.message.includes('Session closed.')))
+          return;
+        throw e;
+      });
+    }));
   }
 
   private _sessionForFrame(frame: frames.Frame): FrameSession {
@@ -343,7 +358,7 @@ class FrameSession {
     });
   }
 
-  private _isMainFrame(): boolean {
+  _isMainFrame(): boolean {
     return this._targetId === this._crPage._targetId;
   }
 
@@ -381,8 +396,8 @@ class FrameSession {
 
   async _initialize(hasUIWindow: boolean) {
     if (hasUIWindow &&
-        !this._crPage._browserContext._browser.isClank() &&
-        !this._crPage._browserContext._options.noDefaultViewport) {
+      !this._crPage._browserContext._browser.isClank() &&
+      !this._crPage._browserContext._options.noDefaultViewport) {
       const { windowId } = await this._client.send('Browser.getWindowForTarget');
       this._windowId = windowId;
     }
@@ -425,13 +440,14 @@ class FrameSession {
       lifecycleEventsEnabled = this._client.send('Page.setLifecycleEventsEnabled', { enabled: true }),
       this._client.send('Runtime.enable', {}),
       this._client.send('Page.addScriptToEvaluateOnNewDocument', {
-        source: sourceMap.generateSourceUrl(),
+        source: '',
         worldName: UTILITY_WORLD_NAME,
       }),
       this._networkManager.initialize(),
       this._client.send('Target.setAutoAttach', { autoAttach: true, waitForDebuggerOnStart: true, flatten: true }),
-      this._client.send('Emulation.setFocusEmulationEnabled', { enabled: true }),
     ];
+    if (this._isMainFrame())
+      promises.push(this._client.send('Emulation.setFocusEmulationEnabled', { enabled: true }));
     const options = this._crPage._browserContext._options;
     if (options.bypassCSP)
       promises.push(this._client.send('Page.setBypassCSP', { enabled: true }));
@@ -461,7 +477,7 @@ class FrameSession {
       promises.push(this._evaluateOnNewDocument(source, 'main'));
     for (const source of this._crPage._page._evaluateOnNewDocumentSources)
       promises.push(this._evaluateOnNewDocument(source, 'main'));
-    if (this._isMainFrame() && this._crPage._browserContext._options.recordVideo) {
+    if (this._isMainFrame() && this._crPage._browserContext._options.recordVideo && hasUIWindow) {
       const size = this._crPage._browserContext._options.recordVideo.size || this._crPage._browserContext._options.viewport || { width: 1280, height: 720 };
       const screencastId = createGuid();
       const outputFile = path.join(this._crPage._browserContext._options.recordVideo.dir, screencastId + '.webm');
@@ -700,6 +716,7 @@ class FrameSession {
 
   _onDialog(event: Protocol.Page.javascriptDialogOpeningPayload) {
     this._page.emit(Page.Events.Dialog, new dialog.Dialog(
+        this._page,
         event.type,
         event.message,
         async (accept: boolean, promptText?: string) => {
@@ -771,7 +788,10 @@ class FrameSession {
 
   async _startScreencast(screencastId: string, options: types.PageScreencastOptions): Promise<void> {
     assert(!this._screencastId);
-    this._videoRecorder = await VideoRecorder.launch(options);
+    const ffmpegPath = this._crPage._browserContext._browser._ffmpegPath;
+    if (!ffmpegPath)
+      throw new Error('ffmpeg executable was not found');
+    this._videoRecorder = await VideoRecorder.launch(ffmpegPath, options);
     this._screencastId = screencastId;
     const gotFirstFrame = new Promise(f => this._client.once('Page.screencastFrame', f));
     await this._client.send('Page.startScreencast', {
@@ -845,7 +865,7 @@ class FrameSession {
     ];
     if (this._windowId) {
       let insets = { width: 0, height: 0 };
-      if (this._crPage._browserContext._browser._options.headful) {
+      if (this._crPage._browserContext._browser.options.headful) {
         // TODO: popup windows have their own insets.
         insets = { width: 24, height: 88 };
         if (process.platform === 'win32')
@@ -855,12 +875,26 @@ class FrameSession {
         else if (process.platform === 'darwin')
           insets = { width: 2, height: 80 };
       }
-      promises.push(this._client.send('Browser.setWindowBounds', {
-        windowId: this._windowId,
-        bounds: { width: viewportSize.width + insets.width, height: viewportSize.height + insets.height }
+      promises.push(this.setWindowBounds({
+        width: viewportSize.width + insets.width,
+        height: viewportSize.height + insets.height
       }));
     }
     await Promise.all(promises);
+  }
+
+  async windowBounds(): Promise<WindowBounds> {
+    const { bounds } = await this._client.send('Browser.getWindowBounds', {
+      windowId: this._windowId!
+    });
+    return bounds;
+  }
+
+  async setWindowBounds(bounds: WindowBounds) {
+    return await this._client.send('Browser.setWindowBounds', {
+      windowId: this._windowId!,
+      bounds
+    });
   }
 
   async _updateEmulateMedia(initial: boolean): Promise<void> {

@@ -14,44 +14,60 @@
  * limitations under the License.
  */
 
+import { NodeSnapshot } from './snapshotterInjected';
+export { NodeSnapshot } from './snapshotterInjected';
+
 export type ContextCreatedTraceEvent = {
+  timestamp: number,
   type: 'context-created',
   browserName: string,
   contextId: string,
   deviceScaleFactor: number,
   isMobile: boolean,
   viewportSize?: { width: number, height: number },
+  debugName?: string,
+  snapshotScript: string,
 };
 
 export type ContextDestroyedTraceEvent = {
+  timestamp: number,
   type: 'context-destroyed',
   contextId: string,
 };
 
 export type NetworkResourceTraceEvent = {
+  timestamp: number,
   type: 'resource',
   contextId: string,
   pageId: string,
   frameId: string,
+  resourceId: string,
   url: string,
   contentType: string,
   responseHeaders: { name: string, value: string }[],
-  sha1: string,
+  requestHeaders: { name: string, value: string }[],
+  method: string,
+  status: number,
+  requestSha1: string,
+  responseSha1: string,
 };
 
 export type PageCreatedTraceEvent = {
+  timestamp: number,
   type: 'page-created',
   contextId: string,
   pageId: string,
 };
 
 export type PageDestroyedTraceEvent = {
+  timestamp: number,
   type: 'page-destroyed',
   contextId: string,
   pageId: string,
 };
 
 export type PageVideoTraceEvent = {
+  timestamp: number,
   type: 'page-video',
   contextId: string,
   pageId: string,
@@ -59,6 +75,7 @@ export type PageVideoTraceEvent = {
 };
 
 export type ActionTraceEvent = {
+  timestamp: number,
   type: 'action',
   contextId: string,
   action: string,
@@ -66,15 +83,56 @@ export type ActionTraceEvent = {
   selector?: string,
   label?: string,
   value?: string,
-  startTime?: number,
-  endTime?: number,
+  startTime: number,
+  endTime: number,
   logs?: string[],
-  snapshot?: {
-    sha1: string,
-    duration: number,
-  },
   stack?: string,
   error?: string,
+  snapshots?: { name: string, snapshotId: string }[],
+};
+
+export type DialogOpenedEvent = {
+  timestamp: number,
+  type: 'dialog-opened',
+  contextId: string,
+  pageId: string,
+  dialogType: string,
+  message?: string,
+};
+
+export type DialogClosedEvent = {
+  timestamp: number,
+  type: 'dialog-closed',
+  contextId: string,
+  pageId: string,
+  dialogType: string,
+};
+
+export type NavigationEvent = {
+  timestamp: number,
+  type: 'navigation',
+  contextId: string,
+  pageId: string,
+  url: string,
+  sameDocument: boolean,
+};
+
+export type LoadEvent = {
+  timestamp: number,
+  type: 'load',
+  contextId: string,
+  pageId: string,
+};
+
+export type FrameSnapshotTraceEvent = {
+  timestamp: number,
+  type: 'snapshot',
+  contextId: string,
+  pageId: string,
+  frameId: string,  // Empty means main frame.
+  snapshot: FrameSnapshot,
+  frameUrl: string,
+  snapshotId?: string,
 };
 
 export type TraceEvent =
@@ -84,18 +142,16 @@ export type TraceEvent =
     PageDestroyedTraceEvent |
     PageVideoTraceEvent |
     NetworkResourceTraceEvent |
-    ActionTraceEvent;
-
+    ActionTraceEvent |
+    DialogOpenedEvent |
+    DialogClosedEvent |
+    NavigationEvent |
+    LoadEvent |
+    FrameSnapshotTraceEvent;
 
 export type FrameSnapshot = {
-  frameId: string,
-  url: string,
-  html: string,
-  resourceOverrides: { url: string, sha1: string }[],
-};
-
-export type PageSnapshot = {
-  viewportSize?: { width: number, height: number },
-  // First frame is the main frame.
-  frames: FrameSnapshot[],
+  doctype?: string,
+  html: NodeSnapshot,
+  resourceOverrides: { url: string, sha1?: string, ref?: number }[],
+  viewport: { width: number, height: number },
 };

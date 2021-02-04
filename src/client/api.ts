@@ -22,6 +22,7 @@ export { BrowserType } from './browserType';
 export { ConsoleMessage } from './consoleMessage';
 export { Dialog } from './dialog';
 export { Download } from './download';
+export { Electron, ElectronApplication } from './electron';
 export { ElementHandle } from './elementHandle';
 export { FileChooser } from './fileChooser';
 export { Logger } from './types';
@@ -43,3 +44,4 @@ export { CDPSession } from './cdpSession';
 export { WebKitBrowser } from './webkitBrowser';
 
 export { FirefoxBrowser } from './firefoxBrowser';
+export { Playwright } from './playwright';

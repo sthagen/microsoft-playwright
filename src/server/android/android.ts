@@ -22,7 +22,8 @@ import * as stream from 'stream';
 import * as util from 'util';
 import * as ws from 'ws';
 import { createGuid, makeWaitForNextTask } from '../../utils/utils';
-import { BrowserOptions, BrowserProcess } from '../browser';
+import * as browserPaths from '../../utils/browserPaths';
+import { BrowserOptions, BrowserProcess, PlaywrightOptions } from '../browser';
 import { BrowserContext, validateBrowserContextOptions } from '../browserContext';
 import { ProgressController } from '../progress';
 import { CRBrowser } from '../chromium/crBrowser';
@@ -56,10 +57,16 @@ export interface SocketBackend extends EventEmitter {
 export class Android {
   private _backend: Backend;
   private _devices = new Map<string, AndroidDevice>();
+  readonly _ffmpegPath: string | null;
   readonly _timeoutSettings: TimeoutSettings;
+  readonly _playwrightOptions: PlaywrightOptions;
 
-  constructor(backend: Backend) {
+  constructor(packagePath: string, backend: Backend, playwrightOptions: PlaywrightOptions, ffmpeg: browserPaths.BrowserDescriptor) {
+    const browsersPath = browserPaths.browsersPath(packagePath);
+    const browserPath = browserPaths.browserDirectory(browsersPath, ffmpeg);
+    this._ffmpegPath = browserPaths.executablePath(browserPath, ffmpeg) || null;
     this._backend = backend;
+    this._playwrightOptions = playwrightOptions;
     this._timeoutSettings = new TimeoutSettings();
   }
 
@@ -112,6 +119,7 @@ export class AndroidDevice extends EventEmitter {
 
   constructor(android: Android, backend: DeviceBackend, model: string) {
     super();
+    this.setMaxListeners(0);
     this._android = android;
     this._backend = backend;
     this.model = model;
@@ -255,7 +263,9 @@ export class AndroidDevice extends EventEmitter {
     this._browserConnections.add(androidBrowser);
 
     const browserOptions: BrowserOptions = {
+      ...this._android._playwrightOptions,
       name: 'clank',
+      isChromium: true,
       slowMo: 0,
       persistent: { ...options, noDefaultViewport: true },
       downloadsPath: undefined,
@@ -266,7 +276,7 @@ export class AndroidDevice extends EventEmitter {
     };
     validateBrowserContextOptions(options, browserOptions);
 
-    const browser = await CRBrowser.connect(androidBrowser, browserOptions);
+    const browser = await CRBrowser.connect(androidBrowser, browserOptions, this._android._ffmpegPath);
     const controller = new ProgressController();
     const defaultContext = browser._defaultContext!;
     await controller.run(async progress => {
@@ -376,6 +386,7 @@ class AndroidBrowser extends EventEmitter {
 
   constructor(device: AndroidDevice, socket: SocketBackend) {
     super();
+    this.setMaxListeners(0);
     this.device = device;
     this._socket = socket;
     this._socket.on('close', () => {

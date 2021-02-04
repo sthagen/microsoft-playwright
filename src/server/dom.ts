@@ -50,7 +50,7 @@ export class FrameExecutionContext extends js.ExecutionContext {
     });
   }
 
-  async evaluateExpressionInternal(expression: string, isFunction: boolean, ...args: any[]): Promise<any> {
+  async evaluateExpressionInternal(expression: string, isFunction: boolean | undefined, ...args: any[]): Promise<any> {
     return await this.frame._page._frameManager.waitForSignalsCreatedBy(null, false /* noWaitFor */, async () => {
       return js.evaluateExpression(this, true /* returnByValue */, expression, isFunction, ...args);
     });
@@ -64,7 +64,7 @@ export class FrameExecutionContext extends js.ExecutionContext {
     });
   }
 
-  async evaluateExpressionHandleInternal(expression: string, isFunction: boolean, ...args: any[]): Promise<any> {
+  async evaluateExpressionHandleInternal(expression: string, isFunction: boolean | undefined, ...args: any[]): Promise<any> {
     return await this.frame._page._frameManager.waitForSignalsCreatedBy(null, false /* noWaitFor */, async () => {
       return js.evaluateExpression(this, false /* returnByValue */, expression, isFunction, ...args);
     });
@@ -82,9 +82,12 @@ export class FrameExecutionContext extends js.ExecutionContext {
       for (const [name, { source }] of this.frame._page.selectors._engines)
         custom.push(`{ name: '${name}', engine: (${source}) }`);
       const source = `
-        new (${injectedScriptSource.source})([
+        (() => {
+        ${injectedScriptSource.source}
+        return new pwExport([
           ${custom.join(',\n')}
-        ])
+        ]);
+        })();
       `;
       this._injectedScriptPromise = this._delegate.rawEvaluate(source).then(objectId => new js.JSHandle(this, 'object', objectId));
     }
@@ -375,6 +378,7 @@ export class ElementHandle<T extends Node = Node> extends js.JSHandle<T> {
       if (options && options.modifiers)
         restoreModifiers = await this._page.keyboard._ensureModifiers(options.modifiers);
       progress.log(`  performing ${actionName} action`);
+      await progress.checkpoint('before');
       await action(point);
       progress.log(`  ${actionName} action done`);
       progress.log('  waiting for scheduled navigations to finish');
@@ -443,9 +447,13 @@ export class ElementHandle<T extends Node = Node> extends js.JSHandle<T> {
     const selectOptions = [...elements, ...values];
     return this._page._frameManager.waitForSignalsCreatedBy(progress, options.noWaitAfter, async () => {
       progress.throwIfAborted();  // Avoid action that has side-effects.
-      const value = await this._evaluateInUtility(([injected, node, selectOptions]) => injected.selectOptions(node, selectOptions), selectOptions);
+      progress.log('  selecting specified option(s)');
+      await progress.checkpoint('before');
+      const poll = await this._evaluateHandleInUtility(([injected, node, selectOptions]) => injected.waitForOptionsAndSelect(node, selectOptions), selectOptions);
+      const pollHandler = new InjectedScriptPollHandler(progress, poll);
+      const result = throwFatalDOMError(await pollHandler.finish());
       await this._page._doSlowMo();
-      return throwFatalDOMError(value);
+      return result;
     });
   }
 
@@ -469,6 +477,7 @@ export class ElementHandle<T extends Node = Node> extends js.JSHandle<T> {
       if (filled === 'error:notconnected')
         return filled;
       progress.log('  element is visible, enabled and editable');
+      await progress.checkpoint('before');
       if (filled === 'needsinput') {
         progress.throwIfAborted();  // Avoid action that has side-effects.
         if (value)
@@ -515,6 +524,7 @@ export class ElementHandle<T extends Node = Node> extends js.JSHandle<T> {
     assert(multiple || files.length <= 1, 'Non-multiple file input can only accept single file!');
     await this._page._frameManager.waitForSignalsCreatedBy(progress, options.noWaitAfter, async () => {
       progress.throwIfAborted();  // Avoid action that has side-effects.
+      await progress.checkpoint('before');
       await this._page._delegate.setInputFiles(this as any as ElementHandle<HTMLInputElement>, files);
     });
     await this._page._doSlowMo();
@@ -549,6 +559,7 @@ export class ElementHandle<T extends Node = Node> extends js.JSHandle<T> {
       if (result !== 'done')
         return result;
       progress.throwIfAborted();  // Avoid action that has side-effects.
+      await progress.checkpoint('before');
       await this._page.keyboard.type(text, options);
       return 'done';
     }, 'input');
@@ -568,6 +579,7 @@ export class ElementHandle<T extends Node = Node> extends js.JSHandle<T> {
       if (result !== 'done')
         return result;
       progress.throwIfAborted();  // Avoid action that has side-effects.
+      await progress.checkpoint('before');
       await this._page.keyboard.press(key, options);
       return 'done';
     }, 'input');
@@ -616,7 +628,7 @@ export class ElementHandle<T extends Node = Node> extends js.JSHandle<T> {
     return this._page.selectors._queryAll(this._context.frame, selector, this, true /* adoptToMain */);
   }
 
-  async _$evalExpression(selector: string, expression: string, isFunction: boolean, arg: any): Promise<any> {
+  async _$evalExpression(selector: string, expression: string, isFunction: boolean | undefined, arg: any): Promise<any> {
     const handle = await this._page.selectors._query(this._context.frame, selector, this);
     if (!handle)
       throw new Error(`Error: failed to find element matching selector "${selector}"`);
@@ -625,14 +637,49 @@ export class ElementHandle<T extends Node = Node> extends js.JSHandle<T> {
     return result;
   }
 
-  async _$$evalExpression(selector: string, expression: string, isFunction: boolean, arg: any): Promise<any> {
+  async _$$evalExpression(selector: string, expression: string, isFunction: boolean | undefined, arg: any): Promise<any> {
     const arrayHandle = await this._page.selectors._queryArray(this._context.frame, selector, this);
     const result = await arrayHandle._evaluateExpression(expression, isFunction, true, arg);
     arrayHandle.dispose();
     return result;
   }
 
-  async waitForElementState(state: 'visible' | 'hidden' | 'stable' | 'enabled' | 'disabled', options: types.TimeoutOptions = {}): Promise<void> {
+  async isVisible(): Promise<boolean> {
+    return this._evaluateInUtility(([injected, node]) => {
+      const element = node.nodeType === Node.ELEMENT_NODE ? node as Node as Element : node.parentElement;
+      return element ? injected.isVisible(element) : false;
+    }, {});
+  }
+
+  async isHidden(): Promise<boolean> {
+    return !(await this.isVisible());
+  }
+
+  async isEnabled(): Promise<boolean> {
+    return !(await this.isDisabled());
+  }
+
+  async isDisabled(): Promise<boolean> {
+    return this._evaluateInUtility(([injected, node]) => {
+      const element = node.nodeType === Node.ELEMENT_NODE ? node as Node as Element : node.parentElement;
+      return element ? injected.isElementDisabled(element) : false;
+    }, {});
+  }
+
+  async isEditable(): Promise<boolean> {
+    return this._evaluateInUtility(([injected, node]) => {
+      const element = node.nodeType === Node.ELEMENT_NODE ? node as Node as Element : node.parentElement;
+      return element ? !injected.isElementDisabled(element) && !injected.isElementReadOnly(element) : false;
+    }, {});
+  }
+
+  async isChecked(): Promise<boolean> {
+    return this._evaluateInUtility(([injected, node]) => {
+      return injected.isCheckboxChecked(node);
+    }, {});
+  }
+
+  async waitForElementState(state: 'visible' | 'hidden' | 'stable' | 'enabled' | 'disabled' | 'editable', options: types.TimeoutOptions = {}): Promise<void> {
     return runAbortableTask(async progress => {
       progress.log(`  waiting for element to be ${state}`);
       if (state === 'visible') {
@@ -667,6 +714,14 @@ export class ElementHandle<T extends Node = Node> extends js.JSHandle<T> {
         assertDone(throwRetargetableDOMError(await pollHandler.finish()));
         return;
       }
+      if (state === 'editable') {
+        const poll = await this._evaluateHandleInUtility(([injected, node]) => {
+          return injected.waitForNodeEnabled(node, true /* waitForEnabled */);
+        }, {});
+        const pollHandler = new InjectedScriptPollHandler(progress, poll);
+        assertDone(throwRetargetableDOMError(await pollHandler.finish()));
+        return;
+      }
       if (state === 'stable') {
         const rafCount = this._page._delegate.rafCountForStablePosition();
         const poll = await this._evaluateHandleInUtility(([injected, node, rafOptions]) => {
@@ -676,7 +731,7 @@ export class ElementHandle<T extends Node = Node> extends js.JSHandle<T> {
         assertDone(throwRetargetableDOMError(await pollHandler.finish()));
         return;
       }
-      throw new Error(`state: expected one of (visible|hidden|stable|enabled)`);
+      throw new Error(`state: expected one of (visible|hidden|stable|enabled|disabled|editable)`);
     }, this._page._timeoutSettings.timeout(options));
   }
 
@@ -771,7 +826,7 @@ export class InjectedScriptPollHandler<T> {
 
   async finishHandle(): Promise<js.SmartHandle<T>> {
     try {
-      const result = await this._poll!.evaluateHandle(poll => poll.result);
+      const result = await this._poll!.evaluateHandle(poll => poll.run());
       await this._finishInternal();
       return result;
     } finally {
@@ -781,7 +836,7 @@ export class InjectedScriptPollHandler<T> {
 
   async finish(): Promise<T> {
     try {
-      const result = await this._poll!.evaluate(poll => poll.result);
+      const result = await this._poll!.evaluate(poll => poll.run());
       await this._finishInternal();
       return result;
     } finally {
@@ -957,4 +1012,52 @@ export function getAttributeTask(selector: SelectorInfo, name: string): Schedula
       return element.getAttribute(name);
     });
   }, { parsed: selector.parsed, name });
+}
+
+export function visibleTask(selector: SelectorInfo): SchedulableTask<boolean> {
+  return injectedScript => injectedScript.evaluateHandle((injected, parsed) => {
+    return injected.pollRaf((progress, continuePolling) => {
+      const element = injected.querySelector(parsed, document);
+      if (!element)
+        return continuePolling;
+      progress.log(`  selector resolved to ${injected.previewNode(element)}`);
+      return injected.isVisible(element);
+    });
+  }, selector.parsed);
+}
+
+export function disabledTask(selector: SelectorInfo): SchedulableTask<boolean> {
+  return injectedScript => injectedScript.evaluateHandle((injected, parsed) => {
+    return injected.pollRaf((progress, continuePolling) => {
+      const element = injected.querySelector(parsed, document);
+      if (!element)
+        return continuePolling;
+      progress.log(`  selector resolved to ${injected.previewNode(element)}`);
+      return injected.isElementDisabled(element);
+    });
+  }, selector.parsed);
+}
+
+export function editableTask(selector: SelectorInfo): SchedulableTask<boolean> {
+  return injectedScript => injectedScript.evaluateHandle((injected, parsed) => {
+    return injected.pollRaf((progress, continuePolling) => {
+      const element = injected.querySelector(parsed, document);
+      if (!element)
+        return continuePolling;
+      progress.log(`  selector resolved to ${injected.previewNode(element)}`);
+      return !injected.isElementDisabled(element) && !injected.isElementReadOnly(element);
+    });
+  }, selector.parsed);
+}
+
+export function checkedTask(selector: SelectorInfo): SchedulableTask<boolean> {
+  return injectedScript => injectedScript.evaluateHandle((injected, parsed) => {
+    return injected.pollRaf((progress, continuePolling) => {
+      const element = injected.querySelector(parsed, document);
+      if (!element)
+        return continuePolling;
+      progress.log(`  selector resolved to ${injected.previewNode(element)}`);
+      return injected.isCheckboxChecked(element);
+    });
+  }, selector.parsed);
 }

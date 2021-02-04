@@ -14,13 +14,18 @@
  * limitations under the License.
  */
 
+import * as path from 'path';
+import { Tracer } from '../trace/tracer';
 import * as browserPaths from '../utils/browserPaths';
 import { Android } from './android/android';
 import { AdbBackend } from './android/backendAdb';
+import { PlaywrightOptions } from './browser';
 import { Chromium } from './chromium/chromium';
 import { Electron } from './electron/electron';
 import { Firefox } from './firefox/firefox';
 import { serverSelectors } from './selectors';
+import { HarTracer } from './supplements/har/harTracer';
+import { InspectorController } from './supplements/inspectorController';
 import { WebKit } from './webkit/webkit';
 
 export class Playwright {
@@ -30,18 +35,32 @@ export class Playwright {
   readonly electron: Electron;
   readonly firefox: Firefox;
   readonly webkit: WebKit;
+  readonly options: PlaywrightOptions;
 
-  constructor(packagePath: string, browsers: browserPaths.BrowserDescriptor[]) {
+  constructor(isInternal: boolean, packagePath: string, browsers: browserPaths.BrowserDescriptor[]) {
+    this.options = {
+      isInternal,
+      contextListeners: isInternal ? [] : [
+        new InspectorController(),
+        new Tracer(),
+        new HarTracer()
+      ]
+    };
     const chromium = browsers.find(browser => browser.name === 'chromium');
-    this.chromium = new Chromium(packagePath, chromium!);
+    const ffmpeg = browsers.find(browser => browser.name === 'ffmpeg');
+    this.chromium = new Chromium(packagePath, chromium!, ffmpeg!, this.options);
 
     const firefox = browsers.find(browser => browser.name === 'firefox');
-    this.firefox = new Firefox(packagePath, firefox!);
+    this.firefox = new Firefox(packagePath, firefox!, this.options);
 
     const webkit = browsers.find(browser => browser.name === 'webkit');
-    this.webkit = new WebKit(packagePath, webkit!);
+    this.webkit = new WebKit(packagePath, webkit!, this.options);
 
-    this.electron = new Electron();
-    this.android = new Android(new AdbBackend());
+    this.electron = new Electron(packagePath, this.options, ffmpeg!);
+    this.android = new Android(packagePath, new AdbBackend(), this.options, ffmpeg!);
   }
+}
+
+export function createPlaywright(isInternal = false) {
+  return new Playwright(isInternal, path.join(__dirname, '..', '..'), require('../../browsers.json')['browsers']);
 }

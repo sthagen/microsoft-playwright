@@ -21,6 +21,7 @@ import { CRExecutionContext } from '../chromium/crExecutionContext';
 import * as js from '../javascript';
 import { Page } from '../page';
 import { TimeoutSettings } from '../../utils/timeoutSettings';
+import * as browserPaths from '../../utils/browserPaths';
 import { WebSocketTransport } from '../transport';
 import * as types from '../types';
 import { launchProcess, envArrayToObject } from '../processLauncher';
@@ -29,18 +30,16 @@ import type {BrowserWindow} from 'electron';
 import { Progress, ProgressController, runAbortableTask } from '../progress';
 import { EventEmitter } from 'events';
 import { helper } from '../helper';
-import { BrowserOptions, BrowserProcess } from '../browser';
+import { BrowserOptions, BrowserProcess, PlaywrightOptions } from '../browser';
 import * as childProcess from 'child_process';
 import * as readline from 'readline';
 import { RecentLogsCollector } from '../../utils/debugLogger';
 
 export type ElectronLaunchOptionsBase = {
+  executablePath?: string,
   args?: string[],
   cwd?: string,
   env?: types.EnvArray,
-  handleSIGINT?: boolean,
-  handleSIGTERM?: boolean,
-  handleSIGHUP?: boolean,
   timeout?: number,
 };
 
@@ -66,6 +65,7 @@ export class ElectronApplication extends EventEmitter {
 
   constructor(browser: CRBrowser, nodeConnection: CRConnection) {
     super();
+    this.setMaxListeners(0);
     this._browserContext = browser._defaultContext as CRBrowserContext;
     this._browserContext.on(BrowserContext.Events.Close, () => {
       // Emit application closed after context closed.
@@ -93,21 +93,6 @@ export class ElectronApplication extends EventEmitter {
     page.browserWindow = handle;
     await runAbortableTask(progress => page.mainFrame()._waitForLoadState(progress, 'domcontentloaded'), page._timeoutSettings.navigationTimeout({})).catch(e => {}); // can happen after detach
     this.emit(ElectronApplication.Events.Window, page);
-  }
-
-  async newBrowserWindow(options: any): Promise<Page> {
-    const windowId = await this._nodeElectronHandle!.evaluate(async ({ BrowserWindow }, options) => {
-      const win = new BrowserWindow(options);
-      win.loadURL('about:blank');
-      return win.id;
-    }, options);
-
-    for (const page of this._windows) {
-      if (page._browserWindowId === windowId)
-        return page;
-    }
-
-    return await this._waitForEvent(ElectronApplication.Events.Window, (page: ElectronPage) => page._browserWindowId === windowId);
   }
 
   context(): BrowserContext {
@@ -139,12 +124,19 @@ export class ElectronApplication extends EventEmitter {
 }
 
 export class Electron  {
-  async launch(executablePath: string, options: ElectronLaunchOptionsBase = {}): Promise<ElectronApplication> {
+  private _playwrightOptions: PlaywrightOptions;
+  private _ffmpegPath: string | null;
+
+  constructor(packagePath: string, playwrightOptions: PlaywrightOptions, ffmpeg: browserPaths.BrowserDescriptor) {
+    const browsersPath = browserPaths.browsersPath(packagePath);
+    const browserPath = browserPaths.browserDirectory(browsersPath, ffmpeg);
+    this._ffmpegPath = browserPaths.executablePath(browserPath, ffmpeg) || null;
+    this._playwrightOptions = playwrightOptions;
+  }
+
+  async launch(options: ElectronLaunchOptionsBase = {}): Promise<ElectronApplication> {
     const {
       args = [],
-      handleSIGINT = true,
-      handleSIGTERM = true,
-      handleSIGHUP = true,
     } = options;
     const controller = new ProgressController();
     controller.setLogName('browser');
@@ -160,12 +152,9 @@ export class Electron  {
 
       const browserLogsCollector = new RecentLogsCollector();
       const { launchedProcess, gracefullyClose, kill } = await launchProcess({
-        executablePath,
+        executablePath: options.executablePath || require('electron/index.js'),
         args: electronArguments,
         env: options.env ? envArrayToObject(options.env) : process.env,
-        handleSIGINT,
-        handleSIGTERM,
-        handleSIGHUP,
         log: (message: string) => {
           progress.log(message);
           browserLogsCollector.log(message);
@@ -190,14 +179,16 @@ export class Electron  {
         kill
       };
       const browserOptions: BrowserOptions = {
+        ...this._playwrightOptions,
         name: 'electron',
+        isChromium: true,
         headful: true,
         persistent: { noDefaultViewport: true },
         browserProcess,
         protocolLogger: helper.debugProtocolLogger(),
         browserLogsCollector,
       };
-      const browser = await CRBrowser.connect(chromeTransport, browserOptions);
+      const browser = await CRBrowser.connect(chromeTransport, browserOptions, this._ffmpegPath);
       app = new ElectronApplication(browser, nodeConnection);
       await app._init();
       return app;

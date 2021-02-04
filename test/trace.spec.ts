@@ -15,24 +15,27 @@
  */
 
 import { it, expect } from './fixtures';
-import type * as trace from '../types/trace';
+import type * as trace from '../src/trace/traceTypes';
 import * as path from 'path';
 import * as fs from 'fs';
 
-it('should record trace', async ({browser, testInfo, server}) => {
-  const artifactsPath = testInfo.outputPath('');
-  const tracePath = path.join(artifactsPath, 'playwright.trace');
-  const context = await browser.newContext({ _tracePath: tracePath } as any);
+it('should record trace', (test, { browserName, platform }) => {
+  test.fixme();
+}, async ({browser, testInfo, server}) => {
+  const traceDir = testInfo.outputPath('trace');
+  const context = await browser.newContext({ _traceDir: traceDir } as any);
   const page = await context.newPage();
   const url = server.PREFIX + '/snapshot/snapshot-with-css.html';
   await page.goto(url);
+  await page.click('textarea');
   await context.close();
-
+  const tracePath = path.join(traceDir, fs.readdirSync(traceDir).find(n => n.endsWith('.trace')));
   const traceFileContent = await fs.promises.readFile(tracePath, 'utf8');
   const traceEvents = traceFileContent.split('\n').filter(line => !!line).map(line => JSON.parse(line)) as trace.TraceEvent[];
 
   const contextEvent = traceEvents.find(event => event.type === 'context-created') as trace.ContextCreatedTraceEvent;
   expect(contextEvent).toBeTruthy();
+  expect(contextEvent.debugName).toBeUndefined();
   const contextId = contextEvent.contextId;
 
   const pageEvent = traceEvents.find(event => event.type === 'page-created') as trace.PageCreatedTraceEvent;
@@ -46,6 +49,83 @@ it('should record trace', async ({browser, testInfo, server}) => {
   expect(gotoEvent.pageId).toBe(pageId);
   expect(gotoEvent.value).toBe(url);
 
-  expect(gotoEvent.snapshot).toBeTruthy();
-  expect(fs.existsSync(path.join(artifactsPath, 'trace-resources', gotoEvent.snapshot!.sha1))).toBe(true);
+  const resourceEvent = traceEvents.find(event => event.type === 'resource' && event.url.endsWith('/frames/style.css')) as trace.NetworkResourceTraceEvent;
+  expect(resourceEvent).toBeTruthy();
+  expect(resourceEvent.contextId).toBe(contextId);
+  expect(resourceEvent.pageId).toBe(pageId);
+  expect(resourceEvent.method).toBe('GET');
+  expect(resourceEvent.status).toBe(200);
+  expect(resourceEvent.requestHeaders).toBeTruthy();
+  expect(resourceEvent.requestHeaders.length).toBeGreaterThan(0);
+  expect(resourceEvent.requestSha1).toBe('none');
+
+  const clickEvent = traceEvents.find(event => event.type === 'action' && event.action === 'click') as trace.ActionTraceEvent;
+  expect(clickEvent).toBeTruthy();
+  expect(clickEvent.snapshots.length).toBe(2);
+  const snapshotId = clickEvent.snapshots[0].snapshotId;
+  const snapshotEvent = traceEvents.find(event => event.type === 'snapshot' && event.snapshotId === snapshotId) as trace.FrameSnapshotTraceEvent;
+  expect(snapshotEvent).toBeTruthy();
+});
+
+it('should record trace with POST', (test, { browserName, platform }) => {
+  test.fixme();
+}, async ({browser, testInfo, server}) => {
+  const traceDir = testInfo.outputPath('trace');
+  const context = await browser.newContext({ _traceDir: traceDir } as any);
+  const page = await context.newPage();
+  const url = server.PREFIX + '/trace-resources.html';
+  await page.goto(url);
+  await page.click('text=Download');
+  await page.waitForSelector(`#response-status:text("404")`);
+  await context.close();
+
+  const tracePath = path.join(traceDir, fs.readdirSync(traceDir).find(n => n.endsWith('.trace')));
+  const traceFileContent = await fs.promises.readFile(tracePath, 'utf8');
+  const traceEvents = traceFileContent.split('\n').filter(line => !!line).map(line => JSON.parse(line)) as trace.TraceEvent[];
+
+  const contextEvent = traceEvents.find(event => event.type === 'context-created') as trace.ContextCreatedTraceEvent;
+  expect(contextEvent).toBeTruthy();
+  expect(contextEvent.debugName).toBeUndefined();
+  const contextId = contextEvent.contextId;
+
+  const pageEvent = traceEvents.find(event => event.type === 'page-created') as trace.PageCreatedTraceEvent;
+  expect(pageEvent).toBeTruthy();
+  expect(pageEvent.contextId).toBe(contextId);
+  const pageId = pageEvent.pageId;
+
+  const gotoEvent = traceEvents.find(event => event.type === 'action' && event.action === 'goto') as trace.ActionTraceEvent;
+  expect(gotoEvent).toBeTruthy();
+  expect(gotoEvent.contextId).toBe(contextId);
+  expect(gotoEvent.pageId).toBe(pageId);
+  expect(gotoEvent.value).toBe(url);
+
+  const resourceEvent = traceEvents.find(event => event.type === 'resource' && event.url.endsWith('/file.json')) as trace.NetworkResourceTraceEvent;
+  expect(resourceEvent).toBeTruthy();
+  expect(resourceEvent.contextId).toBe(contextId);
+  expect(resourceEvent.pageId).toBe(pageId);
+  expect(resourceEvent.method).toBe('POST');
+  expect(resourceEvent.status).toBe(404);
+  expect(resourceEvent.requestHeaders).toBeTruthy();
+  expect(resourceEvent.requestHeaders.length).toBeGreaterThan(0);
+  expect(resourceEvent.requestSha1).toBeTruthy();
+  expect(resourceEvent.responseSha1).toBeTruthy();
+
+  expect(fs.existsSync(path.join(traceDir, 'resources', resourceEvent.requestSha1))).toBe(true);
+  expect(fs.existsSync(path.join(traceDir, 'resources', resourceEvent.responseSha1))).toBe(true);
+});
+
+it('should record trace with a debugName', (test, { browserName, platform }) => {
+  test.fixme();
+}, async ({browser, testInfo, server}) => {
+  const traceDir = testInfo.outputPath('trace');
+  const debugName = 'Custom testcase name';
+  const context = await browser.newContext({ _traceDir: traceDir, _debugName: debugName } as any);
+  await context.close();
+  const tracePath = path.join(traceDir, fs.readdirSync(traceDir).find(n => n.endsWith('.trace')));
+  const traceFileContent = await fs.promises.readFile(tracePath, 'utf8');
+  const traceEvents = traceFileContent.split('\n').filter(line => !!line).map(line => JSON.parse(line)) as trace.TraceEvent[];
+
+  const contextEvent = traceEvents.find(event => event.type === 'context-created') as trace.ContextCreatedTraceEvent;
+  expect(contextEvent).toBeTruthy();
+  expect(contextEvent.debugName).toBe(debugName);
 });

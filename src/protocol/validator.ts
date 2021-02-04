@@ -211,8 +211,8 @@ export function createScheme(tChannel: (name: string) => Validator): Scheme {
     hasTouch: tOptional(tBoolean),
     colorScheme: tOptional(tEnum(['light', 'dark', 'no-preference'])),
     acceptDownloads: tOptional(tBoolean),
-    _traceResourcesPath: tOptional(tString),
-    _tracePath: tOptional(tString),
+    _traceDir: tOptional(tString),
+    _debugName: tOptional(tString),
     recordVideo: tOptional(tObject({
       dir: tString,
       size: tOptional(tObject({
@@ -255,8 +255,8 @@ export function createScheme(tChannel: (name: string) => Validator): Scheme {
     hasTouch: tOptional(tBoolean),
     colorScheme: tOptional(tEnum(['dark', 'light', 'no-preference'])),
     acceptDownloads: tOptional(tBoolean),
-    _traceResourcesPath: tOptional(tString),
-    _tracePath: tOptional(tString),
+    _traceDir: tOptional(tString),
+    _debugName: tOptional(tString),
     recordVideo: tOptional(tObject({
       dir: tString,
       size: tOptional(tObject({
@@ -337,8 +337,23 @@ export function createScheme(tChannel: (name: string) => Validator): Scheme {
     offline: tBoolean,
   });
   scheme.BrowserContextStorageStateParams = tOptional(tObject({}));
+  scheme.BrowserContextPauseParams = tOptional(tObject({}));
+  scheme.BrowserContextRecorderSupplementEnableParams = tObject({
+    language: tString,
+    startRecording: tOptional(tBoolean),
+    launchOptions: tOptional(tAny),
+    contextOptions: tOptional(tAny),
+    device: tOptional(tString),
+    saveStorage: tOptional(tString),
+    terminal: tOptional(tBoolean),
+    outputFile: tOptional(tString),
+  });
   scheme.BrowserContextCrNewCDPSessionParams = tObject({
     page: tChannel('Page'),
+  });
+  scheme.BrowserContextSetTerminalSizeNoReplyParams = tObject({
+    rows: tOptional(tNumber),
+    columns: tOptional(tNumber),
   });
   scheme.PageSetDefaultNavigationTimeoutNoReplyParams = tObject({
     timeout: tNumber,
@@ -473,13 +488,13 @@ export function createScheme(tChannel: (name: string) => Validator): Scheme {
   scheme.FrameEvalOnSelectorParams = tObject({
     selector: tString,
     expression: tString,
-    isFunction: tBoolean,
+    isFunction: tOptional(tBoolean),
     arg: tType('SerializedArgument'),
   });
   scheme.FrameEvalOnSelectorAllParams = tObject({
     selector: tString,
     expression: tString,
-    isFunction: tBoolean,
+    isFunction: tOptional(tBoolean),
     arg: tType('SerializedArgument'),
   });
   scheme.FrameAddScriptTagParams = tObject({
@@ -527,13 +542,13 @@ export function createScheme(tChannel: (name: string) => Validator): Scheme {
   });
   scheme.FrameEvaluateExpressionParams = tObject({
     expression: tString,
-    isFunction: tBoolean,
+    isFunction: tOptional(tBoolean),
     arg: tType('SerializedArgument'),
     world: tOptional(tEnum(['main', 'utility'])),
   });
   scheme.FrameEvaluateExpressionHandleParams = tObject({
     expression: tString,
-    isFunction: tBoolean,
+    isFunction: tOptional(tBoolean),
     arg: tType('SerializedArgument'),
     world: tOptional(tEnum(['main', 'utility'])),
   });
@@ -571,6 +586,30 @@ export function createScheme(tChannel: (name: string) => Validator): Scheme {
     timeout: tOptional(tNumber),
   });
   scheme.FrameInnerTextParams = tObject({
+    selector: tString,
+    timeout: tOptional(tNumber),
+  });
+  scheme.FrameIsCheckedParams = tObject({
+    selector: tString,
+    timeout: tOptional(tNumber),
+  });
+  scheme.FrameIsDisabledParams = tObject({
+    selector: tString,
+    timeout: tOptional(tNumber),
+  });
+  scheme.FrameIsEnabledParams = tObject({
+    selector: tString,
+    timeout: tOptional(tNumber),
+  });
+  scheme.FrameIsHiddenParams = tObject({
+    selector: tString,
+    timeout: tOptional(tNumber),
+  });
+  scheme.FrameIsVisibleParams = tObject({
+    selector: tString,
+    timeout: tOptional(tNumber),
+  });
+  scheme.FrameIsEditableParams = tObject({
     selector: tString,
     timeout: tOptional(tNumber),
   });
@@ -641,7 +680,7 @@ export function createScheme(tChannel: (name: string) => Validator): Scheme {
   });
   scheme.FrameWaitForFunctionParams = tObject({
     expression: tString,
-    isFunction: tBoolean,
+    isFunction: tOptional(tBoolean),
     arg: tType('SerializedArgument'),
     timeout: tOptional(tNumber),
     pollingInterval: tOptional(tNumber),
@@ -651,31 +690,27 @@ export function createScheme(tChannel: (name: string) => Validator): Scheme {
     timeout: tOptional(tNumber),
     state: tOptional(tEnum(['attached', 'detached', 'visible', 'hidden'])),
   });
-  scheme.FrameExtendInjectedScriptParams = tObject({
-    source: tString,
-    arg: tType('SerializedArgument'),
-  });
   scheme.WorkerEvaluateExpressionParams = tObject({
     expression: tString,
-    isFunction: tBoolean,
+    isFunction: tOptional(tBoolean),
     arg: tType('SerializedArgument'),
   });
   scheme.WorkerEvaluateExpressionHandleParams = tObject({
     expression: tString,
-    isFunction: tBoolean,
+    isFunction: tOptional(tBoolean),
     arg: tType('SerializedArgument'),
   });
   scheme.JSHandleDisposeParams = tOptional(tObject({}));
   scheme.ElementHandleDisposeParams = tType('JSHandleDisposeParams');
   scheme.JSHandleEvaluateExpressionParams = tObject({
     expression: tString,
-    isFunction: tBoolean,
+    isFunction: tOptional(tBoolean),
     arg: tType('SerializedArgument'),
   });
   scheme.ElementHandleEvaluateExpressionParams = tType('JSHandleEvaluateExpressionParams');
   scheme.JSHandleEvaluateExpressionHandleParams = tObject({
     expression: tString,
-    isFunction: tBoolean,
+    isFunction: tOptional(tBoolean),
     arg: tType('SerializedArgument'),
   });
   scheme.ElementHandleEvaluateExpressionHandleParams = tType('JSHandleEvaluateExpressionHandleParams');
@@ -690,13 +725,13 @@ export function createScheme(tChannel: (name: string) => Validator): Scheme {
   scheme.ElementHandleEvalOnSelectorParams = tObject({
     selector: tString,
     expression: tString,
-    isFunction: tBoolean,
+    isFunction: tOptional(tBoolean),
     arg: tType('SerializedArgument'),
   });
   scheme.ElementHandleEvalOnSelectorAllParams = tObject({
     selector: tString,
     expression: tString,
-    isFunction: tBoolean,
+    isFunction: tOptional(tBoolean),
     arg: tType('SerializedArgument'),
   });
   scheme.ElementHandleBoundingBoxParams = tOptional(tObject({}));
@@ -746,6 +781,12 @@ export function createScheme(tChannel: (name: string) => Validator): Scheme {
   });
   scheme.ElementHandleInnerHTMLParams = tOptional(tObject({}));
   scheme.ElementHandleInnerTextParams = tOptional(tObject({}));
+  scheme.ElementHandleIsCheckedParams = tOptional(tObject({}));
+  scheme.ElementHandleIsDisabledParams = tOptional(tObject({}));
+  scheme.ElementHandleIsEditableParams = tOptional(tObject({}));
+  scheme.ElementHandleIsEnabledParams = tOptional(tObject({}));
+  scheme.ElementHandleIsHiddenParams = tOptional(tObject({}));
+  scheme.ElementHandleIsVisibleParams = tOptional(tObject({}));
   scheme.ElementHandleOwnerFrameParams = tOptional(tObject({}));
   scheme.ElementHandlePressParams = tObject({
     key: tString,
@@ -810,7 +851,7 @@ export function createScheme(tChannel: (name: string) => Validator): Scheme {
     timeout: tOptional(tNumber),
   });
   scheme.ElementHandleWaitForElementStateParams = tObject({
-    state: tEnum(['visible', 'hidden', 'stable', 'enabled', 'disabled']),
+    state: tEnum(['visible', 'hidden', 'stable', 'enabled', 'disabled', 'editable']),
     timeout: tOptional(tNumber),
   });
   scheme.ElementHandleWaitForSelectorParams = tObject({
@@ -874,26 +915,20 @@ export function createScheme(tChannel: (name: string) => Validator): Scheme {
   });
   scheme.CDPSessionDetachParams = tOptional(tObject({}));
   scheme.ElectronLaunchParams = tObject({
-    executablePath: tString,
+    executablePath: tOptional(tString),
     args: tOptional(tArray(tString)),
     cwd: tOptional(tString),
     env: tOptional(tArray(tType('NameValue'))),
-    handleSIGINT: tOptional(tBoolean),
-    handleSIGTERM: tOptional(tBoolean),
-    handleSIGHUP: tOptional(tBoolean),
     timeout: tOptional(tNumber),
-  });
-  scheme.ElectronApplicationNewBrowserWindowParams = tObject({
-    arg: tType('SerializedArgument'),
   });
   scheme.ElectronApplicationEvaluateExpressionParams = tObject({
     expression: tString,
-    isFunction: tBoolean,
+    isFunction: tOptional(tBoolean),
     arg: tType('SerializedArgument'),
   });
   scheme.ElectronApplicationEvaluateExpressionHandleParams = tObject({
     expression: tString,
-    isFunction: tBoolean,
+    isFunction: tOptional(tBoolean),
     arg: tType('SerializedArgument'),
   });
   scheme.ElectronApplicationCloseParams = tOptional(tObject({}));
@@ -1010,8 +1045,8 @@ export function createScheme(tChannel: (name: string) => Validator): Scheme {
     hasTouch: tOptional(tBoolean),
     colorScheme: tOptional(tEnum(['dark', 'light', 'no-preference'])),
     acceptDownloads: tOptional(tBoolean),
-    _traceResourcesPath: tOptional(tString),
-    _tracePath: tOptional(tString),
+    _traceDir: tOptional(tString),
+    _debugName: tOptional(tString),
     recordVideo: tOptional(tObject({
       dir: tString,
       size: tOptional(tObject({

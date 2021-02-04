@@ -15,36 +15,17 @@
  */
 
 import * as fs from 'fs';
-import * as os from 'os';
 import * as path from 'path';
 
 export function printDepsWindowsExecutable(): string | undefined {
   return pathToExecutable(['bin', 'PrintDeps.exe']);
 }
 
-export function ffmpegExecutable(): string | undefined {
-  let ffmpegName;
-  if (process.platform === 'win32')
-    ffmpegName = os.arch() === 'x64' ? 'ffmpeg-win64.exe' : 'ffmpeg-win32.exe';
-  else if (process.platform === 'darwin')
-    ffmpegName = 'ffmpeg-mac';
-  else
-    ffmpegName = 'ffmpeg-linux';
-  return pathToExecutable(['third_party', 'ffmpeg', ffmpegName]);
-}
-
 function pathToExecutable(relative: string[]): string | undefined {
-  const defaultPath = path.join(__dirname, '..', '..', ...relative);
-  const localPath = path.join(path.dirname(process.argv[0]), relative[relative.length - 1]);
   try {
+    const defaultPath = path.join(__dirname, '..', '..', ...relative);
     if (fs.existsSync(defaultPath))
       return defaultPath;
-  } catch (e) {
-  }
-
-  try {
-    if (fs.existsSync(localPath))
-      return localPath;
   } catch (e) {
   }
 }

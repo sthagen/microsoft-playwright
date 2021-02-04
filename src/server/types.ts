@@ -248,8 +248,8 @@ export type BrowserContextOptions = {
     path: string
   },
   proxy?: ProxySettings,
-  _tracePath?: string,
-  _traceResourcesPath?: string,
+  _traceDir?: string,
+  _debugName?: string,
 };
 
 export type EnvArray = { name: string, value: string }[];
@@ -271,7 +271,7 @@ type LaunchOptionsBase = {
   chromiumSandbox?: boolean,
   slowMo?: number,
 };
-export type LaunchOptions = LaunchOptionsBase & UIOptions & {
+export type LaunchOptions = LaunchOptionsBase & {
   firefoxUserPrefs?: { [key: string]: string | number | boolean },
 };
 export type LaunchPersistentOptions = LaunchOptionsBase & BrowserContextOptions;
@@ -324,10 +324,6 @@ export type Error = {
   message: string,
   name: string,
   stack?: string,
-};
-
-export type UIOptions = {
-  slowMo?: number;
 };
 
 export type NameValueList = {

@@ -14,279 +14,482 @@
  * limitations under the License.
  */
 
+export type NodeSnapshot =
+  // Text node.
+  string |
+  // Subtree reference, "x snapshots ago, node #y". Could point to a text node.
+  // Only nodes that are not references are counted, starting from zero, using post-order traversal.
+  [ [number, number] ] |
+  // Just node name.
+  [ string ] |
+  // Node name, attributes, child nodes.
+  // Unfortunately, we cannot make this type definition recursive, therefore "any".
+  [ string, { [attr: string]: string }, ...any ];
+
 export type SnapshotData = {
-  html: string,
-  resourceOverrides: { url: string, content: string }[],
-  frameUrls: string[],
+  doctype?: string,
+  html: NodeSnapshot,
+  resourceOverrides: {
+    url: string,
+    // String is the content. Number is "x snapshots ago", same url.
+    content: string | number,
+  }[],
+  viewport: { width: number, height: number },
+  url: string,
+  snapshotId?: string,
 };
 
-type SnapshotResult = {
-  data: SnapshotData,
-  frameElements: Element[],
-};
+export const kSnapshotStreamer = '__playwright_snapshot_streamer_';
+export const kSnapshotBinding = '__playwright_snapshot_binding_';
 
-export function takeSnapshotInFrame(guid: string, removeNoScript: boolean, target: Node | undefined): SnapshotResult {
-  const shadowAttribute = 'playwright-shadow-root';
-  const win = window;
-  const doc = win.document;
+export function frameSnapshotStreamer() {
+  // Communication with Playwright.
+  const kSnapshotStreamer = '__playwright_snapshot_streamer_';
+  const kSnapshotBinding = '__playwright_snapshot_binding_';
 
-  const autoClosing = new Set(['AREA', 'BASE', 'BR', 'COL', 'COMMAND', 'EMBED', 'HR', 'IMG', 'INPUT', 'KEYGEN', 'LINK', 'MENUITEM', 'META', 'PARAM', 'SOURCE', 'TRACK', 'WBR']);
-  const escaped = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', '\'': '&#39;' };
+  // Attributes present in the snapshot.
+  const kShadowAttribute = '__playwright_shadow_root_';
+  const kScrollTopAttribute = '__playwright_scroll_top_';
+  const kScrollLeftAttribute = '__playwright_scroll_left_';
 
-  const escapeAttribute = (s: string): string => {
-    return s.replace(/[&<>"']/ug, char => (escaped as any)[char]);
+  // Symbols for our own info on Nodes/StyleSheets.
+  const kSnapshotFrameId = Symbol('__playwright_snapshot_frameid_');
+  const kCachedData = Symbol('__playwright_snapshot_cache_');
+  type CachedData = {
+    cached?: any[], // Cached values to determine whether the snapshot will be the same.
+    ref?: [number, number], // Previous snapshotNumber and nodeIndex.
+    attributesCached?: boolean, // Whether node attributes have not changed.
+    cssText?: string, // Text for stylesheets.
+    cssRef?: number, // Previous snapshotNumber for overridden stylesheets.
   };
-  const escapeText = (s: string): string => {
-    return s.replace(/[&<]/ug, char => (escaped as any)[char]);
-  };
-  const escapeScriptString = (s: string): string => {
-    return s.replace(/'/g, '\\\'');
-  };
+  function ensureCachedData(obj: any): CachedData {
+    if (!obj[kCachedData])
+      obj[kCachedData] = {};
+    return obj[kCachedData];
+  }
 
-  const chunks = new Map<string, string>();
-  const frameUrlToFrameElement = new Map<string, Element>();
-  const styleNodeToStyleSheetText = new Map<Node, string>();
-  const styleSheetUrlToContentOverride = new Map<string, string>();
-
-  let counter = 0;
-  const nextId = (): string => {
-    return guid + (++counter);
-  };
-
-  const resolve = (base: string, url: string): string => {
-    if (url === '')
-      return '';
+  function removeHash(url: string) {
     try {
-      return new URL(url, base).href;
+      const u = new URL(url);
+      u.hash = '';
+      return u.toString();
     } catch (e) {
       return url;
     }
-  };
-
-  const sanitizeUrl = (url: string): string => {
-    if (url.startsWith('javascript:'))
-      return '';
-    return url;
-  };
-
-  const sanitizeSrcSet = (srcset: string): string => {
-    return srcset.split(',').map(src => {
-      src = src.trim();
-      const spaceIndex = src.lastIndexOf(' ');
-      if (spaceIndex === -1)
-        return sanitizeUrl(src);
-      return sanitizeUrl(src.substring(0, spaceIndex).trim()) + src.substring(spaceIndex);
-    }).join(',');
-  };
-
-  const getSheetBase = (sheet: CSSStyleSheet): string => {
-    let rootSheet = sheet;
-    while (rootSheet.parentStyleSheet)
-      rootSheet = rootSheet.parentStyleSheet;
-    if (rootSheet.ownerNode)
-      return rootSheet.ownerNode.baseURI;
-    return document.baseURI;
-  };
-
-  const getSheetText = (sheet: CSSStyleSheet): string => {
-    const rules: string[] = [];
-    for (const rule of sheet.cssRules)
-      rules.push(rule.cssText);
-    return rules.join('\n');
-  };
-
-  const visitStyleSheet = (sheet: CSSStyleSheet) => {
-    try {
-      for (const rule of sheet.cssRules) {
-        if ((rule as CSSImportRule).styleSheet)
-          visitStyleSheet((rule as CSSImportRule).styleSheet);
-      }
-
-      const cssText = getSheetText(sheet);
-      if (sheet.ownerNode && sheet.ownerNode.nodeName === 'STYLE') {
-        // Stylesheets with owner STYLE nodes will be rewritten.
-        styleNodeToStyleSheetText.set(sheet.ownerNode, cssText);
-      } else if (sheet.href !== null) {
-        // Other stylesheets will have resource overrides.
-        const base = getSheetBase(sheet);
-        const url = resolve(base, sheet.href);
-        styleSheetUrlToContentOverride.set(url, cssText);
-      }
-    } catch (e) {
-      // Sometimes we cannot access cross-origin stylesheets.
-    }
-  };
-
-  const visit = (node: Node | ShadowRoot, builder: string[]) => {
-    const nodeName = node.nodeName;
-    const nodeType = node.nodeType;
-
-    if (nodeType === Node.DOCUMENT_TYPE_NODE) {
-      const docType = node as DocumentType;
-      builder.push(`<!DOCTYPE ${docType.name}>`);
-      return;
-    }
-
-    if (nodeType === Node.TEXT_NODE) {
-      builder.push(escapeText(node.nodeValue || ''));
-      return;
-    }
-
-    if (nodeType !== Node.ELEMENT_NODE &&
-        nodeType !== Node.DOCUMENT_NODE &&
-        nodeType !== Node.DOCUMENT_FRAGMENT_NODE)
-      return;
-
-    if (nodeType === Node.DOCUMENT_NODE || nodeType === Node.DOCUMENT_FRAGMENT_NODE) {
-      const documentOrShadowRoot = node as DocumentOrShadowRoot;
-      for (const sheet of documentOrShadowRoot.styleSheets)
-        visitStyleSheet(sheet);
-    }
-
-    if (nodeName === 'SCRIPT' || nodeName === 'BASE')
-      return;
-
-    if (removeNoScript && nodeName === 'NOSCRIPT')
-      return;
-
-    if (nodeName === 'STYLE') {
-      const cssText = styleNodeToStyleSheetText.get(node) || node.textContent || '';
-      builder.push('<style>');
-      builder.push(cssText);
-      builder.push('</style>');
-      return;
-    }
-
-    if (nodeType === Node.ELEMENT_NODE) {
-      const element = node as Element;
-      builder.push('<');
-      builder.push(nodeName);
-      if (node === target)
-        builder.push(' __playwright_target__="true"');
-      for (let i = 0; i < element.attributes.length; i++) {
-        const name = element.attributes[i].name;
-        let value = element.attributes[i].value;
-        if (name === 'value' && (nodeName === 'INPUT' || nodeName === 'TEXTAREA'))
-          continue;
-        if (name === 'checked' || name === 'disabled' || name === 'checked')
-          continue;
-        if (nodeName === 'LINK' && name === 'integrity')
-          continue;
-        if (name === 'src' && (nodeName === 'IFRAME' || nodeName === 'FRAME')) {
-          // TODO: handle srcdoc?
-          let protocol = win.location.protocol;
-          if (!protocol.startsWith('http'))
-            protocol = 'http:';
-          value = protocol + '//' + nextId() + '/';
-          frameUrlToFrameElement.set(value, element);
-        } else if (name === 'src' && (nodeName === 'IMG')) {
-          value = sanitizeUrl(value);
-        } else if (name === 'srcset' && (nodeName === 'IMG')) {
-          value = sanitizeSrcSet(value);
-        } else if (name === 'srcset' && (nodeName === 'SOURCE')) {
-          value = sanitizeSrcSet(value);
-        } else if (name === 'href' && (nodeName === 'LINK')) {
-          value = sanitizeUrl(value);
-        } else if (name.startsWith('on')) {
-          value = '';
-        }
-        builder.push(' ');
-        builder.push(name);
-        builder.push('="');
-        builder.push(escapeAttribute(value));
-        builder.push('"');
-      }
-      if (nodeName === 'INPUT') {
-        builder.push(' value="');
-        builder.push(escapeAttribute((element as HTMLInputElement).value));
-        builder.push('"');
-      }
-      if ((element as any).checked)
-        builder.push(' checked');
-      if ((element as any).disabled)
-        builder.push(' disabled');
-      if ((element as any).readOnly)
-        builder.push(' readonly');
-      if (element.shadowRoot) {
-        const b: string[] = [];
-        visit(element.shadowRoot, b);
-        const chunkId = nextId();
-        chunks.set(chunkId, b.join(''));
-        builder.push(' ');
-        builder.push(shadowAttribute);
-        builder.push('="');
-        builder.push(chunkId);
-        builder.push('"');
-      }
-      builder.push('>');
-    }
-    if (nodeName === 'HEAD') {
-      let baseHref = document.baseURI;
-      let baseTarget: string | undefined;
-      for (let child = node.firstChild; child; child = child.nextSibling) {
-        if (child.nodeName === 'BASE') {
-          baseHref = (child as HTMLBaseElement).href;
-          baseTarget = (child as HTMLBaseElement).target;
-        }
-      }
-      builder.push('<base href="');
-      builder.push(escapeAttribute(baseHref));
-      builder.push('"');
-      if (baseTarget) {
-        builder.push(' target="');
-        builder.push(escapeAttribute(baseTarget));
-        builder.push('"');
-      }
-      builder.push('>');
-    }
-    if (nodeName === 'TEXTAREA') {
-      builder.push(escapeText((node as HTMLTextAreaElement).value));
-    } else {
-      for (let child = node.firstChild; child; child = child.nextSibling)
-        visit(child, builder);
-    }
-    if (node.nodeName === 'BODY' && chunks.size) {
-      builder.push('<script>');
-      const shadowChunks = Array.from(chunks).map(([chunkId, html]) => {
-        return `  ['${chunkId}', '${escapeScriptString(html)}']`;
-      }).join(',\n');
-      const scriptContent = `\n(${applyShadowsInPage.toString()})('${shadowAttribute}', new Map([\n${shadowChunks}\n]))\n`;
-      builder.push(scriptContent);
-      builder.push('</script>');
-    }
-    if (nodeType === Node.ELEMENT_NODE && !autoClosing.has(nodeName)) {
-      builder.push('</');
-      builder.push(nodeName);
-      builder.push('>');
-    }
-  };
-
-  function applyShadowsInPage(shadowAttribute: string, shadowContent: Map<string, string>) {
-    const visitShadows = (root: Document | ShadowRoot) => {
-      const elements = root.querySelectorAll(`[${shadowAttribute}]`);
-      for (let i = 0; i < elements.length; i++) {
-        const host = elements[i];
-        const chunkId = host.getAttribute(shadowAttribute)!;
-        host.removeAttribute(shadowAttribute);
-        const shadow = host.attachShadow({ mode: 'open' });
-        const html = shadowContent.get(chunkId);
-        if (html) {
-          shadow.innerHTML = html;
-          visitShadows(shadow);
-        }
-      }
-    };
-    visitShadows(document);
   }
 
-  const root: string[] = [];
-  visit(doc, root);
-  return {
-    data: {
-      html: root.join(''),
-      frameUrls: Array.from(frameUrlToFrameElement.keys()),
-      resourceOverrides: Array.from(styleSheetUrlToContentOverride).map(([url, content]) => ({ url, content })),
-    },
-    frameElements: Array.from(frameUrlToFrameElement.values()),
-  };
+  class Streamer {
+    private _removeNoScript = true;
+    private _timer: NodeJS.Timeout | undefined;
+    private _lastSnapshotNumber = 0;
+    private _staleStyleSheets = new Set<CSSStyleSheet>();
+    private _allStyleSheetsWithUrlOverride = new Set<CSSStyleSheet>();
+    private _readingStyleSheet = false;  // To avoid invalidating due to our own reads.
+    private _fakeBase: HTMLBaseElement;
+    private _observer: MutationObserver;
+
+    constructor() {
+      this._interceptNativeMethod(window.CSSStyleSheet.prototype, 'insertRule', (sheet: CSSStyleSheet) => this._invalidateStyleSheet(sheet));
+      this._interceptNativeMethod(window.CSSStyleSheet.prototype, 'deleteRule', (sheet: CSSStyleSheet) => this._invalidateStyleSheet(sheet));
+      this._interceptNativeMethod(window.CSSStyleSheet.prototype, 'addRule', (sheet: CSSStyleSheet) => this._invalidateStyleSheet(sheet));
+      this._interceptNativeMethod(window.CSSStyleSheet.prototype, 'removeRule', (sheet: CSSStyleSheet) => this._invalidateStyleSheet(sheet));
+      this._interceptNativeGetter(window.CSSStyleSheet.prototype, 'rules', (sheet: CSSStyleSheet) => this._invalidateStyleSheet(sheet));
+      this._interceptNativeGetter(window.CSSStyleSheet.prototype, 'cssRules', (sheet: CSSStyleSheet) => this._invalidateStyleSheet(sheet));
+
+      this._fakeBase = document.createElement('base');
+
+      this._observer = new MutationObserver(list => this._handleMutations(list));
+      const observerConfig = { attributes: true, subtree: true };
+      this._observer.observe(document, observerConfig);
+
+      this._streamSnapshot();
+    }
+
+    private _interceptNativeMethod(obj: any, method: string, cb: (thisObj: any, result: any) => void) {
+      const native = obj[method] as Function;
+      if (!native)
+        return;
+      obj[method] = function(...args: any[]) {
+        const result = native.call(this, ...args);
+        cb(this, result);
+        return result;
+      };
+    }
+
+    private _interceptNativeGetter(obj: any, prop: string, cb: (thisObj: any, result: any) => void) {
+      const descriptor = Object.getOwnPropertyDescriptor(obj, prop)!;
+      Object.defineProperty(obj, prop, {
+        ...descriptor,
+        get: function() {
+          const result = descriptor.get!.call(this);
+          cb(this, result);
+          return result;
+        },
+      });
+    }
+
+    private _handleMutations(list: MutationRecord[]) {
+      for (const mutation of list)
+        ensureCachedData(mutation.target).attributesCached = undefined;
+    }
+
+    private _invalidateStyleSheet(sheet: CSSStyleSheet) {
+      if (this._readingStyleSheet)
+        return;
+      this._staleStyleSheets.add(sheet);
+      if (sheet.href !== null)
+        this._allStyleSheetsWithUrlOverride.add(sheet);
+    }
+
+    private _updateStyleElementStyleSheetTextIfNeeded(sheet: CSSStyleSheet): string | undefined {
+      const data = ensureCachedData(sheet);
+      if (this._staleStyleSheets.has(sheet)) {
+        this._staleStyleSheets.delete(sheet);
+        try {
+          data.cssText = this._getSheetText(sheet);
+        } catch (e) {
+          // Sometimes we cannot access cross-origin stylesheets.
+        }
+      }
+      return data.cssText;
+    }
+
+    // Returns either content, ref, or no override.
+    private _updateLinkStyleSheetTextIfNeeded(sheet: CSSStyleSheet, snapshotNumber: number): string | number | undefined {
+      const data = ensureCachedData(sheet);
+      if (this._staleStyleSheets.has(sheet)) {
+        this._staleStyleSheets.delete(sheet);
+        try {
+          data.cssText = this._getSheetText(sheet);
+          data.cssRef = snapshotNumber;
+          return data.cssText;
+        } catch (e) {
+          // Sometimes we cannot access cross-origin stylesheets.
+        }
+      }
+      return data.cssRef === undefined ? undefined : snapshotNumber - data.cssRef;
+    }
+
+    markIframe(iframeElement: HTMLIFrameElement | HTMLFrameElement, frameId: string) {
+      (iframeElement as any)[kSnapshotFrameId] = frameId;
+    }
+
+    forceSnapshot(snapshotId: string) {
+      this._streamSnapshot(snapshotId);
+    }
+
+    private _streamSnapshot(snapshotId?: string) {
+      if (this._timer) {
+        clearTimeout(this._timer);
+        this._timer = undefined;
+      }
+      try {
+        const snapshot = this._captureSnapshot(snapshotId);
+        (window as any)[kSnapshotBinding](snapshot).catch((e: any) => {});
+      } catch (e) {
+      }
+      this._timer = setTimeout(() => this._streamSnapshot(), 100);
+    }
+
+    private _sanitizeUrl(url: string): string {
+      if (url.startsWith('javascript:'))
+        return '';
+      return url;
+    }
+
+    private _sanitizeSrcSet(srcset: string): string {
+      return srcset.split(',').map(src => {
+        src = src.trim();
+        const spaceIndex = src.lastIndexOf(' ');
+        if (spaceIndex === -1)
+          return this._sanitizeUrl(src);
+        return this._sanitizeUrl(src.substring(0, spaceIndex).trim()) + src.substring(spaceIndex);
+      }).join(',');
+    }
+
+    private _resolveUrl(base: string, url: string): string {
+      if (url === '')
+        return '';
+      try {
+        return new URL(url, base).href;
+      } catch (e) {
+        return url;
+      }
+    }
+
+    private _getSheetBase(sheet: CSSStyleSheet): string {
+      let rootSheet = sheet;
+      while (rootSheet.parentStyleSheet)
+        rootSheet = rootSheet.parentStyleSheet;
+      if (rootSheet.ownerNode)
+        return rootSheet.ownerNode.baseURI;
+      return document.baseURI;
+    }
+
+    private _getSheetText(sheet: CSSStyleSheet): string {
+      this._readingStyleSheet = true;
+      try {
+        const rules: string[] = [];
+        for (const rule of sheet.cssRules)
+          rules.push(rule.cssText);
+        return rules.join('\n');
+      } finally {
+        this._readingStyleSheet = false;
+      }
+    }
+
+    private _captureSnapshot(snapshotId?: string): SnapshotData {
+      const snapshotNumber = ++this._lastSnapshotNumber;
+      let nodeCounter = 0;
+      let shadowDomNesting = 0;
+
+      // Ensure we are up to date.
+      this._handleMutations(this._observer.takeRecords());
+
+      const visitNode = (node: Node | ShadowRoot): { equals: boolean, n: NodeSnapshot } | undefined => {
+        const nodeType = node.nodeType;
+        const nodeName = nodeType === Node.DOCUMENT_FRAGMENT_NODE ? 'template' : node.nodeName;
+
+        if (nodeType !== Node.ELEMENT_NODE &&
+            nodeType !== Node.DOCUMENT_FRAGMENT_NODE &&
+            nodeType !== Node.TEXT_NODE)
+          return;
+        if (nodeName === 'SCRIPT')
+          return;
+        if (this._removeNoScript && nodeName === 'NOSCRIPT')
+          return;
+
+        const data = ensureCachedData(node);
+        const values: any[] = [];
+        let equals = !!data.cached;
+        let extraNodes = 0;
+
+        const expectValue = (value: any) => {
+          equals = equals && data.cached![values.length] === value;
+          values.push(value);
+        };
+
+        const checkAndReturn = (n: NodeSnapshot): { equals: boolean, n: NodeSnapshot } => {
+          data.attributesCached = true;
+          if (equals)
+            return { equals: true, n: [[ snapshotNumber - data.ref![0], data.ref![1] ]] };
+          nodeCounter += extraNodes;
+          data.ref = [snapshotNumber, nodeCounter++];
+          data.cached = values;
+          return { equals: false, n };
+        };
+
+        if (nodeType === Node.TEXT_NODE) {
+          const value = node.nodeValue || '';
+          expectValue(value);
+          return checkAndReturn(value);
+        }
+
+        if (nodeName === 'STYLE') {
+          const sheet = (node as HTMLStyleElement).sheet;
+          let cssText: string | undefined;
+          if (sheet)
+            cssText = this._updateStyleElementStyleSheetTextIfNeeded(sheet);
+          cssText = cssText || node.textContent || '';
+          expectValue(cssText);
+          // Compensate for the extra 'cssText' text node.
+          extraNodes++;
+          return checkAndReturn(['style', {}, cssText]);
+        }
+
+        const attrs: { [attr: string]: string } = {};
+        const result: NodeSnapshot = [nodeName, attrs];
+
+        const visitChild = (child: Node) => {
+          const snapshotted = visitNode(child);
+          if (snapshotted) {
+            result.push(snapshotted.n);
+            expectValue(child);
+            equals = equals && snapshotted.equals;
+          }
+        };
+
+        if (nodeType === Node.DOCUMENT_FRAGMENT_NODE)
+          attrs[kShadowAttribute] = 'open';
+
+        if (nodeType === Node.ELEMENT_NODE) {
+          const element = node as Element;
+          // if (node === target)
+          //   attrs[' __playwright_target__] = '';
+          if (nodeName === 'INPUT') {
+            const value = (element as HTMLInputElement).value;
+            expectValue('value');
+            expectValue(value);
+            attrs['value'] = value;
+            if ((element as HTMLInputElement).checked) {
+              expectValue('checked');
+              attrs['checked'] = '';
+            }
+          }
+          if (element === document.scrollingElement) {
+            // TODO: restoring scroll positions of all elements
+            // is somewhat expensive. Figure this out.
+            if (element.scrollTop) {
+              expectValue(kScrollTopAttribute);
+              expectValue(element.scrollTop);
+              attrs[kScrollTopAttribute] = '' + element.scrollTop;
+            }
+            if (element.scrollLeft) {
+              expectValue(kScrollLeftAttribute);
+              expectValue(element.scrollLeft);
+              attrs[kScrollLeftAttribute] = '' + element.scrollLeft;
+            }
+          }
+          if (element.shadowRoot) {
+            ++shadowDomNesting;
+            visitChild(element.shadowRoot);
+            --shadowDomNesting;
+          }
+        }
+
+        if (nodeName === 'TEXTAREA') {
+          const value = (node as HTMLTextAreaElement).value;
+          expectValue(value);
+          extraNodes++; // Compensate for the extra text node.
+          result.push(value);
+        } else {
+          if (nodeName === 'HEAD') {
+            // Insert fake <base> first, to ensure all <link> elements use the proper base uri.
+            this._fakeBase.setAttribute('href', document.baseURI);
+            visitChild(this._fakeBase);
+          }
+          for (let child = node.firstChild; child; child = child.nextSibling)
+            visitChild(child);
+        }
+
+        // We can skip attributes comparison because nothing else has changed,
+        // and mutation observer didn't tell us about the attributes.
+        if (equals && data.attributesCached && !shadowDomNesting)
+          return checkAndReturn(result);
+
+        if (nodeType === Node.ELEMENT_NODE) {
+          const element = node as Element;
+          for (let i = 0; i < element.attributes.length; i++) {
+            const name = element.attributes[i].name;
+            if (name === 'value' && (nodeName === 'INPUT' || nodeName === 'TEXTAREA'))
+              continue;
+            if (nodeName === 'LINK' && name === 'integrity')
+              continue;
+            let value = element.attributes[i].value;
+            if (name === 'src' && (nodeName === 'IFRAME' || nodeName === 'FRAME')) {
+              // TODO: handle srcdoc?
+              const frameId = (element as any)[kSnapshotFrameId];
+              value = frameId || 'data:text/html,<body>Snapshot is not available</body>';
+            } else if (name === 'src' && (nodeName === 'IMG')) {
+              value = this._sanitizeUrl(value);
+            } else if (name === 'srcset' && (nodeName === 'IMG')) {
+              value = this._sanitizeSrcSet(value);
+            } else if (name === 'srcset' && (nodeName === 'SOURCE')) {
+              value = this._sanitizeSrcSet(value);
+            } else if (name === 'href' && (nodeName === 'LINK')) {
+              value = this._sanitizeUrl(value);
+            } else if (name.startsWith('on')) {
+              value = '';
+            }
+            expectValue(name);
+            expectValue(value);
+            attrs[name] = value;
+          }
+        }
+
+        if (result.length === 2 && !Object.keys(attrs).length)
+          result.pop();  // Remove empty attrs when there are no children.
+        return checkAndReturn(result);
+      };
+
+      let html: NodeSnapshot;
+      if (document.documentElement)
+        html = visitNode(document.documentElement)!.n;
+      else
+        html = ['html'];
+
+      const result: SnapshotData = {
+        html,
+        doctype: document.doctype ? document.doctype.name : undefined,
+        resourceOverrides: [],
+        viewport: {
+          width: Math.max(document.body ? document.body.offsetWidth : 0, document.documentElement ? document.documentElement.offsetWidth : 0),
+          height: Math.max(document.body ? document.body.offsetHeight : 0, document.documentElement ? document.documentElement.offsetHeight : 0),
+        },
+        url: location.href,
+        snapshotId,
+      };
+
+      for (const sheet of this._allStyleSheetsWithUrlOverride) {
+        const content = this._updateLinkStyleSheetTextIfNeeded(sheet, snapshotNumber);
+        if (content === undefined) {
+          // Unable to capture stylsheet contents.
+          continue;
+        }
+        const base = this._getSheetBase(sheet);
+        const url = removeHash(this._resolveUrl(base, sheet.href!));
+        result.resourceOverrides.push({ url, content });
+      }
+
+      return result;
+    }
+  }
+
+  (window as any)[kSnapshotStreamer] = new Streamer();
+}
+
+export function snapshotScript() {
+  function applyPlaywrightAttributes(shadowAttribute: string, scrollTopAttribute: string, scrollLeftAttribute: string) {
+    const scrollTops: Element[] = [];
+    const scrollLefts: Element[] = [];
+
+    const visit = (root: Document | ShadowRoot) => {
+      // Collect all scrolled elements for later use.
+      for (const e of root.querySelectorAll(`[${scrollTopAttribute}]`))
+        scrollTops.push(e);
+      for (const e of root.querySelectorAll(`[${scrollLeftAttribute}]`))
+        scrollLefts.push(e);
+
+      for (const iframe of root.querySelectorAll('iframe')) {
+        const src = iframe.getAttribute('src') || '';
+        if (src.startsWith('data:text/html'))
+          continue;
+        // Rewrite iframes to use snapshot url (relative to window.location)
+        // instead of begin relative to the <base> tag.
+        const index = location.pathname.lastIndexOf('/');
+        if (index === -1)
+          continue;
+        const pathname = location.pathname.substring(0, index + 1) + src;
+        const href = location.href.substring(0, location.href.indexOf(location.pathname)) + pathname;
+        iframe.setAttribute('src', href);
+      }
+
+      for (const element of root.querySelectorAll(`template[${shadowAttribute}]`)) {
+        const template = element as HTMLTemplateElement;
+        const shadowRoot = template.parentElement!.attachShadow({ mode: 'open' });
+        shadowRoot.appendChild(template.content);
+        template.remove();
+        visit(shadowRoot);
+      }
+    };
+    visit(document);
+
+    const onLoad = () => {
+      window.removeEventListener('load', onLoad);
+      for (const element of scrollTops) {
+        element.scrollTop = +element.getAttribute(scrollTopAttribute)!;
+        element.removeAttribute(scrollTopAttribute);
+      }
+      for (const element of scrollLefts) {
+        element.scrollLeft = +element.getAttribute(scrollLeftAttribute)!;
+        element.removeAttribute(scrollLeftAttribute);
+      }
+    };
+    window.addEventListener('load', onLoad);
+  }
+
+  const kShadowAttribute = '__playwright_shadow_root_';
+  const kScrollTopAttribute = '__playwright_scroll_top_';
+  const kScrollLeftAttribute = '__playwright_scroll_left_';
+  return `\n(${applyPlaywrightAttributes.toString()})('${kShadowAttribute}', '${kScrollTopAttribute}', '${kScrollLeftAttribute}')`;
 }

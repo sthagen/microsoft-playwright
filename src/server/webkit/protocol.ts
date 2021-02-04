@@ -1465,7 +1465,7 @@ export module Protocol {
     /**
      * Channels for different types of log messages.
      */
-    export type ChannelSource = "xml"|"javascript"|"network"|"console-api"|"storage"|"appcache"|"rendering"|"css"|"security"|"content-blocker"|"media"|"mediasource"|"webrtc"|"itp-debug"|"private-click-measurement"|"other";
+    export type ChannelSource = "xml"|"javascript"|"network"|"console-api"|"storage"|"appcache"|"rendering"|"css"|"security"|"content-blocker"|"media"|"mediasource"|"webrtc"|"itp-debug"|"private-click-measurement"|"payment-request"|"other";
     /**
      * Level of logging.
      */
@@ -2807,6 +2807,52 @@ export module Protocol {
     export type highlightFrameReturnValue = {
     }
     /**
+     * Shows a grid overlay for a node that begins a 'grid' layout context. The command has no effect if <code>nodeId</code> is invalid or the associated node does not begin a 'grid' layout context. A node can only have one grid overlay at a time; subsequent calls with the same <code>nodeId</code> will override earlier calls.
+     */
+    export type showGridOverlayParameters = {
+      /**
+       * The node for which a grid overlay should be shown.
+       */
+      nodeId: NodeId;
+      /**
+       * The primary color to use for the grid overlay.
+       */
+      gridColor: RGBAColor;
+      /**
+       * Show labels for grid line names. If not specified, the default value is false.
+       */
+      showLineNames?: boolean;
+      /**
+       * Show labels for grid line numbers. If not specified, the default value is false.
+       */
+      showLineNumbers?: boolean;
+      /**
+       * Show grid lines that extend beyond the bounds of the grid. If not specified, the default value is false.
+       */
+      showExtendedGridlines?: boolean;
+      /**
+       * Show grid track size information. If not specified, the default value is false.
+       */
+      showTrackSizes?: boolean;
+      /**
+       * Show labels for grid area names. If not specified, the default value is false.
+       */
+      showAreaNames?: boolean;
+    }
+    export type showGridOverlayReturnValue = {
+    }
+    /**
+     * Hides a grid overlay for a node that begins a 'grid' layout context. The command has no effect if <code>nodeId</code> is specified and invalid, or if there is not currently an overlay set for the <code>nodeId</code>.
+     */
+    export type hideGridOverlayParameters = {
+      /**
+       * The node for which a grid overlay should be hidden. If a <code>nodeId</code> is not specified, all grid overlays will be hidden.
+       */
+      nodeId?: NodeId;
+    }
+    export type hideGridOverlayReturnValue = {
+    }
+    /**
      * Requests that the node is sent to the caller given its path.
      */
     export type pushNodeByPathToFrontendParameters = {
@@ -3325,6 +3371,10 @@ might return multiple quads for inline nodes.
        * A frontend-assigned identifier for this breakpoint action.
        */
       id?: BreakpointActionIdentifier;
+      /**
+       * Indicates whether this action should be executed with a user gesture or not. Defaults to <code>false<code>.
+       */
+      emulateUserGesture?: boolean;
     }
     /**
      * Extra options that modify breakpoint behavior.
@@ -8605,6 +8655,8 @@ the top of the viewport and Y increases as it proceeds towards the bottom of the
     "DOM.highlightNodeList": DOM.highlightNodeListParameters;
     "DOM.hideHighlight": DOM.hideHighlightParameters;
     "DOM.highlightFrame": DOM.highlightFrameParameters;
+    "DOM.showGridOverlay": DOM.showGridOverlayParameters;
+    "DOM.hideGridOverlay": DOM.hideGridOverlayParameters;
     "DOM.pushNodeByPathToFrontend": DOM.pushNodeByPathToFrontendParameters;
     "DOM.resolveNode": DOM.resolveNodeParameters;
     "DOM.getAttributes": DOM.getAttributesParameters;
@@ -8890,6 +8942,8 @@ the top of the viewport and Y increases as it proceeds towards the bottom of the
     "DOM.highlightNodeList": DOM.highlightNodeListReturnValue;
     "DOM.hideHighlight": DOM.hideHighlightReturnValue;
     "DOM.highlightFrame": DOM.highlightFrameReturnValue;
+    "DOM.showGridOverlay": DOM.showGridOverlayReturnValue;
+    "DOM.hideGridOverlay": DOM.hideGridOverlayReturnValue;
     "DOM.pushNodeByPathToFrontend": DOM.pushNodeByPathToFrontendReturnValue;
     "DOM.resolveNode": DOM.resolveNodeReturnValue;
     "DOM.getAttributes": DOM.getAttributesReturnValue;

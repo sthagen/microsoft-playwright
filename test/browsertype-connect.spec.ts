@@ -85,6 +85,15 @@ describe('connect', (suite, { mode }) => {
     expect(disconnected2).toBe(1);
   });
 
+  it('disconnected event should have browser as argument', async ({browserType, remoteServer}) => {
+    const browser = await browserType.connect({ wsEndpoint: remoteServer.wsEndpoint() });
+    const [disconnected] = await Promise.all([
+      new Promise(f => browser.on('disconnected', f)),
+      browser.close(),
+    ]);
+    expect(disconnected).toBe(browser);
+  });
+
   it('should handle exceptions during connect', async ({browserType, remoteServer}) => {
     const __testHookBeforeCreateBrowser = () => { throw new Error('Dummy'); };
     const error = await browserType.connect({ wsEndpoint: remoteServer.wsEndpoint(), __testHookBeforeCreateBrowser } as any).catch(e => e);
@@ -165,7 +174,6 @@ describe('connect', (suite, { mode }) => {
 
   it('should respect selectors', async ({ playwright, browserType, remoteServer }) => {
     const mycss = () => ({
-      create(root, target) {},
       query(root, selector) {
         return root.querySelector(selector);
       },
@@ -234,9 +242,7 @@ describe('connect', (suite, { mode }) => {
     await page.close();
   });
 
-  it('should save videos from remote browser', (test, {browserName, platform}) => {
-    test.flaky(browserName === 'firefox' && platform === 'win32');
-  }, async ({browserType, remoteServer, testInfo}) => {
+  it('should save videos from remote browser', async ({browserType, remoteServer, testInfo}) => {
     const remote = await browserType.connect({ wsEndpoint: remoteServer.wsEndpoint() });
     const videosPath = testInfo.outputPath();
     const context = await remote.newContext({
@@ -249,5 +255,19 @@ describe('connect', (suite, { mode }) => {
 
     const files = fs.readdirSync(videosPath);
     expect(files.some(file => file.endsWith('webm'))).toBe(true);
+  });
+
+  it('should be able to connect 20 times to a single server without warnings', async ({browserType, remoteServer, server}) => {
+    let warning = null;
+    const warningHandler = w => warning = w;
+    process.on('warning', warningHandler);
+
+    const browsers = [];
+    for (let i = 0; i < 20; i++)
+      browsers.push(await browserType.connect({ wsEndpoint: remoteServer.wsEndpoint() }));
+    await Promise.all([browsers.map(browser => browser.close())]);
+
+    process.off('warning', warningHandler);
+    expect(warning).toBe(null);
   });
 });

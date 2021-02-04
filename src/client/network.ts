@@ -26,6 +26,7 @@ import { isString, headersObjectToArray, headersArrayToObject } from '../utils/u
 import { Events } from './events';
 import { Page } from './page';
 import { Waiter } from './waiter';
+import * as api from '../../types/types';
 
 export type NetworkCookie = {
   name: string,
@@ -50,7 +51,7 @@ export type SetNetworkCookieParam = {
   sameSite?: 'Strict' | 'Lax' | 'None'
 };
 
-export class Request extends ChannelOwner<channels.RequestChannel, channels.RequestInitializer> {
+export class Request extends ChannelOwner<channels.RequestChannel, channels.RequestInitializer> implements api.Request {
   private _redirectedFrom: Request | null = null;
   private _redirectedTo: Request | null = null;
   _failureText: string | null = null;
@@ -131,7 +132,9 @@ export class Request extends ChannelOwner<channels.RequestChannel, channels.Requ
   }
 
   async response(): Promise<Response | null> {
-    return Response.fromNullable((await this._channel.response()).response);
+    return this._wrapApiCall('request.response', async () => {
+      return Response.fromNullable((await this._channel.response()).response);
+    });
   }
 
   frame(): Frame {
@@ -167,7 +170,7 @@ export class Request extends ChannelOwner<channels.RequestChannel, channels.Requ
   }
 }
 
-export class Route extends ChannelOwner<channels.RouteChannel, channels.RouteInitializer> {
+export class Route extends ChannelOwner<channels.RouteChannel, channels.RouteInitializer> implements api.Route {
   static from(route: channels.RouteChannel): Route {
     return (route as any)._object;
   }
@@ -181,53 +184,59 @@ export class Route extends ChannelOwner<channels.RouteChannel, channels.RouteIni
   }
 
   async abort(errorCode?: string) {
-    await this._channel.abort({ errorCode });
-  }
-
-  async fulfill(response: { status?: number, headers?: Headers, contentType?: string, body?: string | Buffer, path?: string }) {
-    let body = '';
-    let isBase64 = false;
-    let length = 0;
-    if (response.path) {
-      const buffer = await util.promisify(fs.readFile)(response.path);
-      body = buffer.toString('base64');
-      isBase64 = true;
-      length = buffer.length;
-    } else if (isString(response.body)) {
-      body = response.body;
-      isBase64 = false;
-      length = Buffer.byteLength(body);
-    } else if (response.body) {
-      body = response.body.toString('base64');
-      isBase64 = true;
-      length = response.body.length;
-    }
-
-    const headers: Headers = {};
-    for (const header of Object.keys(response.headers || {}))
-      headers[header.toLowerCase()] = String(response.headers![header]);
-    if (response.contentType)
-      headers['content-type'] = String(response.contentType);
-    else if (response.path)
-      headers['content-type'] = mime.getType(response.path) || 'application/octet-stream';
-    if (length && !('content-length' in headers))
-      headers['content-length'] = String(length);
-
-    await this._channel.fulfill({
-      status: response.status || 200,
-      headers: headersObjectToArray(headers),
-      body,
-      isBase64
+    return this._wrapApiCall('route.abort', async () => {
+      await this._channel.abort({ errorCode });
     });
   }
 
-  async continue(overrides: { url?: string, method?: string, headers?: Headers, postData?: string | Buffer } = {}) {
-    const postDataBuffer = isString(overrides.postData) ? Buffer.from(overrides.postData, 'utf8') : overrides.postData;
-    await this._channel.continue({
-      url: overrides.url,
-      method: overrides.method,
-      headers: overrides.headers ? headersObjectToArray(overrides.headers) : undefined,
-      postData: postDataBuffer ? postDataBuffer.toString('base64') : undefined,
+  async fulfill(options: { status?: number, headers?: Headers, contentType?: string, body?: string | Buffer, path?: string } = {}) {
+    return this._wrapApiCall('route.fulfill', async () => {
+      let body = '';
+      let isBase64 = false;
+      let length = 0;
+      if (options.path) {
+        const buffer = await util.promisify(fs.readFile)(options.path);
+        body = buffer.toString('base64');
+        isBase64 = true;
+        length = buffer.length;
+      } else if (isString(options.body)) {
+        body = options.body;
+        isBase64 = false;
+        length = Buffer.byteLength(body);
+      } else if (options.body) {
+        body = options.body.toString('base64');
+        isBase64 = true;
+        length = options.body.length;
+      }
+
+      const headers: Headers = {};
+      for (const header of Object.keys(options.headers || {}))
+        headers[header.toLowerCase()] = String(options.headers![header]);
+      if (options.contentType)
+        headers['content-type'] = String(options.contentType);
+      else if (options.path)
+        headers['content-type'] = mime.getType(options.path) || 'application/octet-stream';
+      if (length && !('content-length' in headers))
+        headers['content-length'] = String(length);
+
+      await this._channel.fulfill({
+        status: options.status || 200,
+        headers: headersObjectToArray(headers),
+        body,
+        isBase64
+      });
+    });
+  }
+
+  async continue(options: { url?: string, method?: string, headers?: Headers, postData?: string | Buffer } = {}) {
+    return this._wrapApiCall('route.continue', async () => {
+      const postDataBuffer = isString(options.postData) ? Buffer.from(options.postData, 'utf8') : options.postData;
+      await this._channel.continue({
+        url: options.url,
+        method: options.method,
+        headers: options.headers ? headersObjectToArray(options.headers) : undefined,
+        postData: postDataBuffer ? postDataBuffer.toString('base64') : undefined,
+      });
     });
   }
 }
@@ -246,7 +255,7 @@ export type ResourceTiming = {
   responseEnd: number;
 };
 
-export class Response extends ChannelOwner<channels.ResponseChannel, channels.ResponseInitializer> {
+export class Response extends ChannelOwner<channels.ResponseChannel, channels.ResponseInitializer> implements api.Response {
   private _headers: Headers;
   private _request: Request;
 
@@ -294,7 +303,9 @@ export class Response extends ChannelOwner<channels.ResponseChannel, channels.Re
   }
 
   async body(): Promise<Buffer> {
-    return Buffer.from((await this._channel.body()).binary, 'base64');
+    return this._wrapApiCall('response.body', async () => {
+      return Buffer.from((await this._channel.body()).binary, 'base64');
+    });
   }
 
   async text(): Promise<string> {
@@ -316,7 +327,7 @@ export class Response extends ChannelOwner<channels.ResponseChannel, channels.Re
   }
 }
 
-export class WebSocket extends ChannelOwner<channels.WebSocketChannel, channels.WebSocketInitializer> {
+export class WebSocket extends ChannelOwner<channels.WebSocketChannel, channels.WebSocketInitializer> implements api.WebSocket {
   private _page: Page;
   private _isClosed: boolean;
 
@@ -339,7 +350,7 @@ export class WebSocket extends ChannelOwner<channels.WebSocketChannel, channels.
     this._channel.on('socketError', ({ error }) => this.emit(Events.WebSocket.Error, error));
     this._channel.on('close', () => {
       this._isClosed = true;
-      this.emit(Events.WebSocket.Close);
+      this.emit(Events.WebSocket.Close, this);
     });
   }
 

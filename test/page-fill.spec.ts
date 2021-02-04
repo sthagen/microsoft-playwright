@@ -46,6 +46,18 @@ it('should fill input with label 2', async ({page}) => {
   expect(await page.$eval('input', input => input.value)).toBe('some value');
 });
 
+it('should fill input with span inside the label', async ({page}) => {
+  await page.setContent(`<label for=target><span>Fill me</span></label><input id=target>`);
+  await page.fill('text=Fill me', 'some value');
+  expect(await page.$eval('input', input => input.value)).toBe('some value');
+});
+
+it('should fill input inside the label', async ({page}) => {
+  await page.setContent(`<label><input id=target></label>`);
+  await page.fill('input', 'some value');
+  expect(await page.$eval('input', input => input.value)).toBe('some value');
+});
+
 it('should fill textarea with label', async ({page}) => {
   await page.setContent(`<label for=target>Fill me</label><textarea id=target>hey</textarea>`);
   await page.fill('text=Fill me', 'some value');
@@ -287,4 +299,15 @@ it('should be able to clear', async ({page, server}) => {
   expect(await page.evaluate(() => window['result'])).toBe('some value');
   await page.fill('input', '');
   expect(await page.evaluate(() => window['result'])).toBe('');
+});
+
+it('should not throw when fill causes navigation', async ({page, server}) => {
+  await page.goto(server.PREFIX + '/input/textarea.html');
+  await page.setContent('<input type=date>');
+  await page.$eval('input', select => select.addEventListener('input', () => window.location.href = '/empty.html'));
+  await Promise.all([
+    page.fill('input', '2020-03-02'),
+    page.waitForNavigation(),
+  ]);
+  expect(page.url()).toContain('empty.html');
 });

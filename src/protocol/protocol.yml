@@ -372,8 +372,8 @@ BrowserType:
           - dark
           - no-preference
         acceptDownloads: boolean?
-        _traceResourcesPath: string?
-        _tracePath: string?
+        _traceDir: string?
+        _debugName: string?
         recordVideo:
           type: object?
           properties:
@@ -445,8 +445,8 @@ Browser:
           - light
           - no-preference
         acceptDownloads: boolean?
-        _traceResourcesPath: string?
-        _tracePath: string?
+        _traceDir: string?
+        _debugName: string?
         recordVideo:
           type: object?
           properties:
@@ -507,7 +507,7 @@ BrowserContext:
   type: interface
 
   initializer:
-    browserName: string
+    isChromium: boolean
 
   commands:
 
@@ -601,11 +601,31 @@ BrowserContext:
           type: array
           items: OriginStorage
 
+    pause:
+      experimental: True
+
+    recorderSupplementEnable:
+      experimental: True
+      parameters:
+        language: string
+        startRecording: boolean?
+        launchOptions: json?
+        contextOptions: json?
+        device: string?
+        saveStorage: string?
+        terminal: boolean?
+        outputFile: string?
+
     crNewCDPSession:
       parameters:
         page: Page
       returns:
         session: CDPSession
+
+    setTerminalSizeNoReply:
+      parameters:
+        rows: number?
+        columns: number?
 
   events:
 
@@ -624,6 +644,14 @@ BrowserContext:
         route: Route
         request: Request
 
+    stdout:
+      parameters:
+        data: binary
+
+    stderr:
+      parameters:
+        data: binary
+
     crBackgroundPage:
       parameters:
         page: Page
@@ -631,8 +659,6 @@ BrowserContext:
     crServiceWorker:
       parameters:
         worker: Worker
-
-
 
 Page:
   type: interface
@@ -1022,7 +1048,7 @@ Frame:
       parameters:
         selector: string
         expression: string
-        isFunction: boolean
+        isFunction: boolean?
         arg: SerializedArgument
       returns:
         value: SerializedValue
@@ -1031,7 +1057,7 @@ Frame:
       parameters:
         selector: string
         expression: string
-        isFunction: boolean
+        isFunction: boolean?
         arg: SerializedArgument
       returns:
         value: SerializedValue
@@ -1121,7 +1147,7 @@ Frame:
     evaluateExpression:
       parameters:
         expression: string
-        isFunction: boolean
+        isFunction: boolean?  
         arg: SerializedArgument
         world:
           type: enum?
@@ -1134,7 +1160,7 @@ Frame:
     evaluateExpressionHandle:
       parameters:
         expression: string
-        isFunction: boolean
+        isFunction: boolean?
         arg: SerializedArgument
         world:
           type: enum?
@@ -1211,6 +1237,48 @@ Frame:
         timeout: number?
       returns:
         value: string
+
+    isChecked:
+      parameters:
+        selector: string
+        timeout: number?
+      returns:
+        value: boolean
+
+    isDisabled:
+      parameters:
+        selector: string
+        timeout: number?
+      returns:
+        value: boolean
+
+    isEnabled:
+      parameters:
+        selector: string
+        timeout: number?
+      returns:
+        value: boolean
+
+    isHidden:
+      parameters:
+        selector: string
+        timeout: number?
+      returns:
+        value: boolean
+
+    isVisible:
+      parameters:
+        selector: string
+        timeout: number?
+      returns:
+        value: boolean
+
+    isEditable:
+      parameters:
+        selector: string
+        timeout: number?
+      returns:
+        value: boolean
 
     press:
       parameters:
@@ -1326,7 +1394,7 @@ Frame:
     waitForFunction:
       parameters:
         expression: string
-        isFunction: boolean
+        isFunction: boolean?
         arg: SerializedArgument
         timeout: number?
         # When present, polls on interval. Otherwise, polls on raf.
@@ -1347,14 +1415,6 @@ Frame:
           - hidden
       returns:
         element: ElementHandle?
-
-    extendInjectedScript:
-      experimental: True
-      parameters:
-        source: string
-        arg: SerializedArgument
-      returns:
-        handle: JSHandle
 
   events:
 
@@ -1396,7 +1456,7 @@ Worker:
     evaluateExpression:
       parameters:
         expression: string
-        isFunction: boolean
+        isFunction: boolean?
         arg: SerializedArgument
       returns:
         value: SerializedValue
@@ -1404,7 +1464,7 @@ Worker:
     evaluateExpressionHandle:
       parameters:
         expression: string
-        isFunction: boolean
+        isFunction: boolean?
         arg: SerializedArgument
       returns:
         handle: JSHandle
@@ -1427,7 +1487,7 @@ JSHandle:
     evaluateExpression:
       parameters:
         expression: string
-        isFunction: boolean
+        isFunction: boolean?
         arg: SerializedArgument
       returns:
         value: SerializedValue
@@ -1435,7 +1495,7 @@ JSHandle:
     evaluateExpressionHandle:
       parameters:
         expression: string
-        isFunction: boolean
+        isFunction: boolean?
         arg: SerializedArgument
       returns:
         handle: JSHandle
@@ -1479,7 +1539,7 @@ ElementHandle:
       parameters:
         selector: string
         expression: string
-        isFunction: boolean
+        isFunction: boolean?
         arg: SerializedArgument
       returns:
         value: SerializedValue
@@ -1488,7 +1548,7 @@ ElementHandle:
       parameters:
         selector: string
         expression: string
-        isFunction: boolean
+        isFunction: boolean?
         arg: SerializedArgument
       returns:
         value: SerializedValue
@@ -1595,6 +1655,30 @@ ElementHandle:
     innerText:
       returns:
         value: string
+
+    isChecked:
+      returns:
+        value: boolean
+
+    isDisabled:
+      returns:
+        value: boolean
+
+    isEditable:
+      returns:
+        value: boolean
+
+    isEnabled:
+      returns:
+        value: boolean
+
+    isHidden:
+      returns:
+        value: boolean
+
+    isVisible:
+      returns:
+        value: boolean
 
     ownerFrame:
       returns:
@@ -1718,6 +1802,7 @@ ElementHandle:
           - stable
           - enabled
           - disabled
+          - editable
         timeout: number?
 
     waitForSelector:
@@ -1998,7 +2083,6 @@ CDPSession:
         params: json?
 
 
-
 Electron:
   type: interface
 
@@ -2006,7 +2090,7 @@ Electron:
 
     launch:
       parameters:
-        executablePath: string
+        executablePath: string?
         args:
           type: array?
           items: string
@@ -2014,13 +2098,9 @@ Electron:
         env:
           type: array?
           items: NameValue
-        handleSIGINT: boolean?
-        handleSIGTERM: boolean?
-        handleSIGHUP: boolean?
         timeout: number?
       returns:
         electronApplication: ElectronApplication
-
 
 
 ElectronApplication:
@@ -2028,16 +2108,10 @@ ElectronApplication:
 
   commands:
 
-    newBrowserWindow:
-      parameters:
-        arg: SerializedArgument
-      returns:
-        page: Page
-
     evaluateExpression:
       parameters:
         expression: string
-        isFunction: boolean
+        isFunction: boolean?
         arg: SerializedArgument
       returns:
         value: SerializedValue
@@ -2045,7 +2119,7 @@ ElectronApplication:
     evaluateExpressionHandle:
       parameters:
         expression: string
-        isFunction: boolean
+        isFunction: boolean?
         arg: SerializedArgument
       returns:
         handle: JSHandle
@@ -2271,8 +2345,8 @@ AndroidDevice:
           - light
           - no-preference
         acceptDownloads: boolean?
-        _traceResourcesPath: string?
-        _tracePath: string?
+        _traceDir: string?
+        _debugName: string?
         recordVideo:
           type: object?
           properties:

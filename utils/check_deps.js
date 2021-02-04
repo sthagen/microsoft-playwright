@@ -16,21 +16,20 @@
  * limitations under the License.
  */
 
+const fs = require('fs');
 const ts = require('typescript');
 const path = require('path');
-const Source = require('./doclint/Source');
 
 async function checkDeps() {
   const root = path.normalize(path.join(__dirname, '..'));
   const src = path.normalize(path.join(__dirname, '..', 'src'));
-  const sources = await Source.readdir(src);
   const program = ts.createProgram({
     options: {
       allowJs: true,
       target: ts.ScriptTarget.ESNext,
       strict: true,
     },
-    rootNames: sources.map(source => source.filePath()),
+    rootNames: listAllFiles(src),
   });
   const sourceFiles = program.getSourceFiles();
   const errors = [];
@@ -63,6 +62,8 @@ async function checkDeps() {
   function allowImport(from, to) {
     if (!to.startsWith(src + path.sep))
       return true;
+    if (!fs.existsSync(to))
+      return true;
     from = path.relative(root, from).replace(/\\/g, '/');
     to = path.relative(root, to).replace(/\\/g, '/');
     const fromDirectory = from.substring(0, from.lastIndexOf('/') + 1);
@@ -92,6 +93,19 @@ async function checkDeps() {
   }
 }
 
+function listAllFiles(dir) {
+  const dirs = fs.readdirSync(dir, { withFileTypes: true });
+  const  result = [];
+  dirs.map(d => {
+    const res = path.resolve(dir, d.name);
+    if (d.isDirectory())
+      result.push(...listAllFiles(res));
+    else
+      result.push(res);
+  });
+  return result;
+}
+
 const DEPS = {};
 
 DEPS['src/protocol/'] = ['src/utils/'];
@@ -111,6 +125,8 @@ DEPS['src/server/'] = [
   // Can depend on any files in these subdirectories.
   'src/server/common/**',
   'src/server/injected/**',
+  'src/server/supplements/**',
+  'src/protocol/**',
 ];
 
 // No dependencies for code shared between node and page.
@@ -122,21 +138,23 @@ DEPS['src/server/injected/'] = ['src/server/common/'];
 DEPS['src/server/android/'] = [...DEPS['src/server/'], 'src/server/chromium/', 'src/protocol/'];
 DEPS['src/server/electron/'] = [...DEPS['src/server/'], 'src/server/chromium/'];
 
-DEPS['src/server/playwright.ts'] = [...DEPS['src/server/'], 'src/server/chromium/', 'src/server/webkit/', 'src/server/firefox/', 'src/server/android/', 'src/server/electron/'];
-DEPS['src/driver.ts'] = DEPS['src/inprocess.ts'] = DEPS['src/browserServerImpl.ts'] = ['src/**'];
+DEPS['src/server/playwright.ts'] = [...DEPS['src/server/'], 'src/trace/', 'src/server/chromium/', 'src/server/webkit/', 'src/server/firefox/', 'src/server/android/', 'src/server/electron/'];
+DEPS['src/cli/driver.ts'] = DEPS['src/inprocess.ts'] = DEPS['src/browserServerImpl.ts'] = ['src/**'];
 
 // Tracing is a client/server plugin, nothing should depend on it.
 DEPS['src/trace/'] = ['src/utils/', 'src/client/**', 'src/server/**'];
-
-// Debug is a server plugin, nothing should depend on it.
-DEPS['src/debug/'] = ['src/utils/', 'src/generated/', 'src/server/**', 'src/debug/**'];
-
+DEPS['src/web/'] = [];
+DEPS['src/web/recorder/'] = ['src/web/', 'src/web/components/'];
+DEPS['src/web/traceViewer/'] = ['src/web/', 'src/cli/traceViewer/'];
+DEPS['src/web/traceViewer/ui/'] = ['src/web/traceViewer/', 'src/web/', 'src/cli/traceViewer/', 'src/trace/'];
 // The service is a cross-cutting feature, and so it depends on a bunch of things.
-DEPS['src/remote/'] = ['src/client/', 'src/debug/', 'src/dispatchers/', 'src/server/', 'src/server/electron/', 'src/trace/'];
+DEPS['src/remote/'] = ['src/client/', 'src/debug/', 'src/dispatchers/', 'src/server/', 'src/server/supplements/', 'src/server/electron/', 'src/trace/'];
 DEPS['src/service.ts'] = ['src/remote/'];
 
 // CLI should only use client-side features.
-DEPS['src/cli/'] = ['src/client/**', 'src/install/**'];
+DEPS['src/cli/'] = ['src/cli/**', 'src/client/**', 'src/install/**', 'src/generated/', 'src/server/injected/', 'src/debug/injected/', 'src/trace/**', 'src/utils/**'];
+
+DEPS['src/server/supplements/recorder/recorderApp.ts'] = ['src/server/', 'src/server/chromium/']
 
 checkDeps().catch(e => {
   console.error(e && e.stack ? e.stack : e);

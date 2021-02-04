@@ -22,6 +22,7 @@ PLAYWRIGHT_CHROMIUM_TGZ="$(node ${PACKAGE_BUILDER} playwright-chromium ./playwri
 PLAYWRIGHT_WEBKIT_TGZ="$(node ${PACKAGE_BUILDER} playwright-webkit ./playwright-webkit.tgz)"
 PLAYWRIGHT_FIREFOX_TGZ="$(node ${PACKAGE_BUILDER} playwright-firefox ./playwright-firefox.tgz)"
 PLAYWRIGHT_ELECTRON_TGZ="$(node ${PACKAGE_BUILDER} playwright-electron ./playwright-electron.tgz)"
+PLAYWRIGHT_ANDROID_TGZ="$(node ${PACKAGE_BUILDER} playwright-android ./playwright-android.tgz)"
 
 SCRIPTS_PATH="$(pwd -P)/.."
 TEST_ROOT="$(pwd -P)"
@@ -52,8 +53,10 @@ function run_tests {
   test_playwright_global_installation_cross_package
   test_playwright_electron_should_work
   test_electron_types
-  test_playwright_cli_should_work
+  test_android_types
+  test_playwright_cli_screenshot_should_work
   test_playwright_cli_install_should_work
+  test_playwright_cli_codegen_should_work
 }
 
 function test_screencast {
@@ -308,7 +311,7 @@ function test_electron_types {
   npm install electron@9.0
   npm install -D typescript@3.8
   npm install -D @types/node@10.17
-  echo "import { Page, electron, ElectronApplication, ElectronLauncher } from 'playwright-electron';" > "test.ts"
+  echo "import { Page, electron, ElectronApplication, Electron } from 'playwright-electron';" > "test.ts"
 
   echo "Running tsc"
   npx tsc "test.ts"
@@ -316,7 +319,21 @@ function test_electron_types {
   echo "${FUNCNAME[0]} success"
 }
 
-function test_playwright_cli_should_work {
+function test_android_types {
+  initialize_test "${FUNCNAME[0]}"
+
+  npm install ${PLAYWRIGHT_ANDROID_TGZ}
+  npm install -D typescript@3.8
+  npm install -D @types/node@10.17
+  echo "import { AndroidDevice, android, AndroidWebView, Page } from 'playwright-android';" > "test.ts"
+
+  echo "Running tsc"
+  npx tsc "test.ts"
+
+  echo "${FUNCNAME[0]} success"
+}
+
+function test_playwright_cli_screenshot_should_work {
   initialize_test "${FUNCNAME[0]}"
 
   npm install ${PLAYWRIGHT_TGZ}
@@ -344,17 +361,71 @@ function test_playwright_cli_install_should_work {
   PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 npm install ${PLAYWRIGHT_TGZ}
 
   local BROWSERS="$(pwd -P)/browsers"
-  echo "Running playwright install"
-  PLAYWRIGHT_BROWSERS_PATH="${BROWSERS}" npx playwright install
-  if [[ ! -d "${BROWSERS}" ]]; then
-    echo "Directory for shared browsers was not created!"
+
+  echo "Running playwright install chromium"
+  OUTPUT=$(PLAYWRIGHT_BROWSERS_PATH=${BROWSERS} npx playwright install chromium)
+  if [[ "${OUTPUT}" != *"chromium"* ]]; then
+    echo "ERROR: should download chromium"
     exit 1
   fi
-  copy_test_scripts
+  if [[ "${OUTPUT}" == *"webkit"* ]]; then
+    echo "ERROR: should not download webkit"
+    exit 1
+  fi
+  if [[ "${OUTPUT}" == *"firefox"* ]]; then
+    echo "ERROR: should not download firefox"
+    exit 1
+  fi
 
+  echo "Running playwright install"
+  OUTPUT=$(PLAYWRIGHT_BROWSERS_PATH=${BROWSERS} npx playwright install)
+  if [[ "${OUTPUT}" == *"chromium"* ]]; then
+    echo "ERROR: should not download chromium"
+    exit 1
+  fi
+  if [[ "${OUTPUT}" != *"webkit"* ]]; then
+    echo "ERROR: should download webkit"
+    exit 1
+  fi
+  if [[ "${OUTPUT}" != *"firefox"* ]]; then
+    echo "ERROR: should download firefox"
+    exit 1
+  fi
+
+  copy_test_scripts
   echo "Running sanity.js"
   node sanity.js playwright none
   PLAYWRIGHT_BROWSERS_PATH="${BROWSERS}" node sanity.js playwright
+
+  echo "${FUNCNAME[0]} success"
+}
+
+function test_playwright_cli_codegen_should_work {
+  initialize_test "${FUNCNAME[0]}"
+
+  npm install ${PLAYWRIGHT_TGZ}
+
+  echo "Running playwright codegen"
+  OUTPUT=$(PWCLI_EXIT_FOR_TEST=1 xvfb-run --auto-servernum -- bash -c "npx playwright codegen")
+  if [[ "${OUTPUT}" != *"chromium.launch"* ]]; then
+    echo "ERROR: missing chromium.launch in the output"
+    exit 1
+  fi
+  if [[ "${OUTPUT}" != *"browser.close"* ]]; then
+    echo "ERROR: missing browser.close in the output"
+    exit 1
+  fi
+
+  echo "Running playwright codegen --target=python"
+  OUTPUT=$(PWCLI_EXIT_FOR_TEST=1 xvfb-run --auto-servernum -- bash -c "npx playwright codegen --target=python")
+  if [[ "${OUTPUT}" != *"chromium.launch"* ]]; then
+    echo "ERROR: missing chromium.launch in the output"
+    exit 1
+  fi
+  if [[ "${OUTPUT}" != *"browser.close"* ]]; then
+    echo "ERROR: missing browser.close in the output"
+    exit 1
+  fi
 
   echo "${FUNCNAME[0]} success"
 }

@@ -297,8 +297,8 @@ export type BrowserTypeLaunchPersistentContextParams = {
   hasTouch?: boolean,
   colorScheme?: 'light' | 'dark' | 'no-preference',
   acceptDownloads?: boolean,
-  _traceResourcesPath?: string,
-  _tracePath?: string,
+  _traceDir?: string,
+  _debugName?: string,
   recordVideo?: {
     dir: string,
     size?: {
@@ -360,8 +360,8 @@ export type BrowserTypeLaunchPersistentContextOptions = {
   hasTouch?: boolean,
   colorScheme?: 'light' | 'dark' | 'no-preference',
   acceptDownloads?: boolean,
-  _traceResourcesPath?: string,
-  _tracePath?: string,
+  _traceDir?: string,
+  _debugName?: string,
   recordVideo?: {
     dir: string,
     size?: {
@@ -424,8 +424,8 @@ export type BrowserNewContextParams = {
   hasTouch?: boolean,
   colorScheme?: 'dark' | 'light' | 'no-preference',
   acceptDownloads?: boolean,
-  _traceResourcesPath?: string,
-  _tracePath?: string,
+  _traceDir?: string,
+  _debugName?: string,
   recordVideo?: {
     dir: string,
     size?: {
@@ -477,8 +477,8 @@ export type BrowserNewContextOptions = {
   hasTouch?: boolean,
   colorScheme?: 'dark' | 'light' | 'no-preference',
   acceptDownloads?: boolean,
-  _traceResourcesPath?: string,
-  _tracePath?: string,
+  _traceDir?: string,
+  _debugName?: string,
   recordVideo?: {
     dir: string,
     size?: {
@@ -530,13 +530,15 @@ export type BrowserCrStopTracingResult = {
 
 // ----------- BrowserContext -----------
 export type BrowserContextInitializer = {
-  browserName: string,
+  isChromium: boolean,
 };
 export interface BrowserContextChannel extends Channel {
   on(event: 'bindingCall', callback: (params: BrowserContextBindingCallEvent) => void): this;
   on(event: 'close', callback: (params: BrowserContextCloseEvent) => void): this;
   on(event: 'page', callback: (params: BrowserContextPageEvent) => void): this;
   on(event: 'route', callback: (params: BrowserContextRouteEvent) => void): this;
+  on(event: 'stdout', callback: (params: BrowserContextStdoutEvent) => void): this;
+  on(event: 'stderr', callback: (params: BrowserContextStderrEvent) => void): this;
   on(event: 'crBackgroundPage', callback: (params: BrowserContextCrBackgroundPageEvent) => void): this;
   on(event: 'crServiceWorker', callback: (params: BrowserContextCrServiceWorkerEvent) => void): this;
   addCookies(params: BrowserContextAddCookiesParams, metadata?: Metadata): Promise<BrowserContextAddCookiesResult>;
@@ -556,7 +558,10 @@ export interface BrowserContextChannel extends Channel {
   setNetworkInterceptionEnabled(params: BrowserContextSetNetworkInterceptionEnabledParams, metadata?: Metadata): Promise<BrowserContextSetNetworkInterceptionEnabledResult>;
   setOffline(params: BrowserContextSetOfflineParams, metadata?: Metadata): Promise<BrowserContextSetOfflineResult>;
   storageState(params?: BrowserContextStorageStateParams, metadata?: Metadata): Promise<BrowserContextStorageStateResult>;
+  pause(params?: BrowserContextPauseParams, metadata?: Metadata): Promise<BrowserContextPauseResult>;
+  recorderSupplementEnable(params: BrowserContextRecorderSupplementEnableParams, metadata?: Metadata): Promise<BrowserContextRecorderSupplementEnableResult>;
   crNewCDPSession(params: BrowserContextCrNewCDPSessionParams, metadata?: Metadata): Promise<BrowserContextCrNewCDPSessionResult>;
+  setTerminalSizeNoReply(params: BrowserContextSetTerminalSizeNoReplyParams, metadata?: Metadata): Promise<BrowserContextSetTerminalSizeNoReplyResult>;
 }
 export type BrowserContextBindingCallEvent = {
   binding: BindingCallChannel,
@@ -568,6 +573,12 @@ export type BrowserContextPageEvent = {
 export type BrowserContextRouteEvent = {
   route: RouteChannel,
   request: RequestChannel,
+};
+export type BrowserContextStdoutEvent = {
+  data: Binary,
+};
+export type BrowserContextStderrEvent = {
+  data: Binary,
 };
 export type BrowserContextCrBackgroundPageEvent = {
   page: PageChannel,
@@ -697,6 +708,29 @@ export type BrowserContextStorageStateResult = {
   cookies: NetworkCookie[],
   origins: OriginStorage[],
 };
+export type BrowserContextPauseParams = {};
+export type BrowserContextPauseOptions = {};
+export type BrowserContextPauseResult = void;
+export type BrowserContextRecorderSupplementEnableParams = {
+  language: string,
+  startRecording?: boolean,
+  launchOptions?: any,
+  contextOptions?: any,
+  device?: string,
+  saveStorage?: string,
+  terminal?: boolean,
+  outputFile?: string,
+};
+export type BrowserContextRecorderSupplementEnableOptions = {
+  startRecording?: boolean,
+  launchOptions?: any,
+  contextOptions?: any,
+  device?: string,
+  saveStorage?: string,
+  terminal?: boolean,
+  outputFile?: string,
+};
+export type BrowserContextRecorderSupplementEnableResult = void;
 export type BrowserContextCrNewCDPSessionParams = {
   page: PageChannel,
 };
@@ -706,6 +740,15 @@ export type BrowserContextCrNewCDPSessionOptions = {
 export type BrowserContextCrNewCDPSessionResult = {
   session: CDPSessionChannel,
 };
+export type BrowserContextSetTerminalSizeNoReplyParams = {
+  rows?: number,
+  columns?: number,
+};
+export type BrowserContextSetTerminalSizeNoReplyOptions = {
+  rows?: number,
+  columns?: number,
+};
+export type BrowserContextSetTerminalSizeNoReplyResult = void;
 
 // ----------- Page -----------
 export type PageInitializer = {
@@ -1181,6 +1224,12 @@ export interface FrameChannel extends Channel {
   hover(params: FrameHoverParams, metadata?: Metadata): Promise<FrameHoverResult>;
   innerHTML(params: FrameInnerHTMLParams, metadata?: Metadata): Promise<FrameInnerHTMLResult>;
   innerText(params: FrameInnerTextParams, metadata?: Metadata): Promise<FrameInnerTextResult>;
+  isChecked(params: FrameIsCheckedParams, metadata?: Metadata): Promise<FrameIsCheckedResult>;
+  isDisabled(params: FrameIsDisabledParams, metadata?: Metadata): Promise<FrameIsDisabledResult>;
+  isEnabled(params: FrameIsEnabledParams, metadata?: Metadata): Promise<FrameIsEnabledResult>;
+  isHidden(params: FrameIsHiddenParams, metadata?: Metadata): Promise<FrameIsHiddenResult>;
+  isVisible(params: FrameIsVisibleParams, metadata?: Metadata): Promise<FrameIsVisibleResult>;
+  isEditable(params: FrameIsEditableParams, metadata?: Metadata): Promise<FrameIsEditableResult>;
   press(params: FramePressParams, metadata?: Metadata): Promise<FramePressResult>;
   querySelector(params: FrameQuerySelectorParams, metadata?: Metadata): Promise<FrameQuerySelectorResult>;
   querySelectorAll(params: FrameQuerySelectorAllParams, metadata?: Metadata): Promise<FrameQuerySelectorAllResult>;
@@ -1194,7 +1243,6 @@ export interface FrameChannel extends Channel {
   uncheck(params: FrameUncheckParams, metadata?: Metadata): Promise<FrameUncheckResult>;
   waitForFunction(params: FrameWaitForFunctionParams, metadata?: Metadata): Promise<FrameWaitForFunctionResult>;
   waitForSelector(params: FrameWaitForSelectorParams, metadata?: Metadata): Promise<FrameWaitForSelectorResult>;
-  extendInjectedScript(params: FrameExtendInjectedScriptParams, metadata?: Metadata): Promise<FrameExtendInjectedScriptResult>;
 }
 export type FrameLoadstateEvent = {
   add?: 'load' | 'domcontentloaded' | 'networkidle',
@@ -1211,11 +1259,11 @@ export type FrameNavigatedEvent = {
 export type FrameEvalOnSelectorParams = {
   selector: string,
   expression: string,
-  isFunction: boolean,
+  isFunction?: boolean,
   arg: SerializedArgument,
 };
 export type FrameEvalOnSelectorOptions = {
-
+  isFunction?: boolean,
 };
 export type FrameEvalOnSelectorResult = {
   value: SerializedValue,
@@ -1223,11 +1271,11 @@ export type FrameEvalOnSelectorResult = {
 export type FrameEvalOnSelectorAllParams = {
   selector: string,
   expression: string,
-  isFunction: boolean,
+  isFunction?: boolean,
   arg: SerializedArgument,
 };
 export type FrameEvalOnSelectorAllOptions = {
-
+  isFunction?: boolean,
 };
 export type FrameEvalOnSelectorAllResult = {
   value: SerializedValue,
@@ -1327,11 +1375,12 @@ export type FrameDispatchEventOptions = {
 export type FrameDispatchEventResult = void;
 export type FrameEvaluateExpressionParams = {
   expression: string,
-  isFunction: boolean,
+  isFunction?: boolean,
   arg: SerializedArgument,
   world?: 'main' | 'utility',
 };
 export type FrameEvaluateExpressionOptions = {
+  isFunction?: boolean,
   world?: 'main' | 'utility',
 };
 export type FrameEvaluateExpressionResult = {
@@ -1339,11 +1388,12 @@ export type FrameEvaluateExpressionResult = {
 };
 export type FrameEvaluateExpressionHandleParams = {
   expression: string,
-  isFunction: boolean,
+  isFunction?: boolean,
   arg: SerializedArgument,
   world?: 'main' | 'utility',
 };
 export type FrameEvaluateExpressionHandleOptions = {
+  isFunction?: boolean,
   world?: 'main' | 'utility',
 };
 export type FrameEvaluateExpressionHandleResult = {
@@ -1431,6 +1481,66 @@ export type FrameInnerTextOptions = {
 };
 export type FrameInnerTextResult = {
   value: string,
+};
+export type FrameIsCheckedParams = {
+  selector: string,
+  timeout?: number,
+};
+export type FrameIsCheckedOptions = {
+  timeout?: number,
+};
+export type FrameIsCheckedResult = {
+  value: boolean,
+};
+export type FrameIsDisabledParams = {
+  selector: string,
+  timeout?: number,
+};
+export type FrameIsDisabledOptions = {
+  timeout?: number,
+};
+export type FrameIsDisabledResult = {
+  value: boolean,
+};
+export type FrameIsEnabledParams = {
+  selector: string,
+  timeout?: number,
+};
+export type FrameIsEnabledOptions = {
+  timeout?: number,
+};
+export type FrameIsEnabledResult = {
+  value: boolean,
+};
+export type FrameIsHiddenParams = {
+  selector: string,
+  timeout?: number,
+};
+export type FrameIsHiddenOptions = {
+  timeout?: number,
+};
+export type FrameIsHiddenResult = {
+  value: boolean,
+};
+export type FrameIsVisibleParams = {
+  selector: string,
+  timeout?: number,
+};
+export type FrameIsVisibleOptions = {
+  timeout?: number,
+};
+export type FrameIsVisibleResult = {
+  value: boolean,
+};
+export type FrameIsEditableParams = {
+  selector: string,
+  timeout?: number,
+};
+export type FrameIsEditableOptions = {
+  timeout?: number,
+};
+export type FrameIsEditableResult = {
+  value: boolean,
 };
 export type FramePressParams = {
   selector: string,
@@ -1570,12 +1680,13 @@ export type FrameUncheckOptions = {
 export type FrameUncheckResult = void;
 export type FrameWaitForFunctionParams = {
   expression: string,
-  isFunction: boolean,
+  isFunction?: boolean,
   arg: SerializedArgument,
   timeout?: number,
   pollingInterval?: number,
 };
 export type FrameWaitForFunctionOptions = {
+  isFunction?: boolean,
   timeout?: number,
   pollingInterval?: number,
 };
@@ -1594,16 +1705,6 @@ export type FrameWaitForSelectorOptions = {
 export type FrameWaitForSelectorResult = {
   element?: ElementHandleChannel,
 };
-export type FrameExtendInjectedScriptParams = {
-  source: string,
-  arg: SerializedArgument,
-};
-export type FrameExtendInjectedScriptOptions = {
-
-};
-export type FrameExtendInjectedScriptResult = {
-  handle: JSHandleChannel,
-};
 
 // ----------- Worker -----------
 export type WorkerInitializer = {
@@ -1617,22 +1718,22 @@ export interface WorkerChannel extends Channel {
 export type WorkerCloseEvent = {};
 export type WorkerEvaluateExpressionParams = {
   expression: string,
-  isFunction: boolean,
+  isFunction?: boolean,
   arg: SerializedArgument,
 };
 export type WorkerEvaluateExpressionOptions = {
-
+  isFunction?: boolean,
 };
 export type WorkerEvaluateExpressionResult = {
   value: SerializedValue,
 };
 export type WorkerEvaluateExpressionHandleParams = {
   expression: string,
-  isFunction: boolean,
+  isFunction?: boolean,
   arg: SerializedArgument,
 };
 export type WorkerEvaluateExpressionHandleOptions = {
-
+  isFunction?: boolean,
 };
 export type WorkerEvaluateExpressionHandleResult = {
   handle: JSHandleChannel,
@@ -1659,22 +1760,22 @@ export type JSHandleDisposeOptions = {};
 export type JSHandleDisposeResult = void;
 export type JSHandleEvaluateExpressionParams = {
   expression: string,
-  isFunction: boolean,
+  isFunction?: boolean,
   arg: SerializedArgument,
 };
 export type JSHandleEvaluateExpressionOptions = {
-
+  isFunction?: boolean,
 };
 export type JSHandleEvaluateExpressionResult = {
   value: SerializedValue,
 };
 export type JSHandleEvaluateExpressionHandleParams = {
   expression: string,
-  isFunction: boolean,
+  isFunction?: boolean,
   arg: SerializedArgument,
 };
 export type JSHandleEvaluateExpressionHandleOptions = {
-
+  isFunction?: boolean,
 };
 export type JSHandleEvaluateExpressionHandleResult = {
   handle: JSHandleChannel,
@@ -1719,6 +1820,12 @@ export interface ElementHandleChannel extends JSHandleChannel {
   hover(params: ElementHandleHoverParams, metadata?: Metadata): Promise<ElementHandleHoverResult>;
   innerHTML(params?: ElementHandleInnerHTMLParams, metadata?: Metadata): Promise<ElementHandleInnerHTMLResult>;
   innerText(params?: ElementHandleInnerTextParams, metadata?: Metadata): Promise<ElementHandleInnerTextResult>;
+  isChecked(params?: ElementHandleIsCheckedParams, metadata?: Metadata): Promise<ElementHandleIsCheckedResult>;
+  isDisabled(params?: ElementHandleIsDisabledParams, metadata?: Metadata): Promise<ElementHandleIsDisabledResult>;
+  isEditable(params?: ElementHandleIsEditableParams, metadata?: Metadata): Promise<ElementHandleIsEditableResult>;
+  isEnabled(params?: ElementHandleIsEnabledParams, metadata?: Metadata): Promise<ElementHandleIsEnabledResult>;
+  isHidden(params?: ElementHandleIsHiddenParams, metadata?: Metadata): Promise<ElementHandleIsHiddenResult>;
+  isVisible(params?: ElementHandleIsVisibleParams, metadata?: Metadata): Promise<ElementHandleIsVisibleResult>;
   ownerFrame(params?: ElementHandleOwnerFrameParams, metadata?: Metadata): Promise<ElementHandleOwnerFrameResult>;
   press(params: ElementHandlePressParams, metadata?: Metadata): Promise<ElementHandlePressResult>;
   querySelector(params: ElementHandleQuerySelectorParams, metadata?: Metadata): Promise<ElementHandleQuerySelectorResult>;
@@ -1738,11 +1845,11 @@ export interface ElementHandleChannel extends JSHandleChannel {
 export type ElementHandleEvalOnSelectorParams = {
   selector: string,
   expression: string,
-  isFunction: boolean,
+  isFunction?: boolean,
   arg: SerializedArgument,
 };
 export type ElementHandleEvalOnSelectorOptions = {
-
+  isFunction?: boolean,
 };
 export type ElementHandleEvalOnSelectorResult = {
   value: SerializedValue,
@@ -1750,11 +1857,11 @@ export type ElementHandleEvalOnSelectorResult = {
 export type ElementHandleEvalOnSelectorAllParams = {
   selector: string,
   expression: string,
-  isFunction: boolean,
+  isFunction?: boolean,
   arg: SerializedArgument,
 };
 export type ElementHandleEvalOnSelectorAllOptions = {
-
+  isFunction?: boolean,
 };
 export type ElementHandleEvalOnSelectorAllResult = {
   value: SerializedValue,
@@ -1872,6 +1979,36 @@ export type ElementHandleInnerTextParams = {};
 export type ElementHandleInnerTextOptions = {};
 export type ElementHandleInnerTextResult = {
   value: string,
+};
+export type ElementHandleIsCheckedParams = {};
+export type ElementHandleIsCheckedOptions = {};
+export type ElementHandleIsCheckedResult = {
+  value: boolean,
+};
+export type ElementHandleIsDisabledParams = {};
+export type ElementHandleIsDisabledOptions = {};
+export type ElementHandleIsDisabledResult = {
+  value: boolean,
+};
+export type ElementHandleIsEditableParams = {};
+export type ElementHandleIsEditableOptions = {};
+export type ElementHandleIsEditableResult = {
+  value: boolean,
+};
+export type ElementHandleIsEnabledParams = {};
+export type ElementHandleIsEnabledOptions = {};
+export type ElementHandleIsEnabledResult = {
+  value: boolean,
+};
+export type ElementHandleIsHiddenParams = {};
+export type ElementHandleIsHiddenOptions = {};
+export type ElementHandleIsHiddenResult = {
+  value: boolean,
+};
+export type ElementHandleIsVisibleParams = {};
+export type ElementHandleIsVisibleOptions = {};
+export type ElementHandleIsVisibleResult = {
+  value: boolean,
 };
 export type ElementHandleOwnerFrameParams = {};
 export type ElementHandleOwnerFrameOptions = {};
@@ -2018,7 +2155,7 @@ export type ElementHandleUncheckOptions = {
 };
 export type ElementHandleUncheckResult = void;
 export type ElementHandleWaitForElementStateParams = {
-  state: 'visible' | 'hidden' | 'stable' | 'enabled' | 'disabled',
+  state: 'visible' | 'hidden' | 'stable' | 'enabled' | 'disabled' | 'editable',
   timeout?: number,
 };
 export type ElementHandleWaitForElementStateOptions = {
@@ -2326,22 +2463,17 @@ export interface ElectronChannel extends Channel {
   launch(params: ElectronLaunchParams, metadata?: Metadata): Promise<ElectronLaunchResult>;
 }
 export type ElectronLaunchParams = {
-  executablePath: string,
+  executablePath?: string,
   args?: string[],
   cwd?: string,
   env?: NameValue[],
-  handleSIGINT?: boolean,
-  handleSIGTERM?: boolean,
-  handleSIGHUP?: boolean,
   timeout?: number,
 };
 export type ElectronLaunchOptions = {
+  executablePath?: string,
   args?: string[],
   cwd?: string,
   env?: NameValue[],
-  handleSIGINT?: boolean,
-  handleSIGTERM?: boolean,
-  handleSIGHUP?: boolean,
   timeout?: number,
 };
 export type ElectronLaunchResult = {
@@ -2354,7 +2486,6 @@ export interface ElectronApplicationChannel extends Channel {
   on(event: 'context', callback: (params: ElectronApplicationContextEvent) => void): this;
   on(event: 'close', callback: (params: ElectronApplicationCloseEvent) => void): this;
   on(event: 'window', callback: (params: ElectronApplicationWindowEvent) => void): this;
-  newBrowserWindow(params: ElectronApplicationNewBrowserWindowParams, metadata?: Metadata): Promise<ElectronApplicationNewBrowserWindowResult>;
   evaluateExpression(params: ElectronApplicationEvaluateExpressionParams, metadata?: Metadata): Promise<ElectronApplicationEvaluateExpressionResult>;
   evaluateExpressionHandle(params: ElectronApplicationEvaluateExpressionHandleParams, metadata?: Metadata): Promise<ElectronApplicationEvaluateExpressionHandleResult>;
   close(params?: ElectronApplicationCloseParams, metadata?: Metadata): Promise<ElectronApplicationCloseResult>;
@@ -2367,33 +2498,24 @@ export type ElectronApplicationWindowEvent = {
   page: PageChannel,
   browserWindow: JSHandleChannel,
 };
-export type ElectronApplicationNewBrowserWindowParams = {
-  arg: SerializedArgument,
-};
-export type ElectronApplicationNewBrowserWindowOptions = {
-
-};
-export type ElectronApplicationNewBrowserWindowResult = {
-  page: PageChannel,
-};
 export type ElectronApplicationEvaluateExpressionParams = {
   expression: string,
-  isFunction: boolean,
+  isFunction?: boolean,
   arg: SerializedArgument,
 };
 export type ElectronApplicationEvaluateExpressionOptions = {
-
+  isFunction?: boolean,
 };
 export type ElectronApplicationEvaluateExpressionResult = {
   value: SerializedValue,
 };
 export type ElectronApplicationEvaluateExpressionHandleParams = {
   expression: string,
-  isFunction: boolean,
+  isFunction?: boolean,
   arg: SerializedArgument,
 };
 export type ElectronApplicationEvaluateExpressionHandleOptions = {
-
+  isFunction?: boolean,
 };
 export type ElectronApplicationEvaluateExpressionHandleResult = {
   handle: JSHandleChannel,
@@ -2672,8 +2794,8 @@ export type AndroidDeviceLaunchBrowserParams = {
   hasTouch?: boolean,
   colorScheme?: 'dark' | 'light' | 'no-preference',
   acceptDownloads?: boolean,
-  _traceResourcesPath?: string,
-  _tracePath?: string,
+  _traceDir?: string,
+  _debugName?: string,
   recordVideo?: {
     dir: string,
     size?: {
@@ -2717,8 +2839,8 @@ export type AndroidDeviceLaunchBrowserOptions = {
   hasTouch?: boolean,
   colorScheme?: 'dark' | 'light' | 'no-preference',
   acceptDownloads?: boolean,
-  _traceResourcesPath?: string,
-  _tracePath?: string,
+  _traceDir?: string,
+  _debugName?: string,
   recordVideo?: {
     dir: string,
     size?: {

@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import { Page, BindingCall, FunctionWithSource } from './page';
+import { Page, BindingCall } from './page';
 import * as network from './network';
 import * as channels from '../protocol/channels';
 import * as util from 'util';
@@ -26,23 +26,26 @@ import { Browser } from './browser';
 import { Events } from './events';
 import { TimeoutSettings } from '../utils/timeoutSettings';
 import { Waiter } from './waiter';
-import { URLMatch, Headers, WaitForEventOptions, BrowserContextOptions, StorageState } from './types';
+import { URLMatch, Headers, WaitForEventOptions, BrowserContextOptions, StorageState, LaunchOptions } from './types';
 import { isUnderTest, headersObjectToArray, mkdirIfNeeded } from '../utils/utils';
 import { isSafeCloseError } from '../utils/errors';
+import * as api from '../../types/types';
+import * as structs from '../../types/structs';
 
 const fsWriteFileAsync = util.promisify(fs.writeFile.bind(fs));
 const fsReadFileAsync = util.promisify(fs.readFile.bind(fs));
 
-export class BrowserContext extends ChannelOwner<channels.BrowserContextChannel, channels.BrowserContextInitializer> {
+export class BrowserContext extends ChannelOwner<channels.BrowserContextChannel, channels.BrowserContextInitializer> implements api.BrowserContext {
   _pages = new Set<Page>();
   private _routes: { url: URLMatch, handler: network.RouteHandler }[] = [];
   readonly _browser: Browser | null = null;
-  readonly _browserName: string;
-  readonly _bindings = new Map<string, FunctionWithSource>();
+  readonly _bindings = new Map<string, (source: structs.BindingSource, ...args: any[]) => any>();
   _timeoutSettings = new TimeoutSettings();
   _ownerPage: Page | undefined;
   private _closedPromise: Promise<void>;
   _options: channels.BrowserNewContextParams = {};
+  private _stdout: NodeJS.WriteStream;
+  private _stderr: NodeJS.WriteStream;
 
   static from(context: channels.BrowserContextChannel): BrowserContext {
     return (context as any)._object;
@@ -52,17 +55,30 @@ export class BrowserContext extends ChannelOwner<channels.BrowserContextChannel,
     return context ? BrowserContext.from(context) : null;
   }
 
-  constructor(parent: ChannelOwner, type: string, guid: string, initializer: channels.BrowserContextInitializer, browserName: string) {
+  constructor(parent: ChannelOwner, type: string, guid: string, initializer: channels.BrowserContextInitializer) {
     super(parent, type, guid, initializer);
     if (parent instanceof Browser)
       this._browser = parent;
-    this._browserName = browserName;
 
     this._channel.on('bindingCall', ({binding}) => this._onBinding(BindingCall.from(binding)));
     this._channel.on('close', () => this._onClose());
     this._channel.on('page', ({page}) => this._onPage(Page.from(page)));
     this._channel.on('route', ({ route, request }) => this._onRoute(network.Route.from(route), network.Request.from(request)));
+    this._stdout = process.stdout;
+    this._stderr = process.stderr;
+    this._channel.on('stdout', ({ data }) => {
+      this._stdout.write(Buffer.from(data, 'base64'));
+      this._pushTerminalSize();
+    });
+    this._channel.on('stderr', ({ data }) => {
+      this._stderr.write(Buffer.from(data, 'base64'));
+      this._pushTerminalSize();
+    });
     this._closedPromise = new Promise(f => this.once(Events.BrowserContext.Close, f));
+  }
+
+  private _pushTerminalSize() {
+    this._channel.setTerminalSizeNoReply({ rows: process.stdout.rows, columns: process.stdout.columns }).catch(() => {});
   }
 
   private _onPage(page: Page): void {
@@ -181,17 +197,17 @@ export class BrowserContext extends ChannelOwner<channels.BrowserContextChannel,
     });
   }
 
-  async exposeBinding(name: string, playwrightBinding: FunctionWithSource, options: { handle?: boolean } = {}): Promise<void> {
+  async exposeBinding(name: string, callback: (source: structs.BindingSource, ...args: any[]) => any, options: { handle?: boolean } = {}): Promise<void> {
     return this._wrapApiCall('browserContext.exposeBinding', async () => {
       await this._channel.exposeBinding({ name, needsHandle: options.handle });
-      this._bindings.set(name, playwrightBinding);
+      this._bindings.set(name, callback);
     });
   }
 
-  async exposeFunction(name: string, playwrightFunction: Function): Promise<void> {
+  async exposeFunction(name: string, callback: Function): Promise<void> {
     return this._wrapApiCall('browserContext.exposeFunction', async () => {
       await this._channel.exposeBinding({ name });
-      const binding: FunctionWithSource = (source, ...args) => playwrightFunction(...args);
+      const binding = (source: structs.BindingSource, ...args: any[]) => callback(...args);
       this._bindings.set(name, binding);
     });
   }
@@ -238,7 +254,7 @@ export class BrowserContext extends ChannelOwner<channels.BrowserContextChannel,
   async _onClose() {
     if (this._browser)
       this._browser._contexts.delete(this);
-    this.emit(Events.BrowserContext.Close);
+    this.emit(Events.BrowserContext.Close, this);
   }
 
   async close(): Promise<void> {
@@ -252,6 +268,26 @@ export class BrowserContext extends ChannelOwner<channels.BrowserContextChannel,
         return;
       throw e;
     }
+  }
+
+  async _pause() {
+    return this._wrapApiCall('browserContext.pause', async () => {
+      await this._channel.pause();
+    });
+  }
+
+  async _enableRecorder(params: {
+      language: string,
+      launchOptions?: LaunchOptions,
+      contextOptions?: BrowserContextOptions,
+      device?: string,
+      saveStorage?: string,
+      startRecording?: boolean,
+      terminal?: boolean,
+      outputFile?: string
+  }) {
+    this._pushTerminalSize();
+    await this._channel.recorderSupplementEnable(params);
   }
 }
 

@@ -98,6 +98,7 @@ export class Page extends EventEmitter {
     Crash: 'crash',
     Console: 'console',
     Dialog: 'dialog',
+    InternalDialogClosed: 'internaldialogclosed',
     Download: 'download',
     FileChooser: 'filechooser',
     DOMContentLoaded: 'domcontentloaded',
@@ -110,7 +111,7 @@ export class Page extends EventEmitter {
     RequestFinished: 'requestfinished',
     FrameAttached: 'frameattached',
     FrameDetached: 'framedetached',
-    FrameNavigated: 'framenavigated',
+    InternalFrameNavigatedToNewDocument: 'internalframenavigatedtonewdocument',
     Load: 'load',
     Popup: 'popup',
     WebSocket: 'websocket',
@@ -197,7 +198,7 @@ export class Page extends EventEmitter {
   }
 
   async _doSlowMo() {
-    const slowMo = this._browserContext._browser._options.slowMo;
+    const slowMo = this._browserContext._browser.options.slowMo;
     if (!slowMo)
       return;
     await new Promise(x => setTimeout(x, slowMo));
@@ -292,9 +293,13 @@ export class Page extends EventEmitter {
   async reload(controller: ProgressController, options: types.NavigateOptions): Promise<network.Response | null> {
     this.mainFrame().setupNavigationProgressController(controller);
     const response = await controller.run(async progress => {
-      const waitPromise = this.mainFrame()._waitForNavigation(progress, options);
-      await this._delegate.reload();
-      return waitPromise;
+      // Note: waitForNavigation may fail before we get response to reload(),
+      // so we should await it immediately.
+      const [response] = await Promise.all([
+        this.mainFrame()._waitForNavigation(progress, options),
+        this._delegate.reload(),
+      ]);
+      return response;
     }, this._timeoutSettings.navigationTimeout(options));
     await this._doSlowMo();
     return response;
@@ -303,13 +308,20 @@ export class Page extends EventEmitter {
   async goBack(controller: ProgressController, options: types.NavigateOptions): Promise<network.Response | null> {
     this.mainFrame().setupNavigationProgressController(controller);
     const response = await controller.run(async progress => {
-      const waitPromise = this.mainFrame()._waitForNavigation(progress, options);
-      const result = await this._delegate.goBack();
-      if (!result) {
-        waitPromise.catch(() => {});
+      // Note: waitForNavigation may fail before we get response to goBack,
+      // so we should catch it immediately.
+      let error: Error | undefined;
+      const waitPromise = this.mainFrame()._waitForNavigation(progress, options).catch(e => {
+        error = e;
         return null;
-      }
-      return waitPromise;
+      });
+      const result = await this._delegate.goBack();
+      if (!result)
+        return null;
+      const response = await waitPromise;
+      if (error)
+        throw error;
+      return response;
     }, this._timeoutSettings.navigationTimeout(options));
     await this._doSlowMo();
     return response;
@@ -318,13 +330,20 @@ export class Page extends EventEmitter {
   async goForward(controller: ProgressController, options: types.NavigateOptions): Promise<network.Response | null> {
     this.mainFrame().setupNavigationProgressController(controller);
     const response = await controller.run(async progress => {
-      const waitPromise = this.mainFrame()._waitForNavigation(progress, options);
-      const result = await this._delegate.goForward();
-      if (!result) {
-        waitPromise.catch(() => {});
+      // Note: waitForNavigation may fail before we get response to goForward,
+      // so we should catch it immediately.
+      let error: Error | undefined;
+      const waitPromise = this.mainFrame()._waitForNavigation(progress, options).catch(e => {
+        error = e;
         return null;
-      }
-      return waitPromise;
+      });
+      const result = await this._delegate.goForward();
+      if (!result)
+        return null;
+      const response = await waitPromise;
+      if (error)
+        throw error;
+      return response;
     }, this._timeoutSettings.navigationTimeout(options));
     await this._doSlowMo();
     return response;
@@ -457,12 +476,14 @@ export class Page extends EventEmitter {
     this.emit(Page.Events.VideoStarted, video);
   }
 
-  frameNavigated(frame: frames.Frame) {
-    this.emit(Page.Events.FrameNavigated, frame);
+  frameNavigatedToNewDocument(frame: frames.Frame) {
+    this.emit(Page.Events.InternalFrameNavigatedToNewDocument, frame);
     const url = frame.url();
     if (!url.startsWith('http'))
       return;
-    this._browserContext.addVisitedOrigin(new URL(url).origin);
+    const purl = network.parsedURL(url);
+    if (purl)
+      this._browserContext.addVisitedOrigin(purl.origin);
   }
 
   allBindings() {
@@ -482,11 +503,12 @@ export class Worker extends EventEmitter {
 
   private _url: string;
   private _executionContextPromise: Promise<js.ExecutionContext>;
-  private _executionContextCallback: (value?: js.ExecutionContext) => void;
+  private _executionContextCallback: (value: js.ExecutionContext) => void;
   _existingExecutionContext: js.ExecutionContext | null = null;
 
   constructor(url: string) {
     super();
+    this.setMaxListeners(0);
     this._url = url;
     this._executionContextCallback = () => {};
     this._executionContextPromise = new Promise(x => this._executionContextCallback = x);
@@ -501,11 +523,11 @@ export class Worker extends EventEmitter {
     return this._url;
   }
 
-  async _evaluateExpression(expression: string, isFunction: boolean, arg: any): Promise<any> {
+  async _evaluateExpression(expression: string, isFunction: boolean | undefined, arg: any): Promise<any> {
     return js.evaluateExpression(await this._executionContextPromise, true /* returnByValue */, expression, isFunction, arg);
   }
 
-  async _evaluateExpressionHandle(expression: string, isFunction: boolean, arg: any): Promise<any> {
+  async _evaluateExpressionHandle(expression: string, isFunction: boolean | undefined, arg: any): Promise<any> {
     return js.evaluateExpression(await this._executionContextPromise, false /* returnByValue */, expression, isFunction, arg);
   }
 }

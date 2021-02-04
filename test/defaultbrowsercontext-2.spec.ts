@@ -66,9 +66,7 @@ it('should support ignoreHTTPSErrors option', async ({httpsServer, launchPersist
   expect(response.ok()).toBe(true);
 });
 
-it('should support extraHTTPHeaders option', (test, { browserName, platform, headful }) => {
-  test.flaky(browserName === 'firefox' && headful && platform === 'linux', 'Intermittent timeout on bots');
-}, async ({server, launchPersistent}) => {
+it('should support extraHTTPHeaders option', async ({server, launchPersistent}) => {
   const {page} = await launchPersistent({extraHTTPHeaders: { foo: 'bar' }});
   const [request] = await Promise.all([
     server.waitForRequest('/empty.html'),
@@ -111,7 +109,6 @@ it('should restore state from userDataDir', (test, { browserName }) => {
 
 it('should restore cookies from userDataDir', (test, { browserName }) => {
   test.slow();
-  test.flaky(browserName === 'chromium');
 }, async ({browserType, browserOptions,  server, createUserDataDir}) => {
   const userDataDir = await createUserDataDir();
   const browserContext = await browserType.launchPersistentContext(userDataDir, browserOptions);
@@ -219,7 +216,6 @@ it('should respect selectors', async ({playwright, launchPersistent}) => {
   const {page} = await launchPersistent();
 
   const defaultContextCSS = () => ({
-    create(root, target) {},
     query(root, selector) {
       return root.querySelector(selector);
     },

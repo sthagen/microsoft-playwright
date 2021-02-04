@@ -23,10 +23,16 @@ export function filterCookies(cookies: types.NetworkCookie[], urls: string[]): t
   const parsedURLs = urls.map(s => new URL(s));
   // Chromiums's cookies are missing sameSite when it is 'None'
   return cookies.filter(c => {
+    // Firefox and WebKit can return cookies with empty values.
+    if (!c.value)
+      return false;
     if (!parsedURLs.length)
       return true;
     for (const parsedURL of parsedURLs) {
-      if (parsedURL.hostname !== c.domain)
+      let domain = c.domain;
+      if (!domain.startsWith('.'))
+        domain = '.' + domain;
+      if (!('.' + parsedURL.hostname).endsWith(domain))
         continue;
       if (!parsedURL.pathname.startsWith(c.path))
         continue;
@@ -58,12 +64,18 @@ export function rewriteCookies(cookies: types.SetNetworkCookieParam[]): types.Se
   });
 }
 
-function stripFragmentFromUrl(url: string): string {
-  if (!url.indexOf('#'))
+export function parsedURL(url: string): URL | null {
+  try {
+    return new URL(url);
+  } catch (e) {
+    return null;
+  }
+}
+
+export function stripFragmentFromUrl(url: string): string {
+  if (!url.includes('#'))
     return url;
-  const parsed = new URL(url);
-  parsed.hash = '';
-  return parsed.href;
+  return url.substring(0, url.indexOf('#'));
 }
 
 export class Request {
@@ -343,6 +355,7 @@ export class WebSocket extends EventEmitter {
 
   constructor(url: string) {
     super();
+    this.setMaxListeners(0);
     this._url = url;
   }
 

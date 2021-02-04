@@ -21,12 +21,13 @@ import * as channels from '../protocol/channels';
 import { RouteDispatcher, RequestDispatcher } from './networkDispatchers';
 import { CRBrowserContext } from '../server/chromium/crBrowser';
 import { CDPSessionDispatcher } from './cdpSessionDispatcher';
+import { RecorderSupplement } from '../server/supplements/recorderSupplement';
 
 export class BrowserContextDispatcher extends Dispatcher<BrowserContext, channels.BrowserContextInitializer> implements channels.BrowserContextChannel {
   private _context: BrowserContext;
 
   constructor(scope: DispatcherScope, context: BrowserContext) {
-    super(scope, context, 'BrowserContext', { browserName: context._browser._options.name }, true);
+    super(scope, context, 'BrowserContext', { isChromium: context._browser.options.isChromium }, true);
     this._context = context;
 
     for (const page of context.pages())
@@ -36,8 +37,10 @@ export class BrowserContextDispatcher extends Dispatcher<BrowserContext, channel
       this._dispatchEvent('close');
       this._dispose();
     });
+    context.on(BrowserContext.Events.StdOut, data => this._dispatchEvent('stdout', { data: Buffer.from(data, 'utf8').toString('base64') }));
+    context.on(BrowserContext.Events.StdErr, data => this._dispatchEvent('stderr', { data: Buffer.from(data, 'utf8').toString('base64') }));
 
-    if (context._browser._options.name === 'chromium') {
+    if (context._browser.options.name === 'chromium') {
       for (const page of (context as CRBrowserContext).backgroundPages())
         this._dispatchEvent('crBackgroundPage', { page: new PageDispatcher(this._scope, page) });
       context.on(CRBrowserContext.CREvents.BackgroundPage, page => this._dispatchEvent('crBackgroundPage', { page: new PageDispatcher(this._scope, page) }));
@@ -125,10 +128,28 @@ export class BrowserContextDispatcher extends Dispatcher<BrowserContext, channel
     await this._context.close();
   }
 
+  async recorderSupplementEnable(params: channels.BrowserContextRecorderSupplementEnableParams): Promise<void> {
+    await RecorderSupplement.getOrCreate(this._context, params);
+  }
+
+  async pause() {
+    if (!this._context._browser.options.headful)
+      return;
+    const recorder = await RecorderSupplement.getOrCreate(this._context, {
+      language: 'javascript',
+      terminal: true
+    });
+    await recorder.pause();
+  }
+
   async crNewCDPSession(params: channels.BrowserContextCrNewCDPSessionParams): Promise<channels.BrowserContextCrNewCDPSessionResult> {
-    if (this._object._browser._options.name !== 'chromium')
+    if (!this._object._browser.options.isChromium)
       throw new Error(`CDP session is only available in Chromium`);
     const crBrowserContext = this._object as CRBrowserContext;
     return { session: new CDPSessionDispatcher(this._scope, await crBrowserContext.newCDPSession((params.page as PageDispatcher)._object)) };
+  }
+
+  async setTerminalSizeNoReply(params: channels.BrowserContextSetTerminalSizeNoReplyParams): Promise<void> {
+    this._context.terminalSize = params;
   }
 }

@@ -131,12 +131,15 @@ export class FrameManager {
     if (progress)
       progress.cleanupWhenAborted(() => this._signalBarriers.delete(barrier));
     const result = await action();
-    if (source === 'input')
+    if (source === 'input') {
       await this._page._delegate.inputActionEpilogue();
+      if (progress)
+        await progress.checkpoint('after');
+    }
     await barrier.waitFor();
     this._signalBarriers.delete(barrier);
     // Resolve in the next task, after all waitForNavigations.
-    await new Promise(makeWaitForNextTask());
+    await new Promise<void>(makeWaitForNextTask());
     return result;
   }
 
@@ -199,7 +202,7 @@ export class FrameManager {
     frame.emit(Frame.Events.Navigation, navigationEvent);
     if (!initial) {
       debugLogger.log('api', `  navigated to "${url}"`);
-      this._page.frameNavigated(frame);
+      this._page.frameNavigatedToNewDocument(frame);
     }
     // Restore pending if any - see comments above about keepPending.
     frame._pendingDocument = keepPending;
@@ -213,7 +216,6 @@ export class FrameManager {
     const navigationEvent: NavigationEvent = { url, name: frame._name };
     frame.emit(Frame.Events.Navigation, navigationEvent);
     debugLogger.log('api', `  navigated to "${url}"`);
-    this._page.frameNavigated(frame);
   }
 
   frameAbortedNavigation(frameId: string, errorText: string, documentId?: string) {
@@ -577,7 +579,7 @@ export class Frame extends EventEmitter {
     return this._context('utility');
   }
 
-  async _evaluateExpressionHandle(expression: string, isFunction: boolean, arg: any, world: types.World = 'main'): Promise<any> {
+  async _evaluateExpressionHandle(expression: string, isFunction: boolean | undefined, arg: any, world: types.World = 'main'): Promise<any> {
     const context = await this._context(world);
     const handle = await context.evaluateExpressionHandleInternal(expression, isFunction, arg);
     if (world === 'main')
@@ -585,7 +587,7 @@ export class Frame extends EventEmitter {
     return handle;
   }
 
-  async _evaluateExpression(expression: string, isFunction: boolean, arg: any, world: types.World = 'main'): Promise<any> {
+  async _evaluateExpression(expression: string, isFunction: boolean | undefined, arg: any, world: types.World = 'main'): Promise<any> {
     const context = await this._context(world);
     const value = await context.evaluateExpressionInternal(expression, isFunction, arg);
     if (world === 'main')
@@ -630,7 +632,7 @@ export class Frame extends EventEmitter {
     await this._page._doSlowMo();
   }
 
-  async _$evalExpression(selector: string, expression: string, isFunction: boolean, arg: any): Promise<any> {
+  async _$evalExpression(selector: string, expression: string, isFunction: boolean | undefined, arg: any): Promise<any> {
     const handle = await this.$(selector);
     if (!handle)
       throw new Error(`Error: failed to find element matching selector "${selector}"`);
@@ -639,7 +641,7 @@ export class Frame extends EventEmitter {
     return result;
   }
 
-  async _$$evalExpression(selector: string, expression: string, isFunction: boolean, arg: any): Promise<any> {
+  async _$$evalExpression(selector: string, expression: string, isFunction: boolean | undefined, arg: any): Promise<any> {
     const arrayHandle = await this._page.selectors._queryArray(this, selector);
     const result = await arrayHandle._evaluateExpression(expression, isFunction, true, arg);
     arrayHandle.dispose();
@@ -803,7 +805,7 @@ export class Frame extends EventEmitter {
     let result: dom.ElementHandle;
     let error: Error | undefined;
     let cspMessage: ConsoleMessage | undefined;
-    const actionPromise = new Promise<dom.ElementHandle>(async resolve => {
+    const actionPromise = new Promise<void>(async resolve => {
       try {
         result = await func();
       } catch (e) {
@@ -811,7 +813,7 @@ export class Frame extends EventEmitter {
       }
       resolve();
     });
-    const errorPromise = new Promise(resolve => {
+    const errorPromise = new Promise<void>(resolve => {
       listeners.push(helper.addEventListener(this._page, Page.Events.Console, (message: ConsoleMessage) => {
         if (message.type() === 'error' && message.text().includes('Content Security Policy')) {
           cspMessage = message;
@@ -928,6 +930,50 @@ export class Frame extends EventEmitter {
     }, this._page._timeoutSettings.timeout(options));
   }
 
+  async isVisible(selector: string, options: types.TimeoutOptions = {}): Promise<boolean> {
+    const info = this._page.selectors._parseSelector(selector);
+    const task = dom.visibleTask(info);
+    return runAbortableTask(async progress => {
+      progress.log(`  checking visibility of "${selector}"`);
+      return this._scheduleRerunnableTask(progress, info.world, task);
+    }, this._page._timeoutSettings.timeout(options));
+  }
+
+  async isHidden(selector: string, options: types.TimeoutOptions = {}): Promise<boolean> {
+    return !(await this.isVisible(selector, options));
+  }
+
+  async isDisabled(selector: string, options: types.TimeoutOptions = {}): Promise<boolean> {
+    const info = this._page.selectors._parseSelector(selector);
+    const task = dom.disabledTask(info);
+    return runAbortableTask(async progress => {
+      progress.log(`  checking disabled state of "${selector}"`);
+      return this._scheduleRerunnableTask(progress, info.world, task);
+    }, this._page._timeoutSettings.timeout(options));
+  }
+
+  async isEnabled(selector: string, options: types.TimeoutOptions = {}): Promise<boolean> {
+    return !(await this.isDisabled(selector, options));
+  }
+
+  async isEditable(selector: string, options: types.TimeoutOptions = {}): Promise<boolean> {
+    const info = this._page.selectors._parseSelector(selector);
+    const task = dom.editableTask(info);
+    return runAbortableTask(async progress => {
+      progress.log(`  checking editable state of "${selector}"`);
+      return this._scheduleRerunnableTask(progress, info.world, task);
+    }, this._page._timeoutSettings.timeout(options));
+  }
+
+  async isChecked(selector: string, options: types.TimeoutOptions = {}): Promise<boolean> {
+    const info = this._page.selectors._parseSelector(selector);
+    const task = dom.checkedTask(info);
+    return runAbortableTask(async progress => {
+      progress.log(`  checking checked state of "${selector}"`);
+      return this._scheduleRerunnableTask(progress, info.world, task);
+    }, this._page._timeoutSettings.timeout(options));
+  }
+
   async hover(controller: ProgressController, selector: string, options: types.PointerActionOptions & types.PointerActionWaitOptions = {}) {
     return controller.run(async progress => {
       return dom.assertDone(await this._retryWithProgressIfNotConnected(progress, selector, handle => handle._hover(progress, options)));
@@ -970,16 +1016,28 @@ export class Frame extends EventEmitter {
     }, this._page._timeoutSettings.timeout(options));
   }
 
-  async _waitForFunctionExpression<R>(expression: string, isFunction: boolean, arg: any, options: types.WaitForFunctionOptions = {}): Promise<js.SmartHandle<R>> {
+  async _waitForFunctionExpression<R>(expression: string, isFunction: boolean | undefined, arg: any, options: types.WaitForFunctionOptions = {}): Promise<js.SmartHandle<R>> {
     if (typeof options.pollingInterval === 'number')
       assert(options.pollingInterval > 0, 'Cannot poll with non-positive interval: ' + options.pollingInterval);
-    const predicateBody = isFunction ? 'return (' + expression + ')(arg)' :  'return (' + expression + ')';
-    const task: dom.SchedulableTask<R> = injectedScript => injectedScript.evaluateHandle((injectedScript, { predicateBody, polling, arg }) => {
-      const innerPredicate = new Function('arg', predicateBody) as (arg: any) => R;
+    expression = js.normalizeEvaluationExpression(expression, isFunction);
+    const task: dom.SchedulableTask<R> = injectedScript => injectedScript.evaluateHandle((injectedScript, { expression, isFunction, polling, arg }) => {
+      const predicate = (arg: any): R => {
+        let result = self.eval(expression);
+        if (isFunction === true) {
+          result = result(arg);
+        } else if (isFunction === false) {
+          result = result;
+        } else {
+          // auto detect.
+          if (typeof result === 'function')
+            result = result(arg);
+        }
+        return result;
+      };
       if (typeof polling !== 'number')
-        return injectedScript.pollRaf((progress, continuePolling) => innerPredicate(arg) || continuePolling);
-      return injectedScript.pollInterval(polling, (progress, continuePolling) => innerPredicate(arg) || continuePolling);
-    }, { predicateBody, polling: options.pollingInterval, arg });
+        return injectedScript.pollRaf((progress, continuePolling) => predicate(arg) || continuePolling);
+      return injectedScript.pollInterval(polling, (progress, continuePolling) => predicate(arg) || continuePolling);
+    }, { expression, isFunction, polling: options.pollingInterval, arg });
     return runAbortableTask(
         progress => this._scheduleRerunnableHandleTask(progress, 'main', task),
         this._page._timeoutSettings.timeout(options));

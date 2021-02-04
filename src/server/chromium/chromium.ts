@@ -22,17 +22,22 @@ import { kBrowserCloseMessageId } from './crConnection';
 import { rewriteErrorMessage } from '../../utils/stackTrace';
 import { BrowserType } from '../browserType';
 import { ConnectionTransport, ProtocolRequest } from '../transport';
-import type { BrowserDescriptor } from '../../utils/browserPaths';
+import * as browserPaths from '../../utils/browserPaths';
 import { CRDevTools } from './crDevTools';
-import { BrowserOptions } from '../browser';
+import { BrowserOptions, PlaywrightOptions } from '../browser';
 import * as types from '../types';
 import { isDebugMode } from '../../utils/utils';
 
 export class Chromium extends BrowserType {
   private _devtools: CRDevTools | undefined;
+  private _ffmpegPath: string | null;
 
-  constructor(packagePath: string, browser: BrowserDescriptor) {
-    super(packagePath, browser);
+  constructor(packagePath: string, browser: browserPaths.BrowserDescriptor, ffmpeg: browserPaths.BrowserDescriptor, playwrightOptions: PlaywrightOptions) {
+    super(packagePath, browser, playwrightOptions);
+
+    const browsersPath = browserPaths.browsersPath(packagePath);
+    const browserPath = browserPaths.browserDirectory(browsersPath, ffmpeg);
+    this._ffmpegPath = browserPaths.executablePath(browserPath, ffmpeg) || null;
     if (isDebugMode())
       this._devtools = this._createDevTools();
   }
@@ -47,7 +52,7 @@ export class Chromium extends BrowserType {
       devtools = this._createDevTools();
       await (options as any).__testHookForDevTools(devtools);
     }
-    return CRBrowser.connect(transport, options, devtools);
+    return CRBrowser.connect(transport, options, this._ffmpegPath, devtools);
   }
 
   _rewriteStartupError(error: Error): Error {
@@ -122,7 +127,7 @@ export class Chromium extends BrowserType {
   }
 }
 
-const DEFAULT_ARGS = [
+export const DEFAULT_ARGS = [
   '--disable-background-networking',
   '--enable-features=NetworkService,NetworkServiceInProcess',
   '--disable-background-timer-throttling',
