@@ -15,10 +15,10 @@
  */
 
 import * as http from 'http';
-import * as path from 'path';
+import path from 'path';
 import { ChildProcess, spawn } from 'child_process';
-import { folio as baseFolio } from '../fixtures';
-import type { Page, BrowserType, Browser, BrowserContext } from '../..';
+import { folio as baseFolio } from '../recorder.fixtures';
+import type { BrowserType, Browser, Page } from '../..';
 export { config } from 'folio';
 
 type WorkerFixtures = {
@@ -28,28 +28,16 @@ type WorkerFixtures = {
 };
 
 type TestFixtures = {
-  contextWrapper: { context: BrowserContext, output: WritableBuffer };
   recorder: Recorder;
   runCLI: (args: string[]) => CLIMock;
 };
 
 export const fixtures = baseFolio.extend<TestFixtures, WorkerFixtures>();
 
-fixtures.contextWrapper.init(async ({ browser }, runTest) => {
-  const context = await browser.newContext() as BrowserContext;
-  const outputBuffer = new WritableBuffer();
-  (context as any)._stdout = outputBuffer;
-  await (context as any)._enableRecorder({ language: 'javascript', startRecording: true });
-  await runTest({ context, output: outputBuffer });
-  await context.close();
-});
-
-fixtures.recorder.init(async ({ contextWrapper }, runTest) => {
-  const page = await contextWrapper.context.newPage();
-  if (process.env.PWCONSOLE)
-    page.on('console', console.log);
-  await runTest(new Recorder(page, contextWrapper.output));
-  await page.close();
+fixtures.recorder.init(async ({ page, recorderPageGetter }, runTest) => {
+  await (page.context() as any)._enableRecorder({ language: 'javascript', startRecording: true });
+  const recorderPage = await recorderPageGetter();
+  await runTest(new Recorder(page, recorderPage));
 });
 
 fixtures.httpServer.init(async ({testWorkerIndex}, runTest) => {
@@ -63,11 +51,6 @@ fixtures.httpServer.init(async ({testWorkerIndex}, runTest) => {
   server.close();
 }, { scope: 'worker' });
 
-
-fixtures.page.override(async ({ recorder }, runTest) => {
-  await runTest(recorder.page);
-});
-
 function removeAnsiColors(input: string): string {
   const pattern = [
     '[\\u001B\\u009B][[\\]()#;?]*(?:(?:(?:[a-zA-Z\\d]*(?:;[-a-zA-Z\\d\\/#&.:=?%@~_]*)*)?\\u0007)',
@@ -76,51 +59,18 @@ function removeAnsiColors(input: string): string {
   return input.replace(new RegExp(pattern, 'g'), '');
 }
 
-class WritableBuffer {
-  _data: string;
-  private _callback: () => void;
-  _text: string;
-
-  constructor() {
-    this._data = '';
-  }
-
-  write(data: Buffer) {
-    if (!data)
-      return;
-    const chunk = data.toString('utf8');
-    this._data += chunk;
-    if (this._callback && chunk.includes(this._text))
-      this._callback();
-  }
-
-  _waitFor(text: string): Promise<void> {
-    if (this._data.includes(text))
-      return Promise.resolve();
-    this._text = text;
-    return new Promise(f => this._callback = f);
-  }
-
-  data() {
-    return this._data;
-  }
-
-  text() {
-    return removeAnsiColors(this.data());
-  }
-}
-
 class Recorder {
   page: Page;
-  _output: WritableBuffer;
   _highlightCallback: Function
   _highlightInstalled: boolean
   _actionReporterInstalled: boolean
   _actionPerformedCallback: Function
+  recorderPage: Page;
+  private _text: string = '';
 
-  constructor(page: Page, output: WritableBuffer) {
+  constructor(page: Page, recorderPage: Page) {
     this.page = page;
-    this._output = output;
+    this.recorderPage = recorderPage;
     this._highlightCallback = () => { };
     this._highlightInstalled = false;
     this._actionReporterInstalled = false;
@@ -148,11 +98,23 @@ class Recorder {
   }
 
   async waitForOutput(text: string): Promise<void> {
-    await this._output._waitFor(text);
+    this._text = await this.recorderPage.evaluate((text: string) => {
+      const w = window as any;
+      return new Promise(f => {
+        const poll = () => {
+          if (w.playwrightSourceEchoForTest && w.playwrightSourceEchoForTest.includes(text)) {
+            f(w.playwrightSourceEchoForTest);
+            return;
+          }
+          setTimeout(poll, 300);
+        };
+        setTimeout(poll);
+      });
+    }, text);
   }
 
   output(): string {
-    return this._output.text();
+    return this._text;
   }
 
   async waitForHighlight(action: () => Promise<void>): Promise<string> {
@@ -184,10 +146,10 @@ class Recorder {
   }
 }
 
-fixtures.runCLI.init(async ({  }, runTest) => {
+fixtures.runCLI.init(async ({ browserName, headful }, runTest) => {
   let cli: CLIMock;
   const cliFactory = (args: string[]) => {
-    cli = new CLIMock(args);
+    cli = new CLIMock(browserName, !headful, args);
     return cli;
   };
   await runTest(cliFactory);
@@ -201,15 +163,17 @@ class CLIMock {
   private waitForCallback: () => void;
   exited: Promise<void>;
 
-  constructor(args: string[]) {
+  constructor(browserName: string, headless: boolean, args: string[]) {
     this.data = '';
     this.process = spawn('node', [
       path.join(__dirname, '..', '..', 'lib', 'cli', 'cli.js'),
+      `--browser=${browserName}`,
       ...args
     ], {
       env: {
         ...process.env,
-        PWCLI_EXIT_FOR_TEST: '1'
+        PWCLI_EXIT_FOR_TEST: '1',
+        PWCLI_HEADLESS_FOR_TEST: headless ? '1' : undefined,
       },
       stdio: 'pipe'
     });

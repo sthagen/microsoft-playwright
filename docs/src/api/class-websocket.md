@@ -13,11 +13,19 @@ Fired when the websocket closes.
 
 Fired when the websocket recieves a frame.
 
+## event: WebSocket.frameReceived
+* langs: csharp, java
+- type: <[WebSocketFrame]>
+
 ## event: WebSocket.frameSent
 - type: <[Object]>
   - `payload` <[string]|[Buffer]> frame payload
 
 Fired when the websocket sends a frame.
+
+## event: WebSocket.frameSent
+* langs: csharp, java
+- type: <[WebSocketFrame]>
 
 ## event: WebSocket.socketError
 - type: <[String]>
@@ -54,3 +62,33 @@ Event name, same one would pass into `webSocket.on(event)`.
   - `timeout` <[float]> maximum time to wait for in milliseconds. Defaults to `30000` (30 seconds). Pass `0` to disable timeout. The default value can be changed by using the [`method: BrowserContext.setDefaultTimeout`].
 
 Either a predicate that receives an event or an options object. Optional.
+
+## method: WebSocket.waitForFrameReceived
+* langs: csharp, java
+- returns: <[WebSocketFrame]>
+
+Performs action and waits for a frame to be sent. If predicate is provided, it passes
+[WebSocketFrame] value into the `predicate` function and waits for `predicate(webSocketFrame)` to return a truthy value.
+Will throw an error if the WebSocket or Page is closed before the frame is received.
+
+### option: WebSocket.waitForFrameReceived.predicate
+- `predicate` <[function]\([WebSocketFrame]\):[boolean]>
+
+Receives the [WebSocketFrame] object and resolves to truthy value when the waiting should resolve.
+
+### option: WebSocket.waitForFrameReceived.timeout = %%-wait-for-event-timeout-%%
+
+## method: WebSocket.waitForFrameSent
+* langs: csharp, java
+- returns: <[WebSocketFrame]>
+
+Performs action and waits for a frame to be sent. If predicate is provided, it passes
+[WebSocketFrame] value into the `predicate` function and waits for `predicate(webSocketFrame)` to return a truthy value.
+Will throw an error if the WebSocket or Page is closed before the frame is sent.
+
+### option: WebSocket.waitForFrameSent.predicate
+- `predicate` <[function]\([WebSocketFrame]\):[boolean]>
+
+Receives the [WebSocketFrame] object and resolves to truthy value when the waiting should resolve.
+
+### option: WebSocket.waitForFrameSent.timeout = %%-wait-for-event-timeout-%%

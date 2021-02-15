@@ -12,12 +12,40 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+StackFrame:
+  type: object
+  properties:
+    file: string
+    line: number?
+    column: number?
+    function: string?
 
 # This object can be send with any rpc call in the "metadata" field.
+
 Metadata:
   type: object
   properties:
-    stack: string?
+    stack:
+      type: array?
+      items: StackFrame
+
+
+WaitForEventInfo:
+  type: object
+  properties:
+    waitId: string
+    phase:
+      type: enum
+      literals:
+      - before
+      - after
+      - log
+    name: string?
+    stack:
+      type: array?
+      items: StackFrame
+    message: string?
+    error: string?
 
 
 Point:
@@ -305,6 +333,7 @@ BrowserType:
     launchPersistentContext:
       parameters:
         userDataDir: string
+        sdkLanguage: string
         executablePath: string?
         args:
           type: array?
@@ -391,6 +420,15 @@ BrowserType:
       returns:
         context: BrowserContext
 
+    connectOverCDP:
+      parameters:
+        sdkLanguage: string
+        wsEndpoint: string
+        slowMo: number?
+        timeout: number?
+      returns:
+        browser: Browser
+        defaultContext: BrowserContext?
 
 Browser:
   type: interface
@@ -405,6 +443,7 @@ Browser:
 
     newContext:
       parameters:
+        sdkLanguage: string
         noDefaultViewport: boolean?
         viewport:
           type: object?
@@ -607,13 +646,12 @@ BrowserContext:
     recorderSupplementEnable:
       experimental: True
       parameters:
-        language: string
+        language: string?
         startRecording: boolean?
         launchOptions: json?
         contextOptions: json?
         device: string?
         saveStorage: string?
-        terminal: boolean?
         outputFile: string?
 
     crNewCDPSession:
@@ -621,11 +659,6 @@ BrowserContext:
         page: Page
       returns:
         session: CDPSession
-
-    setTerminalSizeNoReply:
-      parameters:
-        rows: number?
-        columns: number?
 
   events:
 
@@ -643,14 +676,6 @@ BrowserContext:
       parameters:
         route: Route
         request: Request
-
-    stdout:
-      parameters:
-        data: binary
-
-    stderr:
-      parameters:
-        data: binary
 
     crBackgroundPage:
       parameters:
@@ -1147,7 +1172,7 @@ Frame:
     evaluateExpression:
       parameters:
         expression: string
-        isFunction: boolean?  
+        isFunction: boolean?
         arg: SerializedArgument
         world:
           type: enum?
@@ -2090,6 +2115,7 @@ Electron:
 
     launch:
       parameters:
+        sdkLanguage: string
         executablePath: string?
         args:
           type: array?
@@ -2275,10 +2301,6 @@ AndroidDevice:
       returns:
         info: AndroidElementInfo
 
-    tree:
-      returns:
-        tree: AndroidElementInfo
-
     screenshot:
       returns:
         binary: binary
@@ -2310,6 +2332,7 @@ AndroidDevice:
 
     launchBrowser:
       parameters:
+        sdkLanguage: string
         pkg: string?
         ignoreHTTPSErrors: boolean?
         javaScriptEnabled: boolean?
@@ -2403,6 +2426,7 @@ AndroidDevice:
 
     connectToWebView:
       parameters:
+        sdkLanguage: string
         pid: number
       returns:
         context: BrowserContext

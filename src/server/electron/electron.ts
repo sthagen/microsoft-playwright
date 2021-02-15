@@ -21,21 +21,21 @@ import { CRExecutionContext } from '../chromium/crExecutionContext';
 import * as js from '../javascript';
 import { Page } from '../page';
 import { TimeoutSettings } from '../../utils/timeoutSettings';
-import * as browserPaths from '../../utils/browserPaths';
 import { WebSocketTransport } from '../transport';
 import * as types from '../types';
 import { launchProcess, envArrayToObject } from '../processLauncher';
 import { BrowserContext } from '../browserContext';
 import type {BrowserWindow} from 'electron';
-import { Progress, ProgressController, runAbortableTask } from '../progress';
-import { EventEmitter } from 'events';
+import { Progress, ProgressController } from '../progress';
 import { helper } from '../helper';
 import { BrowserOptions, BrowserProcess, PlaywrightOptions } from '../browser';
 import * as childProcess from 'child_process';
 import * as readline from 'readline';
 import { RecentLogsCollector } from '../../utils/debugLogger';
+import { internalCallMetadata, SdkObject } from '../instrumentation';
 
 export type ElectronLaunchOptionsBase = {
+  sdkLanguage: string,
   executablePath?: string,
   args?: string[],
   cwd?: string,
@@ -48,7 +48,7 @@ export interface ElectronPage extends Page {
   _browserWindowId: number;
 }
 
-export class ElectronApplication extends EventEmitter {
+export class ElectronApplication extends SdkObject {
   static Events = {
     Close: 'close',
     Window: 'window',
@@ -63,9 +63,8 @@ export class ElectronApplication extends EventEmitter {
   private _lastWindowId = 0;
   readonly _timeoutSettings = new TimeoutSettings();
 
-  constructor(browser: CRBrowser, nodeConnection: CRConnection) {
-    super();
-    this.setMaxListeners(0);
+  constructor(parent: SdkObject, browser: CRBrowser, nodeConnection: CRConnection) {
+    super(parent);
     this._browserContext = browser._defaultContext as CRBrowserContext;
     this._browserContext.on(BrowserContext.Events.Close, () => {
       // Emit application closed after context closed.
@@ -91,7 +90,8 @@ export class ElectronApplication extends EventEmitter {
     if (!handle)
       return;
     page.browserWindow = handle;
-    await runAbortableTask(progress => page.mainFrame()._waitForLoadState(progress, 'domcontentloaded'), page._timeoutSettings.navigationTimeout({})).catch(e => {}); // can happen after detach
+    const controller = new ProgressController(internalCallMetadata(), this);
+    await controller.run(progress => page.mainFrame()._waitForLoadState(progress, 'domcontentloaded'), page._timeoutSettings.navigationTimeout({})).catch(e => {}); // can happen after detach
     this.emit(ElectronApplication.Events.Window, page);
   }
 
@@ -107,7 +107,7 @@ export class ElectronApplication extends EventEmitter {
   }
 
   private async _waitForEvent(event: string, predicate?: Function): Promise<any> {
-    const progressController = new ProgressController();
+    const progressController = new ProgressController(internalCallMetadata(), this);
     if (event !== ElectronApplication.Events.Close)
       this._browserContext._closePromise.then(error => progressController.abort(error));
     return progressController.run(progress => helper.waitForEvent(progress, this, event, predicate).promise, this._timeoutSettings.timeout({}));
@@ -116,29 +116,26 @@ export class ElectronApplication extends EventEmitter {
   async _init()  {
     this._nodeSession.on('Runtime.executionContextCreated', (event: any) => {
       if (event.context.auxData && event.context.auxData.isDefault)
-        this._nodeExecutionContext = new js.ExecutionContext(new CRExecutionContext(this._nodeSession, event.context));
+        this._nodeExecutionContext = new js.ExecutionContext(this, new CRExecutionContext(this._nodeSession, event.context));
     });
     await this._nodeSession.send('Runtime.enable', {}).catch(e => {});
     this._nodeElectronHandle = await js.evaluate(this._nodeExecutionContext!, false /* returnByValue */, `process.mainModule.require('electron')`);
   }
 }
 
-export class Electron  {
+export class Electron extends SdkObject {
   private _playwrightOptions: PlaywrightOptions;
-  private _ffmpegPath: string | null;
 
-  constructor(packagePath: string, playwrightOptions: PlaywrightOptions, ffmpeg: browserPaths.BrowserDescriptor) {
-    const browsersPath = browserPaths.browsersPath(packagePath);
-    const browserPath = browserPaths.browserDirectory(browsersPath, ffmpeg);
-    this._ffmpegPath = browserPaths.executablePath(browserPath, ffmpeg) || null;
+  constructor(playwrightOptions: PlaywrightOptions) {
+    super(playwrightOptions.rootSdkObject);
     this._playwrightOptions = playwrightOptions;
   }
 
-  async launch(options: ElectronLaunchOptionsBase = {}): Promise<ElectronApplication> {
+  async launch(options: ElectronLaunchOptionsBase): Promise<ElectronApplication> {
     const {
       args = [],
     } = options;
-    const controller = new ProgressController();
+    const controller = new ProgressController(internalCallMetadata(), this);
     controller.setLogName('browser');
     return controller.run(async progress => {
       let app: ElectronApplication | undefined = undefined;
@@ -163,6 +160,9 @@ export class Electron  {
         cwd: options.cwd,
         tempDirectories: [],
         attemptToGracefullyClose: () => app!.close(),
+        handleSIGINT: true,
+        handleSIGTERM: true,
+        handleSIGHUP: true,
         onExit: () => {},
       });
 
@@ -183,13 +183,13 @@ export class Electron  {
         name: 'electron',
         isChromium: true,
         headful: true,
-        persistent: { noDefaultViewport: true },
+        persistent: { sdkLanguage: options.sdkLanguage, noDefaultViewport: true },
         browserProcess,
         protocolLogger: helper.debugProtocolLogger(),
         browserLogsCollector,
       };
-      const browser = await CRBrowser.connect(chromeTransport, browserOptions, this._ffmpegPath);
-      app = new ElectronApplication(browser, nodeConnection);
+      const browser = await CRBrowser.connect(chromeTransport, browserOptions);
+      app = new ElectronApplication(this, browser, nodeConnection);
       await app._init();
       return app;
     }, TimeoutSettings.timeout(options));

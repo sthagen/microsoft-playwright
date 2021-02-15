@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-import * as path from 'path';
-import * as fs from 'fs';
+import path from 'path';
+import fs from 'fs';
 import * as util from 'util';
 import { Page } from './page';
 import { assert } from '../utils/utils';
@@ -107,7 +107,22 @@ export class Download {
       await util.promisify(fs.unlink)(fileName).catch(e => {});
   }
 
+  async deleteOnContextClose(): Promise<void> {
+    // Compared to "delete", this method does not wait for the download to finish.
+    // We use it when closing the context to avoid stalling.
+    if (this._deleted)
+      return;
+    this._deleted = true;
+    if (this._acceptDownloads) {
+      const fileName = path.join(this._downloadsPath, this._uuid);
+      await util.promisify(fs.unlink)(fileName).catch(e => {});
+    }
+    this._reportFinished('Download deleted upon browser context closure.');
+  }
+
   async _reportFinished(error?: string) {
+    if (this._finished)
+      return;
     this._finished = true;
     this._failure = error || null;
 

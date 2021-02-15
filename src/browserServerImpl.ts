@@ -17,7 +17,7 @@
 import { LaunchServerOptions, Logger } from './client/types';
 import { BrowserType } from './server/browserType';
 import * as ws from 'ws';
-import * as fs from 'fs';
+import fs from 'fs';
 import { Browser } from './server/browser';
 import { ChildProcess } from 'child_process';
 import { EventEmitter } from 'ws';
@@ -33,6 +33,7 @@ import { Selectors } from './server/selectors';
 import { BrowserContext, Video } from './server/browserContext';
 import { StreamDispatcher } from './dispatchers/streamDispatcher';
 import { ProtocolLogger } from './server/types';
+import { CallMetadata, internalCallMetadata, SdkObject } from './server/instrumentation';
 
 export class BrowserServerLauncherImpl implements BrowserServerLauncher {
   private _browserType: BrowserType;
@@ -42,7 +43,7 @@ export class BrowserServerLauncherImpl implements BrowserServerLauncher {
   }
 
   async launchServer(options: LaunchServerOptions = {}): Promise<BrowserServerImpl> {
-    const browser = await this._browserType.launch({
+    const browser = await this._browserType.launch(internalCallMetadata(), {
       ...options,
       ignoreDefaultArgs: Array.isArray(options.ignoreDefaultArgs) ? options.ignoreDefaultArgs : undefined,
       ignoreAllDefaultArgs: !!options.ignoreDefaultArgs && !Array.isArray(options.ignoreDefaultArgs),
@@ -130,12 +131,12 @@ export class BrowserServerImpl extends EventEmitter implements BrowserServer {
   }
 }
 
-class RemoteBrowserDispatcher extends Dispatcher<{}, channels.RemoteBrowserInitializer> implements channels.PlaywrightChannel {
+class RemoteBrowserDispatcher extends Dispatcher<SdkObject, channels.RemoteBrowserInitializer> implements channels.PlaywrightChannel {
   readonly connectedBrowser: ConnectedBrowser;
 
   constructor(scope: DispatcherScope, browser: Browser, selectors: Selectors) {
     const connectedBrowser = new ConnectedBrowser(scope, browser, selectors);
-    super(scope, {}, 'RemoteBrowser', {
+    super(scope, browser, 'RemoteBrowser', {
       selectors: new SelectorsDispatcher(scope, selectors),
       browser: connectedBrowser,
     }, false, 'remoteBrowser');
@@ -155,12 +156,12 @@ class ConnectedBrowser extends BrowserDispatcher {
     this._selectors = selectors;
   }
 
-  async newContext(params: channels.BrowserNewContextParams): Promise<{ context: channels.BrowserContextChannel }> {
+  async newContext(params: channels.BrowserNewContextParams, metadata: CallMetadata): Promise<{ context: channels.BrowserContextChannel }> {
     if (params.recordVideo) {
       // TODO: we should create a separate temp directory or accept a launchServer parameter.
       params.recordVideo.dir = this._object.options.downloadsPath!;
     }
-    const result = await super.newContext(params);
+    const result = await super.newContext(params, metadata);
     const dispatcher = result.context as BrowserContextDispatcher;
     dispatcher._object.on(BrowserContext.Events.VideoStarted, (video: Video) => this._sendVideo(dispatcher, video));
     dispatcher._object._setSelectors(this._selectors);

@@ -504,10 +504,7 @@ The file path to save the image to. The screenshot type will be inferred from fi
 relative path, then it is resolved relative to the current working directory. If no path is provided, the image won't be
 saved to the disk.
 
-### option: ElementHandle.screenshot.type
-- `type` <"png"|"jpeg">
-
-Specify screenshot type, defaults to `png`.
+### option: ElementHandle.screenshot.type = %%-screenshot-type-%%
 
 ### option: ElementHandle.screenshot.quality
 - `quality` <[int]>
@@ -737,7 +734,7 @@ to pass. This method throws when the element is detached while waiting, unless w
 If the element does not satisfy the condition for the [`option: timeout`] milliseconds, this method will throw.
 
 ### param: ElementHandle.waitForElementState.state
-- `state` <"visible"|"hidden"|"stable"|"enabled"|"disabled"|"editable">
+- `state` <[ElementState]<"visible"|"hidden"|"stable"|"enabled"|"disabled"|"editable">>
 
 A state to wait for, see below for more details.
 

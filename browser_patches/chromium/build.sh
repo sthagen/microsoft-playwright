@@ -6,7 +6,7 @@ trap "cd $(pwd -P)" EXIT
 cd "$(dirname $0)"
 
 USAGE=$(cat<<EOF
-  usage: $(basename $0) [--mirror|--mirror-linux|--mirror-win32|--mirror-win64|--mirror-mac|--compile-mac-arm64]
+  usage: $(basename $0) [--mirror|--mirror-linux|--mirror-win32|--mirror-win64|--mirror-mac|--compile-mac-arm64|--compile-linux|--compile-win32|--compile-win64|--compile-mac]
 
   Either compiles chromium or mirrors it from Chromium Continuous Builds CDN.
 EOF
@@ -29,16 +29,22 @@ main() {
   fi
 }
 
+
 compile_chromium() {
   if [[ -z "${CR_CHECKOUT_PATH}" ]]; then
     echo "ERROR: chromium compilation requires CR_CHECKOUT_PATH to be set to reuse checkout."
     exit 1
   fi
 
-  if [[ ! -d "${SCRIPT_PATH}/depot_tools" ]]; then
-    git clone https://chromium.googlesource.com/chromium/tools/depot_tools.git "${SCRIPT_PATH}/depot_tools"
+  # install depot_tools if they are not in system
+  # NOTE: as of Feb 8, 2021, windows requires manual and separate
+  # installation of depot_tools.
+  if ! command -v autoninja >/dev/null; then
+    if [[ ! -d "${SCRIPT_PATH}/depot_tools" ]]; then
+      git clone https://chromium.googlesource.com/chromium/tools/depot_tools.git "${SCRIPT_PATH}/depot_tools"
+    fi
+    export PATH="${SCRIPT_PATH}/depot_tools:$PATH"
   fi
-  export PATH="${SCRIPT_PATH}/depot_tools:$PATH"
 
   CHROMIUM_FOLDER_NAME=""
   CHROMIUM_FILES_TO_ARCHIVE=()
@@ -65,7 +71,7 @@ compile_chromium() {
     CHROMIUM_FILES_TO_ARCHIVE=("Chromium.app")
   elif [[ $1 == "--compile-linux" ]]; then
     CHROMIUM_FOLDER_NAME="chrome-linux"
-    CHROMIUM_FILES_TO_ARCHIVE=( 
+    CHROMIUM_FILES_TO_ARCHIVE=(
       "chrome"
       "chrome_100_percent.pak"
       "chrome_200_percent.pak"
@@ -90,6 +96,36 @@ compile_chromium() {
       "xdg-mime"
       "xdg-settings"
     )
+  elif [[ $1 == "--compile-win"* ]]; then
+    CHROMIUM_FOLDER_NAME="chrome-win"
+    CHROMIUM_FILES_TO_ARCHIVE=(
+      "chrome.dll"
+      "chrome.exe"
+      "chrome_100_percent.pak"
+      "chrome_200_percent.pak"
+      "chrome_elf.dll"
+      "chrome_proxy.exe"
+      "chrome_pwa_launcher.exe"
+      "D3DCompiler_47.dll"
+      "elevation_service.exe"
+      "eventlog_provider.dll"
+      "First Run"
+      "icudtl.dat"
+      "libEGL.dll"
+      "libGLESv2.dll"
+      "locales"
+      "MEIPreload"
+      "mojo_core.dll"
+      "nacl_irt_x86_64.nexe"
+      "notification_helper.exe"
+      "resources.pak"
+      "swiftshader/libEGL.dll"
+      "swiftshader/libGLESv2.dll"
+      "v8_context_snapshot.bin"
+    )
+  else
+    echo "ERROR: unknown command, use --help for details"
+    exit 1
   fi
 
   # Get chromium SHA from the build revision.
@@ -128,14 +164,37 @@ EOF
 
   if [[ $1 == "--compile-mac-arm64" ]]; then
     echo 'target_cpu = "arm64"' >> ./out/Default/args.gn
+  elif [[ $1 == "--compile-win32" ]]; then
+    echo 'target_cpu = "x86"' >> ./out/Default/args.gn
   fi
 
-  # Compile Chromium with correct Xcode version.
-  gn gen out/Default
-  autoninja -C out/Default chrome
+  if [[ ! -z "$USE_GOMA" ]]; then
+    PLAYWRIGHT_GOMA_PATH="${SCRIPT_PATH}/electron-build-tools/third_party/goma"
+    if [[ $1 == "--compile-win"* ]]; then
+      PLAYWRIGHT_GOMA_PATH=$(cygpath -w "${PLAYWRIGHT_GOMA_PATH}")
+    fi
+    echo 'use_goma = true' >> ./out/Default/args.gn
+    echo "goma_dir = \"${PLAYWRIGHT_GOMA_PATH}\"" >> ./out/Default/args.gn
+  fi
 
-  if [[ $1 == "--compile-linux" ]]; then
-    autoninja -C out/Default chrome_sandbox clear_key_cdm
+  if [[ $1 == "--compile-win"* ]]; then
+    if [[ -z "$USE_GOMA" ]]; then
+      /c/Windows/System32/cmd.exe "/c $(cygpath -w ${SCRIPT_PATH}/buildwin.bat)"
+    else
+      /c/Windows/System32/cmd.exe "/c $(cygpath -w ${SCRIPT_PATH}/buildwingoma.bat)"
+    fi
+  else
+    gn gen out/Default
+    if [[ $1 == "--compile-linux" ]]; then
+      TARGETS="chrome chrome_sandbox clear_key_cdm"
+    else
+      TARGETS="chrome"
+    fi
+    if [[ -z "$USE_GOMA" ]]; then
+      autoninja -C out/Default $TARGETS
+    else
+      ninja -j 200 -C out/Default $TARGETS
+    fi
   fi
 
   # Prepare resulting archive.
@@ -148,9 +207,17 @@ EOF
   if [[ $(uname) == "Darwin" ]]; then
     COPY_COMMAND="ditto"
   fi
-  for file in ${CHROMIUM_FILES_TO_ARCHIVE[@]}; do
+
+  for ((i = 0; i < ${#CHROMIUM_FILES_TO_ARCHIVE[@]}; i++)) do
+    file="${CHROMIUM_FILES_TO_ARCHIVE[$i]}"
+    mkdir -p "output/${CHROMIUM_FOLDER_NAME}/$(dirname $file)"
     $COPY_COMMAND "${CR_CHECKOUT_PATH}/src/out/Default/${file}" "output/${CHROMIUM_FOLDER_NAME}/${file}"
   done
+
+  if [[ $1 == "--compile-win"* ]]; then
+    $COPY_COMMAND "${CR_CHECKOUT_PATH}/src/out/Default/"*.manifest "output/${CHROMIUM_FOLDER_NAME}/"
+  fi
+
   cd output
   zip --symlinks -r build.zip "${CHROMIUM_FOLDER_NAME}"
 }

@@ -15,24 +15,25 @@
  */
 
 import * as types from './types';
-import { BrowserContext, ContextListener, Video } from './browserContext';
+import { BrowserContext, Video } from './browserContext';
 import { Page } from './page';
-import { EventEmitter } from 'events';
 import { Download } from './download';
 import { ProxySettings } from './types';
 import { ChildProcess } from 'child_process';
 import { RecentLogsCollector } from '../utils/debugLogger';
+import * as registry from '../utils/registry';
+import { SdkObject } from './instrumentation';
 
 export interface BrowserProcess {
-  onclose: ((exitCode: number | null, signal: string | null) => void) | undefined;
+  onclose?: ((exitCode: number | null, signal: string | null) => void);
   process?: ChildProcess;
   kill(): Promise<void>;
   close(): Promise<void>;
 }
 
 export type PlaywrightOptions = {
-  contextListeners: ContextListener[],
-  isInternal: boolean
+  registry: registry.Registry,
+  rootSdkObject: SdkObject,
 };
 
 export type BrowserOptions = PlaywrightOptions & {
@@ -45,10 +46,11 @@ export type BrowserOptions = PlaywrightOptions & {
   proxy?: ProxySettings,
   protocolLogger: types.ProtocolLogger,
   browserLogsCollector: RecentLogsCollector,
-  slowMo?: number,
+  slowMo?: number;
+  wsEndpoint?: string;  // Only there when connected over web socket.
 };
 
-export abstract class Browser extends EventEmitter {
+export abstract class Browser extends SdkObject {
   static Events = {
     Disconnected: 'disconnected',
   };
@@ -60,17 +62,17 @@ export abstract class Browser extends EventEmitter {
   readonly _idToVideo = new Map<string, Video>();
 
   constructor(options: BrowserOptions) {
-    super();
-    this.setMaxListeners(0);
+    super(options.rootSdkObject);
+    this.attribution.browser = this;
     this.options = options;
   }
 
-  abstract newContext(options?: types.BrowserContextOptions): Promise<BrowserContext>;
+  abstract newContext(options: types.BrowserContextOptions): Promise<BrowserContext>;
   abstract contexts(): BrowserContext[];
   abstract isConnected(): boolean;
   abstract version(): string;
 
-  async newPage(options?: types.BrowserContextOptions): Promise<Page> {
+  async newPage(options: types.BrowserContextOptions): Promise<Page> {
     const context = await this.newContext(options);
     const page = await context.newPage();
     page._ownedContext = context;
@@ -130,4 +132,3 @@ export abstract class Browser extends EventEmitter {
       await new Promise(x => this.once(Browser.Events.Disconnected, x));
   }
 }
-

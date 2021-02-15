@@ -14,15 +14,14 @@
  * limitations under the License.
  */
 
-import * as debug from 'debug';
+import debug from 'debug';
 import * as types from '../types';
 import { EventEmitter } from 'events';
-import * as fs from 'fs';
+import fs from 'fs';
 import * as stream from 'stream';
 import * as util from 'util';
 import * as ws from 'ws';
 import { createGuid, makeWaitForNextTask } from '../../utils/utils';
-import * as browserPaths from '../../utils/browserPaths';
 import { BrowserOptions, BrowserProcess, PlaywrightOptions } from '../browser';
 import { BrowserContext, validateBrowserContextOptions } from '../browserContext';
 import { ProgressController } from '../progress';
@@ -33,6 +32,7 @@ import { RecentLogsCollector } from '../../utils/debugLogger';
 import { TimeoutSettings } from '../../utils/timeoutSettings';
 import { AndroidWebView } from '../../protocol/channels';
 import { CRPage } from '../chromium/crPage';
+import { SdkObject, internalCallMetadata } from '../instrumentation';
 
 const readFileAsync = util.promisify(fs.readFile);
 
@@ -54,17 +54,14 @@ export interface SocketBackend extends EventEmitter {
   close(): Promise<void>;
 }
 
-export class Android {
+export class Android extends SdkObject {
   private _backend: Backend;
   private _devices = new Map<string, AndroidDevice>();
-  readonly _ffmpegPath: string | null;
   readonly _timeoutSettings: TimeoutSettings;
   readonly _playwrightOptions: PlaywrightOptions;
 
-  constructor(packagePath: string, backend: Backend, playwrightOptions: PlaywrightOptions, ffmpeg: browserPaths.BrowserDescriptor) {
-    const browsersPath = browserPaths.browsersPath(packagePath);
-    const browserPath = browserPaths.browserDirectory(browsersPath, ffmpeg);
-    this._ffmpegPath = browserPaths.executablePath(browserPath, ffmpeg) || null;
+  constructor(backend: Backend, playwrightOptions: PlaywrightOptions) {
+    super(playwrightOptions.rootSdkObject);
     this._backend = backend;
     this._playwrightOptions = playwrightOptions;
     this._timeoutSettings = new TimeoutSettings();
@@ -96,7 +93,7 @@ export class Android {
   }
 }
 
-export class AndroidDevice extends EventEmitter {
+export class AndroidDevice extends SdkObject {
   readonly _backend: DeviceBackend;
   readonly model: string;
   readonly serial: string;
@@ -118,8 +115,7 @@ export class AndroidDevice extends EventEmitter {
   private _isClosed = false;
 
   constructor(android: Android, backend: DeviceBackend, model: string) {
-    super();
-    this.setMaxListeners(0);
+    super(android);
     this._android = android;
     this._backend = backend;
     this.model = model;
@@ -237,7 +233,7 @@ export class AndroidDevice extends EventEmitter {
     this.emit(AndroidDevice.Events.Closed);
   }
 
-  async launchBrowser(pkg: string = 'com.android.chrome', options: types.BrowserContextOptions = {}): Promise<BrowserContext> {
+  async launchBrowser(pkg: string = 'com.android.chrome', options: types.BrowserContextOptions): Promise<BrowserContext> {
     debug('pw:android')('Force-stopping', pkg);
     await this._backend.runCommand(`shell:am force-stop ${pkg}`);
 
@@ -249,14 +245,14 @@ export class AndroidDevice extends EventEmitter {
     return await this._connectToBrowser(socketName, options);
   }
 
-  async connectToWebView(pid: number): Promise<BrowserContext> {
+  async connectToWebView(pid: number, sdkLanguage: string): Promise<BrowserContext> {
     const webView = this._webViews.get(pid);
     if (!webView)
       throw new Error('WebView has been closed');
-    return await this._connectToBrowser(`webview_devtools_remote_${pid}`);
+    return await this._connectToBrowser(`webview_devtools_remote_${pid}`, { sdkLanguage });
   }
 
-  private async _connectToBrowser(socketName: string, options: types.BrowserContextOptions = {}): Promise<BrowserContext> {
+  private async _connectToBrowser(socketName: string, options: types.BrowserContextOptions): Promise<BrowserContext> {
     const socket = await this._waitForLocalAbstract(socketName);
     const androidBrowser = new AndroidBrowser(this, socket);
     await androidBrowser._init();
@@ -276,8 +272,8 @@ export class AndroidDevice extends EventEmitter {
     };
     validateBrowserContextOptions(options, browserOptions);
 
-    const browser = await CRBrowser.connect(androidBrowser, browserOptions, this._android._ffmpegPath);
-    const controller = new ProgressController();
+    const browser = await CRBrowser.connect(androidBrowser, browserOptions);
+    const controller = new ProgressController(internalCallMetadata(), this);
     const defaultContext = browser._defaultContext!;
     await controller.run(async progress => {
       await defaultContext._loadDefaultContextAsIs(progress);

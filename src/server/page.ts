@@ -26,12 +26,12 @@ import * as types from './types';
 import { BrowserContext, Video } from './browserContext';
 import { ConsoleMessage } from './console';
 import * as accessibility from './accessibility';
-import { EventEmitter } from 'events';
 import { FileChooser } from './fileChooser';
-import { ProgressController, runAbortableTask } from './progress';
+import { ProgressController } from './progress';
 import { assert, isError } from '../utils/utils';
 import { debugLogger } from '../utils/debugLogger';
 import { Selectors } from './selectors';
+import { CallMetadata, SdkObject } from './instrumentation';
 
 export interface PageDelegate {
   readonly rawMouse: input.RawMouse;
@@ -92,7 +92,7 @@ type PageState = {
   extraHTTPHeaders: types.HeadersArray | null;
 };
 
-export class Page extends EventEmitter {
+export class Page extends SdkObject {
   static Events = {
     Close: 'close',
     Crash: 'crash',
@@ -149,8 +149,8 @@ export class Page extends EventEmitter {
   _video: Video | null = null;
 
   constructor(delegate: PageDelegate, browserContext: BrowserContext) {
-    super();
-    this.setMaxListeners(0);
+    super(browserContext);
+    this.attribution.page = this;
     this._delegate = delegate;
     this._closedCallback = () => {};
     this._closedPromise = new Promise(f => this._closedCallback = f);
@@ -226,7 +226,13 @@ export class Page extends EventEmitter {
   }
 
   async _onFileChooserOpened(handle: dom.ElementHandle) {
-    const multiple = await handle.evaluate(element => !!(element as HTMLInputElement).multiple);
+    let multiple;
+    try {
+      multiple = await handle.evaluate(element => !!(element as HTMLInputElement).multiple);
+    } catch (e) {
+      // Frame/context may be gone during async processing. Do not throw.
+      return;
+    }
     if (!this.listenerCount(Page.Events.FileChooser)) {
       handle.dispose();
       return;
@@ -290,8 +296,8 @@ export class Page extends EventEmitter {
       this.emit(Page.Events.Console, message);
   }
 
-  async reload(controller: ProgressController, options: types.NavigateOptions): Promise<network.Response | null> {
-    this.mainFrame().setupNavigationProgressController(controller);
+  async reload(metadata: CallMetadata, options: types.NavigateOptions): Promise<network.Response | null> {
+    const controller = this.mainFrame().setupNavigationProgressController(metadata);
     const response = await controller.run(async progress => {
       // Note: waitForNavigation may fail before we get response to reload(),
       // so we should await it immediately.
@@ -305,8 +311,8 @@ export class Page extends EventEmitter {
     return response;
   }
 
-  async goBack(controller: ProgressController, options: types.NavigateOptions): Promise<network.Response | null> {
-    this.mainFrame().setupNavigationProgressController(controller);
+  async goBack(metadata: CallMetadata, options: types.NavigateOptions): Promise<network.Response | null> {
+    const controller = this.mainFrame().setupNavigationProgressController(metadata);
     const response = await controller.run(async progress => {
       // Note: waitForNavigation may fail before we get response to goBack,
       // so we should catch it immediately.
@@ -327,8 +333,8 @@ export class Page extends EventEmitter {
     return response;
   }
 
-  async goForward(controller: ProgressController, options: types.NavigateOptions): Promise<network.Response | null> {
-    this.mainFrame().setupNavigationProgressController(controller);
+  async goForward(metadata: CallMetadata, options: types.NavigateOptions): Promise<network.Response | null> {
+    const controller = this.mainFrame().setupNavigationProgressController(metadata);
     const response = await controller.run(async progress => {
       // Note: waitForNavigation may fail before we get response to goForward,
       // so we should catch it immediately.
@@ -415,8 +421,9 @@ export class Page extends EventEmitter {
     route.continue();
   }
 
-  async screenshot(options: types.ScreenshotOptions = {}): Promise<Buffer> {
-    return runAbortableTask(
+  async screenshot(metadata: CallMetadata, options: types.ScreenshotOptions = {}): Promise<Buffer> {
+    const controller = new ProgressController(metadata, this);
+    return controller.run(
         progress => this._screenshotter.screenshotPage(progress, options),
         this._timeoutSettings.timeout(options));
   }
@@ -496,7 +503,7 @@ export class Page extends EventEmitter {
   }
 }
 
-export class Worker extends EventEmitter {
+export class Worker extends SdkObject {
   static Events = {
     Close: 'close',
   };
@@ -506,16 +513,15 @@ export class Worker extends EventEmitter {
   private _executionContextCallback: (value: js.ExecutionContext) => void;
   _existingExecutionContext: js.ExecutionContext | null = null;
 
-  constructor(url: string) {
-    super();
-    this.setMaxListeners(0);
+  constructor(parent: SdkObject, url: string) {
+    super(parent);
     this._url = url;
     this._executionContextCallback = () => {};
     this._executionContextPromise = new Promise(x => this._executionContextCallback = x);
   }
 
   _createExecutionContext(delegate: js.ExecutionContextDelegate) {
-    this._existingExecutionContext = new js.ExecutionContext(delegate);
+    this._existingExecutionContext = new js.ExecutionContext(this, delegate);
     this._executionContextCallback(this._existingExecutionContext);
   }
 

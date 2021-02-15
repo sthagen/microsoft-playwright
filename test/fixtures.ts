@@ -20,14 +20,12 @@ import fs from 'fs';
 import path from 'path';
 import util from 'util';
 import os from 'os';
-import type { Browser, BrowserContext, BrowserType, Electron, Page } from '../index';
-import { Connection } from '../lib/client/connection';
-import { Transport } from '../lib/protocol/transport';
+import type { Browser, BrowserContext, BrowserType, Page } from '../index';
 import { installCoverageHooks } from './coverage';
 import { folio as httpFolio } from './http.fixtures';
 import { folio as playwrightFolio } from './playwright.fixtures';
 import { PlaywrightClient } from '../lib/remote/playwrightClient';
-import type { Android } from '../types/android';
+import { start } from '../lib/outofprocess';
 export { expect, config } from 'folio';
 
 const removeFolderAsync = util.promisify(require('rimraf'));
@@ -104,30 +102,13 @@ fixtures.browserOptions.override(async ({ browserName, headful, slowMo }, run) =
 fixtures.playwright.override(async ({ browserName, testWorkerIndex, platform, mode }, run) => {
   assert(platform); // Depend on platform to generate all tests.
   const { coverage, uninstall } = installCoverageHooks(browserName);
+  require('../lib/utils/utils').setUnderTest();
   if (mode === 'driver') {
-    require('../lib/utils/utils').setUnderTest();
-    const connection = new Connection();
-    const spawnedProcess = childProcess.fork(path.join(__dirname, '..', 'lib', 'cli', 'cli.js'), ['run-driver'], {
-      stdio: 'pipe',
-      detached: true,
-    });
-    spawnedProcess.unref();
-    const onExit = (exitCode, signal) => {
-      throw new Error(`Server closed with exitCode=${exitCode} signal=${signal}`);
-    };
-    spawnedProcess.on('exit', onExit);
-    const transport = new Transport(spawnedProcess.stdin, spawnedProcess.stdout);
-    connection.onmessage = message => transport.send(JSON.stringify(message));
-    transport.onmessage = message => connection.dispatch(JSON.parse(message));
-    const playwrightObject = await connection.waitForObjectWithKnownName('Playwright');
+    const playwrightObject = await start();
     await run(playwrightObject);
-    spawnedProcess.removeListener('exit', onExit);
-    spawnedProcess.stdin.destroy();
-    spawnedProcess.stdout.destroy();
-    spawnedProcess.stderr.destroy();
+    await playwrightObject.stop();
     await teardownCoverage();
   } else if (mode === 'service') {
-    require('../lib/utils/utils').setUnderTest();
     const port = 9407 + testWorkerIndex * 2;
     const spawnedProcess = childProcess.fork(path.join(__dirname, '..', 'lib', 'service.js'), [String(port)], {
       stdio: 'pipe'
@@ -190,9 +171,3 @@ export const beforeEach = folio.beforeEach;
 export const afterEach = folio.afterEach;
 export const beforeAll = folio.beforeAll;
 export const afterAll = folio.afterAll;
-
-
-declare module '../index' {
-  const _android: Android;
-  const _electron: Electron;
-}

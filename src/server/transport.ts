@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import * as WebSocket from 'ws';
+import WebSocket from 'ws';
 import { Progress } from './progress';
 import { makeWaitForNextTask } from '../utils/utils';
 
@@ -50,14 +50,15 @@ export class WebSocketTransport implements ConnectionTransport {
 
   onmessage?: (message: ProtocolResponse) => void;
   onclose?: () => void;
+  readonly wsEndpoint: string;
 
   static async connect(progress: Progress, url: string): Promise<WebSocketTransport> {
     progress.log(`<ws connecting> ${url}`);
     const transport = new WebSocketTransport(progress, url);
     let success = false;
-    progress.aborted.then(() => {
+    progress.cleanupWhenAborted(async () => {
       if (!success)
-        transport.closeAndWait().catch(e => null);
+        await transport.closeAndWait().catch(e => null);
     });
     await new Promise<WebSocketTransport>((fulfill, reject) => {
       transport._ws.addEventListener('open', async () => {
@@ -75,6 +76,7 @@ export class WebSocketTransport implements ConnectionTransport {
   }
 
   constructor(progress: Progress, url: string) {
+    this.wsEndpoint = url;
     this._ws = new WebSocket(url, [], {
       perMessageDeflate: false,
       maxPayload: 256 * 1024 * 1024, // 256Mb,
@@ -113,8 +115,8 @@ export class WebSocketTransport implements ConnectionTransport {
   }
 
   async closeAndWait() {
-    const promise = new Promise(f => this.onclose = f);
+    const promise = new Promise(f => this._ws.once('close', f));
     this.close();
-    return promise; // Make sure to await the actual disconnect.
+    await promise; // Make sure to await the actual disconnect.
   }
 }

@@ -18,10 +18,10 @@
 
 /* eslint-disable no-console */
 
-import * as path from 'path';
-import * as program from 'commander';
-import * as os from 'os';
-import * as fs from 'fs';
+import path from 'path';
+import program from 'commander';
+import os from 'os';
+import fs from 'fs';
 import { runServer, printApiJson, installBrowsers } from './driver';
 import { showTraceViewer } from './traceViewer/traceViewer';
 import * as playwright from '../..';
@@ -325,14 +325,13 @@ async function openPage(context: BrowserContext, url: string | undefined): Promi
 }
 
 async function open(options: Options, url: string | undefined, language: string) {
-  const { context, launchOptions, contextOptions } = await launchContext(options, false);
+  const { context, launchOptions, contextOptions } = await launchContext(options, !!process.env.PWCLI_HEADLESS_FOR_TEST);
   await context._enableRecorder({
     language,
     launchOptions,
     contextOptions,
     device: options.device,
     saveStorage: options.saveStorage,
-    terminal: !!process.stdout.columns,
   });
   await openPage(context, url);
   if (process.env.PWCLI_EXIT_FOR_TEST)
@@ -340,7 +339,7 @@ async function open(options: Options, url: string | undefined, language: string)
 }
 
 async function codegen(options: Options, url: string | undefined, language: string, outputFile?: string) {
-  const { context, launchOptions, contextOptions } = await launchContext(options, false);
+  const { context, launchOptions, contextOptions } = await launchContext(options, !!process.env.PWCLI_HEADLESS_FOR_TEST);
   if (process.env.PWTRACE)
     contextOptions._traceDir = path.join(process.cwd(), '.trace');
   await context._enableRecorder({
@@ -350,7 +349,6 @@ async function codegen(options: Options, url: string | undefined, language: stri
     device: options.device,
     saveStorage: options.saveStorage,
     startRecording: true,
-    terminal: !!process.stdout.columns,
     outputFile: outputFile ? path.resolve(outputFile) : undefined
   });
   await openPage(context, url);

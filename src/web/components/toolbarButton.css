@@ -17,14 +17,36 @@
 .toolbar-button {
   border: none;
   outline: none;
-  color: #999;
+  color: var(--toolbar-color);
   background: transparent;
   padding: 0;
   margin-left: 10px;
-  height: 40px;
   cursor: pointer;
 }
 
-.toolbar-button:hover {
+.toolbar-button:disabled {
+  color: #bbb !important;
+  cursor: default;
+}
+
+.toolbar-button:not(.disabled):hover {
+  color: #555;
+}
+
+.toolbar-button.toggled {
   color: #1ea7fd;
+}
+
+.toolbar-button.codicon-record.toggled {
+  color: #fd1e1e;
+}
+
+.toolbar-button.codicon-debug-continue,
+.toolbar-button.codicon-debug-step-over {
+  color: #01bb01;
+}
+
+.toolbar-button.codicon-debug-continue:hover,
+.toolbar-button.codicon-debug-step-over:hover {
+  color: #41ca1e;
 }

@@ -16,7 +16,7 @@
  */
 
 import * as jpeg from 'jpeg-js';
-import * as path from 'path';
+import path from 'path';
 import * as png from 'pngjs';
 import { assert, createGuid, debugAssert, headersArrayToObject, headersObjectToArray } from '../../utils/utils';
 import * as accessibility from '../accessibility';
@@ -559,9 +559,15 @@ export class WKPage implements PageDelegate {
   }
 
   private async _onFileChooserOpened(event: {frameId: Protocol.Network.FrameId, element: Protocol.Runtime.RemoteObject}) {
-    const context = await this._page._frameManager.frame(event.frameId)!._mainContext();
-    const handle = context.createHandle(event.element).asElement()!;
-    this._page._onFileChooserOpened(handle);
+    let handle;
+    try {
+      const context = await this._page._frameManager.frame(event.frameId)!._mainContext();
+      handle = context.createHandle(event.element).asElement()!;
+    } catch (e) {
+      // During async processing, frame/context may go away. We should not throw.
+      return;
+    }
+    await this._page._onFileChooserOpened(handle);
   }
 
   private static async _setEmulateMedia(session: WKSession, mediaType: types.MediaType | null, colorScheme: types.ColorScheme | null): Promise<void> {

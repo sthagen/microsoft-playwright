@@ -19,3 +19,76 @@
   flex-direction: column;
   flex: auto;
 }
+
+.recorder-paused-infobar {
+  display: flex;
+  color: #eee;
+  background-color: #333;
+  line-height: 24px;
+  align-items: center;
+  flex: none;
+  white-space: nowrap;
+}
+
+.recorder-log {
+  display: flex;
+  flex-direction: column;
+  flex: auto;
+  line-height: 20px;
+  white-space: pre;
+  background: white;
+  overflow: auto;
+}
+
+.recorder-log-message {
+  flex: none;
+  padding: 3px 0 3px 36px;
+  display: flex;
+  align-items: center;
+}
+
+.recorder-log-header {
+  color: var(--toolbar-color);
+  box-shadow: var(--box-shadow);
+  background-color: var(--toolbar-bg-color);
+  height: 32px;
+  display: flex;
+  align-items: center;
+  padding: 0 9px;
+  z-index: 10;
+}
+
+.recorder-log-call {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  border-top: 1px solid #eee;
+}
+
+.recorder-log-call-header {
+  height: 24px;
+  display: flex;
+  align-items: center;
+  padding: 0 2px;
+  z-index: 2;
+}
+
+.recorder-log-call .codicon {
+  padding: 0 4px;
+}
+
+.recorder-log .codicon-check {
+  color: #21a945;
+  font-weight: bold;
+}
+
+.recorder-log-call.error {
+  background-color: #fff0f0;
+  border-top: 1px solid #ffd6d6;
+}
+
+.recorder-log-call.error .recorder-log-call-header,
+.recorder-log-message.error,
+.recorder-log .codicon-error {
+  color: red;
+}

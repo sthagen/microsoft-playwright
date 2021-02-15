@@ -18,7 +18,7 @@ import { Download } from '../server/download';
 import * as channels from '../protocol/channels';
 import { Dispatcher, DispatcherScope } from './dispatcher';
 import { StreamDispatcher } from './streamDispatcher';
-import * as fs from 'fs';
+import fs from 'fs';
 import * as util from 'util';
 import { mkdirIfNeeded } from '../utils/utils';
 
@@ -39,7 +39,7 @@ export class DownloadDispatcher extends Dispatcher<Download, channels.DownloadIn
     return await new Promise((resolve, reject) => {
       this._object.saveAs(async (localPath, error) => {
         if (error !== undefined) {
-          reject(error);
+          reject(new Error(error));
           return;
         }
 
@@ -58,7 +58,7 @@ export class DownloadDispatcher extends Dispatcher<Download, channels.DownloadIn
     return await new Promise((resolve, reject) => {
       this._object.saveAs(async (localPath, error) => {
         if (error !== undefined) {
-          reject(error);
+          reject(new Error(error));
           return;
         }
 

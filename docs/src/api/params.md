@@ -1,5 +1,5 @@
 ## navigation-wait-until
-- `waitUntil` <"load"|"domcontentloaded"|"networkidle">
+- `waitUntil` <[WaitUntilState]<"load"|"domcontentloaded"|"networkidle">>
 
 When to consider operation succeeded, defaults to `load`. Events can be either:
 * `'domcontentloaded'` - consider operation to be finished when the `DOMContentLoaded` event is fired.
@@ -56,13 +56,13 @@ A point to use relative to the top-left corner of element padding box. If not sp
 element.
 
 ## input-modifiers
-- `modifiers` <[Array]<"Alt"|"Control"|"Meta"|"Shift">>
+- `modifiers` <[Array]<[KeyboardModifier]<"Alt"|"Control"|"Meta"|"Shift">>>
 
 Modifier keys to press. Ensures that only these modifiers are pressed during the operation, and then restores current
 modifiers back. If not specified, currently pressed modifiers are used.
 
 ## input-button
-- `button` <"left"|"right"|"middle">
+- `button` <[MouseButton]<"left"|"right"|"middle">>
 
 Defaults to `left`.
 
@@ -88,7 +88,7 @@ defaults to 1. See [UIEvent.detail].
 A selector to query for. See [working with selectors](./selectors.md) for more details.
 
 ## wait-for-selector-state
-- `state` <"attached"|"detached"|"visible"|"hidden">
+- `state` <[WaitForSelectorState]<"attached"|"detached"|"visible"|"hidden">>
 
 Defaults to `'visible'`. Can be either:
 * `'attached'` - wait for element to be present in DOM.
@@ -155,7 +155,7 @@ Specify environment variables that will be visible to the browser. Defaults to `
     - `expires` <[float]> Optional Unix time in seconds.
     - `httpOnly` <[boolean]> Optional httpOnly flag
     - `secure` <[boolean]> Optional secure flag
-    - `sameSite` <"Strict"|"Lax"|"None"> Optional sameSite flag
+    - `sameSite` <["SameSiteAttribute"]<"Strict"|"Lax"|"None">> Optional sameSite flag
   - `origins` <[Array]<[Object]>> Optional localStorage to set for context
     - `origin` <[string]>
     - `localStorage` <[Array]<[Object]>>
@@ -195,7 +195,9 @@ Whether to ignore HTTPS errors during navigation. Defaults to `false`.
 Toggles bypassing page's Content-Security-Policy.
 
 ## context-option-viewport
-* langs: java, js
+* langs: js, java
+  - alias-java: viewportSize
+  - alias-csharp: viewportSize
 - `viewport` <[null]|[Object]>
   - `width` <[int]> page width in pixels.
   - `height` <[int]> page height in pixels.
@@ -321,7 +323,7 @@ Whether to emulate network being offline. Defaults to `false`.
 Credentials for [HTTP authentication](https://developer.mozilla.org/en-US/docs/Web/HTTP/Authentication).
 
 ## context-option-colorscheme
-- `colorScheme` <"light"|"dark"|"no-preference">
+- `colorScheme` <[ColorScheme]<"light"|"dark"|"no-preference">>
 
 Emulates `'prefers-colors-scheme'` media feature, supported values are `'light'`, `'dark'`, `'no-preference'`. See
 [`method: Page.emulateMedia`] for more details. Defaults to '`light`'.
@@ -347,7 +349,7 @@ Logger sink for Playwright logging.
 **DEPRECATED** Use [`option: recordVideo`] instead.
 
 ## context-option-recordhar
-* langs: java, js
+* langs: js
 - `recordHar` <[Object]>
   - `omitContent` <[boolean]> Optional setting to control whether to omit request content from the HAR. Defaults to
     `false`.
@@ -357,46 +359,52 @@ Enables [HAR](http://www.softwareishard.com/blog/har-12-spec) recording for all 
 specified, the HAR is not recorded. Make sure to await [`method: BrowserContext.close`] for the HAR to be
 saved.
 
-## python-context-option-recordhar-omit-content
-* langs: python
-- `record_har_omit_content` <[boolean]>
-
-Optional setting to control whether to omit request content from the HAR. Defaults to `false`.
-
-## python-context-option-recordhar-path
-* langs: python
-- `record_har_path` <[path]>
+## context-option-recordhar-path
+* langs: csharp, java, python
+  - alias-python: record_har_path
+- `recordHarPath` <[path]>
 
 Path on the filesystem to write the HAR file to.
 
+## context-option-recordhar-omit-content
+* langs: csharp, java, python
+  - alias-python: record_har_omit_content
+- `recordHarOmitContent` <[boolean]>
+
+Optional setting to control whether to omit request content from the HAR. Defaults to `false`.
+
 ## context-option-recordvideo
-* langs: java, js
+* langs: js
 - `recordVideo` <[Object]>
   - `dir` <[path]> Path to the directory to put videos into.
-  - `size` <[Object]> Optional dimensions of the recorded videos. If not specified the size will be equal to `viewport`.
-    If `viewport` is not configured explicitly the video size defaults to 1280x720. Actual picture of each page will be
-    scaled down if necessary to fit the specified size.
+  - `size` <[Object]> Optional dimensions of the recorded videos. If not specified the size will be equal to `viewport`
+    scaled down to fit into 800x800. If `viewport` is not configured explicitly the video size defaults to 800x450.
+    Actual picture of each page will be scaled down if necessary to fit the specified size.
     - `width` <[int]> Video frame width.
     - `height` <[int]> Video frame height.
 
 Enables video recording for all pages into `recordVideo.dir` directory. If not specified videos are not recorded. Make
 sure to await [`method: BrowserContext.close`] for videos to be saved.
 
-## python-context-option-recordvideo-dir
-* langs: python
-- `record_video_dir` <[path]>
+## context-option-recordvideo-dir
+* langs: csharp, java, python
+  - alias-python: record_video_dir
+- `recordVideoDir` <[path]>
 
 Path to the directory to put videos into.
 
-## python-context-option-recordvideo-size
-* langs: python
-- `record_video_size` <[Object]>
-  If `viewport` is not configured explicitly the video size defaults to 1280x720. Actual picture of each page will be
+## context-option-recordvideo-size
+* langs: csharp, java, python
+  - alias-python: record_video_size
+- `recordVideoSize` <[Object]>
+  If `viewport` is not configured explicitly the video size defaults to 800x450. Actual picture of each page will be
   scaled down if necessary to fit the specified size.
   - `width` <[int]> Video frame width.
   - `height` <[int]> Video frame height.
 
-Optional dimensions of the recorded videos. If not specified the size will be equal to `viewport`.
+Dimensions of the recorded videos. If not specified the size will be equal to `viewport`
+scaled down to fit into 800x800. If `viewport` is not configured explicitly the video size defaults to 800x450.
+Actual picture of each page will be scaled down if necessary to fit the specified size.
 
 ## context-option-proxy
 - `proxy` <[Object]>
@@ -432,13 +440,24 @@ A glob pattern, regex pattern or predicate receiving [URL] to match while waitin
 Event name, same one typically passed into `*.on(event)`.
 
 ## wait-for-load-state-state
-- `state` <"load"|"domcontentloaded"|"networkidle">
+- `state` <[LoadState]<"load"|"domcontentloaded"|"networkidle">>
 
 Optional load state to wait for, defaults to `load`. If the state has been already reached while loading current document, the
 method resolves immediately. Can be one of:
   * `'load'` - wait for the `load` event to be fired.
   * `'domcontentloaded'` - wait for the `DOMContentLoaded` event to be fired.
   * `'networkidle'` - wait until there are no network connections for at least `500` ms.
+
+## screenshot-type
+- `type` <[ScreenshotType]<"png"|"jpeg">>
+
+Specify screenshot type, defaults to `png`.
+
+## java-wait-for-event-callback
+* langs: java
+- `callback` <[Runnable]>
+
+Callback that performs the action triggering the event.
 
 ## python-select-options-element
 * langs: python
@@ -472,12 +491,19 @@ only the first option matching one of the passed options is selected. Optional.
 
 Receives the event data and resolves to truthy value when the waiting should resolve.
 
-## python-wait-for-event-timeout
-* langs: python
+## wait-for-event-timeout
+* langs: csharp, java, python
 - `timeout` <[float]>
 
 Maximum time to wait for in milliseconds. Defaults to `30000` (30 seconds). Pass `0` to disable timeout.
 The default value can be changed by using the [`method: BrowserContext.setDefaultTimeout`].
+
+## android-timeout
+* langs: js
+- `timeout` <[float]>
+
+Maximum time in milliseconds, defaults to 30 seconds, pass `0` to disable timeout. The default value can be changed by
+using the [`method: AndroidDevice.setDefaultTimeout`] method.
 
 ## shared-context-params-list
 - %%-context-option-acceptdownloads-%%
@@ -503,8 +529,8 @@ The default value can be changed by using the [`method: BrowserContext.setDefaul
 - %%-context-option-videospath-%%
 - %%-context-option-videosize-%%
 - %%-context-option-recordhar-%%
-- %%-python-context-option-recordhar-path-%%
-- %%-python-context-option-recordhar-omit-content-%%
+- %%-context-option-recordhar-path-%%
+- %%-context-option-recordhar-omit-content-%%
 - %%-context-option-recordvideo-%%
-- %%-python-context-option-recordvideo-dir-%%
-- %%-python-context-option-recordvideo-size-%%
+- %%-context-option-recordvideo-dir-%%
+- %%-context-option-recordvideo-size-%%

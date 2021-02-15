@@ -40,15 +40,14 @@ export class CRBrowser extends Browser {
   _devtools?: CRDevTools;
   _isMac = false;
   private _version = '';
-  readonly _ffmpegPath: string | null;
 
   private _tracingRecording = false;
   private _tracingPath: string | null = '';
   private _tracingClient: CRSession | undefined;
 
-  static async connect(transport: ConnectionTransport, options: BrowserOptions, ffmpegPath: string | null, devtools?: CRDevTools): Promise<CRBrowser> {
+  static async connect(transport: ConnectionTransport, options: BrowserOptions, devtools?: CRDevTools): Promise<CRBrowser> {
     const connection = new CRConnection(transport, options.protocolLogger, options.browserLogsCollector);
-    const browser = new CRBrowser(connection, options, ffmpegPath);
+    const browser = new CRBrowser(connection, options);
     browser._devtools = devtools;
     const session = connection.rootSession;
     const version = await session.send('Browser.getVersion');
@@ -89,9 +88,8 @@ export class CRBrowser extends Browser {
     return browser;
   }
 
-  constructor(connection: CRConnection, options: BrowserOptions, ffmpegPath: string | null) {
+  constructor(connection: CRConnection, options: BrowserOptions) {
     super(options);
-    this._ffmpegPath = ffmpegPath;
     this._connection = connection;
     this._session = this._connection.rootSession;
     this._connection.on(ConnectionEvents.Disconnected, () => this._didClose());
@@ -99,7 +97,7 @@ export class CRBrowser extends Browser {
     this._session.on('Target.detachedFromTarget', this._onDetachedFromTarget.bind(this));
   }
 
-  async newContext(options: types.BrowserContextOptions = {}): Promise<BrowserContext> {
+  async newContext(options: types.BrowserContextOptions): Promise<BrowserContext> {
     validateBrowserContextOptions(options, this.options);
     const { browserContextId } = await this._session.send('Target.createBrowserContext', {
       disposeOnDetach: true,
@@ -158,8 +156,9 @@ export class CRBrowser extends Browser {
     if (targetInfo.type === 'background_page') {
       const backgroundPage = new CRPage(session, targetInfo.targetId, context, null, false);
       this._backgroundPages.set(targetInfo.targetId, backgroundPage);
-      backgroundPage.pageOrError().then(() => {
-        context!.emit(CRBrowserContext.CREvents.BackgroundPage, backgroundPage._page);
+      backgroundPage.pageOrError().then(pageOrError => {
+        if (pageOrError instanceof Page)
+          context!.emit(CRBrowserContext.CREvents.BackgroundPage, backgroundPage._page);
       });
       return;
     }
@@ -265,7 +264,7 @@ class CRServiceWorker extends Worker {
   readonly _browserContext: CRBrowserContext;
 
   constructor(browserContext: CRBrowserContext, session: CRSession, url: string) {
-    super(url);
+    super(browserContext, url);
     this._browserContext = browserContext;
     session.once('Runtime.executionContextCreated', event => {
       this._createExecutionContext(new CRExecutionContext(session, event.context));

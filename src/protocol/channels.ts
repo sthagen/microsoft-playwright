@@ -23,8 +23,24 @@ export type Binary = string;
 export interface Channel extends EventEmitter {
 }
 
+export type StackFrame = {
+  file: string,
+  line?: number,
+  column?: number,
+  function?: string,
+};
+
 export type Metadata = {
-  stack?: string,
+  stack?: StackFrame[],
+};
+
+export type WaitForEventInfo = {
+  waitId: string,
+  phase: 'before' | 'after' | 'log',
+  name?: string,
+  stack?: StackFrame[],
+  message?: string,
+  error?: string,
 };
 
 export type Point = {
@@ -197,6 +213,7 @@ export type BrowserTypeInitializer = {
 export interface BrowserTypeChannel extends Channel {
   launch(params: BrowserTypeLaunchParams, metadata?: Metadata): Promise<BrowserTypeLaunchResult>;
   launchPersistentContext(params: BrowserTypeLaunchPersistentContextParams, metadata?: Metadata): Promise<BrowserTypeLaunchPersistentContextResult>;
+  connectOverCDP(params: BrowserTypeConnectOverCDPParams, metadata?: Metadata): Promise<BrowserTypeConnectOverCDPResult>;
 }
 export type BrowserTypeLaunchParams = {
   executablePath?: string,
@@ -249,6 +266,7 @@ export type BrowserTypeLaunchResult = {
 };
 export type BrowserTypeLaunchPersistentContextParams = {
   userDataDir: string,
+  sdkLanguage: string,
   executablePath?: string,
   args?: string[],
   ignoreAllDefaultArgs?: boolean,
@@ -377,6 +395,20 @@ export type BrowserTypeLaunchPersistentContextOptions = {
 export type BrowserTypeLaunchPersistentContextResult = {
   context: BrowserContextChannel,
 };
+export type BrowserTypeConnectOverCDPParams = {
+  sdkLanguage: string,
+  wsEndpoint: string,
+  slowMo?: number,
+  timeout?: number,
+};
+export type BrowserTypeConnectOverCDPOptions = {
+  slowMo?: number,
+  timeout?: number,
+};
+export type BrowserTypeConnectOverCDPResult = {
+  browser: BrowserChannel,
+  defaultContext?: BrowserContextChannel,
+};
 
 // ----------- Browser -----------
 export type BrowserInitializer = {
@@ -396,6 +428,7 @@ export type BrowserCloseParams = {};
 export type BrowserCloseOptions = {};
 export type BrowserCloseResult = void;
 export type BrowserNewContextParams = {
+  sdkLanguage: string,
   noDefaultViewport?: boolean,
   viewport?: {
     width: number,
@@ -537,8 +570,6 @@ export interface BrowserContextChannel extends Channel {
   on(event: 'close', callback: (params: BrowserContextCloseEvent) => void): this;
   on(event: 'page', callback: (params: BrowserContextPageEvent) => void): this;
   on(event: 'route', callback: (params: BrowserContextRouteEvent) => void): this;
-  on(event: 'stdout', callback: (params: BrowserContextStdoutEvent) => void): this;
-  on(event: 'stderr', callback: (params: BrowserContextStderrEvent) => void): this;
   on(event: 'crBackgroundPage', callback: (params: BrowserContextCrBackgroundPageEvent) => void): this;
   on(event: 'crServiceWorker', callback: (params: BrowserContextCrServiceWorkerEvent) => void): this;
   addCookies(params: BrowserContextAddCookiesParams, metadata?: Metadata): Promise<BrowserContextAddCookiesResult>;
@@ -561,7 +592,6 @@ export interface BrowserContextChannel extends Channel {
   pause(params?: BrowserContextPauseParams, metadata?: Metadata): Promise<BrowserContextPauseResult>;
   recorderSupplementEnable(params: BrowserContextRecorderSupplementEnableParams, metadata?: Metadata): Promise<BrowserContextRecorderSupplementEnableResult>;
   crNewCDPSession(params: BrowserContextCrNewCDPSessionParams, metadata?: Metadata): Promise<BrowserContextCrNewCDPSessionResult>;
-  setTerminalSizeNoReply(params: BrowserContextSetTerminalSizeNoReplyParams, metadata?: Metadata): Promise<BrowserContextSetTerminalSizeNoReplyResult>;
 }
 export type BrowserContextBindingCallEvent = {
   binding: BindingCallChannel,
@@ -573,12 +603,6 @@ export type BrowserContextPageEvent = {
 export type BrowserContextRouteEvent = {
   route: RouteChannel,
   request: RequestChannel,
-};
-export type BrowserContextStdoutEvent = {
-  data: Binary,
-};
-export type BrowserContextStderrEvent = {
-  data: Binary,
 };
 export type BrowserContextCrBackgroundPageEvent = {
   page: PageChannel,
@@ -712,22 +736,21 @@ export type BrowserContextPauseParams = {};
 export type BrowserContextPauseOptions = {};
 export type BrowserContextPauseResult = void;
 export type BrowserContextRecorderSupplementEnableParams = {
-  language: string,
+  language?: string,
   startRecording?: boolean,
   launchOptions?: any,
   contextOptions?: any,
   device?: string,
   saveStorage?: string,
-  terminal?: boolean,
   outputFile?: string,
 };
 export type BrowserContextRecorderSupplementEnableOptions = {
+  language?: string,
   startRecording?: boolean,
   launchOptions?: any,
   contextOptions?: any,
   device?: string,
   saveStorage?: string,
-  terminal?: boolean,
   outputFile?: string,
 };
 export type BrowserContextRecorderSupplementEnableResult = void;
@@ -740,15 +763,6 @@ export type BrowserContextCrNewCDPSessionOptions = {
 export type BrowserContextCrNewCDPSessionResult = {
   session: CDPSessionChannel,
 };
-export type BrowserContextSetTerminalSizeNoReplyParams = {
-  rows?: number,
-  columns?: number,
-};
-export type BrowserContextSetTerminalSizeNoReplyOptions = {
-  rows?: number,
-  columns?: number,
-};
-export type BrowserContextSetTerminalSizeNoReplyResult = void;
 
 // ----------- Page -----------
 export type PageInitializer = {
@@ -2463,6 +2477,7 @@ export interface ElectronChannel extends Channel {
   launch(params: ElectronLaunchParams, metadata?: Metadata): Promise<ElectronLaunchResult>;
 }
 export type ElectronLaunchParams = {
+  sdkLanguage: string,
   executablePath?: string,
   args?: string[],
   cwd?: string,
@@ -2585,7 +2600,6 @@ export interface AndroidDeviceChannel extends Channel {
   scroll(params: AndroidDeviceScrollParams, metadata?: Metadata): Promise<AndroidDeviceScrollResult>;
   swipe(params: AndroidDeviceSwipeParams, metadata?: Metadata): Promise<AndroidDeviceSwipeResult>;
   info(params: AndroidDeviceInfoParams, metadata?: Metadata): Promise<AndroidDeviceInfoResult>;
-  tree(params?: AndroidDeviceTreeParams, metadata?: Metadata): Promise<AndroidDeviceTreeResult>;
   screenshot(params?: AndroidDeviceScreenshotParams, metadata?: Metadata): Promise<AndroidDeviceScreenshotResult>;
   inputType(params: AndroidDeviceInputTypeParams, metadata?: Metadata): Promise<AndroidDeviceInputTypeResult>;
   inputPress(params: AndroidDeviceInputPressParams, metadata?: Metadata): Promise<AndroidDeviceInputPressResult>;
@@ -2721,11 +2735,6 @@ export type AndroidDeviceInfoOptions = {
 export type AndroidDeviceInfoResult = {
   info: AndroidElementInfo,
 };
-export type AndroidDeviceTreeParams = {};
-export type AndroidDeviceTreeOptions = {};
-export type AndroidDeviceTreeResult = {
-  tree: AndroidElementInfo,
-};
 export type AndroidDeviceScreenshotParams = {};
 export type AndroidDeviceScreenshotOptions = {};
 export type AndroidDeviceScreenshotResult = {
@@ -2770,6 +2779,7 @@ export type AndroidDeviceInputDragOptions = {
 };
 export type AndroidDeviceInputDragResult = void;
 export type AndroidDeviceLaunchBrowserParams = {
+  sdkLanguage: string,
   pkg?: string,
   ignoreHTTPSErrors?: boolean,
   javaScriptEnabled?: boolean,
@@ -2905,6 +2915,7 @@ export type AndroidDeviceSetDefaultTimeoutNoReplyOptions = {
 };
 export type AndroidDeviceSetDefaultTimeoutNoReplyResult = void;
 export type AndroidDeviceConnectToWebViewParams = {
+  sdkLanguage: string,
   pid: number,
 };
 export type AndroidDeviceConnectToWebViewOptions = {

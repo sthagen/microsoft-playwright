@@ -14,10 +14,10 @@
  * limitations under the License.
  */
 
-import * as assert from 'assert';
-import * as debug from 'debug';
+import assert from 'assert';
+import debug from 'debug';
 import * as net from 'net';
-import { EventEmitter } from 'ws';
+import { EventEmitter } from 'events';
 import { Backend, DeviceBackend, SocketBackend } from './android';
 
 export class AdbBackend implements Backend {
@@ -109,7 +109,6 @@ class BufferedSocketWrapper extends EventEmitter implements SocketBackend {
 
   constructor(command: string, socket: net.Socket) {
     super();
-    this.setMaxListeners(0);
     this._command = command;
     this._socket = socket;
     this._connectPromise = new Promise(f => this._socket.on('connect', f));

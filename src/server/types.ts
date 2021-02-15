@@ -15,12 +15,8 @@
  * limitations under the License.
  */
 
-export type Size = { width: number, height: number };
-export type Point = { x: number, y: number };
-export type Rect = Size & Point;
-export type Quad = [ Point, Point, Point, Point ];
-
-export type TimeoutOptions = { timeout?: number };
+import { Size, Point, Rect, TimeoutOptions } from '../common/types';
+export { Size, Point, Rect, Quad, URLMatch, TimeoutOptions } from '../common/types';
 
 export type WaitForElementOptions = TimeoutOptions & { state?: 'attached' | 'detached' | 'visible' | 'hidden' };
 
@@ -57,8 +53,6 @@ export type PageScreencastOptions = {
   height: number,
   outputFile: string,
 };
-
-export type URLMatch = string | RegExp | ((url: URL) => boolean);
 
 export type Credentials = {
   username: string;
@@ -221,6 +215,7 @@ export type SetNetworkCookieParam = {
 };
 
 export type BrowserContextOptions = {
+  sdkLanguage: string,
   viewport?: Size,
   noDefaultViewport?: boolean,
   ignoreHTTPSErrors?: boolean,
@@ -270,6 +265,7 @@ type LaunchOptionsBase = {
   downloadsPath?: string,
   chromiumSandbox?: boolean,
   slowMo?: number,
+  useWebSocket?: boolean,
 };
 export type LaunchOptions = LaunchOptionsBase & {
   firefoxUserPrefs?: { [key: string]: string | number | boolean },

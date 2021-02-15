@@ -38,8 +38,8 @@ import { ChromiumCoverage } from './chromiumCoverage';
 import { Waiter } from './waiter';
 import * as api from '../../types/types';
 import * as structs from '../../types/structs';
-import * as fs from 'fs';
-import * as path from 'path';
+import fs from 'fs';
+import path from 'path';
 import * as util from 'util';
 import { Size, URLMatch, Headers, LifecycleEvent, WaitForEventOptions, SelectOption, SelectOptionOptions, FilePayload, WaitForFunctionOptions } from './types';
 import { evaluationScript, urlMatches } from './clientHelper';
@@ -97,7 +97,6 @@ export class Page extends ChannelOwner<channels.PageChannel, channels.PageInitia
 
   constructor(parent: ChannelOwner, type: string, guid: string, initializer: channels.PageInitializer) {
     super(parent, type, guid, initializer);
-    this.setMaxListeners(0);
     this._browserContext = parent as BrowserContext;
     this._timeoutSettings = new TimeoutSettings(this._browserContext._timeoutSettings);
 
@@ -396,7 +395,7 @@ export class Page extends ChannelOwner<channels.PageChannel, channels.PageInitia
   private async _waitForEvent(event: string, optionsOrPredicate: WaitForEventOptions, logLine?: string): Promise<any> {
     const timeout = this._timeoutSettings.timeout(typeof optionsOrPredicate === 'function' ? {} : optionsOrPredicate);
     const predicate = typeof optionsOrPredicate === 'function' ? optionsOrPredicate : optionsOrPredicate.predicate;
-    const waiter = new Waiter();
+    const waiter = Waiter.createForEvent(this, event);
     if (logLine)
       waiter.log(logLine);
     waiter.rejectOnTimeout(timeout, `Timeout while waiting for event "${event}"`);

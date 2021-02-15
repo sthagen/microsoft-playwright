@@ -15,35 +15,63 @@
  * limitations under the License.
  */
 
-import * as path from 'path';
+import path from 'path';
 import { CRBrowser } from './crBrowser';
 import { Env } from '../processLauncher';
 import { kBrowserCloseMessageId } from './crConnection';
 import { rewriteErrorMessage } from '../../utils/stackTrace';
 import { BrowserType } from '../browserType';
-import { ConnectionTransport, ProtocolRequest } from '../transport';
-import * as browserPaths from '../../utils/browserPaths';
+import { ConnectionTransport, ProtocolRequest, WebSocketTransport } from '../transport';
 import { CRDevTools } from './crDevTools';
-import { BrowserOptions, PlaywrightOptions } from '../browser';
+import { BrowserOptions, BrowserProcess, PlaywrightOptions } from '../browser';
 import * as types from '../types';
 import { isDebugMode } from '../../utils/utils';
+import { RecentLogsCollector } from '../../utils/debugLogger';
+import { ProgressController } from '../progress';
+import { TimeoutSettings } from '../../utils/timeoutSettings';
+import { helper } from '../helper';
+import { CallMetadata } from '../instrumentation';
 
 export class Chromium extends BrowserType {
   private _devtools: CRDevTools | undefined;
-  private _ffmpegPath: string | null;
 
-  constructor(packagePath: string, browser: browserPaths.BrowserDescriptor, ffmpeg: browserPaths.BrowserDescriptor, playwrightOptions: PlaywrightOptions) {
-    super(packagePath, browser, playwrightOptions);
+  constructor(playwrightOptions: PlaywrightOptions) {
+    super('chromium', playwrightOptions);
 
-    const browsersPath = browserPaths.browsersPath(packagePath);
-    const browserPath = browserPaths.browserDirectory(browsersPath, ffmpeg);
-    this._ffmpegPath = browserPaths.executablePath(browserPath, ffmpeg) || null;
     if (isDebugMode())
       this._devtools = this._createDevTools();
   }
 
+  async connectOverCDP(metadata: CallMetadata, wsEndpoint: string, options: { slowMo?: number, sdkLanguage: string }, timeout?: number) {
+    const controller = new ProgressController(metadata, this);
+    controller.setLogName('browser');
+    const browserLogsCollector = new RecentLogsCollector();
+    return controller.run(async progress => {
+      const chromeTransport = await WebSocketTransport.connect(progress, wsEndpoint);
+      const browserProcess: BrowserProcess = {
+        close: async () => {
+          await chromeTransport.closeAndWait();
+        },
+        kill: async () => {
+          await chromeTransport.closeAndWait();
+        }
+      };
+      const browserOptions: BrowserOptions = {
+        ...this._playwrightOptions,
+        slowMo: options.slowMo,
+        name: 'chromium',
+        isChromium: true,
+        persistent: { sdkLanguage: options.sdkLanguage, noDefaultViewport: true },
+        browserProcess,
+        protocolLogger: helper.debugProtocolLogger(),
+        browserLogsCollector,
+      };
+      return await CRBrowser.connect(chromeTransport, browserOptions);
+    }, TimeoutSettings.timeout({timeout}));
+  }
+
   private _createDevTools() {
-    return new CRDevTools(path.join(this._browserPath, 'devtools-preferences.json'));
+    return new CRDevTools(path.join(this._registry.browserDirectory('chromium'), 'devtools-preferences.json'));
   }
 
   async _connectToTransport(transport: ConnectionTransport, options: BrowserOptions): Promise<CRBrowser> {
@@ -52,7 +80,7 @@ export class Chromium extends BrowserType {
       devtools = this._createDevTools();
       await (options as any).__testHookForDevTools(devtools);
     }
-    return CRBrowser.connect(transport, options, this._ffmpegPath, devtools);
+    return CRBrowser.connect(transport, options, devtools);
   }
 
   _rewriteStartupError(error: Error): Error {
@@ -91,7 +119,10 @@ export class Chromium extends BrowserType {
       throw new Error('Arguments can not specify page to be opened');
     const chromeArguments = [...DEFAULT_ARGS];
     chromeArguments.push(`--user-data-dir=${userDataDir}`);
-    chromeArguments.push('--remote-debugging-pipe');
+    if (options.useWebSocket)
+      chromeArguments.push('--remote-debugging-port=0');
+    else
+      chromeArguments.push('--remote-debugging-pipe');
     if (options.devtools)
       chromeArguments.push('--auto-open-devtools-for-tabs');
     if (options.headless) {
@@ -127,7 +158,7 @@ export class Chromium extends BrowserType {
   }
 }
 
-export const DEFAULT_ARGS = [
+const DEFAULT_ARGS = [
   '--disable-background-networking',
   '--enable-features=NetworkService,NetworkServiceInProcess',
   '--disable-background-timer-throttling',

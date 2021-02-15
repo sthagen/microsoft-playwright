@@ -27,7 +27,7 @@ import { Protocol } from './protocol';
 import { toConsoleMessageLocation, exceptionToError, releaseObject } from './crProtocolHelper';
 import * as dialog from '../dialog';
 import { PageDelegate } from '../page';
-import * as path from 'path';
+import path from 'path';
 import { RawMouseImpl, RawKeyboardImpl, RawTouchscreenImpl } from './crInput';
 import { getAccessibilityTree } from './crAccessibility';
 import { CRCoverage } from './crCoverage';
@@ -532,14 +532,25 @@ class FrameSession {
     if (frameSession && frameId !== this._targetId) {
       // This is a remote -> local frame transition.
       frameSession._swappedIn = true;
-      const frame = this._page._frameManager.frame(frameId)!;
-      this._page._frameManager.removeChildFramesRecursively(frame);
+      const frame = this._page._frameManager.frame(frameId);
+      // Frame or even a whole subtree may be already gone, because some ancestor did navigate.
+      if (frame)
+        this._page._frameManager.removeChildFramesRecursively(frame);
+      return;
+    }
+    if (parentFrameId && !this._page._frameManager.frame(parentFrameId)) {
+      // Parent frame may be gone already because some ancestor frame navigated and
+      // destroyed the whole subtree of some oopif, while oopif's process is still sending us events.
+      // Be careful to not confuse this with "main frame navigated cross-process" scenario
+      // where parentFrameId is null.
       return;
     }
     this._page._frameManager.frameAttached(frameId, parentFrameId);
   }
 
   _onFrameNavigated(framePayload: Protocol.Page.Frame, initial: boolean) {
+    if (!this._page._frameManager.frame(framePayload.id))
+      return; // Subtree may be already gone because some ancestor navigation destroyed the oopif.
     this._page._frameManager.frameCommittedNewDocumentNavigation(framePayload.id, framePayload.url + (framePayload.urlFragment || ''), framePayload.name || '', framePayload.loaderId, initial);
     if (!initial)
       this._firstNonInitialNavigationCommittedFulfill();
@@ -609,7 +620,9 @@ class FrameSession {
     if (event.targetInfo.type === 'iframe') {
       // Frame id equals target id.
       const targetId = event.targetInfo.targetId;
-      const frame = this._page._frameManager.frame(targetId)!;
+      const frame = this._page._frameManager.frame(targetId);
+      if (!frame)
+        return; // Subtree may be already gone due to renderer/browser race.
       this._page._frameManager.removeChildFramesRecursively(frame);
       const frameSession = new FrameSession(this._crPage, session, targetId, this);
       this._crPage._sessions.set(targetId, frameSession);
@@ -626,7 +639,7 @@ class FrameSession {
     }
 
     const url = event.targetInfo.url;
-    const worker = new Worker(url);
+    const worker = new Worker(this._page, url);
     this._page._addWorker(event.sessionId, worker);
     session.once('Runtime.executionContextCreated', async event => {
       worker._createExecutionContext(new CRExecutionContext(session, event.context));
@@ -715,6 +728,8 @@ class FrameSession {
   }
 
   _onDialog(event: Protocol.Page.javascriptDialogOpeningPayload) {
+    if (!this._page._frameManager.frame(this._targetId))
+      return; // Our frame/subtree may be gone already.
     this._page.emit(Page.Events.Dialog, new dialog.Dialog(
         this._page,
         event.type,
@@ -749,10 +764,18 @@ class FrameSession {
   }
 
   async _onFileChooserOpened(event: Protocol.Page.fileChooserOpenedPayload) {
-    const frame = this._page._frameManager.frame(event.frameId)!;
-    const utilityContext = await frame._utilityContext();
-    const handle = await this._adoptBackendNodeId(event.backendNodeId, utilityContext);
-    this._page._onFileChooserOpened(handle);
+    const frame = this._page._frameManager.frame(event.frameId);
+    if (!frame)
+      return;
+    let handle;
+    try {
+      const utilityContext = await frame._utilityContext();
+      handle = await this._adoptBackendNodeId(event.backendNodeId, utilityContext);
+    } catch (e) {
+      // During async processing, frame/context may go away. We should not throw.
+      return;
+    }
+    await this._page._onFileChooserOpened(handle);
   }
 
   _onDownloadWillBegin(payload: Protocol.Page.downloadWillBeginPayload) {
@@ -788,10 +811,10 @@ class FrameSession {
 
   async _startScreencast(screencastId: string, options: types.PageScreencastOptions): Promise<void> {
     assert(!this._screencastId);
-    const ffmpegPath = this._crPage._browserContext._browser._ffmpegPath;
+    const ffmpegPath = this._crPage._browserContext._browser.options.registry.executablePath('ffmpeg');
     if (!ffmpegPath)
       throw new Error('ffmpeg executable was not found');
-    this._videoRecorder = await VideoRecorder.launch(ffmpegPath, options);
+    this._videoRecorder = await VideoRecorder.launch(this._crPage._page, ffmpegPath, options);
     this._screencastId = screencastId;
     const gotFirstFrame = new Promise(f => this._client.once('Page.screencastFrame', f));
     await this._client.send('Page.startScreencast', {

@@ -19,14 +19,10 @@ import fs from 'fs';
 import path from 'path';
 import { spawnSync } from 'child_process';
 import { PNG } from 'pngjs';
-import * as browserPaths from '../src/utils/browserPaths';
+import { Registry } from '../src/utils/registry';
 
-
-const browsersJSON = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'browsers.json'), 'utf8'));
-const ffmpegDescriptor = browsersJSON.browsers.find(({name}) => name === 'ffmpeg');
-const browsersPath = browserPaths.browsersPath(path.join(__dirname, '..'));
-const browserPath = browserPaths.browserDirectory(browsersPath, ffmpegDescriptor);
-const ffmpeg = browserPaths.executablePath(browserPath, ffmpegDescriptor) || '';
+const registry = new Registry(path.join(__dirname, '..'));
+const ffmpeg = registry.executablePath('ffmpeg') || '';
 
 export class VideoPlayer {
   fileName: string;
@@ -45,6 +41,8 @@ export class VideoPlayer {
 
     const lines = this.output.split('\n');
     let framesLine = lines.find(l => l.startsWith('frame='))!;
+    if (!framesLine)
+      throw new Error(`No frame data in the output:\n${this.output}`);
     framesLine = framesLine.substring(framesLine.lastIndexOf('frame='));
     const framesMatch = framesLine.match(/frame=\s+(\d+)/);
     const streamLine = lines.find(l => l.trim().startsWith('Stream #0:0'));
@@ -398,8 +396,8 @@ describe('screencast', suite => {
     }
   });
 
-  it('should use viewport as default size', async ({browser, testInfo}) => {
-    const size = {width: 800, height: 600};
+  it('should use viewport scaled down to fit into 800x800 as default size', async ({browser, testInfo}) => {
+    const size = {width: 1600, height: 1200};
     const context = await browser.newContext({
       recordVideo: {
         dir: testInfo.outputPath(''),
@@ -413,11 +411,11 @@ describe('screencast', suite => {
 
     const videoFile = await page.video().path();
     const videoPlayer = new VideoPlayer(videoFile);
-    expect(videoPlayer.videoWidth).toBe(size.width);
-    expect(videoPlayer.videoHeight).toBe(size.height);
+    expect(videoPlayer.videoWidth).toBe(800);
+    expect(videoPlayer.videoHeight).toBe(600);
   });
 
-  it('should be 1280x720 by default', async ({browser, testInfo}) => {
+  it('should be 800x450 by default', async ({browser, testInfo}) => {
     const context = await browser.newContext({
       recordVideo: {
         dir: testInfo.outputPath(''),
@@ -430,8 +428,28 @@ describe('screencast', suite => {
 
     const videoFile = await page.video().path();
     const videoPlayer = new VideoPlayer(videoFile);
-    expect(videoPlayer.videoWidth).toBe(1280);
-    expect(videoPlayer.videoHeight).toBe(720);
+    expect(videoPlayer.videoWidth).toBe(800);
+    expect(videoPlayer.videoHeight).toBe(450);
+  });
+
+  it('should be 800x600 with null viewport', (test, { headful, browserName }) => {
+    test.fixme(browserName === 'firefox' && !headful, 'Fails in headless on bots');
+  }, async ({ browser, testInfo }) => {
+    const context = await browser.newContext({
+      recordVideo: {
+        dir: testInfo.outputPath(''),
+      },
+      viewport: null
+    });
+
+    const page = await context.newPage();
+    await new Promise(r => setTimeout(r, 1000));
+    await context.close();
+
+    const videoFile = await page.video().path();
+    const videoPlayer = new VideoPlayer(videoFile);
+    expect(videoPlayer.videoWidth).toBe(800);
+    expect(videoPlayer.videoHeight).toBe(600);
   });
 
   it('should capture static page in persistent context', async ({launchPersistent, testInfo}) => {
@@ -460,5 +478,27 @@ describe('screencast', suite => {
       const pixels = videoPlayer.seekLastFrame().data;
       expectAll(pixels, almostRed);
     }
+  });
+
+  it('should emulate an iphone', (test, { browserName }) => {
+    test.skip(browserName === 'firefox', 'isMobile is not supported in Firefox');
+  }, async ({contextFactory, playwright, contextOptions, testInfo}) => {
+    const device = playwright.devices['iPhone 6'];
+    const context = await contextFactory({
+      ...contextOptions,
+      ...device,
+      recordVideo: {
+        dir: testInfo.outputPath(''),
+      },
+    });
+
+    const page = await context.newPage();
+    await new Promise(r => setTimeout(r, 1000));
+    await context.close();
+
+    const videoFile = await page.video().path();
+    const videoPlayer = new VideoPlayer(videoFile);
+    expect(videoPlayer.videoWidth).toBe(374);
+    expect(videoPlayer.videoHeight).toBe(666);
   });
 });

@@ -14,27 +14,27 @@
  * limitations under the License.
  */
 
-import { ActionListener, ActionMetadata, BrowserContext, ContextListener, Video } from '../server/browserContext';
+import { BrowserContext, Video } from '../server/browserContext';
 import type { SnapshotterResource as SnapshotterResource, SnapshotterBlob, SnapshotterDelegate } from './snapshotter';
 import * as trace from './traceTypes';
-import * as path from 'path';
+import path from 'path';
 import * as util from 'util';
-import * as fs from 'fs';
+import fs from 'fs';
 import { createGuid, getFromENV, mkdirIfNeeded, monotonicTime } from '../utils/utils';
 import { Page } from '../server/page';
 import { Snapshotter } from './snapshotter';
 import { helper, RegisteredListener } from '../server/helper';
-import { ProgressResult } from '../server/progress';
 import { Dialog } from '../server/dialog';
 import { Frame, NavigationEvent } from '../server/frames';
 import { snapshotScript } from './snapshotterInjected';
+import { CallMetadata, InstrumentationListener, SdkObject } from '../server/instrumentation';
 
 const fsWriteFileAsync = util.promisify(fs.writeFile.bind(fs));
 const fsAppendFileAsync = util.promisify(fs.appendFile.bind(fs));
 const fsAccessAsync = util.promisify(fs.access.bind(fs));
 const envTrace = getFromENV('PW_TRACE_DIR');
 
-export class Tracer implements ContextListener {
+export class Tracer implements InstrumentationListener {
   private _contextTracers = new Map<BrowserContext, ContextTracer>();
 
   async onContextCreated(context: BrowserContext): Promise<void> {
@@ -47,8 +47,6 @@ export class Tracer implements ContextListener {
     this._contextTracers.set(context, contextTracer);
   }
 
-  async onContextWillDestroy(context: BrowserContext): Promise<void> {}
-
   async onContextDidDestroy(context: BrowserContext): Promise<void> {
     const contextTracer = this._contextTracers.get(context);
     if (contextTracer) {
@@ -56,19 +54,31 @@ export class Tracer implements ContextListener {
       this._contextTracers.delete(context);
     }
   }
+
+  async onBeforeInputAction(sdkObject: SdkObject, metadata: CallMetadata): Promise<void> {
+    this._contextTracers.get(sdkObject.attribution.context!)?.onActionCheckpoint('before', sdkObject, metadata);
+  }
+
+  async onAfterInputAction(sdkObject: SdkObject, metadata: CallMetadata): Promise<void> {
+    this._contextTracers.get(sdkObject.attribution.context!)?.onActionCheckpoint('after', sdkObject, metadata);
+  }
+
+  async onAfterCall(sdkObject: SdkObject, metadata: CallMetadata): Promise<void> {
+    this._contextTracers.get(sdkObject.attribution.context!)?.onAfterCall(sdkObject, metadata);
+  }
 }
 
 const pageIdSymbol = Symbol('pageId');
 const snapshotsSymbol = Symbol('snapshots');
 
-// TODO: this is a hacky way to pass snapshots between onActionCheckpoint and onAfterAction.
-function snapshotsForMetadata(metadata: ActionMetadata): { name: string, snapshotId: string }[] {
+// This is an official way to pass snapshots between onBefore/AfterInputAction and onAfterCall.
+function snapshotsForMetadata(metadata: CallMetadata): { name: string, snapshotId: string }[] {
   if (!(metadata as any)[snapshotsSymbol])
     (metadata as any)[snapshotsSymbol] = [];
   return (metadata as any)[snapshotsSymbol];
 }
 
-class ContextTracer implements SnapshotterDelegate, ActionListener {
+class ContextTracer implements SnapshotterDelegate {
   private _context: BrowserContext;
   private _contextId: string;
   private _traceStoragePromise: Promise<string>;
@@ -102,7 +112,6 @@ class ContextTracer implements SnapshotterDelegate, ActionListener {
     this._eventListeners = [
       helper.addEventListener(context, BrowserContext.Events.Page, this._onPage.bind(this)),
     ];
-    this._context._actionListeners.add(this);
   }
 
   onBlob(blob: SnapshotterBlob): void {
@@ -147,26 +156,31 @@ class ContextTracer implements SnapshotterDelegate, ActionListener {
     return (page as any)[pageIdSymbol];
   }
 
-  async onActionCheckpoint(name: string, metadata: ActionMetadata): Promise<void> {
+  async onActionCheckpoint(name: string, sdkObject: SdkObject, metadata: CallMetadata): Promise<void> {
+    if (!sdkObject.attribution.page)
+      return;
     const snapshotId = createGuid();
     snapshotsForMetadata(metadata).push({ name, snapshotId });
-    await this._snapshotter.forceSnapshot(metadata.page, snapshotId);
+    await this._snapshotter.forceSnapshot(sdkObject.attribution.page, snapshotId);
   }
 
-  async onAfterAction(result: ProgressResult, metadata: ActionMetadata): Promise<void> {
+  async onAfterCall(sdkObject: SdkObject, metadata: CallMetadata): Promise<void> {
+    if (!sdkObject.attribution.page)
+      return;
     const event: trace.ActionTraceEvent = {
       timestamp: monotonicTime(),
       type: 'action',
       contextId: this._contextId,
-      pageId: this.pageId(metadata.page),
-      action: metadata.type,
-      selector: typeof metadata.target === 'string' ? metadata.target : undefined,
-      value: metadata.value,
-      startTime: result.startTime,
-      endTime: result.endTime,
+      pageId: this.pageId(sdkObject.attribution.page),
+      objectType: metadata.type,
+      method: metadata.method,
+      // FIXME: filter out evaluation snippets, binary
+      params: metadata.params,
       stack: metadata.stack,
-      logs: result.logs.slice(),
-      error: result.error ? result.error.stack : undefined,
+      startTime: metadata.startTime,
+      endTime: metadata.endTime,
+      logs: metadata.log.slice(),
+      error: metadata.error,
       snapshots: snapshotsForMetadata(metadata),
     };
     this._appendTraceEvent(event);
@@ -265,7 +279,6 @@ class ContextTracer implements SnapshotterDelegate, ActionListener {
 
   async dispose() {
     this._disposed = true;
-    this._context._actionListeners.delete(this);
     helper.removeEventListeners(this._eventListeners);
     this._snapshotter.dispose();
     const event: trace.ContextDestroyedTraceEvent = {

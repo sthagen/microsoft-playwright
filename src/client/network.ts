@@ -19,7 +19,7 @@ import * as channels from '../protocol/channels';
 import { ChannelOwner } from './channelOwner';
 import { Frame } from './frame';
 import { Headers, WaitForEventOptions } from './types';
-import * as fs from 'fs';
+import fs from 'fs';
 import * as mime from 'mime';
 import * as util from 'util';
 import { isString, headersObjectToArray, headersArrayToObject } from '../utils/utils';
@@ -365,7 +365,7 @@ export class WebSocket extends ChannelOwner<channels.WebSocketChannel, channels.
   async waitForEvent(event: string, optionsOrPredicate: WaitForEventOptions = {}): Promise<any> {
     const timeout = this._page._timeoutSettings.timeout(typeof optionsOrPredicate === 'function' ? {} : optionsOrPredicate);
     const predicate = typeof optionsOrPredicate === 'function' ? optionsOrPredicate : optionsOrPredicate.predicate;
-    const waiter = new Waiter();
+    const waiter = Waiter.createForEvent(this, event);
     waiter.rejectOnTimeout(timeout, `Timeout while waiting for event "${event}"`);
     if (event !== Events.WebSocket.Error)
       waiter.rejectOnEvent(this, Events.WebSocket.Error, new Error('Socket error'));

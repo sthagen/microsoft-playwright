@@ -21,6 +21,7 @@ import type { Logger } from './types';
 import { debugLogger } from '../utils/debugLogger';
 import { rewriteErrorMessage } from '../utils/stackTrace';
 import { createScheme, Validator, ValidationError } from '../protocol/validator';
+import { StackFrame } from '../common/types';
 
 export abstract class ChannelOwner<T extends channels.Channel = channels.Channel, Initializer = {}> extends EventEmitter {
   private _connection: Connection;
@@ -35,6 +36,7 @@ export abstract class ChannelOwner<T extends channels.Channel = channels.Channel
 
   constructor(parent: ChannelOwner | Connection, type: string, guid: string, initializer: Initializer) {
     super();
+    this.setMaxListeners(0);
     this._connection = parent instanceof ChannelOwner ? parent._connection : parent;
     this._type = type;
     this._guid = guid;
@@ -94,6 +96,18 @@ export abstract class ChannelOwner<T extends channels.Channel = channels.Channel
       rewriteErrorMessage(e, `${apiName}: ` + e.message);
       throw e;
     }
+  }
+
+  _waitForEventInfoBefore(waitId: string, name: string, stack: StackFrame[]) {
+    this._connection.sendMessageToServer(this._guid, 'waitForEventInfo', { info: { name, waitId, phase: 'before', stack } }).catch(() => {});
+  }
+
+  _waitForEventInfoAfter(waitId: string, error?: string) {
+    this._connection.sendMessageToServer(this._guid, 'waitForEventInfo', { info: { waitId, phase: 'after', error } }).catch(() => {});
+  }
+
+  _waitForEventInfoLog(waitId: string, message: string) {
+    this._connection.sendMessageToServer(this._guid, 'waitForEventInfo', { info: { waitId, phase: 'log', message } }).catch(() => {});
   }
 
   private toJSON() {

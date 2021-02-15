@@ -112,12 +112,14 @@ DEPS['src/protocol/'] = ['src/utils/'];
 DEPS['src/install/'] = ['src/utils/'];
 
 // Client depends on chromium protocol for types.
-DEPS['src/client/'] = ['src/utils/', 'src/protocol/', 'src/server/chromium/protocol.ts'];
+DEPS['src/client/'] = ['src/common/', 'src/utils/', 'src/protocol/', 'src/server/chromium/protocol.ts'];
+DEPS['src/outofprocess.ts'] = ['src/client/', 'src/protocol/'];
 
-DEPS['src/dispatchers/'] = ['src/utils/', 'src/protocol/', 'src/server/**'];
+DEPS['src/dispatchers/'] = ['src/common/', 'src/utils/', 'src/protocol/', 'src/server/**'];
 
 // Generic dependencies for server-side code.
 DEPS['src/server/'] = [
+  'src/common/',
   'src/utils/',
   'src/generated/',
   // Can depend on files directly in the server directory.
@@ -142,11 +144,10 @@ DEPS['src/server/playwright.ts'] = [...DEPS['src/server/'], 'src/trace/', 'src/s
 DEPS['src/cli/driver.ts'] = DEPS['src/inprocess.ts'] = DEPS['src/browserServerImpl.ts'] = ['src/**'];
 
 // Tracing is a client/server plugin, nothing should depend on it.
-DEPS['src/trace/'] = ['src/utils/', 'src/client/**', 'src/server/**'];
-DEPS['src/web/'] = [];
-DEPS['src/web/recorder/'] = ['src/web/', 'src/web/components/'];
-DEPS['src/web/traceViewer/'] = ['src/web/', 'src/cli/traceViewer/'];
-DEPS['src/web/traceViewer/ui/'] = ['src/web/traceViewer/', 'src/web/', 'src/cli/traceViewer/', 'src/trace/'];
+DEPS['src/trace/'] = ['src/common/', 'src/utils/', 'src/client/**', 'src/server/**'];
+DEPS['src/web/recorder/'] = ['src/common/', 'src/web/', 'src/web/components/'];
+DEPS['src/web/traceViewer/'] = ['src/common/', 'src/web/', 'src/cli/traceViewer/'];
+DEPS['src/web/traceViewer/ui/'] = ['src/common/', 'src/web/traceViewer/', 'src/web/', 'src/cli/traceViewer/', 'src/trace/'];
 // The service is a cross-cutting feature, and so it depends on a bunch of things.
 DEPS['src/remote/'] = ['src/client/', 'src/debug/', 'src/dispatchers/', 'src/server/', 'src/server/supplements/', 'src/server/electron/', 'src/trace/'];
 DEPS['src/service.ts'] = ['src/remote/'];
@@ -154,7 +155,9 @@ DEPS['src/service.ts'] = ['src/remote/'];
 // CLI should only use client-side features.
 DEPS['src/cli/'] = ['src/cli/**', 'src/client/**', 'src/install/**', 'src/generated/', 'src/server/injected/', 'src/debug/injected/', 'src/trace/**', 'src/utils/**'];
 
-DEPS['src/server/supplements/recorder/recorderApp.ts'] = ['src/server/', 'src/server/chromium/']
+DEPS['src/server/supplements/recorder/recorderApp.ts'] = ['src/common/', 'src/utils/', 'src/server/', 'src/server/chromium/'];
+DEPS['src/web/recorder/recorder.tsx'] = ['src/server/supplements/recorder/recorderTypes.ts'];
+DEPS['src/utils/'] = ['src/common/'];
 
 checkDeps().catch(e => {
   console.error(e && e.stack ? e.stack : e);

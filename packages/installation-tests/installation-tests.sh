@@ -15,14 +15,22 @@ unset PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD
 export PLAYWRIGHT_BROWSERS_PATH=0
 
 # Pack all packages and put them in our output folder.
+echo "Building packages..."
 PACKAGE_BUILDER="../../../packages/build_package.js"
 PLAYWRIGHT_CORE_TGZ="$(node ${PACKAGE_BUILDER} playwright-core ./playwright-core.tgz)"
+echo "playwright-core built"
 PLAYWRIGHT_TGZ="$(node ${PACKAGE_BUILDER} playwright ./playwright.tgz)"
+echo "playwright built"
 PLAYWRIGHT_CHROMIUM_TGZ="$(node ${PACKAGE_BUILDER} playwright-chromium ./playwright-chromium.tgz)"
+echo "playwright-chromium built"
 PLAYWRIGHT_WEBKIT_TGZ="$(node ${PACKAGE_BUILDER} playwright-webkit ./playwright-webkit.tgz)"
+echo "playwright-webkit built"
 PLAYWRIGHT_FIREFOX_TGZ="$(node ${PACKAGE_BUILDER} playwright-firefox ./playwright-firefox.tgz)"
+echo "playwright-firefox built"
 PLAYWRIGHT_ELECTRON_TGZ="$(node ${PACKAGE_BUILDER} playwright-electron ./playwright-electron.tgz)"
+echo "playwright-electron built"
 PLAYWRIGHT_ANDROID_TGZ="$(node ${PACKAGE_BUILDER} playwright-android ./playwright-android.tgz)"
+echo "playwright-android built"
 
 SCRIPTS_PATH="$(pwd -P)/.."
 TEST_ROOT="$(pwd -P)"
@@ -38,6 +46,7 @@ function copy_test_scripts {
   cp "${SCRIPTS_PATH}/esm-playwright-webkit.mjs" .
   cp "${SCRIPTS_PATH}/sanity-electron.js" .
   cp "${SCRIPTS_PATH}/electron-app.js" .
+  cp "${SCRIPTS_PATH}/driver-client.js" .
 }
 
 function run_tests {
@@ -46,6 +55,8 @@ function run_tests {
   test_skip_browser_download
   test_playwright_global_installation_subsequent_installs
   test_playwright_should_work
+  test_playwright_should_work_with_relative_home_path
+  test_playwright_should_work_with_relative_browsers_path
   test_playwright_chromium_should_work
   test_playwright_webkit_should_work
   test_playwright_firefox_should_work
@@ -57,6 +68,7 @@ function run_tests {
   test_playwright_cli_screenshot_should_work
   test_playwright_cli_install_should_work
   test_playwright_cli_codegen_should_work
+  test_playwright_driver_should_work
 }
 
 function test_screencast {
@@ -205,6 +217,31 @@ function test_playwright_should_work {
     node esm-playwright.mjs
   fi
 
+  echo "${FUNCNAME[0]} success"
+}
+
+function test_playwright_should_work_with_relative_home_path {
+  initialize_test "${FUNCNAME[0]}"
+  PLAYWRIGHT_BROWSERS_PATH="" HOME=. npm install ${PLAYWRIGHT_TGZ}
+  copy_test_scripts
+  echo "Running sanity.js"
+  # Firefox does not work with relative HOME.
+  PLAYWRIGHT_BROWSERS_PATH="" HOME=. node sanity.js playwright chromium webkit
+  echo "${FUNCNAME[0]} success"
+}
+
+function test_playwright_should_work_with_relative_browsers_path {
+  initialize_test "${FUNCNAME[0]}"
+
+  # Make sure that browsers path is resolved relative to the `npm install` call location.
+  mkdir foo
+  cd foo
+  PLAYWRIGHT_BROWSERS_PATH="../relative" npm install ${PLAYWRIGHT_TGZ}
+  cd ..
+
+  copy_test_scripts
+  echo "Running sanity.js"
+  PLAYWRIGHT_BROWSERS_PATH="./relative" node sanity.js playwright
   echo "${FUNCNAME[0]} success"
 }
 
@@ -426,6 +463,21 @@ function test_playwright_cli_codegen_should_work {
     echo "ERROR: missing browser.close in the output"
     exit 1
   fi
+
+  echo "${FUNCNAME[0]} success"
+}
+
+function test_playwright_driver_should_work {
+  initialize_test "${FUNCNAME[0]}"
+
+  PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 npm install ${PLAYWRIGHT_TGZ}
+
+  echo "Running playwright install"
+  PLAYWRIGHT_BROWSERS_PATH="0" npx playwright install
+
+  copy_test_scripts
+  echo "Running driver-client.js"
+  PLAYWRIGHT_BROWSERS_PATH="0" node driver-client.js
 
   echo "${FUNCNAME[0]} success"
 }

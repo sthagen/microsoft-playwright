@@ -16,12 +16,12 @@
 
 import * as channels from '../protocol/channels';
 import { Browser } from './browser';
-import { BrowserContext, prepareBrowserContextOptions } from './browserContext';
+import { BrowserContext, prepareBrowserContextParams } from './browserContext';
 import { ChannelOwner } from './channelOwner';
 import { LaunchOptions, LaunchServerOptions, ConnectOptions, LaunchPersistentContextOptions } from './types';
-import * as WebSocket from 'ws';
-import * as path from 'path';
-import * as fs from 'fs';
+import WebSocket from 'ws';
+import path from 'path';
+import fs from 'fs';
 import { Connection } from './connection';
 import { serializeError } from '../protocol/serializers';
 import { Events } from './events';
@@ -94,17 +94,17 @@ export class BrowserType extends ChannelOwner<channels.BrowserTypeChannel, chann
   async launchPersistentContext(userDataDir: string, options: LaunchPersistentContextOptions = {}): Promise<BrowserContext> {
     return this._wrapApiCall('browserType.launchPersistentContext', async () => {
       assert(!(options as any).port, 'Cannot specify a port without launching as a server.');
-      const contextOptions = await prepareBrowserContextOptions(options);
-      const persistentOptions: channels.BrowserTypeLaunchPersistentContextParams = {
-        ...contextOptions,
+      const contextParams = await prepareBrowserContextParams(options);
+      const persistentParams: channels.BrowserTypeLaunchPersistentContextParams = {
+        ...contextParams,
         ignoreDefaultArgs: Array.isArray(options.ignoreDefaultArgs) ? options.ignoreDefaultArgs : undefined,
         ignoreAllDefaultArgs: !!options.ignoreDefaultArgs && !Array.isArray(options.ignoreDefaultArgs),
         env: options.env ? envObjectToArray(options.env) : undefined,
         userDataDir,
       };
-      const result = await this._channel.launchPersistentContext(persistentOptions);
+      const result = await this._channel.launchPersistentContext(persistentParams);
       const context = BrowserContext.from(result.context);
-      context._options = contextOptions;
+      context._options = contextParams;
       context._logger = options.logger;
       return context;
     }, options.logger);
@@ -183,6 +183,26 @@ export class BrowserType extends ChannelOwner<channels.BrowserTypeChannel, chann
           reject(new Error(event.message + '. Most likely ws endpoint is incorrect'));
         });
       });
+    }, logger);
+  }
+
+  async connectOverCDP(params: ConnectOptions): Promise<Browser> {
+    if (this.name() !== 'chromium')
+      throw new Error('Connecting over CDP is only supported in Chromium.');
+    const logger = params.logger;
+    return this._wrapApiCall('browserType.connectOverCDP', async () => {
+      const result = await this._channel.connectOverCDP({
+        sdkLanguage: 'javascript',
+        wsEndpoint: params.wsEndpoint,
+        slowMo: params.slowMo,
+        timeout: params.timeout
+      });
+      const browser = Browser.from(result.browser);
+      if (result.defaultContext)
+        browser._contexts.add(BrowserContext.from(result.defaultContext));
+      browser._isRemote = true;
+      browser._logger = logger;
+      return browser;
     }, logger);
   }
 }

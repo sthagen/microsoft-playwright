@@ -14,22 +14,23 @@
  * limitations under the License.
  */
 
-import * as path from 'path';
+import path from 'path';
 import { Tracer } from '../trace/tracer';
-import * as browserPaths from '../utils/browserPaths';
 import { Android } from './android/android';
 import { AdbBackend } from './android/backendAdb';
 import { PlaywrightOptions } from './browser';
 import { Chromium } from './chromium/chromium';
 import { Electron } from './electron/electron';
 import { Firefox } from './firefox/firefox';
-import { serverSelectors } from './selectors';
+import { Selectors, serverSelectors } from './selectors';
 import { HarTracer } from './supplements/har/harTracer';
 import { InspectorController } from './supplements/inspectorController';
 import { WebKit } from './webkit/webkit';
+import { Registry } from '../utils/registry';
+import { InstrumentationListener, multiplexInstrumentation, SdkObject } from './instrumentation';
 
-export class Playwright {
-  readonly selectors = serverSelectors;
+export class Playwright extends SdkObject {
+  readonly selectors: Selectors;
   readonly chromium: Chromium;
   readonly android: Android;
   readonly electron: Electron;
@@ -37,30 +38,28 @@ export class Playwright {
   readonly webkit: WebKit;
   readonly options: PlaywrightOptions;
 
-  constructor(isInternal: boolean, packagePath: string, browsers: browserPaths.BrowserDescriptor[]) {
+  constructor(isInternal: boolean) {
+    const listeners: InstrumentationListener[] = [];
+    if (!isInternal) {
+      listeners.push(new Tracer());
+      listeners.push(new HarTracer());
+      listeners.push(new InspectorController());
+    }
+    const instrumentation = multiplexInstrumentation(listeners);
+    super({ attribution: {}, instrumentation } as any);
     this.options = {
-      isInternal,
-      contextListeners: isInternal ? [] : [
-        new InspectorController(),
-        new Tracer(),
-        new HarTracer()
-      ]
+      registry: new Registry(path.join(__dirname, '..', '..')),
+      rootSdkObject: this,
     };
-    const chromium = browsers.find(browser => browser.name === 'chromium');
-    const ffmpeg = browsers.find(browser => browser.name === 'ffmpeg');
-    this.chromium = new Chromium(packagePath, chromium!, ffmpeg!, this.options);
-
-    const firefox = browsers.find(browser => browser.name === 'firefox');
-    this.firefox = new Firefox(packagePath, firefox!, this.options);
-
-    const webkit = browsers.find(browser => browser.name === 'webkit');
-    this.webkit = new WebKit(packagePath, webkit!, this.options);
-
-    this.electron = new Electron(packagePath, this.options, ffmpeg!);
-    this.android = new Android(packagePath, new AdbBackend(), this.options, ffmpeg!);
+    this.chromium = new Chromium(this.options);
+    this.firefox = new Firefox(this.options);
+    this.webkit = new WebKit(this.options);
+    this.electron = new Electron(this.options);
+    this.android = new Android(new AdbBackend(), this.options);
+    this.selectors = serverSelectors;
   }
 }
 
 export function createPlaywright(isInternal = false) {
-  return new Playwright(isInternal, path.join(__dirname, '..', '..'), require('../../browsers.json')['browsers']);
+  return new Playwright(isInternal);
 }

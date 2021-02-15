@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-import * as path from 'path';
-import * as fs from 'fs';
+import path from 'path';
+import fs from 'fs';
 import * as util from 'util';
 import * as crypto from 'crypto';
 
@@ -136,7 +136,7 @@ export function monotonicTime(): number {
   return seconds * 1000 + (nanoseconds / 1000 | 0) / 1000;
 }
 
-export function calculateSha1(buffer: Buffer): string {
+export function calculateSha1(buffer: Buffer | string): string {
   const hash = crypto.createHash('sha1');
   hash.update(buffer);
   return hash.digest('hex');

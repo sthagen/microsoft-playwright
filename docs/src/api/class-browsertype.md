@@ -63,6 +63,27 @@ This methods attaches Playwright to an existing browser instance.
   - `timeout` <[float]> Maximum time in milliseconds to wait for the connection to be established. Defaults to
     `30000` (30 seconds). Pass `0` to disable timeout.
 
+## async method: BrowserType.connectOverCDP
+* langs: js
+- returns: <[Browser]>
+
+This methods attaches Playwright to an existing browser instance using the Chrome DevTools Protocol.
+
+The default browser context is accessible via [`method: Browser.contexts`].
+
+:::note
+Connecting over the Chrome DevTools Protocol is only supported for Chromium-based browsers.
+:::
+
+### param: BrowserType.connectOverCDP.params
+- `params` <[Object]>
+  - `wsEndpoint` <[string]> A CDP websocket endpoint to connect to.
+  - `slowMo` <[float]> Slows down Playwright operations by the specified amount of milliseconds. Useful so that you
+    can see what is going on. Defaults to 0.
+  - `logger` <[Logger]> Logger sink for Playwright logging. Optional.
+  - `timeout` <[float]> Maximum time in milliseconds to wait for the connection to be established. Defaults to
+    `30000` (30 seconds). Pass `0` to disable timeout.
+
 ## method: BrowserType.executablePath
 - returns: <[string]>
 
@@ -93,7 +114,7 @@ browser = playwright.chromium.launch( # or "firefox" or "webkit".
 )
 ```
 
-> **Chromium-only** Playwright can also be used to control the Chrome browser, but it works best with the version of
+> **Chromium-only** Playwright can also be used to control the Google Chrome or Microsoft Edge browsers, but it works best with the version of
 Chromium it is bundled with. There is no guarantee it will work with any other version. Use [`option: executablePath`]
 option with extreme caution.
 >
@@ -101,11 +122,8 @@ option with extreme caution.
 [Chrome Canary](https://www.google.com/chrome/browser/canary.html) or
 [Dev Channel](https://www.chromium.org/getting-involved/dev-channel) build is suggested.
 >
-> In [`method: BrowserType.launch`] above, any mention of Chromium also applies to Chrome.
->
-> See [`this article`](https://www.howtogeek.com/202825/what%E2%80%99s-the-difference-between-chromium-and-chrome/) for
-a description of the differences between Chromium and Chrome.
-[`This article`](https://chromium.googlesource.com/chromium/src/+/lkgr/docs/chromium_browser_vs_google_chrome.md)
+> Stock browsers like Google Chrome and Microsoft Edge are suitable for tests that require proprietary media codecs for video playback. See [this article](https://www.howtogeek.com/202825/what%E2%80%99s-the-difference-between-chromium-and-chrome/) for other differences between Chromium and Chrome.
+[This article](https://chromium.googlesource.com/chromium/src/+/lkgr/docs/chromium_browser_vs_google_chrome.md)
 describes some differences for Linux users.
 
 ### option: BrowserType.launch.headless

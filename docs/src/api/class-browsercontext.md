@@ -111,7 +111,7 @@ browser_context.add_cookies([cookie_object1, cookie_object2])
   - `expires` <[float]> Unix time in seconds. Optional.
   - `httpOnly` <[boolean]> Optional.
   - `secure` <[boolean]> Optional.
-  - `sameSite` <"Strict"|"Lax"|"None"> Optional.
+  - `sameSite` <[SameSiteAttribute]<"Strict"|"Lax"|"None">> Optional.
 
 ## async method: BrowserContext.addInitScript
 
@@ -153,10 +153,17 @@ The order of evaluation of multiple scripts installed via [`method: BrowserConte
 :::
 
 ### param: BrowserContext.addInitScript.script
+* langs: js
 - `script` <[function]|[string]|[Object]>
   - `path` <[path]> Path to the JavaScript file. If `path` is a relative path, then it is resolved relative to the
     current working directory. Optional.
   - `content` <[string]> Raw script content. Optional.
+
+Script to be evaluated in all pages in the browser context.
+
+### param: BrowserContext.addInitScript.script
+* langs: csharp, java
+- `script` <[string]|[path]>
 
 Script to be evaluated in all pages in the browser context.
 
@@ -217,7 +224,7 @@ The default browser context cannot be closed.
   - `expires` <[float]> Unix time in seconds.
   - `httpOnly` <[boolean]>
   - `secure` <[boolean]>
-  - `sameSite` <"Strict"|"Lax"|"None">
+  - `sameSite` <[SameSiteAttribute]<"Strict"|"Lax"|"None">>
 
 If no URLs are specified, this method returns all cookies. If URLs are specified, only cookies that affect those URLs
 are returned.
@@ -596,7 +603,14 @@ Enabling routing disables http cache.
 A glob pattern, regex pattern or predicate receiving [URL] to match while routing.
 
 ### param: BrowserContext.route.handler
+* langs: js, python
 - `handler` <[function]\([Route], [Request]\)>
+
+handler function to route the request.
+
+### param: BrowserContext.route.handler
+* langs: csharp, java
+- `handler` <[function]\([Route]\)>
 
 handler function to route the request.
 
@@ -703,7 +717,7 @@ Whether to emulate network being offline for the browser context.
     - `expires` <[float]> Unix time in seconds.
     - `httpOnly` <[boolean]>
     - `secure` <[boolean]>
-    - `sameSite` <"Strict"|"Lax"|"None">
+    - `sameSite` <[SameSiteAttribute]<"Strict"|"Lax"|"None">>
   - `origins` <[Array]<[Object]>>
     - `origin` <[string]>
     - `localStorage` <[Array]<[Object]>>
@@ -735,7 +749,14 @@ A glob pattern, regex pattern or predicate receiving [URL] used to register a ro
 [`method: BrowserContext.route`].
 
 ### param: BrowserContext.unroute.handler
+* langs: js, python
 - `handler` <[function]\([Route], [Request]\)>
+
+Optional handler function used to register a routing with [`method: BrowserContext.route`].
+
+### param: BrowserContext.unroute.handler
+* langs: csharp, java
+- `handler` <[function]\([Route]\)>
 
 Optional handler function used to register a routing with [`method: BrowserContext.route`].
 
@@ -779,3 +800,20 @@ Event name, same one would pass into `browserContext.on(event)`.
     disable timeout. The default value can be changed by using the [`method: BrowserContext.setDefaultTimeout`].
 
 Either a predicate that receives an event or an options object. Optional.
+
+## async method: BrowserContext.waitForPage
+* langs: csharp, java, python
+  - alias-python: expect_page
+- returns: <[Page]>
+
+Performs action and waits for a new [Page] to be created in the context. If predicate is provided, it passes
+[Page] value into the `predicate` function and waits for `predicate(event)` to return a truthy value.
+Will throw an error if the context closes before new [Page] is created.
+
+### option: BrowserContext.waitForPage.predicate =
+* langs: csharp, java, python
+- `predicate` <[function]\([Page]\):[boolean]>
+
+Receives the [Page] object and resolves to truthy value when the waiting should resolve.
+
+### option: BrowserContext.waitForPage.timeout = %%-wait-for-event-timeout-%%

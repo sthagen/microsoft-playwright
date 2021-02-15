@@ -16,19 +16,17 @@
 
 import type * as actions from '../recorder/recorderActions';
 import type InjectedScript from '../../injected/injectedScript';
-import { generateSelector } from './selectorGenerator';
-import { Element$, html } from './html';
-import type { State, SetUIState } from '../recorder/state';
+import { generateSelector, querySelector } from './selectorGenerator';
+import { html } from './html';
+import type { Point } from '../../../common/types';
+import type { UIState } from '../recorder/recorderTypes';
 
 declare global {
   interface Window {
     _playwrightRecorderPerformAction: (action: actions.Action) => Promise<void>;
     _playwrightRecorderRecordAction: (action: actions.Action) => Promise<void>;
     _playwrightRecorderCommitAction: () => Promise<void>;
-    _playwrightRecorderState: () => Promise<State>;
-    _playwrightRecorderSetUIState: (state: SetUIState) => Promise<void>;
-    _playwrightRecorderShowRecorderPage: () => Promise<void>;
-    _playwrightRecorderPrintSelector: (text: string) => Promise<void>;
+    _playwrightRecorderState: () => Promise<UIState>;
     _playwrightResume: () => Promise<void>;
   }
 }
@@ -49,16 +47,14 @@ export class Recorder {
   private _activeModel: HighlightModel | null = null;
   private _expectProgrammaticKeyUp = false;
   private _pollRecorderModeTimer: NodeJS.Timeout | undefined;
-  private _outerToolbarElement: HTMLElement;
-  private _toolbar: Element$;
-  private _state: State = {
-    uiState: {
-      mode: 'none',
-    },
-    isPaused: false
-  };
+  private _mode: 'none' | 'inspecting' | 'recording' = 'none';
+  private _actionPointElement: HTMLElement;
+  private _actionPoint: Point | undefined;
+  private _actionSelector: string | undefined;
+  private _params: { isUnderTest: boolean; };
 
-  constructor(injectedScript: InjectedScript) {
+  constructor(injectedScript: InjectedScript, params: { isUnderTest: boolean }) {
+    this._params = params;
     this._injectedScript = injectedScript;
     this._outerGlassPaneElement = html`
       <x-pw-glass style="
@@ -74,6 +70,7 @@ export class Recorder {
       </x-pw-glass>`;
 
     this._tooltipElement = html`<x-pw-tooltip></x-pw-tooltip>`;
+    this._actionPointElement = html`<x-pw-action-point hidden=true></x-pw-action-point>`;
 
     this._innerGlassPaneElement = html`
       <x-pw-glass-inner style="flex: auto">
@@ -81,8 +78,9 @@ export class Recorder {
       </x-pw-glass-inner>`;
 
     // Use a closed shadow root to prevent selectors matching our internal previews.
-    this._glassPaneShadow = this._outerGlassPaneElement.attachShadow({ mode: 'closed' });
+    this._glassPaneShadow = this._outerGlassPaneElement.attachShadow({ mode: this._params.isUnderTest ? 'open' : 'closed' });
     this._glassPaneShadow.appendChild(this._innerGlassPaneElement);
+    this._glassPaneShadow.appendChild(this._actionPointElement);
     this._glassPaneShadow.appendChild(html`
       <style>
         x-pw-tooltip {
@@ -108,72 +106,28 @@ export class Recorder {
           position: absolute;
           top: 0;
         }
+        x-pw-action-point {
+          position: absolute;
+          width: 20px;
+          height: 20px;
+          background: red;
+          border-radius: 10px;
+          pointer-events: none;
+          margin: -10px 0 0 -10px;
+          z-index: 2;
+        }
+        *[hidden] {
+          display: none !important;
+        }
       </style>
     `);
-
-    this._toolbar = html`
-      <x-pw-toolbar class="vertical">
-        ${commonStyles()}
-        <x-pw-button-group>
-          <x-pw-button id="pw-button-playwright" tabIndex=0 title="Playwright">
-            <x-pw-icon>
-              <svg xmlns="http://www.w3.org/2000/svg" width="400" height="400" fill="none"><path d="M136 222c-12 3-21 10-26 16 5-5 12-9 22-12 10-2 18-2 25-1v-6c-6 0-13 0-21 3zm-27-46l-48 12 3 3 40-10s0 7-5 14c9-7 10-19 10-19zm40 112C82 306 46 228 35 188a227 227 0 01-7-45c-4 1-6 2-5 8 0 9 2 23 7 42 11 40 47 118 114 100 15-4 26-11 34-20-7 7-17 12-29 15zm13-160v5h26l-2-5h-24z" fill="#2D4552"/><path d="M194 168c12 3 18 11 21 19l14 3s-2-25-25-32c-22-6-36 12-37 14 6-4 15-8 27-4zm105 19c-21-6-35 12-36 14 6-4 15-8 27-5 12 4 18 12 21 19l14 4s-2-26-26-32zm-13 68l-110-31s1 6 6 14l93 26 11-9zm-76 66c-87-23-77-134-63-187 6-22 12-38 17-49-3 0-5 1-8 6-5 11-12 28-18 52-14 53-25 164 62 188 41 11 73-6 97-32a90 90 0 01-87 22z" fill="#2D4552"/><path d="M162 262v-22l-63 18s5-27 37-36c10-3 19-3 26-2v-92h31l-10-24c-4-9-9-3-19 6-8 6-27 19-55 27-29 8-52 6-61 4-14-2-21-5-20 5 0 9 2 23 7 42 11 40 47 118 114 100 18-4 30-14 39-26h-26zM61 188l48-12s-1 18-19 23-29-11-29-11z" fill="#E2574C"/><path d="M342 129c-13 2-43 5-79-5-37-10-62-27-71-35-14-12-20-20-26-8-5 11-12 29-19 53-14 53-24 164 63 187s134-78 148-131c6-24 9-42 10-54 1-14-9-10-26-7zm-176 44s14-22 38-15c23 7 25 32 25 32l-63-17zm57 96c-41-12-47-45-47-45l110 31s-22 26-63 14zm39-68s14-21 37-14c24 6 26 32 26 32l-63-18z" fill="#2EAD33"/><path d="M140 246l-41 12s5-26 35-36l-23-86-2 1c-29 8-52 6-61 4-14-2-21-5-20 5 0 9 2 23 7 42 11 40 47 118 114 100h2l-11-42zm-79-58l48-12s-1 18-19 23-29-11-29-11z" fill="#D65348"/><path d="M225 269h-2c-41-12-47-45-47-45l57 16 30-116c-37-10-62-27-71-35-14-12-20-20-26-8-5 11-12 29-19 53-14 53-24 164 63 187l2 1 13-53zm-59-96s14-22 38-15c23 7 25 32 25 32l-63-17z" fill="#1D8D22"/><path d="M142 245l-11 4c3 14 7 28 14 40l4-1 9-3c-8-12-13-25-16-40zm-4-102c-6 21-11 51-10 81l8-2 2-1a273 273 0 0114-103l-8 5-6 20z" fill="#C04B41"/></svg>
-            </x-pw-icon>
-          </x-pw-button>
-        </x-pw-button-group>
-        <x-pw-button-group>
-          <x-pw-button id="pw-button-inspect" tabIndex=0 title="Inspect selectors">
-            <svg xmlns="http://www.w3.org/2000/svg" height="24" width="24"><path d="M0 0h24v24H0z" fill="none"/><path d="M12 8c-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4-1.79-4-4-4zm8.94 3c-.46-4.17-3.77-7.48-7.94-7.94V1h-2v2.06C6.83 3.52 3.52 6.83 3.06 11H1v2h2.06c.46 4.17 3.77 7.48 7.94 7.94V23h2v-2.06c4.17-.46 7.48-3.77 7.94-7.94H23v-2h-2.06zM12 19c-3.87 0-7-3.13-7-7s3.13-7 7-7 7 3.13 7 7-3.13 7-7 7z"/></svg>
-          </x-pw-button>
-          <x-pw-button id="pw-button-record" class="record" tabIndex=0 title="Record script">
-            <div class="record-button">
-              <div class="record-button-glow"></div>
-            </div>
-          </x-pw-button>
-        </x-pw-button-group>
-        <x-pw-button-group id="pw-button-resume-group" class="hidden" title="Resume execution">
-          <x-pw-button id="pw-button-resume" tabIndex=0>
-            <svg xmlns="http://www.w3.org/2000/svg" height="24" width="24"><path d="M0 0h24v24H0z" fill="none"/><path d="M8 5v14l11-7z"/></svg>
-          </x-pw-button>
-        </x-pw-button-group>
-      </x-pw-toolbar>`;
-
-    this._outerToolbarElement = html`<x-pw-div style="position: fixed; top: 100px; left: 10px; flex-direction: column; z-index: 2147483647;"></x-pw-div>`;
-    const toolbarShadow = this._outerToolbarElement.attachShadow({ mode: 'open' });
-    toolbarShadow.appendChild(this._toolbar);
-
-    this._hydrate();
     this._refreshListenersIfNeeded();
     setInterval(() => {
       this._refreshListenersIfNeeded();
       if ((window as any)._recorderScriptReadyForTest)
         (window as any)._recorderScriptReadyForTest();
     }, 500);
-    this._pollRecorderMode(true).catch(e => console.log(e)); // eslint-disable-line no-console
-  }
-
-  private _hydrate() {
-    this._toolbar.$('#pw-button-inspect').addEventListener('click', () => {
-      if (this._toolbar.$('#pw-button-inspect').classList.contains('disabled'))
-        return;
-      this._toolbar.$('#pw-button-inspect').classList.toggle('toggled');
-      this._updateUIState({
-        mode: this._toolbar.$('#pw-button-inspect').classList.contains('toggled') ? 'inspecting' : 'none'
-      });
-    });
-    this._toolbar.$('#pw-button-record').addEventListener('click', () => this._toggleRecording());
-    this._toolbar.$('#pw-button-resume').addEventListener('click', () => {
-      if (this._toolbar.$('#pw-button-resume').classList.contains('disabled'))
-        return;
-      this._updateUIState({ mode: 'none' });
-      window._playwrightResume().catch(() => {});
-    });
-    this._toolbar.$('#pw-button-playwright').addEventListener('click', () => {
-      if (this._toolbar.$('#pw-button-playwright').classList.contains('disabled'))
-        return;
-      this._toolbar.$('#pw-button-playwright').classList.toggle('toggled');
-      window._playwrightRecorderShowRecorderPage().catch(() => {});
-    });
+    this._pollRecorderMode().catch(e => console.log(e)); // eslint-disable-line no-console
   }
 
   private _refreshListenersIfNeeded() {
@@ -193,51 +147,53 @@ export class Recorder {
       addEventListener(document, 'focus', () => this._onFocus(), true),
       addEventListener(document, 'scroll', () => {
         this._hoveredModel = null;
+        this._actionPointElement.hidden = true;
         this._updateHighlight();
       }, true),
     ];
     document.documentElement.appendChild(this._outerGlassPaneElement);
-    if (window.top === window)
-      document.documentElement.appendChild(this._outerToolbarElement);
   }
 
-  private _toggleRecording() {
-    this._toolbar.$('#pw-button-record').classList.toggle('toggled');
-    this._updateUIState({
-      ...this._state.uiState,
-      mode: this._toolbar.$('#pw-button-record').classList.contains('toggled') ? 'recording' : 'none',
-    });
-  }
-
-  private async _updateUIState(uiState: SetUIState) {
-    window._playwrightRecorderSetUIState(uiState).then(() => this._pollRecorderMode());
-  }
-
-  private async _pollRecorderMode(skipAnimations: boolean = false) {
+  private async _pollRecorderMode() {
+    const pollPeriod = 250;
     if (this._pollRecorderModeTimer)
       clearTimeout(this._pollRecorderModeTimer);
     const state = await window._playwrightRecorderState().catch(e => null);
     if (!state) {
-      this._pollRecorderModeTimer = setTimeout(() => this._pollRecorderMode(), 250);
+      this._pollRecorderModeTimer = setTimeout(() => this._pollRecorderMode(), pollPeriod);
       return;
     }
 
-    const { isPaused, uiState } = state;
-    if (uiState.mode !== this._state.uiState.mode) {
-      this._state.uiState.mode = uiState.mode;
-      this._toolbar.$('#pw-button-inspect').classList.toggle('toggled', uiState.mode === 'inspecting');
-      this._toolbar.$('#pw-button-record').classList.toggle('toggled', uiState.mode === 'recording');
-      this._toolbar.$('#pw-button-resume').classList.toggle('disabled', uiState.mode === 'recording');
+    const { mode, actionPoint, actionSelector } = state;
+    if (mode !== this._mode) {
+      this._mode = mode;
       this._clearHighlight();
     }
-
-    if (isPaused !== this._state.isPaused) {
-      this._state.isPaused = isPaused;
-      this._toolbar.$('#pw-button-resume-group').classList.toggle('hidden', !isPaused);
+    if (actionPoint && this._actionPoint && actionPoint.x === this._actionPoint.x && actionPoint.y === this._actionPoint.y) {
+      // All good.
+    } else if (!actionPoint && !this._actionPoint) {
+      // All good.
+    } else {
+      if (actionPoint) {
+        this._actionPointElement.style.top = actionPoint.y + 'px';
+        this._actionPointElement.style.left = actionPoint.x + 'px';
+        this._actionPointElement.hidden = false;
+      } else {
+        this._actionPointElement.hidden = true;
+      }
+      this._actionPoint = actionPoint;
     }
 
-    this._state = state;
-    this._pollRecorderModeTimer = setTimeout(() => this._pollRecorderMode(), 250);
+    // Race or scroll.
+    if (this._actionSelector && !this._hoveredModel?.elements.length)
+      this._actionSelector = undefined;
+
+    if (actionSelector !== this._actionSelector) {
+      this._hoveredModel = actionSelector ? querySelector(this._injectedScript, actionSelector, document) : null;
+      this._updateHighlight();
+      this._actionSelector = actionSelector;
+    }
+    this._pollRecorderModeTimer = setTimeout(() => this._pollRecorderMode(), pollPeriod);
   }
 
   private _clearHighlight() {
@@ -270,11 +226,9 @@ export class Recorder {
   }
 
   private _onClick(event: MouseEvent) {
-    if (this._state.uiState.mode === 'inspecting' && !this._isInToolbar(event.target as HTMLElement)) {
-      if (this._hoveredModel) {
+    if (this._mode === 'inspecting') {
+      if (this._hoveredModel)
         copy(this._hoveredModel.selector);
-        window._playwrightRecorderPrintSelector(this._hoveredModel.selector);
-      }
     }
     if (this._shouldIgnoreMouseEvent(event))
       return;
@@ -304,19 +258,11 @@ export class Recorder {
     });
   }
 
-  private _isInToolbar(element: Element | undefined | null): boolean {
-    if (element && element.parentElement && element.parentElement.nodeName.toLowerCase().startsWith('x-pw-'))
-      return true;
-    return !!element && element.nodeName.toLowerCase().startsWith('x-pw-');
-  }
-
   private _shouldIgnoreMouseEvent(event: MouseEvent): boolean {
     const target = this._deepEventTarget(event);
-    if (this._isInToolbar(target))
+    if (this._mode === 'none')
       return true;
-    if (this._state.uiState.mode === 'none')
-      return true;
-    if (this._state.uiState.mode === 'inspecting') {
+    if (this._mode === 'inspecting') {
       consumeEvent(event);
       return true;
     }
@@ -344,11 +290,9 @@ export class Recorder {
   }
 
   private _onMouseMove(event: MouseEvent) {
-    if (this._state.uiState.mode === 'none')
+    if (this._mode === 'none')
       return;
     const target = this._deepEventTarget(event);
-    if (this._isInToolbar(target))
-      return;
     if (this._hoveredElement === target)
       return;
     this._hoveredElement = target;
@@ -434,7 +378,8 @@ export class Recorder {
     this._highlightElements = [];
     for (const box of boxes) {
       const highlightElement = pool.length ? pool.shift()! : this._createHighlightElement();
-      highlightElement.style.backgroundColor = this._highlightElements.length ? '#f6b26b7f' : '#6fa8dc7f';
+      const color = this._mode === 'recording' ? '#dc6f6f7f' : '#6fa8dc7f';
+      highlightElement.style.backgroundColor = this._highlightElements.length ? '#f6b26b7f' : color;
       highlightElement.style.left = box.x + 'px';
       highlightElement.style.top = box.y + 'px';
       highlightElement.style.width = box.width + 'px';
@@ -464,7 +409,7 @@ export class Recorder {
   }
 
   private _onInput(event: Event) {
-    if (this._state.uiState.mode !== 'recording')
+    if (this._mode !== 'recording')
       return true;
     const target = this._deepEventTarget(event);
     if (['INPUT', 'TEXTAREA'].includes(target.nodeName)) {
@@ -535,11 +480,11 @@ export class Recorder {
   }
 
   private _onKeyDown(event: KeyboardEvent) {
-    if (this._state.uiState.mode === 'inspecting') {
+    if (this._mode === 'inspecting') {
       consumeEvent(event);
       return;
     }
-    if (this._state.uiState.mode !== 'recording')
+    if (this._mode !== 'recording')
       return true;
     if (!this._shouldGenerateKeyPressFor(event))
       return;
@@ -665,111 +610,6 @@ function copy(text: string) {
   input.select();
   document.execCommand('copy');
   input.remove();
-}
-
-function commonStyles() {
-  return html`
-<style>
-* {
-  box-sizing: border-box;
-  min-width: 0;
-  min-height: 0;
-}
-x-pw-toolbar {
-  display: flex;
-  align-items: center;
-  fill: #333;
-  flex: none;
-}
-x-pw-toolbar.vertical {
-  flex-direction: column;
-}
-x-pw-button-group {
-  display: flex;
-  align-items: center;
-  background-color: #ffffffe6;
-  padding: 4px;
-  border-radius: 22px;
-  box-shadow: rgba(0, 0, 0, 0.1) 0px 0.25em 0.5em;
-  margin: 4px 0px;
-}
-x-pw-toolbar.vertical x-pw-button-group {
-  flex-direction: column;
-}
-x-pw-button {
-  position: relative;
-  width: 36px;
-  height: 36px;
-  background-position: center;
-  background-repeat: no-repeat;
-  border-radius: 16px;
-  cursor: pointer;
-  outline: none;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-x-pw-button:hover:not(.disabled) {
-  background-color: #f2f2f2;
-}
-x-pw-toolbar.dark x-pw-button {
-  fill: #ccc;
-}
-x-pw-toolbar.dark x-pw-button:hover:not(.disabled) {
-  background-color: inherit;
-}
-x-pw-toolbar.dark x-pw-button:hover:not(.disabled) {
-  fill: #eee;
-}
-x-pw-toolbar.dark x-pw-button:active:not(.disabled) {
-  fill: #fff;
-}
-x-pw-icon {
-  width: 32px;
-  height: 32px;
-}
-x-pw-button.toggled {
-  fill: #468fd2;
-}
-.record-button {
-  position: relative;
-  background: #333;
-  border-radius: 8px;
-  width: 16px;
-  height: 16px;
-  pointer-events: none;
-}
-.record-button-glow {
-  opacity: 0;
-  background: red;
-  border-radius: 9px;
-  width: 18px;
-  height: 18px;
-  margin: -1px;
-}
-x-pw-button.record.toggled .record-button {
-  background: red;
-}
-x-pw-button.record.toggled .record-button-glow {
-  transition: opacity 0.3s;
-  opacity: 0.7;
-}
-x-pw-button.disabled {
-  fill: #777777 !important;
-  cursor: inherit;
-}
-.hidden {
-  display: none;
-}
-x-pw-button svg {
-  pointer-events: none;
-}
-x-pw-icon svg {
-  transform: scale(0.08);
-  margin-left: -182px;
-  margin-top: -182px;
-}
-</style>`;
 }
 
 export default Recorder;
