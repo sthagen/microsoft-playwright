@@ -17,11 +17,20 @@
 import { expect } from 'folio';
 import { Page } from '..';
 import { folio } from './recorder.fixtures';
-const { it, describe} = folio;
+const { afterEach, it, describe } = folio;
 
 describe('pause', (suite, { mode }) => {
   suite.skip(mode !== 'default');
 }, () => {
+  afterEach(async ({ recorderPageGetter }) => {
+    try {
+      const recorderPage = await recorderPageGetter();
+      recorderPage.click('[title=Resume]').catch(() => {});
+    } catch (e) {
+      // Some tests close context.
+    }
+  });
+
   it('should pause and resume the script', async ({ page, recorderPageGetter }) => {
     const scriptPromise = (async () => {
       await page.pause();
@@ -117,7 +126,7 @@ describe('pause', (suite, { mode }) => {
     expect(Math.abs(x1 - x2) < 2).toBeTruthy();
     expect(Math.abs(y1 - y2) < 2).toBeTruthy();
 
-    await recorderPage.click('[title="Step over"]');
+    await recorderPage.click('[title=Resume]');
     await scriptPromise;
   });
 
@@ -146,21 +155,8 @@ describe('pause', (suite, { mode }) => {
     await recorderPage.click('[title="Resume"]');
     await recorderPage.waitForSelector('.source-line-paused:has-text("page.pause();  // 2")');
     expect(await sanitizeLog(recorderPage)).toEqual([
-      'pause',
-      'click',
-      'waiting for selector "button"',
-      'selector resolved to visible <button>Submit</button>',
-      'attempting click action',
-      'waiting for element to be visible, enabled and stable',
-      'element is visible, enabled and stable',
-      'scrolling into view if needed',
-      'done scrolling',
-      'checking that element receives pointer events at ()',
-      'element does receive pointer events',
-      'performing click action',
-      'click action done',
-      'waiting for scheduled navigations to finish',
-      'navigations have finished',
+      'pause- XXms',
+      'click(button)- XXms',
       'pause',
     ]);
     await recorderPage.click('[title="Resume"]');
@@ -181,23 +177,9 @@ describe('pause', (suite, { mode }) => {
     await recorderPage.click('[title="Resume"]');
     await recorderPage.waitForSelector('.source-line-paused:has-text("page.pause();  // 2")');
     expect(await sanitizeLog(recorderPage)).toEqual([
-      'pause',
-      'waitForEvent()',
-      'waiting for event \"console\"',
-      'click',
-      'waiting for selector "button"',
-      'selector resolved to visible <button onclick=\"console.log()\">Submit</button>',
-      'attempting click action',
-      'waiting for element to be visible, enabled and stable',
-      'element is visible, enabled and stable',
-      'scrolling into view if needed',
-      'done scrolling',
-      'checking that element receives pointer events at ()',
-      'element does receive pointer events',
-      'performing click action',
-      'click action done',
-      'waiting for scheduled navigations to finish',
-      'navigations have finished',
+      'pause- XXms',
+      'waitForEvent(console)- XXms',
+      'click(button)- XXms',
       'pause',
     ]);
     await recorderPage.click('[title="Resume"]');
@@ -214,22 +196,51 @@ describe('pause', (suite, { mode }) => {
     await recorderPage.click('[title="Resume"]');
     await recorderPage.waitForSelector('.source-line-error');
     expect(await sanitizeLog(recorderPage)).toEqual([
-      'pause',
-      'isChecked',
+      'pause- XXms',
+      'isChecked(button)- XXms',
       'checking \"checked\" state of \"button\"',
-      'selector resolved to <button onclick=\"console.log()\">Submit</button>',
+      'selector resolved to <button onclick=\"console.log(1)\">Submit</button>',
       'Not a checkbox or radio button',
     ]);
     const error = await scriptPromise;
     expect(error.message).toContain('Not a checkbox or radio button');
   });
+
+  it('should pause on page close', async ({ page, recorderPageGetter }) => {
+    const scriptPromise = (async () => {
+      await page.pause();
+      await page.close();
+    })();
+    const recorderPage = await recorderPageGetter();
+    await recorderPage.click('[title="Step over"]');
+    await recorderPage.waitForSelector('.source-line-paused:has-text("page.close();")');
+    await recorderPage.click('[title=Resume]');
+    await scriptPromise;
+  });
+
+  it('should pause on context close', async ({ page, recorderPageGetter }) => {
+    const scriptPromise = (async () => {
+      await page.pause();
+      await page.context().close();
+    })();
+    const recorderPage = await recorderPageGetter();
+    await recorderPage.click('[title="Step over"]');
+    await recorderPage.waitForSelector('.source-line-paused:has-text("page.context().close();")');
+    await recorderPage.click('[title=Resume]');
+    await scriptPromise;
+  });
 });
 
 async function sanitizeLog(recorderPage: Page): Promise<string[]> {
-  const text = await recorderPage.innerText('.recorder-log');
-  return text.split('\n').filter(l => {
-    return l !== 'element is not stable - waiting...';
-  }).map(l => {
-    return l.replace(/\(.*\)/, '()');
-  });
+  const results = [];
+  for (const entry of await recorderPage.$$('.call-log-call')) {
+    const header = await (await (await entry.$('.call-log-call-header')).textContent()).replace(/— \d+(ms|s)/, '- XXms');
+    results.push(header);
+    results.push(...await entry.$$eval('.call-log-message', ee => ee.map(e => e.textContent)));
+    const errorElement = await entry.$('.call-log-error');
+    const error = errorElement ? await errorElement.textContent() : undefined;
+    if (error)
+      results.push(error);
+  }
+  return results;
 }

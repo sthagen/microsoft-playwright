@@ -14,49 +14,41 @@
   limitations under the License.
 */
 
-.source {
+.snapshot-tab {
   display: flex;
-  flex: auto;
   flex-direction: column;
-  white-space: pre;
-  overflow: auto;
-  font-family: var(--monospace-font);
-  font-size: 11px;
-  line-height: 16px;
-  background: white;
+  align-items: stretch;
 }
 
-.source-line {
+.snapshot-controls {
+  flex: 0 0 24px;
   display: flex;
-  flex: none;
+  flex-direction: row;
+  align-items: center;
 }
 
-.source-line-number {
-  color: #555;
-  padding: 0 8px;
-  width: 30px;
-  text-align: right;
-  background: #edebe9;
-  user-select: none;
+.snapshot-toggle {
+  padding: 5px 10px;
+  cursor: pointer;
 }
 
-.source-line-number {
-  flex: none;
+.snapshot-toggle.toggled {
+  background: var(--inactive-focus-ring);
 }
 
-.source-line-running {
-  background-color: #b3dbff7f;
-  z-index: 2;
+.snapshot-wrapper {
+  flex: auto;
+  margin: 1px;
 }
 
-.source-line-paused {
-  background-color: #b3dbff7f;
-  outline: 1px solid #008aff;
-  z-index: 2;
+.snapshot-container {
+  display: block;
+  background: white;
+  outline: 1px solid #aaa;
 }
 
-.source-line-error {
-  background-color: #fff0f0;
-  outline: 1px solid #ff5656;
-  z-index: 2;
+iframe#snapshot {
+  width: 100%;
+  height: 100%;
+  border: none;
 }

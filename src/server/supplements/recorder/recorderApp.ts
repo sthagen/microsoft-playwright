@@ -31,9 +31,11 @@ const readFileAsync = util.promisify(fs.readFile);
 
 declare global {
   interface Window {
+    playwrightSetFile: (file: string) => void;
     playwrightSetMode: (mode: Mode) => void;
     playwrightSetPaused: (paused: boolean) => void;
     playwrightSetSources: (sources: Source[]) => void;
+    playwrightSetSelector: (selector: string, focus?: boolean) => void;
     playwrightUpdateLogs: (callLogs: CallLog[]) => void;
     dispatch(data: EventData): Promise<void>;
   }
@@ -51,7 +53,7 @@ export class RecorderApp extends EventEmitter {
   }
 
   async close() {
-    await this._page.context().close();
+    await this._page.context().close(internalCallMetadata());
   }
 
   private async _init() {
@@ -83,7 +85,7 @@ export class RecorderApp extends EventEmitter {
 
     this._page.once('close', () => {
       this.emit('close');
-      this._page.context().close().catch(e => console.error(e));
+      this._page.context().close(internalCallMetadata()).catch(e => console.error(e));
     });
 
     const mainFrame = this._page.mainFrame();
@@ -123,6 +125,12 @@ export class RecorderApp extends EventEmitter {
     }).toString(), true, mode, 'main').catch(() => {});
   }
 
+  async setFile(file: string): Promise<void> {
+    await this._page.mainFrame()._evaluateExpression(((file: string) => {
+      window.playwrightSetFile(file);
+    }).toString(), true, file, 'main').catch(() => {});
+  }
+
   async setPaused(paused: boolean): Promise<void> {
     await this._page.mainFrame()._evaluateExpression(((paused: boolean) => {
       window.playwrightSetPaused(paused);
@@ -136,12 +144,18 @@ export class RecorderApp extends EventEmitter {
 
     // Testing harness for runCLI mode.
     {
-      if (process.env.PWCLI_EXIT_FOR_TEST) {
+      if (process.env.PWCLI_EXIT_FOR_TEST && sources.length) {
         process.stdout.write('\n-------------8<-------------\n');
         process.stdout.write(sources[0].text);
         process.stdout.write('\n-------------8<-------------\n');
       }
     }
+  }
+
+  async setSelector(selector: string, focus?: boolean): Promise<void> {
+    await this._page.mainFrame()._evaluateExpression(((arg: any) => {
+      window.playwrightSetSelector(arg.selector, arg.focus);
+    }).toString(), true, { selector, focus }, 'main').catch(() => {});
   }
 
   async updateCallLogs(callLogs: CallLog[]): Promise<void> {

@@ -19,7 +19,7 @@ import { Point } from '../../../common/types';
 export type Mode = 'inspecting' | 'recording' | 'none';
 
 export type EventData = {
-  event: 'clear' | 'resume' | 'step' | 'pause' | 'setMode';
+  event: 'clear' | 'resume' | 'step' | 'pause' | 'setMode' | 'selectorUpdated';
   params: any;
 };
 
@@ -35,6 +35,12 @@ export type CallLog = {
   messages: string[];
   status: 'in-progress' | 'done' | 'error' | 'paused';
   error?: string;
+  reveal?: boolean;
+  duration?: number;
+  params: {
+    url?: string,
+    selector?: string,
+  };
 };
 
 export type SourceHighlight = {

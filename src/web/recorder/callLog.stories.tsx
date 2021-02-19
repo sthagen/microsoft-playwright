@@ -14,27 +14,24 @@
   limitations under the License.
 */
 
-.toolbar-button {
-  border: none;
-  outline: none;
-  color: var(--toolbar-color);
-  background: transparent;
-  padding: 0;
-  margin-left: 10px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-}
+import { Story, Meta } from '@storybook/react/types-6-0';
+import React from 'react';
+import { CallLogProps, CallLogView } from './callLog';
+import { exampleCallLog } from './callLog.example';
 
-.toolbar-button:disabled {
-  color: #bbb !important;
-  cursor: default;
-}
+export default {
+  title: 'Recorder/CallLog',
+  component: CallLogView,
+  parameters: {
+    viewport: {
+      defaultViewport: 'recorder'
+    }
+  }
+} as Meta;
 
-.toolbar-button:not(.disabled):not(.toggled):hover {
-  color: #555;
-}
+const Template: Story<CallLogProps> = args => <CallLogView {...args} />;
 
-.toolbar-button .codicon {
-  margin-right: 4px;
-}
+export const Primary = Template.bind({});
+Primary.args = {
+  log: exampleCallLog()
+};

@@ -25,7 +25,7 @@ export class InspectorController implements InstrumentationListener {
 
   async onContextCreated(context: BrowserContext): Promise<void> {
     if (isDebugMode())
-      RecorderSupplement.getOrCreate(context);
+      RecorderSupplement.getOrCreate(context, { pauseOnNextStatement: true });
   }
 
   async onBeforeCall(sdkObject: SdkObject, metadata: CallMetadata): Promise<void> {
@@ -52,12 +52,8 @@ export class InspectorController implements InstrumentationListener {
       }
     }
 
-    if (metadata.method === 'pause') {
-      // Force create recorder on pause.
-      if (!context._browser.options.headful && !isUnderTest())
-        return;
-      RecorderSupplement.getOrCreate(context);
-    }
+    if (shouldOpenInspector(sdkObject, metadata))
+      RecorderSupplement.getOrCreate(context, { pauseOnNextStatement: true });
 
     const recorder = await RecorderSupplement.getNoCreate(context);
     await recorder?.onBeforeCall(sdkObject, metadata);
@@ -72,12 +68,15 @@ export class InspectorController implements InstrumentationListener {
       const info = metadata.params.info;
       switch (info.phase) {
         case 'before':
+          metadata.endTime = 0;
           // Fall through.
         case 'log':
           return;
         case 'after':
-          metadata = this._waitOperations.get(info.waitId)!;
+          const originalMetadata = this._waitOperations.get(info.waitId)!;
+          originalMetadata.endTime = metadata.endTime;
           this._waitOperations.delete(info.waitId);
+          metadata = originalMetadata;
           break;
       }
     }
@@ -100,4 +99,10 @@ export class InspectorController implements InstrumentationListener {
     const recorder = await RecorderSupplement.getNoCreate(sdkObject.attribution.context);
     await recorder?.updateCallLog([metadata]);
   }
+}
+
+function shouldOpenInspector(sdkObject: SdkObject, metadata: CallMetadata): boolean {
+  if (!sdkObject.attribution.browser?.options.headful && !isUnderTest())
+    return false;
+  return metadata.method === 'pause';
 }

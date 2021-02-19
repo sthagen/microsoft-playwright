@@ -30,65 +30,32 @@
   white-space: nowrap;
 }
 
-.recorder-log {
-  display: flex;
-  flex-direction: column;
-  flex: auto;
-  line-height: 20px;
-  white-space: pre;
-  background: white;
-  overflow: auto;
-}
-
-.recorder-log-message {
-  flex: none;
-  padding: 3px 0 3px 36px;
-  display: flex;
-  align-items: center;
-}
-
-.recorder-log-header {
+.recorder-chooser {
+  border: none;
+  background: none;
+  outline: none;
   color: var(--toolbar-color);
-  box-shadow: var(--box-shadow);
-  background-color: var(--toolbar-bg-color);
-  height: 32px;
-  display: flex;
-  align-items: center;
-  padding: 0 9px;
-  z-index: 10;
+  margin-left: 16px;
 }
 
-.recorder-log-call {
-  display: flex;
-  flex: none;
-  flex-direction: column;
-  border-top: 1px solid #eee;
+.recorder .toolbar-button.toggled.question {
+  color: #12a3ff;
 }
 
-.recorder-log-call-header {
-  height: 24px;
-  display: flex;
-  align-items: center;
-  padding: 0 2px;
-  z-index: 2;
+.recorder .toolbar-button.toggled.record {
+  color: #fd1e1e;
 }
 
-.recorder-log-call .codicon {
-  padding: 0 4px;
+.recorder .toolbar-button:not([disabled]) .codicon-debug-continue,
+.recorder .toolbar-button:not([disabled]) .codicon-debug-step-over {
+  color: #01bb01;
 }
 
-.recorder-log .codicon-check {
-  color: #21a945;
-  font-weight: bold;
+.recorder .toolbar-button:not([disabled]):hover .codicon-debug-continue,
+.recorder .toolbar-button:not([disabled]):hover .codicon-debug-step-over {
+  color: #41ca1e;
 }
 
-.recorder-log-call.error {
-  background-color: #fff0f0;
-  border-top: 1px solid #ffd6d6;
-}
-
-.recorder-log-call.error .recorder-log-call-header,
-.recorder-log-message.error,
-.recorder-log .codicon-error {
-  color: red;
+.recorder .selector-input {
+  flex: auto;
 }

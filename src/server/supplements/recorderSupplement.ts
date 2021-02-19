@@ -22,18 +22,16 @@ import { describeFrame, toClickOptions, toModifiers } from './recorder/utils';
 import { Page } from '../page';
 import { Frame } from '../frames';
 import { BrowserContext } from '../browserContext';
-import { LanguageGenerator } from './recorder/language';
 import { JavaScriptLanguageGenerator } from './recorder/javascript';
 import { CSharpLanguageGenerator } from './recorder/csharp';
 import { PythonLanguageGenerator } from './recorder/python';
 import * as recorderSource from '../../generated/recorderSource';
 import * as consoleApiSource from '../../generated/consoleApiSource';
-import { BufferedOutput, FileOutput, OutputMultiplexer, RecorderOutput } from './recorder/outputs';
 import { RecorderApp } from './recorder/recorderApp';
 import { CallMetadata, internalCallMetadata, SdkObject } from '../instrumentation';
 import { Point } from '../../common/types';
 import { CallLog, EventData, Mode, Source, UIState } from './recorder/recorderTypes';
-import { isUnderTest } from '../../utils/utils';
+import { isUnderTest, monotonicTime } from '../../utils/utils';
 
 type BindingSource = { frame: Frame, page: Page };
 
@@ -47,14 +45,13 @@ export class RecorderSupplement {
   private _timers = new Set<NodeJS.Timeout>();
   private _context: BrowserContext;
   private _mode: Mode;
-  private _output: OutputMultiplexer;
-  private _bufferedOutput: BufferedOutput;
+  private _highlightedSelector = '';
   private _recorderApp: RecorderApp | null = null;
   private _params: channels.BrowserContextRecorderSupplementEnableParams;
   private _currentCallsMetadata = new Map<CallMetadata, SdkObject>();
   private _pausedCallsMetadata = new Map<CallMetadata, () => void>();
-  private _pauseOnNextStatement = true;
-  private _recorderSource: Source;
+  private _pauseOnNextStatement: boolean;
+  private _recorderSources: Source[];
   private _userSources = new Map<string, Source>();
 
   static getOrCreate(context: BrowserContext, params: channels.BrowserContextRecorderSupplementEnableParams = {}): Promise<RecorderSupplement> {
@@ -75,32 +72,52 @@ export class RecorderSupplement {
     this._context = context;
     this._params = params;
     this._mode = params.startRecording ? 'recording' : 'none';
-    let languageGenerator: LanguageGenerator;
-    let language = params.language || context._options.sdkLanguage;
-    switch (language) {
-      case 'javascript': languageGenerator = new JavaScriptLanguageGenerator(); break;
-      case 'csharp': languageGenerator = new CSharpLanguageGenerator(); break;
-      case 'python':
-      case 'python-async': languageGenerator = new PythonLanguageGenerator(params.language === 'python-async'); break;
-      default: throw new Error(`Invalid target: '${params.language}'`);
-    }
-    if (language === 'python-async')
-      language = 'python';
+    this._pauseOnNextStatement = !!params.pauseOnNextStatement;
+    const language = params.language || context._options.sdkLanguage;
 
-    this._recorderSource = { file: '<recorder>', text: '', language, highlight: [] };
-    this._bufferedOutput = new BufferedOutput(async text => {
-      this._recorderSource.text = text;
-      this._recorderSource.revealLine = text.split('\n').length - 1;
+    const languages = new Set([
+      new JavaScriptLanguageGenerator(),
+      new PythonLanguageGenerator(false),
+      new PythonLanguageGenerator(true),
+      new CSharpLanguageGenerator(),
+    ]);
+    const primaryLanguage = [...languages].find(l => l.id === language)!;
+    if (!primaryLanguage)
+      throw new Error(`\n===============================\nInvalid target: '${params.language}'\n===============================\n`);
+
+    languages.delete(primaryLanguage);
+    const orderedLanguages = [primaryLanguage, ...languages];
+
+    this._recorderSources = [];
+    const generator = new CodeGenerator(context._browser.options.name, !!params.startRecording, params.launchOptions || {}, params.contextOptions || {}, params.device, params.saveStorage);
+    let text = '';
+    generator.on('change', () => {
+      this._recorderSources = [];
+      for (const languageGenerator of orderedLanguages) {
+        const source: Source = {
+          file: languageGenerator.fileName,
+          text: generator.generateText(languageGenerator),
+          language: languageGenerator.highlighter,
+          highlight: []
+        };
+        source.revealLine = source.text.split('\n').length - 1;
+        this._recorderSources.push(source);
+        if (languageGenerator === orderedLanguages[0])
+          text = source.text;
+      }
       this._pushAllSources();
+      this._recorderApp?.setFile(primaryLanguage.fileName);
     });
-    const outputs: RecorderOutput[] = [ this._bufferedOutput ];
-    if (params.outputFile)
-      outputs.push(new FileOutput(params.outputFile));
-    this._output = new OutputMultiplexer(outputs);
-    this._output.setEnabled(!!params.startRecording);
-    context.on(BrowserContext.Events.BeforeClose, () => this._output.flush());
-
-    const generator = new CodeGenerator(context._browser.options.name, !!params.startRecording, params.launchOptions || {}, params.contextOptions || {}, this._output, languageGenerator, params.device, params.saveStorage);
+    if (params.outputFile) {
+      context.on(BrowserContext.Events.BeforeClose, () => {
+        fs.writeFileSync(params.outputFile!, text);
+        text = '';
+      });
+      process.on('exit', () => {
+        if (text)
+          fs.writeFileSync(params.outputFile!, text);
+      });
+    }
     this._generator = generator;
   }
 
@@ -112,11 +129,11 @@ export class RecorderSupplement {
     });
     recorderApp.on('event', (data: EventData) => {
       if (data.event === 'setMode') {
-        this._mode = data.params.mode;
-        recorderApp.setMode(this._mode);
-        this._output.setEnabled(this._mode === 'recording');
-        if (this._mode !== 'none')
-          this._context.pages()[0].bringToFront().catch(() => {});
+        this._setMode(data.params.mode);
+        return;
+      }
+      if (data.event === 'selectorUpdated') {
+        this._highlightedSelector = data.params.selector;
         return;
       }
       if (data.event === 'step') {
@@ -176,8 +193,14 @@ export class RecorderSupplement {
           actionSelector = metadata.params.selector || actionSelector;
         }
       }
-      const uiState: UIState = { mode: this._mode, actionPoint, actionSelector };
+      const uiState: UIState = { mode: this._mode, actionPoint, actionSelector: this._highlightedSelector || actionSelector };
       return uiState;
+    });
+
+    await this._context.exposeBinding('_playwrightRecorderSetSelector', false, async (_, selector: string) => {
+      this._setMode('none');
+      await this._recorderApp?.setSelector(selector, true);
+      await this._recorderApp?.bringToFront();
     });
 
     await this._context.exposeBinding('_playwrightResume', false, () => {
@@ -195,19 +218,31 @@ export class RecorderSupplement {
       this._pausedCallsMetadata.set(metadata, f);
     });
     this._recorderApp!.setPaused(true);
+    metadata.pauseStartTime = monotonicTime();
     this._updateUserSources();
     this.updateCallLog([metadata]);
     return result;
   }
 
+  private _setMode(mode: Mode) {
+    this._mode = mode;
+    this._recorderApp?.setMode(this._mode);
+    this._generator.setEnabled(this._mode === 'recording');
+    if (this._mode !== 'none')
+      this._context.pages()[0].bringToFront().catch(() => {});
+  }
+
   private async _resume(step: boolean) {
     this._pauseOnNextStatement = step;
+    this._recorderApp?.setPaused(false);
 
-    for (const callback of this._pausedCallsMetadata.values())
+    const endTime = monotonicTime();
+    for (const [metadata, callback] of this._pausedCallsMetadata) {
+      metadata.pauseEndTime = endTime;
       callback();
+    }
     this._pausedCallsMetadata.clear();
 
-    this._recorderApp?.setPaused(false);
     this._updateUserSources();
     this.updateCallLog([...this._currentCallsMetadata.keys()]);
   }
@@ -254,7 +289,6 @@ export class RecorderSupplement {
   }
 
   private _clearScript(): void {
-    this._bufferedOutput.clear();
     this._generator.restart();
     if (!!this._params.startRecording) {
       for (const page of this._context.pages())
@@ -334,8 +368,12 @@ export class RecorderSupplement {
     this._currentCallsMetadata.set(metadata, sdkObject);
     this._updateUserSources();
     this.updateCallLog([metadata]);
-    if (metadata.method === 'pause' || (this._pauseOnNextStatement && metadata.method === 'goto'))
+    if (shouldPauseOnCall(sdkObject, metadata) || (this._pauseOnNextStatement && shouldPauseOnStep(sdkObject, metadata)))
       await this.pause(metadata);
+    if (metadata.params && metadata.params.selector) {
+      this._highlightedSelector = metadata.params.selector;
+      await this._recorderApp?.setSelector(this._highlightedSelector);
+    }
   }
 
   async onAfterCall(metadata: CallMetadata): Promise<void> {
@@ -356,6 +394,7 @@ export class RecorderSupplement {
     }
 
     // Apply new decorations.
+    let fileToSelect = undefined;
     for (const metadata of this._currentCallsMetadata.keys()) {
       if (!metadata.stack || !metadata.stack[0])
         continue;
@@ -368,15 +407,17 @@ export class RecorderSupplement {
       if (line) {
         const paused = this._pausedCallsMetadata.has(metadata);
         source.highlight.push({ line, type: metadata.error ? 'error' : (paused ? 'paused' : 'running') });
-        if (paused)
-          source.revealLine = line;
+        source.revealLine = line;
+        fileToSelect = source.file;
       }
     }
     this._pushAllSources();
+    if (fileToSelect)
+      this._recorderApp?.setFile(fileToSelect);
   }
 
   private _pushAllSources() {
-    this._recorderApp?.setSources([this._recorderSource, ...this._userSources.values()]);
+    this._recorderApp?.setSources([...this._recorderSources, ...this._userSources.values()]);
   }
 
   async onBeforeInputAction(metadata: CallMetadata): Promise<void> {
@@ -401,7 +442,21 @@ export class RecorderSupplement {
         status = 'paused';
       if (metadata.error)
         status = 'error';
-      logs.push({ id: metadata.id, messages: metadata.log, title, status, error: metadata.error });
+      const params = {
+        url: metadata.params?.url,
+        selector: metadata.params?.selector,
+      };
+      let duration = metadata.endTime ? metadata.endTime - metadata.startTime : undefined;
+      if (duration && metadata.pauseStartTime && metadata.pauseEndTime)
+        duration -= (metadata.pauseEndTime - metadata.pauseStartTime);
+      logs.push({
+        id: metadata.id,
+        messages: metadata.log,
+        title, status,
+        error: metadata.error,
+        params,
+        duration
+      });
     }
     this._recorderApp?.updateCallLogs(logs);
   }
@@ -423,4 +478,14 @@ function languageForFile(file: string) {
   if (file.endsWith('.cs'))
     return 'csharp';
   return 'javascript';
+}
+
+function shouldPauseOnCall(sdkObject: SdkObject, metadata: CallMetadata): boolean {
+  if (!sdkObject.attribution.browser?.options.headful && !isUnderTest())
+    return false;
+  return metadata.method === 'pause';
+}
+
+function shouldPauseOnStep(sdkObject: SdkObject, metadata: CallMetadata): boolean {
+  return metadata.method === 'goto' || metadata.method === 'close';
 }

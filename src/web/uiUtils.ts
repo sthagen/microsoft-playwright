@@ -14,27 +14,28 @@
   limitations under the License.
 */
 
-.toolbar-button {
-  border: none;
-  outline: none;
-  color: var(--toolbar-color);
-  background: transparent;
-  padding: 0;
-  margin-left: 10px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-}
+export function msToString(ms: number): string {
+  if (!isFinite(ms))
+    return '-';
 
-.toolbar-button:disabled {
-  color: #bbb !important;
-  cursor: default;
-}
+  if (ms === 0)
+    return '0';
 
-.toolbar-button:not(.disabled):not(.toggled):hover {
-  color: #555;
-}
+  if (ms < 1000)
+    return ms.toFixed(0) + 'ms';
 
-.toolbar-button .codicon {
-  margin-right: 4px;
+  const seconds = ms / 1000;
+  if (seconds < 60)
+    return seconds.toFixed(1) + 's';
+
+  const minutes = seconds / 60;
+  if (minutes < 60)
+    return minutes.toFixed(1) + 'm';
+
+  const hours = minutes / 60;
+  if (hours < 24)
+    return hours.toFixed(1) + 'h';
+
+  const days = hours / 24;
+  return days.toFixed(1) + 'd';
 }
