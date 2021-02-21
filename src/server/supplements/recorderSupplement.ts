@@ -434,7 +434,7 @@ export class RecorderSupplement {
     for (const metadata of metadatas) {
       if (!metadata.method)
         continue;
-      const title = metadata.method;
+      const title = metadata.apiName || metadata.method;
       let status: 'done' | 'in-progress' | 'paused' | 'error' = 'done';
       if (this._currentCallsMetadata.has(metadata))
         status = 'in-progress';
@@ -447,12 +447,15 @@ export class RecorderSupplement {
         selector: metadata.params?.selector,
       };
       let duration = metadata.endTime ? metadata.endTime - metadata.startTime : undefined;
-      if (duration && metadata.pauseStartTime && metadata.pauseEndTime)
+      if (typeof duration === 'number' && metadata.pauseStartTime && metadata.pauseEndTime) {
         duration -= (metadata.pauseEndTime - metadata.pauseStartTime);
+        duration = Math.max(duration, 0);
+      }
       logs.push({
         id: metadata.id,
         messages: metadata.log,
-        title, status,
+        title,
+        status,
         error: metadata.error,
         params,
         duration

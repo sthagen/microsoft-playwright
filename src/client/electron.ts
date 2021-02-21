@@ -44,13 +44,13 @@ export class Electron extends ChannelOwner<channels.ElectronChannel, channels.El
   }
 
   async launch(options: ElectronOptions = {}): Promise<ElectronApplication> {
-    return this._wrapApiCall('electron.launch', async () => {
+    return this._wrapApiCall('electron.launch', async (channel: channels.ElectronChannel) => {
       const params: channels.ElectronLaunchParams = {
         sdkLanguage: 'javascript',
         ...options,
         env: envObjectToArray(options.env ? options.env : process.env),
       };
-      return ElectronApplication.from((await this._channel.launch(params)).electronApplication);
+      return ElectronApplication.from((await channel.launch(params)).electronApplication);
     });
   }
 }
@@ -83,7 +83,7 @@ export class ElectronApplication extends ChannelOwner<channels.ElectronApplicati
   }
 
   async firstWindow(): Promise<Page> {
-    return this._wrapApiCall('electronApplication.firstWindow', async () => {
+    return this._wrapApiCall('electronApplication.firstWindow', async (channel: channels.ElectronApplicationChannel) => {
       if (this._windows.size)
         return this._windows.values().next().value;
       return this.waitForEvent('window');
@@ -101,7 +101,7 @@ export class ElectronApplication extends ChannelOwner<channels.ElectronApplicati
   async waitForEvent(event: string, optionsOrPredicate: WaitForEventOptions = {}): Promise<any> {
     const timeout = this._timeoutSettings.timeout(typeof optionsOrPredicate === 'function' ? {} : optionsOrPredicate);
     const predicate = typeof optionsOrPredicate === 'function' ? optionsOrPredicate : optionsOrPredicate.predicate;
-    const waiter = Waiter.createForEvent(this, event);
+    const waiter = Waiter.createForEvent(this, 'electronApplication', event);
     waiter.rejectOnTimeout(timeout, `Timeout while waiting for event "${event}"`);
     if (event !== Events.ElectronApplication.Close)
       waiter.rejectOnEvent(this, Events.ElectronApplication.Close, new Error('Electron application closed'));
@@ -111,15 +111,15 @@ export class ElectronApplication extends ChannelOwner<channels.ElectronApplicati
   }
 
   async evaluate<R, Arg>(pageFunction: structs.PageFunctionOn<ElectronAppType, Arg, R>, arg: Arg): Promise<R> {
-    return this._wrapApiCall('electronApplication.evaluate', async () => {
-      const result = await this._channel.evaluateExpression({ expression: String(pageFunction), isFunction: typeof pageFunction === 'function', arg: serializeArgument(arg) });
+    return this._wrapApiCall('electronApplication.evaluate', async (channel: channels.ElectronApplicationChannel) => {
+      const result = await channel.evaluateExpression({ expression: String(pageFunction), isFunction: typeof pageFunction === 'function', arg: serializeArgument(arg) });
       return parseResult(result.value);
     });
   }
 
   async evaluateHandle<R, Arg>(pageFunction: structs.PageFunctionOn<ElectronAppType, Arg, R>, arg: Arg): Promise<structs.SmartHandle<R>> {
-    return this._wrapApiCall('electronApplication.evaluateHandle', async () => {
-      const result = await this._channel.evaluateExpressionHandle({ expression: String(pageFunction), isFunction: typeof pageFunction === 'function', arg: serializeArgument(arg) });
+    return this._wrapApiCall('electronApplication.evaluateHandle', async (channel: channels.ElectronApplicationChannel) => {
+      const result = await channel.evaluateExpressionHandle({ expression: String(pageFunction), isFunction: typeof pageFunction === 'function', arg: serializeArgument(arg) });
       return JSHandle.from(result.handle) as any as structs.SmartHandle<R>;
     });
   }

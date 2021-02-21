@@ -155,10 +155,27 @@ describe('pause', (suite, { mode }) => {
     await recorderPage.click('[title="Resume"]');
     await recorderPage.waitForSelector('.source-line-paused:has-text("page.pause();  // 2")');
     expect(await sanitizeLog(recorderPage)).toEqual([
-      'pause- XXms',
-      'click(button)- XXms',
-      'pause',
+      'page.pause- XXms',
+      'page.click(button)- XXms',
+      'page.pause',
     ]);
+    await recorderPage.click('[title="Resume"]');
+    await scriptPromise;
+  });
+
+  it('should highlight waitForEvent', async ({page, recorderPageGetter}) => {
+    await page.setContent('<button onclick="console.log(1)">Submit</button>');
+    const scriptPromise = (async () => {
+      await page.pause();
+      await Promise.all([
+        page.waitForEvent('console'),
+        page.click('button'),
+      ]);
+    })();
+    const recorderPage = await recorderPageGetter();
+    await recorderPage.click('[title="Step over"]');
+    await recorderPage.waitForSelector('.source-line-paused:has-text("page.click")');
+    await recorderPage.waitForSelector('.source-line-running:has-text("page.waitForEvent")');
     await recorderPage.click('[title="Resume"]');
     await scriptPromise;
   });
@@ -177,10 +194,10 @@ describe('pause', (suite, { mode }) => {
     await recorderPage.click('[title="Resume"]');
     await recorderPage.waitForSelector('.source-line-paused:has-text("page.pause();  // 2")');
     expect(await sanitizeLog(recorderPage)).toEqual([
-      'pause- XXms',
-      'waitForEvent(console)- XXms',
-      'click(button)- XXms',
-      'pause',
+      'page.pause- XXms',
+      'page.waitForEvent(console)',
+      'page.click(button)- XXms',
+      'page.pause',
     ]);
     await recorderPage.click('[title="Resume"]');
     await scriptPromise;
@@ -196,14 +213,38 @@ describe('pause', (suite, { mode }) => {
     await recorderPage.click('[title="Resume"]');
     await recorderPage.waitForSelector('.source-line-error');
     expect(await sanitizeLog(recorderPage)).toEqual([
-      'pause- XXms',
-      'isChecked(button)- XXms',
+      'page.pause- XXms',
+      'page.isChecked(button)- XXms',
       'checking \"checked\" state of \"button\"',
       'selector resolved to <button onclick=\"console.log(1)\">Submit</button>',
-      'Not a checkbox or radio button',
+      'error: Not a checkbox or radio button',
     ]);
     const error = await scriptPromise;
     expect(error.message).toContain('Not a checkbox or radio button');
+  });
+
+  it('should populate log with error in waitForEvent', async ({page, recorderPageGetter}) => {
+    await page.setContent('<button>Submit</button>');
+    const scriptPromise = (async () => {
+      await page.pause();
+      await Promise.all([
+        page.waitForEvent('console', { timeout: 1 }),
+        page.click('button'),
+      ]);
+    })().catch(() => {});
+    const recorderPage = await recorderPageGetter();
+    await recorderPage.click('[title="Step over"]');
+    await recorderPage.waitForSelector('.source-line-paused:has-text("page.click")');
+    await recorderPage.waitForSelector('.source-line-error:has-text("page.waitForEvent")');
+    await recorderPage.click('[title="Resume"]');
+    expect(await sanitizeLog(recorderPage)).toEqual([
+      'page.pause- XXms',
+      'page.waitForEvent(console)',
+      'waiting for event \"console\"',
+      'error: Timeout while waiting for event \"console\"',
+      'page.click(button)- XXms',
+    ]);
+    await scriptPromise;
   });
 
   it('should pause on page close', async ({ page, recorderPageGetter }) => {
@@ -234,13 +275,11 @@ describe('pause', (suite, { mode }) => {
 async function sanitizeLog(recorderPage: Page): Promise<string[]> {
   const results = [];
   for (const entry of await recorderPage.$$('.call-log-call')) {
-    const header = await (await (await entry.$('.call-log-call-header')).textContent()).replace(/— \d+(ms|s)/, '- XXms');
-    results.push(header);
-    results.push(...await entry.$$eval('.call-log-message', ee => ee.map(e => e.textContent)));
-    const errorElement = await entry.$('.call-log-error');
-    const error = errorElement ? await errorElement.textContent() : undefined;
-    if (error)
-      results.push(error);
+    const header =  (await (await entry.$('.call-log-call-header')).textContent()).replace(/— [\d.]+(ms|s)/, '- XXms');
+    results.push(header.replace(/page\.waitForEvent\(console\).*/, 'page.waitForEvent(console)'));
+    results.push(...await entry.$$eval('.call-log-message', ee => ee.map(e => {
+      return (e.classList.contains('error') ? 'error: ' : '') + e.textContent;
+    })));
   }
   return results;
 }
