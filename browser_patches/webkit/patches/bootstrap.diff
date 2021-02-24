@@ -9572,6 +9572,18 @@ index 3d315be61348dd7d2467baa94dea4ae711c27803..364cfc24d55d9a2db33cbf9810295bfb
  
      // Version 15.
      WKPageDecidePolicyForSpeechRecognitionPermissionRequestCallback     decidePolicyForSpeechRecognitionPermissionRequest;
+diff --git a/Source/WebKit/UIProcess/API/Cocoa/WKDownloadInternal.h b/Source/WebKit/UIProcess/API/Cocoa/WKDownloadInternal.h
+index 06c89420e6e27b143db025405cb33b7a9d7c4af9..cc0258b9dadf38dce74cabab479881b444a41167 100644
+--- a/Source/WebKit/UIProcess/API/Cocoa/WKDownloadInternal.h
++++ b/Source/WebKit/UIProcess/API/Cocoa/WKDownloadInternal.h
+@@ -26,6 +26,7 @@
+ #import "DownloadProxy.h"
+ #import "WKDownload.h"
+ #import "WKObject.h"
++#import <wtf/WeakObjCPtr.h>
+ 
+ namespace WebKit {
+ 
 diff --git a/Source/WebKit/UIProcess/API/Cocoa/WKUIDelegate.h b/Source/WebKit/UIProcess/API/Cocoa/WKUIDelegate.h
 index cad87f3ef2ab93d93a74cec0c34b47c695de6bc6..66145a384638b97ee08516e56e1e86a83713c634 100644
 --- a/Source/WebKit/UIProcess/API/Cocoa/WKUIDelegate.h
@@ -10852,6 +10864,19 @@ index f078994c0253b92e548c283879d88e44306fff76..9d70a9295af7f5b8003788dd7635932f
  void UIDelegate::UIClient::requestStorageAccessConfirm(WebPageProxy& webPageProxy, WebFrameProxy*, const WebCore::RegistrableDomain& requestingDomain, const WebCore::RegistrableDomain& currentDomain, CompletionHandler<void(bool)>&& completionHandler)
  {
      if (!m_uiDelegate)
+diff --git a/Source/WebKit/UIProcess/Cocoa/WKBlankOverlayView.mm b/Source/WebKit/UIProcess/Cocoa/WKBlankOverlayView.mm
+index 77adfc78b4a1a93c112da563a70a1de1ee73b947..1754517afa1fdcb30a6b8ee7a81da2c40c36fcec 100644
+--- a/Source/WebKit/UIProcess/Cocoa/WKBlankOverlayView.mm
++++ b/Source/WebKit/UIProcess/Cocoa/WKBlankOverlayView.mm
+@@ -24,7 +24,7 @@
+  */
+ 
+ #import "config.h"
+-#import "WKBlankOverlayView.mm"
++#import "WKBlankOverlayView.h"
+ 
+ @implementation WKBlankOverlayView {
+ }
 diff --git a/Source/WebKit/UIProcess/Cocoa/WebPageProxyCocoa.mm b/Source/WebKit/UIProcess/Cocoa/WebPageProxyCocoa.mm
 index 69ddc7c3576a1477c9fc44bc95b79aa5282b2f2c..e9591d0bcad2af54365e25ea3b7def880fbbd451 100644
 --- a/Source/WebKit/UIProcess/Cocoa/WebPageProxyCocoa.mm

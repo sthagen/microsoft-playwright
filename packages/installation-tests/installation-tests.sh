@@ -33,7 +33,9 @@ PLAYWRIGHT_ANDROID_TGZ="$(node ${PACKAGE_BUILDER} playwright-android ./playwrigh
 echo "playwright-android built"
 
 SCRIPTS_PATH="$(pwd -P)/.."
-TEST_ROOT="$(pwd -P)"
+TEST_ROOT="/tmp/playwright-installation-tests"
+rm -rf "${TEST_ROOT}"
+mkdir -p "${TEST_ROOT}"
 NODE_VERSION="$(node --version)"
 
 function copy_test_scripts {
@@ -108,7 +110,7 @@ function test_typescript_types {
                   "playwright-webkit"
   do
     echo "Checking types of ${PKG_NAME}"
-    echo "import { Page } from '${PKG_NAME}';" > "${PKG_NAME}.ts" && tsc "${PKG_NAME}.ts"
+    echo "import { Page } from '${PKG_NAME}';" > "${PKG_NAME}.ts" && npx -p typescript@3.7.5 tsc "${PKG_NAME}.ts"
   done;
 
   echo "${FUNCNAME[0]} success"
@@ -351,7 +353,7 @@ function test_electron_types {
   echo "import { Page, electron, ElectronApplication, Electron } from 'playwright-electron';" > "test.ts"
 
   echo "Running tsc"
-  npx tsc "test.ts"
+  npx -p typescript@3.7.5 tsc "test.ts"
 
   echo "${FUNCNAME[0]} success"
 }
@@ -365,7 +367,7 @@ function test_android_types {
   echo "import { AndroidDevice, android, AndroidWebView, Page } from 'playwright-android';" > "test.ts"
 
   echo "Running tsc"
-  npx tsc "test.ts"
+  npx -p typescript@3.7.5 tsc "test.ts"
 
   echo "${FUNCNAME[0]} success"
 }
