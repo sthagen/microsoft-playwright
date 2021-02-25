@@ -22,11 +22,11 @@ import { debugLogger } from '../../utils/debugLogger';
 import { Frame } from '../frames';
 import { SnapshotData, frameSnapshotStreamer, kSnapshotBinding, kSnapshotStreamer } from './snapshotterInjected';
 import { calculateSha1 } from '../../utils/utils';
-import { FrameSnapshot } from './traceTypes';
+import { FrameSnapshot } from './snapshot';
 
 export type SnapshotterResource = {
   pageId: string,
-  frameId: string,
+  frameId: string,  // Empty means main frame
   url: string,
   contentType: string,
   responseHeaders: { name: string, value: string }[],
@@ -46,7 +46,6 @@ export interface SnapshotterDelegate {
   onBlob(blob: SnapshotterBlob): void;
   onResource(resource: SnapshotterResource): void;
   onFrameSnapshot(frame: Frame, frameUrl: string, snapshot: FrameSnapshot, snapshotId?: string): void;
-  pageId(page: Page): string;
 }
 
 export class Snapshotter {
@@ -115,7 +114,7 @@ export class Snapshotter {
         const context = await parent._mainContext();
         await context.evaluateInternal(({ kSnapshotStreamer, frameElement, frameId }) => {
           (window as any)[kSnapshotStreamer].markIframe(frameElement, frameId);
-        }, { kSnapshotStreamer, frameElement, frameId: frame._id });
+        }, { kSnapshotStreamer, frameElement, frameId: frame.traceId });
         frameElement.dispose();
       } catch (e) {
         // Ignore
@@ -148,8 +147,8 @@ export class Snapshotter {
     const body = await response.body().catch(e => debugLogger.log('error', e));
     const responseSha1 = body ? calculateSha1(body) : 'none';
     const resource: SnapshotterResource = {
-      pageId: this._delegate.pageId(page),
-      frameId: response.frame()._id,
+      pageId: page.traceId,
+      frameId: response.frame().traceId,
       url,
       contentType,
       responseHeaders: response.headers(),

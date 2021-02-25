@@ -16,13 +16,14 @@
 
 import fs from 'fs';
 import path from 'path';
-import * as playwright from '../../..';
+import * as playwright from '../../../..';
 import * as util from 'util';
 import { ScreenshotGenerator } from './screenshotGenerator';
-import { readTraceFile, TraceModel } from './traceModel';
-import type { TraceEvent } from '../../server/trace/traceTypes';
-import { SnapshotServer } from './snapshotServer';
-import { ServerRouteHandler, TraceServer } from './traceServer';
+import { TraceModel } from './traceModel';
+import { NetworkResourceTraceEvent, TraceEvent } from '../common/traceEvents';
+import { ServerRouteHandler, HttpServer } from '../../../utils/httpServer';
+import { SnapshotServer, SnapshotStorage } from '../../snapshot/snapshotServer';
+import { SnapshotRenderer } from '../../snapshot/snapshotRenderer';
 
 const fsReadFileAsync = util.promisify(fs.readFile.bind(fs));
 
@@ -31,39 +32,12 @@ type TraceViewerDocument = {
   model: TraceModel;
 };
 
-const emptyModel: TraceModel = {
-  contexts: [
-    {
-      startTime: 0,
-      endTime: 1,
-      created: {
-        timestamp: Date.now(),
-        type: 'context-created',
-        browserName: 'none',
-        contextId: '<empty>',
-        deviceScaleFactor: 1,
-        isMobile: false,
-        viewportSize: { width: 800, height: 600 },
-        snapshotScript: '',
-      },
-      destroyed: {
-        timestamp: Date.now(),
-        type: 'context-destroyed',
-        contextId: '<empty>',
-      },
-      name: '<empty>',
-      filePath: '',
-      pages: [],
-    }
-  ]
-};
-
-class TraceViewer {
+class TraceViewer implements SnapshotStorage {
   private _document: TraceViewerDocument | undefined;
 
   async load(traceDir: string) {
     const resourcesDir = path.join(traceDir, 'resources');
-    const model = { contexts: [] };
+    const model = new TraceModel();
     this._document = {
       model,
       resourcesDir,
@@ -75,7 +49,7 @@ class TraceViewer {
       const filePath = path.join(traceDir, name);
       const traceContent = await fsReadFileAsync(filePath, 'utf8');
       const events = traceContent.split('\n').map(line => line.trim()).filter(line => !!line).map(line => JSON.parse(line)) as TraceEvent[];
-      readTraceFile(events, model, filePath);
+      model.appendEvents(events);
     }
   }
 
@@ -98,13 +72,22 @@ class TraceViewer {
     // - "/snapshot/service-worker.js" - service worker that intercepts snapshot resources
     //   and translates them into "/resources/<resourceId>".
 
-    const server = new TraceServer(this._document ? this._document.model : emptyModel);
-    const snapshotServer = new SnapshotServer(server, this._document ? this._document.model : emptyModel, this._document ? this._document.resourcesDir : undefined);
+    const server = new HttpServer();
+
+    const traceModelHandler: ServerRouteHandler = (request, response) => {
+      response.statusCode = 200;
+      response.setHeader('Content-Type', 'application/json');
+      response.end(JSON.stringify(Array.from(this._document!.model.contextEntries.values())));
+      return true;
+    };
+    server.routePath('/contexts', traceModelHandler);
+
+    const snapshotServer = new SnapshotServer(server, this);
     const screenshotGenerator = this._document ? new ScreenshotGenerator(snapshotServer, this._document.resourcesDir, this._document.model) : undefined;
 
     const traceViewerHandler: ServerRouteHandler = (request, response) => {
       const relativePath = request.url!.substring('/traceviewer/'.length);
-      const absolutePath = path.join(__dirname, '..', '..', 'web', ...relativePath.split('/'));
+      const absolutePath = path.join(__dirname, '..', '..', '..', 'web', ...relativePath.split('/'));
       return server.serveFile(response, absolutePath);
     };
     server.routePrefix('/traceviewer/', traceViewerHandler, true);
@@ -157,6 +140,22 @@ class TraceViewer {
     uiPage.on('close', () => process.exit(0));
     await uiPage.goto(urlPrefix + '/traceviewer/traceViewer/index.html');
   }
+
+  resourceById(resourceId: string): NetworkResourceTraceEvent {
+    const traceModel = this._document!.model;
+    return traceModel.resourceById.get(resourceId)!;
+  }
+
+  snapshotByName(snapshotName: string): SnapshotRenderer | undefined {
+    const traceModel = this._document!.model;
+    const parsed = parseSnapshotName(snapshotName);
+    const snapshot = parsed.snapshotId ? traceModel.findSnapshotById(parsed.pageId, parsed.frameId, parsed.snapshotId) : traceModel.findSnapshotByTime(parsed.pageId, parsed.frameId, parsed.timestamp!);
+    return snapshot;
+  }
+
+  resourceContent(sha1: string): Buffer {
+    return fs.readFileSync(path.join(this._document!.resourcesDir, sha1));
+  }
 }
 
 export async function showTraceViewer(traceDir: string) {
@@ -164,4 +163,22 @@ export async function showTraceViewer(traceDir: string) {
   if (traceDir)
     await traceViewer.load(traceDir);
   await traceViewer.show();
+}
+
+function parseSnapshotName(pathname: string): { pageId: string, frameId: string, timestamp?: number, snapshotId?: string } {
+  const parts = pathname.split('/');
+  if (!parts[0])
+    parts.shift();
+  if (!parts[parts.length - 1])
+    parts.pop();
+  // - /snapshot/pageId/<pageId>/snapshotId/<snapshotId>/<frameId>
+  // - /snapshot/pageId/<pageId>/timestamp/<timestamp>/<frameId>
+  if (parts.length !== 6 || parts[0] !== 'snapshot' || parts[1] !== 'pageId' || (parts[3] !== 'snapshotId' && parts[3] !== 'timestamp'))
+    throw new Error(`Unexpected path "${pathname}"`);
+  return {
+    pageId: parts[2],
+    frameId: parts[5] === 'main' ? parts[2] : parts[5],
+    snapshotId: (parts[3] === 'snapshotId' ? parts[4] : undefined),
+    timestamp: (parts[3] === 'timestamp' ? +parts[4] : undefined),
+  };
 }

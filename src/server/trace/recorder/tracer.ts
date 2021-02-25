@@ -14,20 +14,20 @@
  * limitations under the License.
  */
 
-import { BrowserContext, Video } from '../browserContext';
-import type { SnapshotterResource as SnapshotterResource, SnapshotterBlob, SnapshotterDelegate } from './snapshotter';
-import * as trace from './traceTypes';
+import { BrowserContext, Video } from '../../browserContext';
+import type { SnapshotterResource as SnapshotterResource, SnapshotterBlob, SnapshotterDelegate } from '../../snapshot/snapshotter';
+import * as trace from '../common/traceEvents';
 import path from 'path';
 import * as util from 'util';
 import fs from 'fs';
-import { createGuid, getFromENV, mkdirIfNeeded, monotonicTime } from '../../utils/utils';
-import { Page } from '../page';
-import { Snapshotter } from './snapshotter';
-import { helper, RegisteredListener } from '../helper';
-import { Dialog } from '../dialog';
-import { Frame, NavigationEvent } from '../frames';
-import { snapshotScript } from './snapshotterInjected';
-import { CallMetadata, InstrumentationListener, SdkObject } from '../instrumentation';
+import { createGuid, getFromENV, mkdirIfNeeded, monotonicTime } from '../../../utils/utils';
+import { Page } from '../../page';
+import { Snapshotter } from '../../snapshot/snapshotter';
+import { helper, RegisteredListener } from '../../helper';
+import { Dialog } from '../../dialog';
+import { Frame, NavigationEvent } from '../../frames';
+import { CallMetadata, InstrumentationListener, SdkObject } from '../../instrumentation';
+import { FrameSnapshot } from '../../snapshot/snapshot';
 
 const fsWriteFileAsync = util.promisify(fs.writeFile.bind(fs));
 const fsAppendFileAsync = util.promisify(fs.appendFile.bind(fs));
@@ -68,7 +68,6 @@ export class Tracer implements InstrumentationListener {
   }
 }
 
-const pageIdSymbol = Symbol('pageId');
 const snapshotsSymbol = Symbol('snapshots');
 
 // This is an official way to pass snapshots between onBefore/AfterInputAction and onAfterCall.
@@ -79,7 +78,6 @@ function snapshotsForMetadata(metadata: CallMetadata): { name: string, snapshotI
 }
 
 class ContextTracer implements SnapshotterDelegate {
-  private _context: BrowserContext;
   private _contextId: string;
   private _traceStoragePromise: Promise<string>;
   private _appendEventChain: Promise<string>;
@@ -90,7 +88,6 @@ class ContextTracer implements SnapshotterDelegate {
   private _traceFile: string;
 
   constructor(context: BrowserContext, traceStorageDir: string, traceFile: string) {
-    this._context = context;
     this._contextId = 'context@' + createGuid();
     this._traceFile = traceFile;
     this._traceStoragePromise = mkdirIfNeeded(path.join(traceStorageDir, 'sha1')).then(() => traceStorageDir);
@@ -105,7 +102,6 @@ class ContextTracer implements SnapshotterDelegate {
       deviceScaleFactor: context._options.deviceScaleFactor || 1,
       viewportSize: context._options.viewport || undefined,
       debugName: context._options._debugName,
-      snapshotScript: snapshotScript(),
     };
     this._appendTraceEvent(event);
     this._snapshotter = new Snapshotter(context, this);
@@ -138,22 +134,18 @@ class ContextTracer implements SnapshotterDelegate {
     this._appendTraceEvent(event);
   }
 
-  onFrameSnapshot(frame: Frame, frameUrl: string, snapshot: trace.FrameSnapshot, snapshotId?: string): void {
+  onFrameSnapshot(frame: Frame, frameUrl: string, snapshot: FrameSnapshot, snapshotId?: string): void {
     const event: trace.FrameSnapshotTraceEvent = {
       timestamp: monotonicTime(),
       type: 'snapshot',
       contextId: this._contextId,
-      pageId: this.pageId(frame._page),
-      frameId: frame._page.mainFrame() === frame ? '' : frame._id,
+      pageId: frame._page.traceId,
+      frameId: frame.traceId,
       snapshot: snapshot,
       frameUrl,
       snapshotId,
     };
     this._appendTraceEvent(event);
-  }
-
-  pageId(page: Page): string {
-    return (page as any)[pageIdSymbol];
   }
 
   async onActionCheckpoint(name: string, sdkObject: SdkObject, metadata: CallMetadata): Promise<void> {
@@ -171,7 +163,7 @@ class ContextTracer implements SnapshotterDelegate {
       timestamp: monotonicTime(),
       type: 'action',
       contextId: this._contextId,
-      pageId: this.pageId(sdkObject.attribution.page),
+      pageId: sdkObject.attribution.page.traceId,
       objectType: metadata.type,
       method: metadata.method,
       // FIXME: filter out evaluation snippets, binary
@@ -187,8 +179,7 @@ class ContextTracer implements SnapshotterDelegate {
   }
 
   private _onPage(page: Page) {
-    const pageId = 'page@' + createGuid();
-    (page as any)[pageIdSymbol] = pageId;
+    const pageId = page.traceId;
 
     const event: trace.PageCreatedTraceEvent = {
       timestamp: monotonicTime(),
