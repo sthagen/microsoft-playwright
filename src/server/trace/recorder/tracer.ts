@@ -44,6 +44,7 @@ export class Tracer implements InstrumentationListener {
     const traceStorageDir = path.join(traceDir, 'resources');
     const tracePath = path.join(traceDir, createGuid() + '.trace');
     const contextTracer = new ContextTracer(context, traceStorageDir, tracePath);
+    await contextTracer.start();
     this._contextTracers.set(context, contextTracer);
   }
 
@@ -110,6 +111,10 @@ class ContextTracer implements SnapshotterDelegate {
     ];
   }
 
+  async start() {
+    await this._snapshotter.start();
+  }
+
   onBlob(blob: SnapshotterBlob): void {
     this._writeArtifact(blob.sha1, blob.buffer);
   }
@@ -121,7 +126,7 @@ class ContextTracer implements SnapshotterDelegate {
       contextId: this._contextId,
       pageId: resource.pageId,
       frameId: resource.frameId,
-      resourceId: 'resource@' + createGuid(),
+      resourceId: resource.resourceId,
       url: resource.url,
       contentType: resource.contentType,
       responseHeaders: resource.responseHeaders,
@@ -134,16 +139,14 @@ class ContextTracer implements SnapshotterDelegate {
     this._appendTraceEvent(event);
   }
 
-  onFrameSnapshot(frame: Frame, frameUrl: string, snapshot: FrameSnapshot, snapshotId?: string): void {
+  onFrameSnapshot(snapshot: FrameSnapshot): void {
     const event: trace.FrameSnapshotTraceEvent = {
       timestamp: monotonicTime(),
       type: 'snapshot',
       contextId: this._contextId,
-      pageId: frame._page.traceId,
-      frameId: frame.traceId,
+      pageId: snapshot.pageId,
+      frameId: snapshot.frameId,
       snapshot: snapshot,
-      frameUrl,
-      snapshotId,
     };
     this._appendTraceEvent(event);
   }
@@ -163,7 +166,7 @@ class ContextTracer implements SnapshotterDelegate {
       timestamp: monotonicTime(),
       type: 'action',
       contextId: this._contextId,
-      pageId: sdkObject.attribution.page.traceId,
+      pageId: sdkObject.attribution.page.idInSnapshot,
       objectType: metadata.type,
       method: metadata.method,
       // FIXME: filter out evaluation snippets, binary
@@ -179,7 +182,7 @@ class ContextTracer implements SnapshotterDelegate {
   }
 
   private _onPage(page: Page) {
-    const pageId = page.traceId;
+    const pageId = page.idInSnapshot;
 
     const event: trace.PageCreatedTraceEvent = {
       timestamp: monotonicTime(),

@@ -18,7 +18,6 @@ import fs from 'fs';
 import path from 'path';
 import * as playwright from '../../../..';
 import * as util from 'util';
-import { ScreenshotGenerator } from './screenshotGenerator';
 import { TraceModel } from './traceModel';
 import { NetworkResourceTraceEvent, TraceEvent } from '../common/traceEvents';
 import { ServerRouteHandler, HttpServer } from '../../../utils/httpServer';
@@ -62,7 +61,6 @@ class TraceViewer implements SnapshotStorage {
     // Served by TraceViewer
     // - "/traceviewer/..." - our frontend.
     // - "/file?filePath" - local files, used by sources tab.
-    // - "/action-preview/..." - lazily generated action previews.
     // - "/sha1/<sha1>" - trace resource bodies, used by network previews.
     //
     // Served by SnapshotServer
@@ -73,6 +71,7 @@ class TraceViewer implements SnapshotStorage {
     //   and translates them into "/resources/<resourceId>".
 
     const server = new HttpServer();
+    new SnapshotServer(server, this);
 
     const traceModelHandler: ServerRouteHandler = (request, response) => {
       response.statusCode = 200;
@@ -82,35 +81,12 @@ class TraceViewer implements SnapshotStorage {
     };
     server.routePath('/contexts', traceModelHandler);
 
-    const snapshotServer = new SnapshotServer(server, this);
-    const screenshotGenerator = this._document ? new ScreenshotGenerator(snapshotServer, this._document.resourcesDir, this._document.model) : undefined;
-
     const traceViewerHandler: ServerRouteHandler = (request, response) => {
       const relativePath = request.url!.substring('/traceviewer/'.length);
       const absolutePath = path.join(__dirname, '..', '..', '..', 'web', ...relativePath.split('/'));
       return server.serveFile(response, absolutePath);
     };
-    server.routePrefix('/traceviewer/', traceViewerHandler, true);
-
-    const actionPreviewHandler: ServerRouteHandler = (request, response) => {
-      if (!screenshotGenerator)
-        return false;
-      const fullPath = request.url!.substring('/action-preview/'.length);
-      const actionId = fullPath.substring(0, fullPath.indexOf('.png'));
-      screenshotGenerator.generateScreenshot(actionId).then(body => {
-        if (!body) {
-          response.statusCode = 404;
-          response.end();
-        } else {
-          response.statusCode = 200;
-          response.setHeader('Content-Type', 'image/png');
-          response.setHeader('Content-Length', body.byteLength);
-          response.end(body);
-        }
-      });
-      return true;
-    };
-    server.routePrefix('/action-preview/', actionPreviewHandler);
+    server.routePrefix('/traceviewer/', traceViewerHandler);
 
     const fileHandler: ServerRouteHandler = (request, response) => {
       try {
@@ -141,19 +117,19 @@ class TraceViewer implements SnapshotStorage {
     await uiPage.goto(urlPrefix + '/traceviewer/traceViewer/index.html');
   }
 
-  resourceById(resourceId: string): NetworkResourceTraceEvent {
+  resourceById(resourceId: string): NetworkResourceTraceEvent | undefined {
     const traceModel = this._document!.model;
     return traceModel.resourceById.get(resourceId)!;
   }
 
-  snapshotByName(snapshotName: string): SnapshotRenderer | undefined {
+  snapshotById(snapshotId: string): SnapshotRenderer | undefined {
     const traceModel = this._document!.model;
-    const parsed = parseSnapshotName(snapshotName);
+    const parsed = parseSnapshotName(snapshotId);
     const snapshot = parsed.snapshotId ? traceModel.findSnapshotById(parsed.pageId, parsed.frameId, parsed.snapshotId) : traceModel.findSnapshotByTime(parsed.pageId, parsed.frameId, parsed.timestamp!);
     return snapshot;
   }
 
-  resourceContent(sha1: string): Buffer {
+  resourceContent(sha1: string): Buffer | undefined {
     return fs.readFileSync(path.join(this._document!.resourcesDir, sha1));
   }
 }
@@ -167,18 +143,14 @@ export async function showTraceViewer(traceDir: string) {
 
 function parseSnapshotName(pathname: string): { pageId: string, frameId: string, timestamp?: number, snapshotId?: string } {
   const parts = pathname.split('/');
-  if (!parts[0])
-    parts.shift();
-  if (!parts[parts.length - 1])
-    parts.pop();
-  // - /snapshot/pageId/<pageId>/snapshotId/<snapshotId>/<frameId>
-  // - /snapshot/pageId/<pageId>/timestamp/<timestamp>/<frameId>
-  if (parts.length !== 6 || parts[0] !== 'snapshot' || parts[1] !== 'pageId' || (parts[3] !== 'snapshotId' && parts[3] !== 'timestamp'))
+  // - pageId/<pageId>/snapshotId/<snapshotId>/<frameId>
+  // - pageId/<pageId>/timestamp/<timestamp>/<frameId>
+  if (parts.length !== 5 || parts[0] !== 'pageId' || (parts[2] !== 'snapshotId' && parts[2] !== 'timestamp'))
     throw new Error(`Unexpected path "${pathname}"`);
   return {
-    pageId: parts[2],
-    frameId: parts[5] === 'main' ? parts[2] : parts[5],
-    snapshotId: (parts[3] === 'snapshotId' ? parts[4] : undefined),
-    timestamp: (parts[3] === 'timestamp' ? +parts[4] : undefined),
+    pageId: parts[1],
+    frameId: parts[4] === 'main' ? parts[1] : parts[4],
+    snapshotId: (parts[2] === 'snapshotId' ? parts[3] : undefined),
+    timestamp: (parts[2] === 'timestamp' ? +parts[3] : undefined),
   };
 }
