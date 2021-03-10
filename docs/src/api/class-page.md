@@ -31,7 +31,7 @@ public class Example {
       BrowserContext context = browser.newContext();
       Page page = context.newPage();
       page.navigate("https://example.com");
-      page.screenshot(new Page.ScreenshotOptions().withPath(Paths.get("screenshot.png")));
+      page.screenshot(new Page.ScreenshotOptions().setPath(Paths.get("screenshot.png")));
       browser.close();
     }
   }
@@ -125,6 +125,8 @@ page.remove_listener("request", log_request)
 Emitted when the page closes.
 
 ## event: Page.console
+* langs:
+  - alias-java: consoleMessage
 - argument: <[ConsoleMessage]>
 
 Emitted when JavaScript within the page calls one of console API methods, e.g. `console.log` or `console.dir`. Also
@@ -380,6 +382,7 @@ Emitted when a dedicated [WebWorker](https://developer.mozilla.org/en-US/docs/We
 page.
 
 ## property: Page.accessibility
+* langs: csharp, js, python
 - type: <[Accessibility]>
 
 ## async method: Page.addInitScript
@@ -741,7 +744,7 @@ page.evaluate("() => matchMedia('screen').matches");
 page.evaluate("() => matchMedia('print').matches");
 // → false
 
-page.emulateMedia(new Page.EmulateMediaOptions().withMedia(Media.PRINT));
+page.emulateMedia(new Page.EmulateMediaOptions().setMedia(Media.PRINT));
 page.evaluate("() => matchMedia('screen').matches");
 // → false
 page.evaluate("() => matchMedia('print').matches");
@@ -803,7 +806,7 @@ await page.evaluate(() => matchMedia('(prefers-color-scheme: no-preference)').ma
 ```
 
 ```java
-page.emulateMedia(new Page.EmulateMediaOptions().withColorScheme(ColorScheme.DARK));
+page.emulateMedia(new Page.EmulateMediaOptions().setColorScheme(ColorScheme.DARK));
 page.evaluate("() => matchMedia('(prefers-color-scheme: dark)').matches");
 // → true
 page.evaluate("() => matchMedia('(prefers-color-scheme: light)').matches");
@@ -1247,7 +1250,7 @@ page.exposeBinding("clicked", (source, args) -> {
   ElementHandle element = (ElementHandle) args[0];
   System.out.println(element.textContent());
   return null;
-}, new Page.ExposeBindingOptions().withHandle(true));
+}, new Page.ExposeBindingOptions().setHandle(true));
 page.setContent("" +
   "<script>\n" +
   "  document.addEventListener('click', event => window.clicked(event.target));\n" +
@@ -1783,8 +1786,8 @@ await page.pdf({path: 'page.pdf'});
 
 ```java
 // Generates a PDF with "screen" media type.
-page.emulateMedia(new Page.EmulateMediaOptions().withMedia(Media.SCREEN));
-page.pdf(new Page.PdfOptions().withPath(Paths.get("page.pdf")));
+page.emulateMedia(new Page.EmulateMediaOptions().setMedia(Media.SCREEN));
+page.pdf(new Page.PdfOptions().setPath(Paths.get("page.pdf")));
 ```
 
 ```python async
@@ -1972,11 +1975,11 @@ await browser.close();
 Page page = browser.newPage();
 page.navigate("https://keycode.info");
 page.press("body", "A");
-page.screenshot(new Page.ScreenshotOptions().withPath(Paths.get("A.png")));
+page.screenshot(new Page.ScreenshotOptions().setPath(Paths.get("A.png")));
 page.press("body", "ArrowLeft");
-page.screenshot(new Page.ScreenshotOptions().withPath(Paths.get("ArrowLeft.png" )));
+page.screenshot(new Page.ScreenshotOptions().setPath(Paths.get("ArrowLeft.png" )));
 page.press("body", "Shift+O");
-page.screenshot(new Page.ScreenshotOptions().withPath(Paths.get("O.png" )));
+page.screenshot(new Page.ScreenshotOptions().setPath(Paths.get("O.png" )));
 ```
 
 ```python async
@@ -2221,7 +2224,7 @@ page.selectOption('select#colors', ['red', 'green', 'blue']);
 // single selection matching the value
 page.selectOption("select#colors", "blue");
 // single selection matching both the value and the label
-page.selectOption("select#colors", new SelectOption().withLabel("Blue"));
+page.selectOption("select#colors", new SelectOption().setLabel("Blue"));
 // multiple selection
 page.selectOption("select#colors", new String[] {"red", "green", "blue"});
 ```
@@ -2363,9 +2366,18 @@ page.goto("https://example.com")
 ```
 
 ### param: Page.setViewportSize.viewportSize
+* langs: js, python
 - `viewportSize` <[Object]>
   - `width` <[int]> page width in pixels.
   - `height` <[int]> page height in pixels.
+
+### param: Page.setViewportSize.width
+* langs: csharp, java
+- `width` <[int]> page width in pixels.
+
+### param: Page.setViewportSize.height
+* langs: csharp, java
+- `height` <[int]> page height in pixels.
 
 ## async method: Page.tap
 
@@ -2432,7 +2444,7 @@ await page.type('#mytextarea', 'World', {delay: 100}); // Types slower, like a u
 // Types instantly
 page.type("#mytextarea", "Hello");
 // Types slower, like a user
-page.type("#mytextarea", "World", new Page.TypeOptions().withDelay(100));
+page.type("#mytextarea", "World", new Page.TypeOptions().setDelay(100));
 ```
 
 ```python async
@@ -2939,15 +2951,29 @@ return finalResponse.ok();
 ```
 
 ```python async
-first_response = await page.wait_for_response("https://example.com/resource")
-final_response = await page.wait_for_response(lambda response: response.url == "https://example.com" and response.status === 200)
-return final_response.ok
+async with page.expect_response("https://example.com/resource") as response_info:
+    await page.click("input")
+response = response_info.value
+return response.ok
+
+# or with a lambda
+async with page.expect_response(lambda response: response.url == "https://example.com" and response.status === 200) as response_info:
+    await page.click("input")
+response = response_info.value
+return response.ok
 ```
 
 ```python sync
-first_response = page.wait_for_response("https://example.com/resource")
-final_response = page.wait_for_response(lambda response: response.url == "https://example.com" and response.status === 200)
-return final_response.ok
+with page.expect_response("https://example.com/resource") as response_info:
+    page.click("input")
+response = response_info.value
+return response.ok
+
+# or with a lambda
+with page.expect_response(lambda response: response.url == "https://example.com" and response.status === 200) as response_info:
+    page.click("input")
+response = response_info.value
+return response.ok
 ```
 
 ### param: Page.waitForResponse.urlOrPredicate

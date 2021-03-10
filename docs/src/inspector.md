@@ -24,6 +24,16 @@ configures Playwright for debugging and opens the inspector.
   $ npm run test
   ```
 
+  ```sh java
+  # Linux/macOS
+  $ PWDEBUG=1 PLAYWRIGHT_JAVA_SRC=<java src root> mvn test
+
+  # Windows
+  $ set PLAYWRIGHT_JAVA_SRC=<java src root>
+  $ set PWDEBUG=1
+  $ mvn test
+  ```
+
   ```sh python
   # Linux/macOS
   $ PWDEBUG=1 pytest -s
@@ -44,6 +54,11 @@ configures Playwright for debugging and opens the inspector.
   await page.pause();
   ```
 
+  ```java
+  // Pause on the following line.
+  page.pause();
+  ```
+
   ```python async
   # Pause on the following line.
   await page.pause()
@@ -57,6 +72,10 @@ configures Playwright for debugging and opens the inspector.
 - Use `open` or `codegen` commands in the Playwright [CLI](./cli.md):
   ```sh js
   $ npx playwright codegen wikipedia.org
+  ```
+
+  ```sh java
+  $ mvn exec:java -e -Dexec.mainClass=com.microsoft.playwright.CLI -Dexec.args="codegen wikipedia.org"
   ```
 
   ```sh python

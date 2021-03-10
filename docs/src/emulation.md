@@ -81,6 +81,11 @@ const context = await browser.newContext({
 });
 ```
 
+```java
+BrowserContext context = browser.newContext(new Browser.NewContextOptions()
+  .setUserAgent("My user agent"));
+```
+
 ```python async
 context = await browser.new_context(
   user_agent='My user agent'
@@ -116,6 +121,20 @@ const context = await browser.newContext({
   viewport: { width: 2560, height: 1440 },
   deviceScaleFactor: 2,
 });
+```
+
+```java
+// Create context with given viewport
+BrowserContext context = browser.newContext(new Browser.NewContextOptions()
+  .setViewportSize(1280, 1024));
+
+// Resize viewport for individual page
+page.setViewportSize(1600, 1200);
+
+// Emulate high-DPI
+BrowserContext context = browser.newContext(new Browser.NewContextOptions()
+  .setViewportSize(2560, 1440)
+  .setDeviceScaleFactor(2);
 ```
 
 ```python async
@@ -165,6 +184,13 @@ const context = await browser.newContext({
 });
 ```
 
+```java
+// Emulate locale and time
+BrowserContext context = browser.newContext(new Browser.NewContextOptions()
+  .setLocale("de-DE")
+  .setTimezoneId("Europe/Berlin"));
+```
+
 ```python async
 # Emulate locale and time
 context = await browser.new_context(
@@ -196,6 +222,11 @@ const context = await browser.newContext({
 });
 ```
 
+```java
+BrowserContext context = browser.newContext(new Browser.NewContextOptions()
+  .setPermissions(Arrays.asList("notifications"));
+```
+
 ```python async
 context = await browser.new_context(
   permissions=['notifications'],
@@ -214,6 +245,10 @@ Grant all pages in the existing context access to current location:
 await context.grantPermissions(['geolocation']);
 ```
 
+```java
+context.grantPermissions(Arrays.asList("geolocation"));
+```
+
 ```python async
 await context.grant_permissions(['geolocation'])
 ```
@@ -228,6 +263,11 @@ Grant notifications access from a specific domain:
 await context.grantPermissions(['notifications'], {origin: 'https://skype.com'} );
 ```
 
+```java
+context.grantPermissions(Arrays.asList("notifications"),
+  new BrowserContext.GrantPermissionsOptions().setOrigin("https://skype.com"));
+```
+
 ```python async
 await context.grant_permissions(['notifications'], origin='https://skype.com')
 ```
@@ -240,6 +280,10 @@ Revoke all permissions:
 
 ```js
 await context.clearPermissions();
+```
+
+```java
+context.clearPermissions();
 ```
 
 ```python async
@@ -268,6 +312,12 @@ const context = await browser.newContext({
 });
 ```
 
+```java
+BrowserContext context = browser.newContext(new Browser.NewContextOptions()
+  .setGeolocation(48.858455, 2.294474)
+  .setPermissions(Arrays.asList("geolocation")));
+```
+
 ```python async
 context = await browser.new_context(
   geolocation={"longitude": 48.858455, "latitude": 2.294474},
@@ -286,6 +336,10 @@ Change the location later:
 
 ```js
 await context.setGeolocation({ longitude: 29.979097, latitude: 31.134256 });
+```
+
+```java
+context.setGeolocation(new Geolocation(29.979097, 31.134256));
 ```
 
 ```python async
@@ -324,6 +378,22 @@ await page.emulateMedia({ colorScheme: 'dark' });
 
 // Change media for page
 await page.emulateMedia({ media: 'print' });
+```
+
+```java
+// Create context with dark mode
+BrowserContext context = browser.newContext(new Browser.NewContextOptions()
+  .setColorScheme(ColorScheme.DARK)); // or "light"
+
+// Create page with dark mode
+Page page = browser.newPage(new Browser.NewPageOptions()
+  .setColorScheme(ColorScheme.DARK)); // or "light"
+
+// Change color scheme for the page
+page.emulateMedia(new Page.EmulateMediaOptions().setColorScheme(ColorScheme.DARK));
+
+// Change media for page
+page.emulateMedia(new Page.EmulateMediaOptions().setMedia(Media.PRINT));
 ```
 
 ```python async

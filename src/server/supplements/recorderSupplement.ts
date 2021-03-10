@@ -22,6 +22,7 @@ import { describeFrame, toClickOptions, toModifiers } from './recorder/utils';
 import { Page } from '../page';
 import { Frame } from '../frames';
 import { BrowserContext } from '../browserContext';
+import { JavaLanguageGenerator } from './recorder/java';
 import { JavaScriptLanguageGenerator } from './recorder/javascript';
 import { CSharpLanguageGenerator } from './recorder/csharp';
 import { PythonLanguageGenerator } from './recorder/python';
@@ -81,6 +82,7 @@ export class RecorderSupplement {
     const language = params.language || context._options.sdkLanguage;
 
     const languages = new Set([
+      new JavaLanguageGenerator(),
       new JavaScriptLanguageGenerator(),
       new PythonLanguageGenerator(false),
       new PythonLanguageGenerator(true),
@@ -88,7 +90,7 @@ export class RecorderSupplement {
     ]);
     const primaryLanguage = [...languages].find(l => l.id === language)!;
     if (!primaryLanguage)
-      throw new Error(`\n===============================\nInvalid target: '${params.language}'\n===============================\n`);
+      throw new Error(`\n===============================\nUnsupported language: '${language}'\n===============================\n`);
 
     languages.delete(primaryLanguage);
     const orderedLanguages = [primaryLanguage, ...languages];
@@ -131,7 +133,7 @@ export class RecorderSupplement {
     const recorderApp = await RecorderApp.open(this._context);
     this._recorderApp = recorderApp;
     recorderApp.once('close', () => {
-      this._snapshotter.stop();
+      this._snapshotter.dispose().catch(() => {});
       this._recorderApp = null;
     });
     recorderApp.on('event', (data: EventData) => {
@@ -147,7 +149,7 @@ export class RecorderSupplement {
       }
       if (data.event === 'callLogHovered') {
         this._hoveredSnapshot = undefined;
-        if (this._isPaused())
+        if (this._isPaused() && data.params.callLogId)
           this._hoveredSnapshot = data.params;
         this._refreshOverlay();
         return;
@@ -201,18 +203,18 @@ export class RecorderSupplement {
         (source: BindingSource, action: actions.Action) => this._generator.commitLastAction());
 
     await this._context.exposeBinding('_playwrightRecorderState', false, source => {
-      let snapshotId: string | undefined;
-      let actionSelector: string | undefined;
+      let snapshotUrl: string | undefined;
+      let actionSelector = this._highlightedSelector;
       let actionPoint: Point | undefined;
       if (this._hoveredSnapshot) {
-        snapshotId = this._hoveredSnapshot.phase + '@' + this._hoveredSnapshot.callLogId;
-        const metadata = this._allMetadatas.get(this._hoveredSnapshot.callLogId);
+        const metadata = this._allMetadatas.get(this._hoveredSnapshot.callLogId)!;
+        snapshotUrl = `${metadata.pageId}?name=${this._hoveredSnapshot.phase}@${this._hoveredSnapshot.callLogId}`;
         actionPoint = this._hoveredSnapshot.phase === 'in' ? metadata?.point : undefined;
       } else {
         for (const [metadata, sdkObject] of this._currentCallsMetadata) {
           if (source.page === sdkObject.attribution.page) {
             actionPoint = metadata.point || actionPoint;
-            actionSelector = metadata.params.selector || actionSelector;
+            actionSelector = actionSelector || metadata.params.selector;
           }
         }
       }
@@ -220,7 +222,7 @@ export class RecorderSupplement {
         mode: this._mode,
         actionPoint,
         actionSelector,
-        snapshotId,
+        snapshotUrl,
       };
       return uiState;
     });
@@ -235,7 +237,7 @@ export class RecorderSupplement {
       this._resume(false).catch(() => {});
     });
 
-    const snapshotBaseUrl = await this._snapshotter.start() + '/snapshot/';
+    const snapshotBaseUrl = await this._snapshotter.initialize() + '/snapshot/';
     await this._context.extendInjectedScript(recorderSource.source, { isUnderTest: isUnderTest(), snapshotBaseUrl });
     await this._context.extendInjectedScript(consoleApiSource.source);
     (this._context as any).recorderAppForTest = recorderApp;
@@ -281,7 +283,7 @@ export class RecorderSupplement {
 
   private _refreshOverlay() {
     for (const page of this._context.pages())
-      page.mainFrame()._evaluateExpression('window._playwrightRefreshOverlay', false, undefined, 'main').catch(() => {});
+      page.mainFrame()._evaluateExpression('window._playwrightRefreshOverlay()', false, undefined, 'main').catch(() => {});
   }
 
   private async _onPage(page: Page) {
@@ -399,18 +401,18 @@ export class RecorderSupplement {
     this._generator.signal(pageAlias, page.mainFrame(), { name: 'dialog', dialogAlias: String(++this._lastDialogOrdinal) });
   }
 
-  async _captureSnapshot(sdkObject: SdkObject, metadata: CallMetadata, phase: 'before' | 'after' | 'in') {
+  _captureSnapshot(sdkObject: SdkObject, metadata: CallMetadata, phase: 'before' | 'after' | 'in') {
     if (sdkObject.attribution.page) {
-      const snapshotId = `${phase}@${metadata.id}`;
-      this._snapshots.add(snapshotId);
-      await this._snapshotter.forceSnapshot(sdkObject.attribution.page, snapshotId);
+      const snapshotName = `${phase}@${metadata.id}`;
+      this._snapshots.add(snapshotName);
+      this._snapshotter.captureSnapshot(sdkObject.attribution.page, snapshotName);
     }
   }
 
   async onBeforeCall(sdkObject: SdkObject, metadata: CallMetadata): Promise<void> {
     if (this._mode === 'recording')
       return;
-    await this._captureSnapshot(sdkObject, metadata, 'before');
+    this._captureSnapshot(sdkObject, metadata, 'before');
     this._currentCallsMetadata.set(metadata, sdkObject);
     this._allMetadatas.set(metadata.id, metadata);
     this._updateUserSources();

@@ -517,7 +517,7 @@ Optional argument to pass to [`param: expression`].
 Returns the return value of [`param: expression`] as a [JSHandle].
 
 The only difference between [`method: Frame.evaluate`] and [`method: Frame.evaluateHandle`] is that
-[method: Frame.evaluateHandle`] returns [JSHandle].
+[`method: Frame.evaluateHandle`] returns [JSHandle].
 
 If the function, passed to the [`method: Frame.evaluateHandle`], returns a [Promise], then
 [`method: Frame.evaluateHandle`] would wait for the promise to resolve and return its value.
@@ -929,7 +929,7 @@ frame.selectOption('select#colors', 'red', 'green', 'blue');
 // single selection matching the value
 frame.selectOption("select#colors", "blue");
 // single selection matching both the value and the label
-frame.selectOption("select#colors", new SelectOption().withLabel("Blue"));
+frame.selectOption("select#colors", new SelectOption().setLabel("Blue"));
 // multiple selection
 frame.selectOption("select#colors", new String[] {"red", "green", "blue"});
 ```
@@ -1047,7 +1047,7 @@ await frame.type('#mytextarea', 'World', {delay: 100}); // Types slower, like a 
 // Types instantly
 frame.type("#mytextarea", "Hello");
 // Types slower, like a user
-frame.type("#mytextarea", "World", new Frame.TypeOptions().withDelay(100)); 
+frame.type("#mytextarea", "World", new Frame.TypeOptions().setDelay(100)); 
 ```
 
 ```python async

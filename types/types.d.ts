@@ -3271,7 +3271,9 @@ export interface Frame {
    * The only difference between
    * [frame.evaluate(pageFunction[, arg])](https://playwright.dev/docs/api/class-frame#frameevaluatepagefunction-arg) and
    * [frame.evaluateHandle(pageFunction[, arg])](https://playwright.dev/docs/api/class-frame#frameevaluatehandlepagefunction-arg)
-   * is that [method: Frame.evaluateHandle`] returns [JSHandle].
+   * is that
+   * [frame.evaluateHandle(pageFunction[, arg])](https://playwright.dev/docs/api/class-frame#frameevaluatehandlepagefunction-arg)
+   * returns [JSHandle].
    * 
    * If the function, passed to the
    * [frame.evaluateHandle(pageFunction[, arg])](https://playwright.dev/docs/api/class-frame#frameevaluatehandlepagefunction-arg),
@@ -6362,7 +6364,7 @@ export interface BrowserType<Browser> {
     /**
      * Emulates `'prefers-colors-scheme'` media feature, supported values are `'light'`, `'dark'`, `'no-preference'`. See
      * [page.emulateMedia([options])](https://playwright.dev/docs/api/class-page#pageemulatemediaoptions) for more details.
-     * Defaults to '`light`'.
+     * Defaults to `'light'`.
      */
     colorScheme?: "light"|"dark"|"no-preference";
 
@@ -7526,7 +7528,7 @@ export interface AndroidDevice {
     /**
      * Emulates `'prefers-colors-scheme'` media feature, supported values are `'light'`, `'dark'`, `'no-preference'`. See
      * [page.emulateMedia([options])](https://playwright.dev/docs/api/class-page#pageemulatemediaoptions) for more details.
-     * Defaults to '`light`'.
+     * Defaults to `'light'`.
      */
     colorScheme?: "light"|"dark"|"no-preference";
 
@@ -8255,7 +8257,7 @@ export interface Browser extends EventEmitter {
     /**
      * Emulates `'prefers-colors-scheme'` media feature, supported values are `'light'`, `'dark'`, `'no-preference'`. See
      * [page.emulateMedia([options])](https://playwright.dev/docs/api/class-page#pageemulatemediaoptions) for more details.
-     * Defaults to '`light`'.
+     * Defaults to `'light'`.
      */
     colorScheme?: "light"|"dark"|"no-preference";
 
@@ -9122,22 +9124,23 @@ export interface Download {
   createReadStream(): Promise<null|Readable>;
 
   /**
-   * Deletes the downloaded file.
+   * Deletes the downloaded file. Will wait for the download to finish if necessary.
    */
   delete(): Promise<void>;
 
   /**
-   * Returns download error if any.
+   * Returns download error if any. Will wait for the download to finish if necessary.
    */
   failure(): Promise<null|string>;
 
   /**
-   * Returns path to the downloaded file in case of successful download.
+   * Returns path to the downloaded file in case of successful download. The method will wait for the download to finish if
+   * necessary.
    */
   path(): Promise<null|string>;
 
   /**
-   * Saves the download to a user-specified path.
+   * Saves the download to a user-specified path. It is safe to call this method while the download is still in progress.
    * @param path Path where the download should be saved.
    */
   saveAs(path: string): Promise<void>;
@@ -10355,7 +10358,7 @@ export interface BrowserContextOptions {
   /**
    * Emulates `'prefers-colors-scheme'` media feature, supported values are `'light'`, `'dark'`, `'no-preference'`. See
    * [page.emulateMedia([options])](https://playwright.dev/docs/api/class-page#pageemulatemediaoptions) for more details.
-   * Defaults to '`light`'.
+   * Defaults to `'light'`.
    */
   colorScheme?: "light"|"dark"|"no-preference";
 

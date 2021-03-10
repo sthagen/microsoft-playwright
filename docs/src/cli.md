@@ -13,6 +13,10 @@ Playwright comes with the command line tools that run via `npx` or as a part of 
 $ npx playwright --help
 ```
 
+```sh java
+$ mvn exec:java -e -Dexec.mainClass=com.microsoft.playwright.CLI
+```
+
 ```sh python
 $ playwright
 ```
@@ -32,6 +36,10 @@ $ playwright
 $ npx playwright codegen wikipedia.org
 ```
 
+```sh java
+$ mvn exec:java -e -Dexec.mainClass=com.microsoft.playwright.CLI -Dexec.args="codegen wikipedia.org"
+```
+
 ```sh python
 $ playwright codegen wikipedia.org
 ```
@@ -45,13 +53,19 @@ Run `codegen` and perform actions in the browser. Playwright CLI will generate J
 Run `codegen` with `--save-storage` to save [cookies](https://developer.mozilla.org/en-US/docs/Web/HTTP/Cookies) and [localStorage](https://developer.mozilla.org/en-US/docs/Web/API/Window/localStorage) at the end. This is useful to separately record authentication step and reuse it later.
 
 ```sh js
-$ npx playwright --save-storage=auth.json codegen
+$ npx playwright codegen --save-storage=auth.json
+# Perform authentication and exit.
+# auth.json will contain the storage state.
+```
+
+```sh java
+$ mvn exec:java -e -Dexec.mainClass=com.microsoft.playwright.CLI -Dexec.args="codegen  --save-storage=auth.json"
 # Perform authentication and exit.
 # auth.json will contain the storage state.
 ```
 
 ```sh python
-$ playwright --save-storage=auth.json codegen
+$ playwright codegen --save-storage=auth.json
 # Perform authentication and exit.
 # auth.json will contain the storage state.
 ```
@@ -59,14 +73,21 @@ $ playwright --save-storage=auth.json codegen
 Run with `--load-storage` to consume previously loaded storage. This way, all [cookies](https://developer.mozilla.org/en-US/docs/Web/HTTP/Cookies) and [localStorage](https://developer.mozilla.org/en-US/docs/Web/API/Window/localStorage) will be restored, bringing most web apps to the authenticated state.
 
 ```sh js
-$ npx playwright --load-storage=auth.json open my.web.app
-$ npx playwright --load-storage=auth.json codegen my.web.app
+$ npx playwright open --load-storage=auth.json my.web.app
+$ npx playwright codegen --load-storage=auth.json my.web.app
 # Perform actions in authenticated state.
 ```
 
+```sh java
+$ mvn exec:java -e -Dexec.mainClass=com.microsoft.playwright.CLI -Dexec.args="open --load-storage=auth.json my.web.app"
+$ mvn exec:java -e -Dexec.mainClass=com.microsoft.playwright.CLI -Dexec.args="codegen --load-storage=auth.json my.web.app"
+# Perform authentication and exit.
+# auth.json will contain the storage state.
+```
+
 ```sh python
-$ playwright --load-storage=auth.json open my.web.app
-$ playwright --load-storage=auth.json codegen my.web.app
+$ playwright open --load-storage=auth.json my.web.app
+$ playwright codegen --load-storage=auth.json my.web.app
 # Perform actions in authenticated state.
 ```
 
@@ -89,6 +110,27 @@ const { chromium } = require('playwright');
   const page = await context.newPage();
   await page.pause();
 })();
+```
+
+```java
+// FIXME
+import com.microsoft.playwright.*;
+
+public class Example {
+  public static void main(String[] args) {
+    try (Playwright playwright = Playwright.create()) {
+      BrowserType chromium = playwright.chromium();
+      // Make sure to run headed.
+      Browser browser = chromium.launch(new BrowserType.LaunchOptions().setHeadless(false));
+      // Setup context however you like.
+      BrowserContext context = browser.newContext(/* pass any options */);
+      context.route("**/*", route -> route.resume());
+      // Pause the page, and start recording manually.
+      Page page = context.newPage();
+      page.pause();
+    }
+  }
+}
 ```
 
 ```python async
@@ -136,6 +178,11 @@ With `open`, you can use Playwright bundled browsers to browse web pages. Playwr
 $ npx playwright open example.com
 ```
 
+```sh java
+# Open page in Chromium
+$ mvn exec:java -e -Dexec.mainClass=com.microsoft.playwright.CLI -Dexec.args="open example.com"
+```
+
 ```sh python
 # Open page in Chromium
 $ playwright open example.com
@@ -144,6 +191,11 @@ $ playwright open example.com
 ```sh js
 # Open page in WebKit
 $ npx playwright wk example.com
+```
+
+```sh java
+# Open page in WebKit
+$ mvn exec:java -e -Dexec.mainClass=com.microsoft.playwright.CLI -Dexec.args="wk example.com"
 ```
 
 ```sh python
@@ -156,34 +208,48 @@ $ playwright wk example.com
 
 ```sh js
 # Emulate iPhone 11.
-$ npx playwright --device="iPhone 11" open wikipedia.org
+$ npx playwright open --device="iPhone 11" wikipedia.org
+```
+
+```sh java
+# Emulate iPhone 11.
+$ mvn exec:java -e -Dexec.mainClass=com.microsoft.playwright.CLI -Dexec.args='open --device="iPhone 11" wikipedia.org'
 ```
 
 ```sh python
 # Emulate iPhone 11.
-$ playwright --device="iPhone 11" open wikipedia.org
+$ playwright open --device="iPhone 11" wikipedia.org
 ```
 
 ### Emulate color scheme and viewport size
 ```sh js
 # Emulate screen size and color scheme.
-$ npx playwright --viewport-size=800,600 --color-scheme=dark open twitter.com
+$ npx playwright open --viewport-size=800,600 --color-scheme=dark twitter.com
+```
+```sh java
+# Emulate screen size and color scheme.
+$ mvn exec:java -e -Dexec.mainClass=com.microsoft.playwright.CLI -Dexec.args="open --viewport-size=800,600 --color-scheme=dark twitter.com"
 ```
 ```sh python
 # Emulate screen size and color scheme.
-$ playwright --viewport-size=800,600 --color-scheme=dark open twitter.com
+$ playwright open --viewport-size=800,600 --color-scheme=dark twitter.com
 ```
 
 ### Emulate geolocation, language and timezone
 ```sh js
 # Emulate timezone, language & location
 # Once page opens, click the "my location" button to see geolocation in action
-$ npx playwright --timezone="Europe/Rome" --geolocation="41.890221,12.492348" --lang="it-IT" open maps.google.com
+$ npx playwright open --timezone="Europe/Rome" --geolocation="41.890221,12.492348" --lang="it-IT" maps.google.com
+```
+```sh java
+# Emulate timezone, language & location
+# Once page opens, click the "my location" button to see geolocation in action
+$ mvn exec:java -e -Dexec.mainClass=com.microsoft.playwright.CLI -Dexec.args='open --timezone="Europe/Rome" --geolocation="41.890221,12.492348" --lang="it-IT" maps.google.com'
 ```
 ```sh python
 # Emulate timezone, language & location
 # Once page opens, click the "my location" button to see geolocation in action
-$ playwright --timezone="Europe/Rome" --geolocation="41.890221,12.492348" --lang="it-IT" open maps.google.com
+$ playwright open --timezone="Europe/Rome" --geolocation="41.890221,12.492348" --lang="it-IT" maps.google.com
 ```
 
 ## Inspect selectors
@@ -236,6 +302,11 @@ Generates selector for the given element.
 $ npx playwright screenshot --help
 ```
 
+```sh java
+# See command help
+$ mvn exec:java -e -Dexec.mainClass=com.microsoft.playwright.CLI -Dexec.args="screenshot --help"
+```
+
 ```sh python
 # See command help
 $ playwright screenshot --help
@@ -243,20 +314,23 @@ $ playwright screenshot --help
 
 ```sh js
 # Wait 3 seconds before capturing a screenshot after page loads ('load' event fires)
-$ npx playwright \
-  --device="iPhone 11" \
-  --color-scheme=dark \
-  screenshot \
+$ npx playwright screenshot \
+    --device="iPhone 11" \
+    --color-scheme=dark \
     --wait-for-timeout=3000 \
     twitter.com twitter-iphone.png
 ```
 
+```sh java
+# Wait 3 seconds before capturing a screenshot after page loads ('load' event fires)
+$ mvn exec:java -e -Dexec.mainClass=com.microsoft.playwright.CLI -Dexec.args='screenshot --device="iPhone 11" --color-scheme=dark --wait-for-timeout=3000 twitter.com twitter-iphone.png'
+```
+
 ```sh python
 # Wait 3 seconds before capturing a screenshot after page loads ('load' event fires)
-$ playwright \
-  --device="iPhone 11" \
-  --color-scheme=dark \
-  screenshot \
+$ playwright screenshot \
+    --device="iPhone 11" \
+    --color-scheme=dark \
     --wait-for-timeout=3000 \
     twitter.com twitter-iphone.png
 ```
@@ -264,6 +338,11 @@ $ playwright \
 ```sh js
 # Capture a full page screenshot
 $ npx playwright screenshot --full-page en.wikipedia.org wiki-full.png
+```
+
+```sh java
+# Capture a full page screenshot
+$ mvn exec:java -e -Dexec.mainClass=com.microsoft.playwright.CLI -Dexec.args='screenshot --full-page en.wikipedia.org wiki-full.png'
 ```
 
 ```sh python
@@ -278,6 +357,11 @@ PDF generation only works in Headless Chromium.
 ```sh js
 # See command help
 $ npx playwright pdf https://en.wikipedia.org/wiki/PDF wiki.pdf
+```
+
+```sh java
+# See command help
+$ mvn exec:java -e -Dexec.mainClass=com.microsoft.playwright.CLI -Dexec.args="pdf https://en.wikipedia.org/wiki/PDF wiki.pdf"
 ```
 
 ```sh python

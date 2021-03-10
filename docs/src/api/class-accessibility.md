@@ -1,4 +1,5 @@
 # class: Accessibility
+* langs: csharp, js, python
 
 The Accessibility class provides methods for inspecting Chromium's accessibility tree. The accessibility tree is used by
 assistive technology such as [screen readers](https://en.wikipedia.org/wiki/Screen_reader) or
@@ -73,6 +74,11 @@ snapshot = page.accessibility.snapshot()
 print(snapshot)
 ```
 
+```csharp
+var accessibilitySnapshot = await Page.Accessibility.SnapshotAsync();
+Console.WriteLine(accessibilitySnapshot);
+```
+
 An example of logging the focused node's name:
 
 ```js
@@ -89,6 +95,29 @@ function findFocusedNode(node) {
   }
   return null;
 }
+```
+
+```csharp
+Func<AccessibilitySnapshotResult, AccessibilitySnapshotResult> findFocusedNode = root =>
+{
+    var nodes = new Stack<AccessibilitySnapshotResult>(new[] { root });
+    while (nodes.Count > 0)
+    {
+        var node = nodes.Pop();
+        if (node.Focused) return node;
+        foreach (var innerNode in node.Children)
+        {
+            nodes.Push(innerNode);
+        }
+    }
+
+    return null;
+};
+
+var accessibilitySnapshot = await Page.Accessibility.SnapshotAsync();
+var focusedNode = findFocusedNode(accessibilitySnapshot);
+if(focusedNode != null)
+  Console.WriteLine(focusedNode.Name);
 ```
 
 ```java
@@ -127,7 +156,7 @@ if node:
 ```
 
 ## async method: Accessibility.snapshot
-* langs: csharp, java
+* langs: java
 - returns: <[null]|[string]>
 
 ### option: Accessibility.snapshot.interestingOnly

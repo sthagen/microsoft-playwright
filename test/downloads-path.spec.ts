@@ -45,16 +45,27 @@ fixtures.persistentDownloadsContext.init(async ({ server, launchPersistent, test
     res.setHeader('Content-Disposition', 'attachment; filename=file.txt');
     res.end(`Hello world`);
   });
+  logOnCI('--- launching persistent context ---');
   const { context, page } = await launchPersistent(
       {
         downloadsPath: testInfo.outputPath(''),
         acceptDownloads: true
       }
   );
+  logOnCI('--- setting content for the page ---');
   await page.setContent(`<a href="${server.PREFIX}/download">download</a>`);
+  logOnCI('--- launching test ---');
   await test(context);
+  logOnCI('--- closing context ---');
   await context.close();
+  logOnCI('--- DONE ---');
 });
+
+function logOnCI(...args) {
+  if (!process.env.CI)
+    return;
+  console.log(...args);
+}
 
 const { it, expect } = fixtures.build();
 
@@ -99,25 +110,49 @@ it('should report downloads in downloadsPath folder', async ({downloadsBrowser, 
 });
 
 it('should accept downloads in persistent context', async ({persistentDownloadsContext, testInfo, server})  => {
+  logOnCI('----- 1.1');
   const page = persistentDownloadsContext.pages()[0];
+  logOnCI('----- 1.2');
   const [ download ] = await Promise.all([
-    page.waitForEvent('download'),
-    page.click('a')
+    page.waitForEvent('download').then(d => {
+      logOnCI('----- 1.3');
+      return d;
+    }),
+    page.click('a').then(d => {
+      logOnCI('----- 1.4');
+    }),
   ]);
+  logOnCI('----- 1.5');
   expect(download.url()).toBe(`${server.PREFIX}/download`);
+  logOnCI('----- 1.6');
   expect(download.suggestedFilename()).toBe(`file.txt`);
+  logOnCI('----- 1.7');
   const path = await download.path();
+  logOnCI('----- 1.8');
   expect(path.startsWith(testInfo.outputPath(''))).toBeTruthy();
+  logOnCI('----- 1.9');
 });
 
 it('should delete downloads when persistent context closes', async ({persistentDownloadsContext}) => {
+  logOnCI('----- 2.1');
   const page = persistentDownloadsContext.pages()[0];
+  logOnCI('----- 2.2');
   const [ download ] = await Promise.all([
-    page.waitForEvent('download'),
-    page.click('a')
+    page.waitForEvent('download').then(d => {
+      logOnCI('----- 2.3');
+      return d;
+    }),
+    page.click('a').then(() => {
+      logOnCI('----- 2.4');
+    }),
   ]);
+  logOnCI('----- 2.5');
   const path = await download.path();
+  logOnCI('----- 2.6');
   expect(fs.existsSync(path)).toBeTruthy();
+  logOnCI('----- 2.7');
   await persistentDownloadsContext.close();
+  logOnCI('----- 2.8');
   expect(fs.existsSync(path)).toBeFalsy();
+  logOnCI('----- 2.9');
 });
