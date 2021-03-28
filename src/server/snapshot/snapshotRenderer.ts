@@ -71,9 +71,15 @@ export class SnapshotRenderer {
 
     const snapshot = this._snapshots[this._index];
     let html = visit(snapshot.html, this._index);
+    if (!html)
+      return { html: '', resources: {} };
+
     if (snapshot.doctype)
       html = `<!DOCTYPE ${snapshot.doctype}>` + html;
-    html += `<script>${snapshotScript()}</script>`;
+    html += `
+      <style>*[__playwright_target__="${this.snapshotName}"] { background-color: #6fa8dc7f; }</style>
+      <script>${snapshotScript()}</script>
+    `;
 
     const resources: { [key: string]: { resourceId: string, sha1?: string } } = {};
     for (const [url, contextResources] of this._contextResources) {
@@ -132,7 +138,7 @@ function snapshotScript() {
       for (const iframe of root.querySelectorAll('iframe')) {
         const src = iframe.getAttribute('src');
         if (!src) {
-          iframe.setAttribute('src', 'data:text/html,<body>Snapshot is not available</body>');
+          iframe.setAttribute('src', 'data:text/html,<body style="background: #ddd"></body>');
         } else {
           // Append query parameters to inherit ?name= or ?time= values from parent.
           iframe.setAttribute('src', window.location.origin + src + window.location.search);

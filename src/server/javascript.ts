@@ -44,6 +44,7 @@ export type SmartHandle<T> = T extends Node ? dom.ElementHandle<T> : JSHandle<T>
 
 export interface ExecutionContextDelegate {
   rawEvaluate(expression: string): Promise<ObjectId>;
+  rawCallFunctionNoReply(func: Function, ...args: any[]): void;
   evaluateWithArguments(expression: string, returnByValue: boolean, utilityScript: JSHandle<any>, values: any[], objectIds: ObjectId[]): Promise<any>;
   getProperties(handle: JSHandle): Promise<Map<string, JSHandle>>;
   createHandle(context: ExecutionContext, remoteObject: RemoteObject): JSHandle;
@@ -57,6 +58,10 @@ export class ExecutionContext extends SdkObject {
   constructor(parent: SdkObject, delegate: ExecutionContextDelegate) {
     super(parent);
     this._delegate = delegate;
+  }
+
+  async waitForSignalsCreatedBy<T>(action: () => Promise<T>): Promise<T> {
+    return action();
   }
 
   adoptIfNeeded(handle: JSHandle): Promise<JSHandle> | null {
@@ -109,20 +114,20 @@ export class JSHandle<T = any> extends SdkObject {
     this._preview = 'JSHandle@' + String(this._objectId ? this._objectType : this._value);
   }
 
-  async evaluate<R, Arg>(pageFunction: FuncOn<T, Arg, R>, arg: Arg): Promise<R>;
-  async evaluate<R>(pageFunction: FuncOn<T, void, R>, arg?: any): Promise<R>;
-  async evaluate<R, Arg>(pageFunction: FuncOn<T, Arg, R>, arg: Arg): Promise<R> {
+  callFunctionNoReply(func: Function, arg: any) {
+    this._context._delegate.rawCallFunctionNoReply(func, this, arg);
+  }
+
+  async evaluate<R, Arg>(pageFunction: FuncOn<T, Arg, R>, arg?: Arg): Promise<R> {
     return evaluate(this._context, true /* returnByValue */, pageFunction, this, arg);
   }
 
-  async evaluateHandle<R, Arg>(pageFunction: FuncOn<T, Arg, R>, arg: Arg): Promise<SmartHandle<R>>;
-  async evaluateHandle<R>(pageFunction: FuncOn<T, void, R>, arg?: any): Promise<SmartHandle<R>>;
-  async evaluateHandle<R, Arg>(pageFunction: FuncOn<T, Arg, R>, arg: Arg): Promise<SmartHandle<R>> {
+  async evaluateHandle<R, Arg>(pageFunction: FuncOn<T, Arg, R>, arg?: Arg): Promise<SmartHandle<R>> {
     return evaluate(this._context, false /* returnByValue */, pageFunction, this, arg);
   }
 
-  async _evaluateExpression(expression: string, isFunction: boolean | undefined, returnByValue: boolean, arg: any) {
-    const value = await evaluateExpression(this._context, returnByValue, expression, isFunction, this, arg);
+  async evaluateExpressionAndWaitForSignals(expression: string, isFunction: boolean | undefined, returnByValue: boolean, arg: any) {
+    const value = await evaluateExpressionAndWaitForSignals(this._context, returnByValue, expression, isFunction, this, arg);
     await this._context.doSlowMo();
     return value;
   }
@@ -155,11 +160,11 @@ export class JSHandle<T = any> extends SdkObject {
     return null;
   }
 
-  async dispose() {
+  dispose() {
     if (this._disposed)
       return;
     this._disposed = true;
-    await this._context._delegate.releaseHandle(this);
+    this._context._delegate.releaseHandle(this).catch(e => {});
   }
 
   toString(): string {
@@ -222,6 +227,10 @@ export async function evaluateExpression(context: ExecutionContext, returnByValu
   } finally {
     toDispose.map(handlePromise => handlePromise.then(handle => handle.dispose()));
   }
+}
+
+export async function evaluateExpressionAndWaitForSignals(context: ExecutionContext, returnByValue: boolean, expression: string, isFunction?: boolean, ...args: any[]): Promise<any> {
+  return await context.waitForSignalsCreatedBy(() => evaluateExpression(context, returnByValue, expression, isFunction, ...args));
 }
 
 export function parseUnserializableValue(unserializableValue: string): any {

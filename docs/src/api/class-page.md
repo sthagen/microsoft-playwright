@@ -641,8 +641,8 @@ Shortcut for main frame's [`method: Frame.dblclick`].
 
 ## async method: Page.dispatchEvent
 
-The snippet below dispatches the `click` event on the element. Regardless of the visibility state of the elment, `click`
-is dispatched. This is equivalend to calling
+The snippet below dispatches the `click` event on the element. Regardless of the visibility state of the element, `click`
+is dispatched. This is equivalent to calling
 [element.click()](https://developer.mozilla.org/en-US/docs/Web/API/HTMLElement/click).
 
 ```js
@@ -1585,6 +1585,7 @@ Navigate to the next page in history.
 ## async method: Page.goto
 * langs:
   - alias-java: navigate
+  - alias-csharp: GoToAsync
 - returns: <[null]|[Response]>
 
 Returns the main resource response. In case of multiple redirects, the navigation will resolve with the response of the
@@ -1956,7 +1957,7 @@ Holding down `Shift` will type the text that corresponds to the [`param: key`] i
 If [`param: key`] is a single character, it is case-sensitive, so the values `a` and `A` will generate different
 respective texts.
 
-Shortcuts such as `key: "Control+o"` or `key: "Control+Shift+T"` are supported as well. When speficied with the
+Shortcuts such as `key: "Control+o"` or `key: "Control+Shift+T"` are supported as well. When specified with the
 modifier, modifier is pressed and being held while the subsequent key is being pressed.
 
 ```js
@@ -2068,7 +2069,7 @@ Once routing is enabled, every request matching the url pattern will stall unles
 The handler will only be called for the first url if the response is a redirect.
 :::
 
-An example of a naïve handler that aborts all image requests:
+An example of a naive handler that aborts all image requests:
 
 ```js
 const page = await browser.newPage();
@@ -2156,10 +2157,6 @@ handler function to route the request.
 - returns: <[Buffer]>
 
 Returns the buffer with the captured screenshot.
-
-:::note
-Screenshots take at least 1/6 second on Chromium OS X and Chromium Windows. See https://crbug.com/741689 for discussion.
-:::
 
 ### option: Page.screenshot.path
 - `path` <[path]>

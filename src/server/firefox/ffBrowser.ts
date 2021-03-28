@@ -35,6 +35,8 @@ export class FFBrowser extends Browser {
   static async connect(transport: ConnectionTransport, options: BrowserOptions): Promise<FFBrowser> {
     const connection = new FFConnection(transport, options.protocolLogger, options.browserLogsCollector);
     const browser = new FFBrowser(connection, options);
+    if ((options as any).__testHookOnConnectToBrowser)
+      await (options as any).__testHookOnConnectToBrowser();
     const promises: Promise<any>[] = [
       connection.send('Browser.enable', { attachToDefaultContext: !!options.persistent }),
       browser._initVersion(),
@@ -192,10 +194,10 @@ export class FFBrowserContext extends BrowserContext {
     if (this._options.colorScheme)
       promises.push(this._browser._connection.send('Browser.setColorScheme', { browserContextId, colorScheme: this._options.colorScheme }));
     if (this._options.recordVideo) {
-      const size = this._options.recordVideo.size || this._options.viewport || { width: 1280, height: 720 };
       promises.push(this._ensureVideosPath().then(() => {
         return this._browser._connection.send('Browser.setScreencastOptions', {
-          ...size,
+          // validateBrowserContextOptions ensures correct video size.
+          ...this._options.recordVideo!.size!,
           dir: this._options.recordVideo!.dir,
           browserContextId: this._browserContextId
         });

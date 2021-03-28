@@ -28,7 +28,7 @@ const cpAsync = util.promisify(ncp);
 const SCRIPT_NAME = path.basename(__filename);
 const ROOT_PATH = path.join(__dirname, '..');
 
-const PLAYWRIGHT_CORE_FILES = ['bin/PrintDeps.exe', 'lib', 'types', 'NOTICE', 'LICENSE'];
+const PLAYWRIGHT_CORE_FILES = ['bin/PrintDeps.exe', 'lib', 'types', 'NOTICE', 'LICENSE', 'bin/android-driver.apk', 'bin/android-driver-target.apk'];
 
 const PACKAGES = {
   'playwright': {
@@ -67,7 +67,7 @@ const PACKAGES = {
     version: '0.0.8', // Manually manage playwright-android version.
     description: 'A high-level API to automate Chrome for Android',
     browsers: ['ffmpeg'],
-    files: [...PLAYWRIGHT_CORE_FILES, 'bin/android-driver.apk', 'bin/android-driver-target.apk'],
+    files: [...PLAYWRIGHT_CORE_FILES],
   },
 };
 
@@ -163,7 +163,7 @@ if (!args.some(arg => arg === '--no-cleanup')) {
   // 5. Generate browsers.json
   const browsersJSON = require(path.join(ROOT_PATH, 'browsers.json'));
   for (const browser of browsersJSON.browsers)
-    browser.download = package.browsers.includes(browser.name);
+    browser.installByDefault = package.browsers.includes(browser.name);
   await writeToPackage('browsers.json', JSON.stringify(browsersJSON, null, 2));
 
   // 6. Bake commit SHA into the package

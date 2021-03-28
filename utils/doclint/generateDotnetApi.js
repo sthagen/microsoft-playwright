@@ -23,7 +23,6 @@ const PROJECT_DIR = path.join(__dirname, '..', '..');
 const fs = require('fs');
 const { parseApi } = require('./api_parser');
 const { Type } = require('./documentation');
-const { args } = require('commander');
 const { EOL } = require('os');
 
 const maxDocumentationColumnWidth = 80;
@@ -34,6 +33,8 @@ const additionalTypes = new Map(); // this will hold types that we discover, bec
 const documentedResults = new Map(); // will hold documentation for new types
 /** @type {Map<string, string[]>} */
 const enumTypes = new Map();
+/** @type {string[]} */
+const nullableTypes = ['int', 'bool', 'decimal', 'float'];
 
 let documentation;
 /** @type {Map<string, string>} */
@@ -178,13 +179,17 @@ let classNameMap;
 
   enumTypes.forEach((values, name) =>
     innerRenderElement('enum', name, null, (out) => {
+      const knownEnumValues = new Map([
+        ['domcontentloaded', 'DOMContentLoaded'],
+        ['networkidle', 'NetworkIdle']
+      ]);
       out.push('\tUndefined = 0,');
       values.forEach((v, i) => {
         // strip out the quotes
         v = v.replace(/[\"]/g, ``)
         let escapedName = v.replace(/[-]/g, ' ')
           .split(' ')
-          .map(word => word[0].toUpperCase() + word.substring(1)).join('');
+          .map(word => knownEnumValues.get(word) || word[0].toUpperCase() + word.substring(1)).join('');
 
         out.push(`\t[EnumMember(Value = "${v}")]`);
         out.push(`\t${escapedName},`);
@@ -265,6 +270,7 @@ function renderMember(member, parent, out) {
   if (member.kind === 'method') {
     renderMethod(member, parent, output, name);
   } else {
+    /** @type string */
     let type = translateType(member.type, parent, t => generateNameDefault(member, name, t, parent));
     if (member.kind === 'event') {
       if (!member.type)
@@ -286,6 +292,9 @@ function renderMember(member, parent, out) {
         console.warn(`children property found in ${parent.name}, assuming array.`);
         type = `IEnumerable<${parent.name}>`;
       }
+
+      if(!type.endsWith('?') && !member.required && nullableTypes.includes(type))
+        type = `${type}?`;
       output(`public ${type} ${name} { get; set; }`);
     } else {
       throw new Error(`Problem rendering a member: ${type} - ${name} (${member.kind})`);
@@ -314,19 +323,37 @@ function generateNameDefault(member, name, t, parent) {
   let enumName = generateEnumNameIfApplicable(member, name, t, parent);
   if (!enumName && member) {
     if (member.kind === 'method' || member.kind === 'property') {
-      // this should be easy to name... let's call it the same as the argument (eternal optimist)
-      let probableName = `${parent.name}${translateMemberName(``, name, null)}`;
-      let probableType = additionalTypes.get(probableName);
-      if (probableType) {
-        // compare it with what?
-        if (probableType.expression != t.expression) {
-          throw new Error(`Non-matching types with the same name. Panic.`);
-        }
-      } else {
-        additionalTypes.set(probableName, t);
+      let names = [
+        parent.alias || parent.name,
+        translateMemberName(``, member.alias || member.name, null),
+        translateMemberName(``, name, null),
+      ];
+      if (names[2] === names[1])
+        names.pop(); // get rid of duplicates, cheaply
+      let attemptedName = names.pop();
+      let typesDiffer = function (left, right) {
+        if (left.expression && right.expression)
+          return left.expression !== right.expression;
+        return JSON.stringify(right.properties) !== JSON.stringify(left.properties);
       }
-
-      return probableName;
+      while (true) {
+        // crude attempt at removing plurality
+        if (attemptedName.endsWith('s')
+          && !["properties", "httpcredentials"].includes(attemptedName.toLowerCase()))
+          attemptedName = attemptedName.substring(0, attemptedName.length - 1);
+        let probableType = additionalTypes.get(attemptedName);
+        if ((probableType && typesDiffer(t, probableType))
+          || (["Value"].includes(attemptedName))) {
+          if (!names.length)
+            throw new Error(`Ran out of possible names: ${attemptedName}`);
+          attemptedName = `${names.pop()}${attemptedName}`;
+          continue;
+        } else {
+          additionalTypes.set(attemptedName, t);
+        }
+        break;
+      }
+      return attemptedName;
     }
 
     if (member.kind === 'event') {
@@ -364,7 +391,7 @@ function generateEnumNameIfApplicable(member, name, type, parent) {
 function renderMethod(member, parent, output, name) {
   const typeResolve = (type) => translateType(type, parent, (t) => {
     let newName = `${parent.name}${translateMemberName(member.kind, member.name, null)}Result`;
-    documentedResults.set(newName, `Result of calling <see cref="${translateMemberName("interface", parent.name)}.${translateMemberName(member.kind, member.name, member)}" />.`);
+    documentedResults.set(newName, `Result of calling <see cref="${translateMemberName("interface", parent.name)}.${translateMemberName(member.kind, member.name, member)}"/>.`);
     return newName;
   });
 
@@ -411,7 +438,8 @@ function renderMethod(member, parent, output, name) {
   // set-only methods to settable properties
   if (member.args.size == 0
     && type !== 'void'
-    && !name.startsWith('Get')) {
+    && !name.startsWith('Get')
+    && !/Is[A-Z]/.test(name)) {
     if (!member.async) {
       if (member.spec)
         output(XmlDoc.renderXmlDoc(member.spec, maxDocumentationColumnWidth));
@@ -453,7 +481,7 @@ function renderMethod(member, parent, output, name) {
    */
   const pushArg = (innerArgType, innerArgName, argument) => {
     let isEnum = enumTypes.has(innerArgType);
-    let isNullable = ['int', 'bool', 'decimal', 'float'].includes(innerArgType);
+    let isNullable = nullableTypes.includes(innerArgType);
     const requiredPrefix = argument.required ? "" : isNullable ? "?" : "";
     const requiredSuffix = argument.required ? "" : " = default";
     args.push(`${innerArgType}${requiredPrefix} ${innerArgName}${requiredSuffix}`);
@@ -469,8 +497,8 @@ function renderMethod(member, parent, output, name) {
 
     if (arg.type.expression === '[string]|[path]') {
       let argName = translateMemberName('argument', arg.name, null);
-      pushArg("string", argName, arg);
-      pushArg("string", `${argName}Path`, arg);
+      pushArg("string", `${argName} = null`, arg);
+      pushArg("string", `${argName}Path = null`, arg);
       if (arg.spec) {
         addParamsDoc(argName, XmlDoc.renderTextOnly(arg.spec, maxDocumentationColumnWidth));
         addParamsDoc(`${argName}Path`, [`Instead of specifying <paramref name="${argName}"/>, gives the file name to load from.`]);
@@ -521,7 +549,9 @@ function renderMethod(member, parent, output, name) {
     pushArg(argType, argName, arg);
   };
 
-  member.args.forEach(parseArg);
+  member.argsArray
+    .sort((a, b) => b.alias === 'options' ? -1 : 0) //move options to the back to the arguments list
+    .forEach(parseArg);
 
   output(XmlDoc.renderXmlDoc(member.spec, maxDocumentationColumnWidth));
   paramDocs.forEach((val, ind) => {
@@ -689,6 +719,13 @@ function translateType(type, parent, generateNameCallback = t => t.name) {
 
       return `Func<${argsList}, ${returnType}>`;
     }
+  }
+
+  if (type.templates) {
+    // this should mean we have a generic type and we can translate that
+    /** @type {string[]} */
+    var types = type.templates.map(template => translateType(template, parent));
+    return `${type.name}<${types.join(', ')}>`
   }
 
   // there's a chance this is a name we've already seen before, so check

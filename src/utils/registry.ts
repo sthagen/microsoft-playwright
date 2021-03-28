@@ -26,11 +26,14 @@ import { assert, getFromENV } from './utils';
 export type BrowserName = 'chromium'|'webkit'|'firefox'|'ffmpeg';
 export const allBrowserNames: BrowserName[] = ['chromium', 'webkit', 'firefox', 'ffmpeg'];
 
+const PACKAGE_PATH = path.join(__dirname, '..', '..');
+
 type BrowserPlatform = 'win32'|'win64'|'mac10.13'|'mac10.14'|'mac10.15'|'mac11'|'mac11-arm64'|'ubuntu18.04'|'ubuntu20.04';
 type BrowserDescriptor = {
   name: BrowserName,
   revision: string,
-  download: boolean,
+  installByDefault: boolean,
+  browserDirectory: string,
 };
 
 const EXECUTABLE_PATHS = {
@@ -107,7 +110,7 @@ const DOWNLOAD_URLS = {
     'ubuntu18.04': '%s/builds/webkit/%s/webkit-ubuntu-18.04.zip',
     'ubuntu20.04': '%s/builds/webkit/%s/webkit-ubuntu-20.04.zip',
     'mac10.13': undefined,
-    'mac10.14': '%s/builds/webkit/%s/webkit-mac-10.14.zip',
+    'mac10.14': '%s/builds/deprecated-webkit-mac-10.14/%s/deprecated-webkit-mac-10.14.zip',
     'mac10.15': '%s/builds/webkit/%s/webkit-mac-10.15.zip',
     'mac11': '%s/builds/webkit/%s/webkit-mac-10.15.zip',
     'mac11-arm64': '%s/builds/webkit/%s/webkit-mac-11.0-arm64.zip',
@@ -198,18 +201,37 @@ export function isBrowserDirectory(browserDirectory: string): boolean {
   return false;
 }
 
+let currentPackageRegistry: Registry | undefined = undefined;
+
 export class Registry {
   private _descriptors: BrowserDescriptor[];
 
+  static currentPackageRegistry() {
+    if (!currentPackageRegistry)
+      currentPackageRegistry = new Registry(PACKAGE_PATH);
+    return currentPackageRegistry;
+  }
+
   constructor(packagePath: string) {
     const browsersJSON = JSON.parse(fs.readFileSync(path.join(packagePath, 'browsers.json'), 'utf8'));
-    this._descriptors = browsersJSON['browsers'];
+    this._descriptors = browsersJSON['browsers'].map((obj: any) => {
+      const name = obj.name;
+      const revisionOverride = (obj.revisionOverrides || {})[hostPlatform];
+      const revision = revisionOverride || obj.revision;
+      const browserDirectory = revisionOverride ? `${name}-${hostPlatform}-special-${revision}` : `${name}-${revision}`;
+      return {
+        name,
+        revision,
+        installByDefault: !!obj.installByDefault,
+        browserDirectory,
+      };
+    });
   }
 
   browserDirectory(browserName: BrowserName): string {
     const browser = this._descriptors.find(browser => browser.name === browserName);
     assert(browser, `ERROR: Playwright does not support ${browserName}`);
-    return path.join(registryDirectory, `${browser.name}-${browser.revision}`);
+    return path.join(registryDirectory, browser.browserDirectory);
   }
 
   revision(browserName: BrowserName): number {
@@ -271,10 +293,17 @@ export class Registry {
     return util.format(urlTemplate, downloadHost, browser.revision);
   }
 
-  shouldDownload(browserName: BrowserName): boolean {
-    // Older versions do not have "download" field. We assume they need all browsers
-    // from the list. So we want to skip all browsers that are explicitly marked as "download: false".
+  shouldRetain(browserName: BrowserName): boolean {
+    // We retain browsers if they are found in the descriptor.
+    // Note, however, that there are older versions out in the wild that rely on
+    // the "download" field in the browser descriptor and use its value
+    // to retain and download browsers.
+    // As of v1.10, we decided to abandon "download" field.
     const browser = this._descriptors.find(browser => browser.name === browserName);
-    return !!browser && browser.download !== false;
+    return !!browser;
+  }
+
+  installByDefault(): BrowserName[] {
+    return this._descriptors.filter(browser => browser.installByDefault).map(browser => browser.name);
   }
 }

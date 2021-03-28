@@ -87,7 +87,7 @@ export class BrowserContext extends ChannelOwner<channels.BrowserContextChannel,
     const func = this._bindings.get(bindingCall._initializer.name);
     if (!func)
       return;
-    bindingCall.call(func);
+    await bindingCall.call(func);
   }
 
   setDefaultNavigationTimeout(timeout: number) {
@@ -232,13 +232,13 @@ export class BrowserContext extends ChannelOwner<channels.BrowserContextChannel,
       const state = await channel.storageState();
       if (options.path) {
         await mkdirIfNeeded(options.path);
-        await fsWriteFileAsync(options.path, JSON.stringify(state), 'utf8');
+        await fsWriteFileAsync(options.path, JSON.stringify(state, undefined, 2), 'utf8');
       }
       return state;
     });
   }
 
-  async _onClose() {
+  _onClose() {
     if (this._browser)
       this._browser._contexts.delete(this);
     this.emit(Events.BrowserContext.Close, this);

@@ -31,6 +31,7 @@ import { Page } from '../client/page';
 import { BrowserType } from '../client/browserType';
 import { BrowserContextOptions, LaunchOptions } from '../client/types';
 import { spawn } from 'child_process';
+import { installDeps } from '../install/installDeps';
 
 program
     .version('Version ' + require('../../package.json').version)
@@ -38,7 +39,7 @@ program
 
 commandWithOpenOptions('open [url]', 'open page in browser specified via -b, --browser', [])
     .action(function(url, command) {
-      open(command, url, language());
+      open(command, url, language()).catch(logErrorAndExit);
     })
     .on('--help', function() {
       console.log('');
@@ -53,7 +54,7 @@ commandWithOpenOptions('codegen [url]', 'open page and generate code for user ac
       ['-o, --output <file name>', 'saves the generated script to a file'],
       ['--target <language>', `language to use, one of javascript, python, python-async, csharp`, language()],
     ]).action(function(url, command) {
-  codegen(command, url, command.target, command.output);
+  codegen(command, url, command.target, command.output).catch(logErrorAndExit);
 }).on('--help', function() {
   console.log('');
   console.log('Examples:');
@@ -82,18 +83,34 @@ program
 program
     .command('install [browserType...]')
     .description('ensure browsers necessary for this version of Playwright are installed')
-    .action(function(browserType) {
-      const allBrowsers = new Set(['chromium', 'firefox', 'webkit']);
-      for (const type of browserType) {
-        if (!allBrowsers.has(type)) {
-          console.log(`Invalid browser name: '${type}'. Expecting 'chromium', 'firefox' or 'webkit'.`);
-          process.exit(1);
+    .action(async function(browserType) {
+      try {
+        const allBrowsers = new Set(['chromium', 'firefox', 'webkit', 'ffmpeg']);
+        for (const type of browserType) {
+          if (!allBrowsers.has(type)) {
+            console.log(`Invalid browser name: '${type}'. Expecting 'chromium', 'firefox' or 'webkit'.`);
+            process.exit(1);
+          }
         }
-      }
-      installBrowsers(browserType.length ? browserType : undefined).catch((e: any) => {
+        if (browserType.length && browserType.includes('chromium'))
+          browserType = browserType.concat('ffmpeg');
+        await installBrowsers(browserType.length ? browserType : undefined);
+      } catch (e) {
         console.log(`Failed to install browsers\n${e}`);
         process.exit(1);
-      });
+      }
+    });
+
+program
+    .command('install-deps [browserType...]')
+    .description('install dependencies necessary to run browsers (will ask for sudo permissions)')
+    .action(async function(browserType) {
+      try {
+        await installDeps(browserType);
+      } catch (e) {
+        console.log(`Failed to install browser dependencies\n${e}`);
+        process.exit(1);
+      }
     });
 
 const browsers = [
@@ -105,7 +122,7 @@ const browsers = [
 for (const {alias, name, type} of browsers) {
   commandWithOpenOptions(`${alias} [url]`, `open page in ${name}`, [])
       .action(function(url, command) {
-        open({ ...command, browser: type }, url, command.target);
+        open({ ...command, browser: type }, url, command.target).catch(logErrorAndExit);
       }).on('--help', function() {
         console.log('');
         console.log('Examples:');
@@ -120,7 +137,7 @@ commandWithOpenOptions('screenshot <url> <filename>', 'capture a page screenshot
       ['--wait-for-timeout <timeout>', 'wait for timeout in milliseconds before taking a screenshot'],
       ['--full-page', 'whether to take a full page screenshot (entire scrollable area)'],
     ]).action(function(url, filename, command) {
-  screenshot(command, command, url, filename);
+  screenshot(command, command, url, filename).catch(logErrorAndExit);
 }).on('--help', function() {
   console.log('');
   console.log('Examples:');
@@ -133,7 +150,7 @@ commandWithOpenOptions('pdf <url> <filename>', 'save page as pdf',
       ['--wait-for-selector <selector>', 'wait for given selector before saving as pdf'],
       ['--wait-for-timeout <timeout>', 'wait for given timeout in milliseconds before saving as pdf'],
     ]).action(function(url, filename, command) {
-  pdf(command, command, url, filename);
+  pdf(command, command, url, filename).catch(logErrorAndExit);
 }).on('--help', function() {
   console.log('');
   console.log('Examples:');
@@ -144,9 +161,10 @@ commandWithOpenOptions('pdf <url> <filename>', 'save page as pdf',
 if (process.env.PWTRACE) {
   program
       .command('show-trace [trace]')
+      .option('--resources <dir>', 'load resources from shared folder')
       .description('Show trace viewer')
       .action(function(trace, command) {
-        showTraceViewer(trace);
+        showTraceViewer(trace, command.resources).catch(logErrorAndExit);
       }).on('--help', function() {
         console.log('');
         console.log('Examples:');
@@ -161,13 +179,14 @@ if (process.argv[2] === 'run-driver')
 else if (process.argv[2] === 'print-api-json')
   printApiJson();
 else if (process.argv[2] === 'launch-server')
-  launchBrowserServer(process.argv[3], process.argv[4]);
+  launchBrowserServer(process.argv[3], process.argv[4]).catch(logErrorAndExit);
 else
   program.parse(process.argv);
 
 
 type Options = {
   browser: string;
+  channel?: string;
   colorScheme?: string;
   device?: string;
   geolocation?: string;
@@ -191,6 +210,9 @@ async function launchContext(options: Options, headless: boolean): Promise<{ bro
   validateOptions(options);
   const browserType = lookupBrowserType(options);
   const launchOptions: LaunchOptions = { headless };
+  if (options.channel)
+    launchOptions.channel = options.channel as any;
+
   const contextOptions: BrowserContextOptions =
     // Copy the device descriptor since we have to compare and modify the options.
     options.device ? { ...playwright.devices[options.device] } : {};
@@ -424,6 +446,11 @@ function validateOptions(options: Options) {
   }
 }
 
+function logErrorAndExit(e: Error) {
+  console.error(e);
+  process.exit(1);
+}
+
 function language(): string {
   return process.env.PW_CLI_TARGET_LANG || 'javascript';
 }
@@ -434,6 +461,7 @@ function commandWithOpenOptions(command: string, description: string, options: a
     result = result.option(option[0], ...option.slice(1));
   return result
       .option('-b, --browser <browserType>', 'browser to use, one of cr, chromium, ff, firefox, wk, webkit', 'chromium')
+      .option('--channel <channel>', 'Chromium distribution channel, "chrome", "chrome-beta", "msedge-dev", etc')
       .option('--color-scheme <scheme>', 'emulate preferred color scheme, "light" or "dark"')
       .option('--device <deviceName>', 'emulate device, for example  "iPhone 11"')
       .option('--geolocation <coordinates>', 'specify geolocation coordinates, for example "37.819722,-122.478611"')

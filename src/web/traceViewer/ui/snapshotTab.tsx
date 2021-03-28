@@ -20,6 +20,7 @@ import './snapshotTab.css';
 import * as React from 'react';
 import { useMeasure } from './helpers';
 import { msToString } from '../../uiUtils';
+import type { Point } from '../../../common/types';
 
 export const SnapshotTab: React.FunctionComponent<{
   actionEntry: ActionEntry | undefined,
@@ -30,7 +31,7 @@ export const SnapshotTab: React.FunctionComponent<{
   const [measure, ref] = useMeasure<HTMLDivElement>();
   const [snapshotIndex, setSnapshotIndex] = React.useState(0);
 
-  const snapshots = actionEntry ? (actionEntry.action.snapshots || []) : [];
+  const snapshots = actionEntry ? (actionEntry.snapshots || []) : [];
   const { pageId, time } = selection || { pageId: undefined, time: 0 };
 
   const iframeRef = React.createRef<HTMLIFrameElement>();
@@ -39,21 +40,29 @@ export const SnapshotTab: React.FunctionComponent<{
       return;
 
     let snapshotUri = undefined;
+    let point: Point | undefined = undefined;
     if (pageId) {
       snapshotUri = `${pageId}?time=${time}`;
     } else if (actionEntry) {
       const snapshot = snapshots[snapshotIndex];
-      if (snapshot && snapshot.snapshotName)
-        snapshotUri = `${actionEntry.action.pageId}?name=${snapshot.snapshotName}`;
+      if (snapshot && snapshot.snapshotName) {
+        snapshotUri = `${actionEntry.metadata.pageId}?name=${snapshot.snapshotName}`;
+        if (snapshot.snapshotName.includes('action'))
+          point = actionEntry.metadata.point;
+      }
     }
-    const snapshotUrl = snapshotUri ? `${window.location.origin}/snapshot/${snapshotUri}` : 'data:text/html,Snapshot is not available';
+    const snapshotUrl = snapshotUri ? `${window.location.origin}/snapshot/${snapshotUri}` : 'data:text/html,<body style="background: #ddd"></body>';
     try {
-      (iframeRef.current.contentWindow as any).showSnapshot(snapshotUrl);
+      (iframeRef.current.contentWindow as any).showSnapshot(snapshotUrl, { point });
     } catch (e) {
     }
   }, [actionEntry, snapshotIndex, pageId, time]);
 
   const scale = Math.min(measure.width / snapshotSize.width, measure.height / snapshotSize.height);
+  const scaledSize = {
+    width: snapshotSize.width * scale,
+    height: snapshotSize.height * scale,
+  };
   return <div className='snapshot-tab'>
     <div className='snapshot-controls'>{
       selection && <div key='selectedTime' className='snapshot-toggle'>
@@ -72,7 +81,7 @@ export const SnapshotTab: React.FunctionComponent<{
       <div className='snapshot-container' style={{
         width: snapshotSize.width + 'px',
         height: snapshotSize.height + 'px',
-        transform: `translate(${-snapshotSize.width * (1 - scale) / 2}px, ${-snapshotSize.height * (1 - scale) / 2}px) scale(${scale})`,
+        transform: `translate(${-snapshotSize.width * (1 - scale) / 2 + (measure.width - scaledSize.width) / 2}px, ${-snapshotSize.height * (1 - scale) / 2  + (measure.height - scaledSize.height) / 2}px) scale(${scale})`,
       }}>
         <iframe ref={iframeRef} id='snapshot' name='snapshot' src='/snapshot/'></iframe>
       </div>

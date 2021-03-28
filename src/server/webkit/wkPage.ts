@@ -113,14 +113,14 @@ export class WKPage implements PageDelegate {
     promises.push(this.updateHttpCredentials());
     if (this._browserContext._permissions.size) {
       for (const [key, value] of this._browserContext._permissions)
-        this._grantPermissions(key, value);
+        promises.push(this._grantPermissions(key, value));
     }
     if (this._browserContext._options.recordVideo) {
-      const size = this._browserContext._options.recordVideo.size || this._browserContext._options.viewport || { width: 1280, height: 720 };
       const outputFile = path.join(this._browserContext._options.recordVideo.dir, createGuid() + '.webm');
       promises.push(this._browserContext._ensureVideosPath().then(() => {
         return this._startScreencast({
-          ...size,
+          // validateBrowserContextOptions ensures correct video size.
+          ...this._browserContext._options.recordVideo!.size!,
           outputFile,
         });
       }));
@@ -178,7 +178,7 @@ export class WKPage implements PageDelegate {
       promises.push(WKPage._setEmulateMedia(session, this._page._state.mediaType, this._page._state.colorScheme));
     const bootstrapScript = this._calculateBootstrapScript();
     promises.push(session.send('Page.setBootstrapScript', { source: bootstrapScript }));
-    this._page.frames().map(frame => frame._evaluateExpression(bootstrapScript, false, undefined, 'main').catch(e => {}));
+    this._page.frames().map(frame => frame.evaluateExpression(bootstrapScript, false, undefined, 'main').catch(e => {}));
     if (contextOptions.bypassCSP)
       promises.push(session.send('Page.setBypassCSP', { enabled: true }));
     if (this._page._state.viewportSize) {
@@ -699,7 +699,7 @@ export class WKPage implements PageDelegate {
     if (binding.world !== 'main')
       throw new Error('Only main context bindings are supported in WebKit.');
     const script = this._bindingToScript(binding);
-    await Promise.all(this._page.frames().map(frame => frame._evaluateExpression(script, false, {}).catch(e => {})));
+    await Promise.all(this._page.frames().map(frame => frame.evaluateExpression(script, false, {}).catch(e => {})));
   }
 
   async evaluateOnNewDocument(script: string): Promise<void> {

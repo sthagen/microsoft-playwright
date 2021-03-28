@@ -34,6 +34,8 @@ config.timeout = 30000;
 type PlaywrightParameters = {
   // Browser type name.
   browserName: 'chromium' | 'firefox' | 'webkit';
+  // Browser release channel, if applicable.
+  browserChannel: string | undefined;
   // Whether to run tests headless or headful.
   headful: boolean;
   // Operating system.
@@ -94,12 +96,14 @@ fixtures.platform.initParameter('Operating system', process.platform as ('win32'
 fixtures.screenshotOnFailure.initParameter('Generate screenshot on failure', false);
 fixtures.slowMo.initParameter('Slows down Playwright operations by the specified amount of milliseconds', 0);
 fixtures.video.initParameter('Record videos while running tests', false);
+fixtures.browserChannel.initParameter('Browser release channel', process.env.PW_CHROMIUM_CHANNEL);
 
-fixtures.browserOptions.init(async ({ headful, slowMo }, run) => {
+fixtures.browserOptions.init(async ({ headful, slowMo, browserChannel }, run) => {
   await run({
     handleSIGINT: false,
     slowMo,
     headless: !headful,
+    channel: browserChannel as any,
   });
 }, { scope: 'worker' });
 
@@ -144,13 +148,10 @@ fixtures.isLinux.init(async ({ platform }, run) => {
 }, { scope: 'worker' });
 
 fixtures.contextOptions.init(async ({ video, testInfo }, run) => {
-  if (video) {
-    await run({
-      recordVideo: { dir: testInfo.outputPath('') },
-    });
-  } else {
-    await run({});
-  }
+  await run({
+    recordVideo: video ? { dir: testInfo.outputPath('') } : undefined,
+    _traceDir: process.env.PWTRACE ? testInfo.outputPath('') : undefined,
+  } as any);
 });
 
 fixtures.contextFactory.init(async ({ browser, contextOptions, testInfo, screenshotOnFailure }, run) => {

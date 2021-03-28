@@ -4,22 +4,25 @@
     {
       "name": "chromium",
       "revision": "857950",
-      "download": true
+      "installByDefault": true
     },
     {
       "name": "firefox",
-      "revision": "1234",
-      "download": true
+      "revision": "1238",
+      "installByDefault": true
     },
     {
       "name": "webkit",
-      "revision": "1443",
-      "download": true
+      "revision": "1446",
+      "installByDefault": true,
+      "revisionOverrides": {
+        "mac10.14": "1443"
+      }
     },
     {
       "name": "ffmpeg",
       "revision": "1005",
-      "download": true
+      "installByDefault": true
     }
   ]
 }

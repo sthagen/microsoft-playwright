@@ -169,7 +169,7 @@ Specify environment variables that will be visible to the browser. Defaults to `
     - `expires` <[float]> Optional Unix time in seconds.
     - `httpOnly` <[boolean]> Optional httpOnly flag
     - `secure` <[boolean]> Optional secure flag
-    - `sameSite` <["SameSiteAttribute"]<"Strict"|"Lax"|"None">> Optional sameSite flag
+    - `sameSite` <[SameSiteAttribute]<"Strict"|"Lax"|"None">> Optional sameSite flag
   - `origins` <[Array]<[Object]>> Optional localStorage to set for context
     - `origin` <[string]>
     - `localStorage` <[Array]<[Object]>>
@@ -378,7 +378,9 @@ saved.
   - alias-python: record_har_path
 - `recordHarPath` <[path]>
 
-Path on the filesystem to write the HAR file to.
+Enables [HAR](http://www.softwareishard.com/blog/har-12-spec) recording for all pages into the
+specified HAR file on the filesystem. If not specified, the HAR is not recorded. Make sure to
+call [`method: BrowserContext.close`] for the HAR to be saved.
 
 ## context-option-recordhar-omit-content
 * langs: csharp, java, python
@@ -405,7 +407,8 @@ sure to await [`method: BrowserContext.close`] for videos to be saved.
   - alias-python: record_video_dir
 - `recordVideoDir` <[path]>
 
-Path to the directory to put videos into.
+Enables video recording for all pages into the specified directory. If not specified videos are
+not recorded. Make sure to call [`method: BrowserContext.close`] for videos to be saved.
 
 ## context-option-recordvideo-size
 * langs: csharp, java, python
@@ -518,6 +521,24 @@ The default value can be changed by using the [`method: BrowserContext.setDefaul
 
 Maximum time in milliseconds, defaults to 30 seconds, pass `0` to disable timeout. The default value can be changed by
 using the [`method: AndroidDevice.setDefaultTimeout`] method.
+
+## csharp-select-options-values
+* langs: csharp
+- `values` <[Array]<[Object]>>
+  - `value` <[string]> Matches by `option.value`. Optional.
+  - `label` <[string]> Matches by `option.label`. Optional.
+  - `index` <[int]> Matches by the index. Optional.
+
+Options to select. If the `<select>` has the `multiple` attribute, all matching options are selected, otherwise only the
+first option matching one of the passed options is selected. String values are equivalent to `{value:'string'}`. Option
+is considered matching if all specified properties match.
+
+## csharp-input-files
+* langs: csharp
+- `files` <[Array]<[Object]>>
+  - `name` <[string]> File name
+  - `mimeType` <[string]> File type
+  - `buffer` <[Buffer]> File content
 
 ## shared-context-params-list
 - %%-context-option-acceptdownloads-%%
