@@ -156,10 +156,9 @@ export class SnapshotServer {
     response.statusCode = 200;
     response.setHeader('Cache-Control', 'public, max-age=31536000');
     response.setHeader('Content-Type', 'application/json');
-    const [ pageId, query ] = request.url!.substring('/snapshot/'.length).split('?');
+    const [ pageOrFrameId, query ] = request.url!.substring('/snapshot/'.length).split('?');
     const parsed: any = querystring.parse(query);
-
-    const snapshot = parsed.name ? this._snapshotStorage.snapshotByName(pageId, parsed.name) : this._snapshotStorage.snapshotByTime(pageId, parsed.time);
+    const snapshot = this._snapshotStorage.snapshotByName(pageOrFrameId, parsed.name);
     const snapshotData: any = snapshot ? snapshot.render() : { html: '' };
     response.end(JSON.stringify(snapshotData));
     return true;
@@ -244,24 +243,11 @@ function rootScript() {
   pointElement.style.margin = '-10px 0 0 -10px';
   pointElement.style.zIndex = '2147483647';
 
-  let current = document.createElement('iframe');
-  document.body.appendChild(current);
-  let next = document.createElement('iframe');
-  document.body.appendChild(next);
-  next.style.visibility = 'hidden';
-  const onload = () => {
-    const temp = current;
-    current = next;
-    next = temp;
-    current.style.visibility = 'visible';
-    next.style.visibility = 'hidden';
-  };
-  current.onload = onload;
-  next.onload = onload;
-
+  const iframe = document.createElement('iframe');
+  document.body.appendChild(iframe);
   (window as any).showSnapshot = async (url: string, options: { point?: Point } = {}) => {
     await showPromise;
-    next.src = url;
+    iframe.src = url;
     if (options.point) {
       pointElement.style.left = options.point.x + 'px';
       pointElement.style.top = options.point.y + 'px';

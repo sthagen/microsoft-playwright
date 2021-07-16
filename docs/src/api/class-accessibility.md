@@ -75,8 +75,8 @@ print(snapshot)
 ```
 
 ```csharp
-var accessibilitySnapshot = await Page.Accessibility.SnapshotAsync();
-Console.WriteLine(accessibilitySnapshot);
+var accessibilitySnapshot = await page.Accessibility.SnapshotAsync();
+Console.WriteLine(System.Text.Json.JsonSerializer.Serialize(accessibilitySnapshot));
 ```
 
 An example of logging the focused node's name:
@@ -98,26 +98,8 @@ function findFocusedNode(node) {
 ```
 
 ```csharp
-Func<AccessibilitySnapshotResult, AccessibilitySnapshotResult> findFocusedNode = root =>
-{
-    var nodes = new Stack<AccessibilitySnapshotResult>(new[] { root });
-    while (nodes.Count > 0)
-    {
-        var node = nodes.Pop();
-        if (node.Focused) return node;
-        foreach (var innerNode in node.Children)
-        {
-            nodes.Push(innerNode);
-        }
-    }
-
-    return null;
-};
-
-var accessibilitySnapshot = await Page.Accessibility.SnapshotAsync();
-var focusedNode = findFocusedNode(accessibilitySnapshot);
-if(focusedNode != null)
-  Console.WriteLine(focusedNode.Name);
+var accessibilitySnapshot = await page.Accessibility.SnapshotAsync();
+Console.WriteLine(System.Text.Json.JsonSerializer.Serialize(accessibilitySnapshot));
 ```
 
 ```java
@@ -158,6 +140,10 @@ if node:
 ## async method: Accessibility.snapshot
 * langs: java
 - returns: <[null]|[string]>
+
+## async method: Accessibility.snapshot
+* langs: csharp
+- returns: <[JsonElement?]>
 
 ### option: Accessibility.snapshot.interestingOnly
 - `interestingOnly` <[boolean]>

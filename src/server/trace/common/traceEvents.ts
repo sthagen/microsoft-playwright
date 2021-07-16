@@ -15,86 +15,44 @@
  */
 
 import { CallMetadata } from '../../instrumentation';
+import { FrameSnapshot, ResourceSnapshot } from '../../snapshot/snapshotTypes';
+import { BrowserContextOptions } from '../../types';
 
 export type ContextCreatedTraceEvent = {
-  timestamp: number,
-  type: 'context-created',
+  version: number,
+  type: 'context-options',
   browserName: string,
-  contextId: string,
-  deviceScaleFactor: number,
-  isMobile: boolean,
-  viewportSize?: { width: number, height: number },
-  debugName?: string,
+  options: BrowserContextOptions
 };
 
-export type ContextDestroyedTraceEvent = {
-  timestamp: number,
-  type: 'context-destroyed',
-  contextId: string,
-};
-
-export type PageCreatedTraceEvent = {
-  timestamp: number,
-  type: 'page-created',
-  contextId: string,
+export type ScreencastFrameTraceEvent = {
+  type: 'screencast-frame',
   pageId: string,
-};
-
-export type PageDestroyedTraceEvent = {
+  sha1: string,
+  width: number,
+  height: number,
   timestamp: number,
-  type: 'page-destroyed',
-  contextId: string,
-  pageId: string,
 };
 
 export type ActionTraceEvent = {
-  timestamp: number,
-  type: 'action',
-  contextId: string,
+  type: 'action' | 'event',
+  hasSnapshot: boolean,
   metadata: CallMetadata,
-  snapshots?: { title: string, snapshotName: string }[],
 };
 
-export type DialogOpenedEvent = {
-  timestamp: number,
-  type: 'dialog-opened',
-  contextId: string,
-  pageId: string,
-  dialogType: string,
-  message?: string,
+export type ResourceSnapshotTraceEvent = {
+  type: 'resource-snapshot',
+  snapshot: ResourceSnapshot,
 };
 
-export type DialogClosedEvent = {
-  timestamp: number,
-  type: 'dialog-closed',
-  contextId: string,
-  pageId: string,
-  dialogType: string,
-};
-
-export type NavigationEvent = {
-  timestamp: number,
-  type: 'navigation',
-  contextId: string,
-  pageId: string,
-  url: string,
-  sameDocument: boolean,
-};
-
-export type LoadEvent = {
-  timestamp: number,
-  type: 'load',
-  contextId: string,
-  pageId: string,
+export type FrameSnapshotTraceEvent = {
+  type: 'frame-snapshot',
+  snapshot: FrameSnapshot,
 };
 
 export type TraceEvent =
     ContextCreatedTraceEvent |
-    ContextDestroyedTraceEvent |
-    PageCreatedTraceEvent |
-    PageDestroyedTraceEvent |
+    ScreencastFrameTraceEvent |
     ActionTraceEvent |
-    DialogOpenedEvent |
-    DialogClosedEvent |
-    NavigationEvent |
-    LoadEvent;
+    ResourceSnapshotTraceEvent |
+    FrameSnapshotTraceEvent;

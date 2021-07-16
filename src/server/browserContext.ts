@@ -15,8 +15,9 @@
  * limitations under the License.
  */
 
+import * as os from 'os';
 import { TimeoutSettings } from '../utils/timeoutSettings';
-import { isDebugMode, mkdirIfNeeded } from '../utils/utils';
+import { debugMode, mkdirIfNeeded, createGuid } from '../utils/utils';
 import { Browser, BrowserOptions } from './browser';
 import { Download } from './download';
 import * as frames from './frames';
@@ -24,45 +25,26 @@ import { helper } from './helper';
 import * as network from './network';
 import { Page, PageBinding, PageDelegate } from './page';
 import { Progress } from './progress';
-import { Selectors, serverSelectors } from './selectors';
+import { Selectors } from './selectors';
 import * as types from './types';
 import path from 'path';
-import { CallMetadata, internalCallMetadata, SdkObject } from './instrumentation';
-
-export class Video {
-  readonly _videoId: string;
-  readonly _path: string;
-  readonly _relativePath: string;
-  readonly _context: BrowserContext;
-  readonly _finishedPromise: Promise<void>;
-  private _finishCallback: () => void = () => {};
-  private _callbackOnFinish?: () => Promise<void>;
-
-  constructor(context: BrowserContext, videoId: string, p: string) {
-    this._videoId = videoId;
-    this._path = p;
-    this._relativePath = path.relative(context._options.recordVideo!.dir, p);
-    this._context = context;
-    this._finishedPromise = new Promise(fulfill => this._finishCallback = fulfill);
-  }
-
-  async _finish() {
-    if (this._callbackOnFinish)
-      await this._callbackOnFinish();
-    this._finishCallback();
-  }
-
-  _waitForCallbackOnFinish(callback: () => Promise<void>) {
-    this._callbackOnFinish = callback;
-  }
-}
+import { CallMetadata, internalCallMetadata, createInstrumentation, SdkObject } from './instrumentation';
+import { Debugger } from './supplements/debugger';
+import { Tracing } from './trace/recorder/tracing';
+import { HarTracer } from './supplements/har/harTracer';
+import { RecorderSupplement } from './supplements/recorderSupplement';
+import * as consoleApiSource from '../generated/consoleApiSource';
 
 export abstract class BrowserContext extends SdkObject {
   static Events = {
     Close: 'close',
     Page: 'page',
-    VideoStarted: 'videostarted',
+    Request: 'request',
+    Response: 'response',
+    RequestFailed: 'requestfailed',
+    RequestFinished: 'requestfinished',
     BeforeClose: 'beforeclose',
+    VideoStarted: 'videostarted',
   };
 
   readonly _timeoutSettings = new TimeoutSettings();
@@ -79,15 +61,21 @@ export abstract class BrowserContext extends SdkObject {
   readonly _browserContextId: string | undefined;
   private _selectors?: Selectors;
   private _origins = new Set<string>();
+  private _harTracer: HarTracer | undefined;
+  readonly tracing: Tracing;
 
   constructor(browser: Browser, options: types.BrowserContextOptions, browserContextId: string | undefined) {
-    super(browser);
+    super(browser, 'browser-context');
     this.attribution.context = this;
     this._browser = browser;
     this._options = options;
     this._browserContextId = browserContextId;
     this._isPersistentContext = !browserContextId;
     this._closePromise = new Promise(fulfill => this._closePromiseFulfill = fulfill);
+
+    if (this._options.recordHar)
+      this._harTracer = new HarTracer(this, this._options.recordHar);
+    this.tracing = new Tracing(this);
   }
 
   _setSelectors(selectors: Selectors) {
@@ -95,11 +83,32 @@ export abstract class BrowserContext extends SdkObject {
   }
 
   selectors(): Selectors {
-    return this._selectors || serverSelectors;
+    return this._selectors || this._browser.options.selectors;
   }
 
   async _initialize() {
-    await this.instrumentation.onContextCreated(this);
+    if (this.attribution.isInternal)
+      return;
+    // Create instrumentation per context.
+    this.instrumentation = createInstrumentation();
+
+    // Debugger will pause execution upon page.pause in headed mode.
+    const contextDebugger = new Debugger(this);
+    this.instrumentation.addListener(contextDebugger);
+
+    // When PWDEBUG=1, show inspector for each context.
+    if (debugMode() === 'inspector')
+      await RecorderSupplement.show(this, { pauseOnNextStatement: true });
+
+    // When paused, show inspector.
+    if (contextDebugger.isPaused())
+      RecorderSupplement.showInspector(this);
+    contextDebugger.on(Debugger.Events.PausedStateChanged, () => {
+      RecorderSupplement.showInspector(this);
+    });
+
+    if (debugMode() === 'console')
+      await this.extendInjectedScript('main', consoleApiSource.source);
   }
 
   async _ensureVideosPath() {
@@ -120,7 +129,10 @@ export abstract class BrowserContext extends SdkObject {
       return;
     }
     this._closedStatus = 'closed';
+    this._deleteAllDownloads();
     this._downloads.clear();
+    if (this._isPersistentContext)
+      this._onClosePersistent();
     this._closePromiseFulfill!(new Error('Context closed'));
     this.emit(BrowserContext.Events.Close);
   }
@@ -141,6 +153,8 @@ export abstract class BrowserContext extends SdkObject {
   abstract _doExposeBinding(binding: PageBinding): Promise<void>;
   abstract _doUpdateRequestInterception(): Promise<void>;
   abstract _doClose(): Promise<void>;
+  abstract _onClosePersistent(): void;
+  abstract _doCancelDownload(uuid: string): Promise<void>;
 
   async cookies(urls: string | string[] | undefined = []): Promise<types.NetworkCookie[]> {
     if (urls && !Array.isArray(urls))
@@ -152,15 +166,15 @@ export abstract class BrowserContext extends SdkObject {
     return this._doSetHTTPCredentials(httpCredentials);
   }
 
-  async exposeBinding(name: string, needsHandle: boolean, playwrightBinding: frames.FunctionWithSource): Promise<void> {
-    const identifier = PageBinding.identifier(name, 'main');
+  async exposeBinding(name: string, needsHandle: boolean, playwrightBinding: frames.FunctionWithSource, world: types.World): Promise<void> {
+    const identifier = PageBinding.identifier(name, world);
     if (this._pageBindings.has(identifier))
       throw new Error(`Function "${name}" has been already registered`);
     for (const page of this.pages()) {
-      if (page.getBinding(name, 'main'))
+      if (page.getBinding(name, world))
         throw new Error(`Function "${name}" has been already registered in one of the pages`);
     }
-    const binding = new PageBinding(name, playwrightBinding, needsHandle, 'main');
+    const binding = new PageBinding(name, playwrightBinding, needsHandle, world);
     this._pageBindings.set(identifier, binding);
     await this._doExposeBinding(binding);
   }
@@ -249,12 +263,25 @@ export abstract class BrowserContext extends SdkObject {
     return this._closedStatus !== 'open';
   }
 
+  private async _deleteAllDownloads(): Promise<void> {
+    await Promise.all(Array.from(this._downloads).map(download => download.artifact.deleteOnContextClose()));
+  }
+
   async close(metadata: CallMetadata) {
     if (this._closedStatus === 'open') {
       this.emit(BrowserContext.Events.BeforeClose);
       this._closedStatus = 'closing';
 
-      await this.instrumentation.onContextWillDestroy(this);
+      await this._harTracer?.flush();
+      await this.tracing.dispose();
+
+      // Cleanup.
+      const promises: Promise<void>[] = [];
+      for (const { context, artifact } of this._browser._idToVideo.values()) {
+        // Wait for the videos to finish.
+        if (context === this)
+          promises.push(artifact.finishedPromise());
+      }
 
       if (this._isPersistentContext) {
         // Close all the pages instead of the context,
@@ -265,18 +292,9 @@ export abstract class BrowserContext extends SdkObject {
         await this._doClose();
       }
 
-      // Cleanup.
-      const promises: Promise<void>[] = [];
-      for (const video of this._browser._idToVideo.values()) {
-        // Wait for the videos to finish.
-        if (video._context === this)
-          promises.push(video._finishedPromise);
-      }
-      for (const download of this._downloads) {
-        // We delete downloads after context closure
-        // so that browser does not write to the download file anymore.
-        promises.push(download.deleteOnContextClose());
-      }
+      // We delete downloads after context closure
+      // so that browser does not write to the download file anymore.
+      promises.push(this._deleteAllDownloads());
       await Promise.all(promises);
 
       // Persistent context should also close the browser.
@@ -284,7 +302,6 @@ export abstract class BrowserContext extends SdkObject {
         await this._browser.close();
 
       // Bookkeeping.
-      await this.instrumentation.onContextDidDestroy(this);
       this._didCloseInternal();
     }
     await this._closePromise;
@@ -354,8 +371,8 @@ export abstract class BrowserContext extends SdkObject {
     }
   }
 
-  async extendInjectedScript(source: string, arg?: any) {
-    const installInFrame = (frame: frames.Frame) => frame.extendInjectedScript(source, arg).catch(() => {});
+  async extendInjectedScript(world: types.World, source: string, arg?: any) {
+    const installInFrame = (frame: frames.Frame) => frame.extendInjectedScript(world, source, arg).catch(() => {});
     const installInPage = (page: Page) => {
       page.on(Page.Events.InternalFrameNavigatedToNewDocument, installInFrame);
       return Promise.all(page.frames().map(installInFrame));
@@ -397,13 +414,15 @@ export function validateBrowserContextOptions(options: types.BrowserContextOptio
     options.recordVideo.size!.height &= ~1;
   }
   if (options.proxy) {
-    if (!browserOptions.proxy)
-      throw new Error(`Browser needs to be launched with the global proxy. If all contexts override the proxy, global proxy will be never used and can be any string, for example "launch({ proxy: { server: 'per-context' } })"`);
+    if (!browserOptions.proxy && browserOptions.isChromium && os.platform() === 'win32')
+      throw new Error(`Browser needs to be launched with the global proxy. If all contexts override the proxy, global proxy will be never used and can be any string, for example "launch({ proxy: { server: 'http://per-context' } })"`);
     options.proxy = normalizeProxySettings(options.proxy);
   }
-  if (isDebugMode())
+  if (debugMode() === 'inspector')
     options.bypassCSP = true;
   verifyGeolocation(options.geolocation);
+  if (!options._debugName)
+    options._debugName = createGuid();
 }
 
 export function verifyGeolocation(geolocation?: types.Geolocation) {

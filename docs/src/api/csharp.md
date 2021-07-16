@@ -1,25 +1,19 @@
-## method: Request.getPayloadAsJson
+## method: Request.PostDataJSON
 * langs: csharp
-- returns: <[JsonDocument]>
+- returns: <[JsonElement?]>
 
-Returns a [JsonDocument] representation of [`method: Request.postDataBuffer`].
+Returns parsed request's body for `form-urlencoded` and JSON as a fallback if any.
 
-### option: Request.getPayloadAsJson.serializerOptions
-- `documentOptions` <[null]|[JsonDocumentOptions]>
+When the response is `application/x-www-form-urlencoded` then a key/value object of the values will be returned.
+Otherwise it will be parsed as JSON.
 
-The options that control custom behaviour when parsing the JSON.
-
-## method: Response.statusCode
-* langs: csharp
-- returns: <[System.Net.HttpStatusCode]>
-
-Gets the [System.Net.HttpStatusCode] code of the response.
-
-### param: ElementHandle.selectOption.values = %%-csharp-select-options-values-%%
-### param: ElementHandle.setInputFiles.files = %%-csharp-input-files-%%
-
-### param: Frame.selectOption.values = %%-csharp-select-options-values-%%
-### param: Frame.setInputFiles.files = %%-csharp-input-files-%%
-
-### param: Page.selectOption.values = %%-csharp-select-options-values-%%
-### param: Page.setInputFiles.files = %%-csharp-input-files-%%
+### param: BrowserContext.waitForPage.action = %%-csharp-wait-for-event-action-%%
+### param: Frame.waitForNavigation.action = %%-csharp-wait-for-event-action-%%
+### param: Page.waitForConsoleMessage.action = %%-csharp-wait-for-event-action-%%
+### param: Page.waitForDownload.action = %%-csharp-wait-for-event-action-%%
+### param: Page.waitForFileChooser.action = %%-csharp-wait-for-event-action-%%
+### param: Page.waitForPopup.action = %%-csharp-wait-for-event-action-%%
+### param: Page.waitForRequestFinished.action = %%-csharp-wait-for-event-action-%%
+### param: Page.waitForNavigation.action = %%-csharp-wait-for-event-action-%%
+### param: Page.waitForWebSocket.action = %%-csharp-wait-for-event-action-%%
+### param: Page.waitForWorker.action = %%-csharp-wait-for-event-action-%%

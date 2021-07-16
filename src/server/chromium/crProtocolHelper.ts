@@ -18,9 +18,9 @@
 import { CRSession } from './crConnection';
 import { Protocol } from './protocol';
 import fs from 'fs';
-import * as util from 'util';
 import * as types from '../types';
 import { mkdirIfNeeded } from '../../utils/utils';
+import { splitErrorMessage } from '../../utils/stackTrace';
 
 export function getExceptionMessage(exceptionDetails: Protocol.Runtime.ExceptionDetails): string {
   if (exceptionDetails.exception)
@@ -42,10 +42,10 @@ export async function releaseObject(client: CRSession, objectId: string) {
 
 export async function readProtocolStream(client: CRSession, handle: string, path: string | null): Promise<Buffer> {
   let eof = false;
-  let fd: number | undefined;
+  let fd: fs.promises.FileHandle | undefined;
   if (path) {
     await mkdirIfNeeded(path);
-    fd = await util.promisify(fs.open)(path, 'w');
+    fd = await fs.promises.open(path, 'w');
   }
   const bufs = [];
   while (!eof) {
@@ -53,11 +53,11 @@ export async function readProtocolStream(client: CRSession, handle: string, path
     eof = response.eof;
     const buf = Buffer.from(response.data, response.base64Encoded ? 'base64' : undefined);
     bufs.push(buf);
-    if (path)
-      await util.promisify(fs.write)(fd!, buf);
+    if (fd)
+      await fd.write(buf);
   }
-  if (path)
-    await util.promisify(fs.close)(fd!);
+  if (fd)
+    await fd.close();
   await client.send('IO.close', {handle});
   return Buffer.concat(bufs);
 }
@@ -74,18 +74,31 @@ export function exceptionToError(exceptionDetails: Protocol.Runtime.ExceptionDet
   const messageWithStack = getExceptionMessage(exceptionDetails);
   const lines = messageWithStack.split('\n');
   const firstStackTraceLine = lines.findIndex(line => line.startsWith('    at'));
-  let message = '';
+  let messageWithName = '';
   let stack = '';
   if (firstStackTraceLine === -1) {
-    message = messageWithStack;
+    messageWithName = messageWithStack;
   } else {
-    message = lines.slice(0, firstStackTraceLine).join('\n');
+    messageWithName = lines.slice(0, firstStackTraceLine).join('\n');
     stack = messageWithStack;
   }
-  const match = message.match(/^[a-zA-Z0-0_]*Error: (.*)$/);
-  if (match)
-    message = match[1];
+  const {name, message} = splitErrorMessage(messageWithName);
+
   const err = new Error(message);
   err.stack = stack;
+  err.name = name;
   return err;
+}
+
+export function toModifiersMask(modifiers: Set<types.KeyboardModifier>): number {
+  let mask = 0;
+  if (modifiers.has('Alt'))
+    mask |= 1;
+  if (modifiers.has('Control'))
+    mask |= 2;
+  if (modifiers.has('Meta'))
+    mask |= 4;
+  if (modifiers.has('Shift'))
+    mask |= 8;
+  return mask;
 }

@@ -26,30 +26,25 @@ export type SnapshotData = {
   }[],
   viewport: { width: number, height: number },
   url: string,
-  snapshotName?: string,
   timestamp: number,
   collectionTime: number,
 };
 
-export const kSnapshotStreamer = '__playwright_snapshot_streamer_';
-export const kSnapshotBinding = '__playwright_snapshot_binding_';
-
-export function frameSnapshotStreamer() {
+export function frameSnapshotStreamer(snapshotStreamer: string) {
   // Communication with Playwright.
-  const kSnapshotStreamer = '__playwright_snapshot_streamer_';
-  const kSnapshotBinding = '__playwright_snapshot_binding_';
-
-  if ((window as any)[kSnapshotStreamer])
+  if ((window as any)[snapshotStreamer])
     return;
 
   // Attributes present in the snapshot.
   const kShadowAttribute = '__playwright_shadow_root_';
   const kScrollTopAttribute = '__playwright_scroll_top_';
   const kScrollLeftAttribute = '__playwright_scroll_left_';
+  const kStyleSheetAttribute = '__playwright_style_sheet_';
 
   // Symbols for our own info on Nodes/StyleSheets.
   const kSnapshotFrameId = Symbol('__playwright_snapshot_frameid_');
   const kCachedData = Symbol('__playwright_snapshot_cache_');
+  const kEndOfList = Symbol('__playwright_end_of_list_');
   type CachedData = {
     cached?: any[], // Cached values to determine whether the snapshot will be the same.
     ref?: [number, number], // Previous snapshotNumber and nodeIndex.
@@ -57,6 +52,11 @@ export function frameSnapshotStreamer() {
     cssText?: string, // Text for stylesheets.
     cssRef?: number, // Previous snapshotNumber for overridden stylesheets.
   };
+
+  function resetCachedData(obj: any) {
+    delete obj[kCachedData];
+  }
+
   function ensureCachedData(obj: any): CachedData {
     if (!obj[kCachedData])
       obj[kCachedData] = {};
@@ -75,14 +75,11 @@ export function frameSnapshotStreamer() {
 
   class Streamer {
     private _removeNoScript = true;
-    private _timer: NodeJS.Timeout | undefined;
     private _lastSnapshotNumber = 0;
     private _staleStyleSheets = new Set<CSSStyleSheet>();
-    private _allStyleSheetsWithUrlOverride = new Set<CSSStyleSheet>();
     private _readingStyleSheet = false;  // To avoid invalidating due to our own reads.
     private _fakeBase: HTMLBaseElement;
     private _observer: MutationObserver;
-    private _interval = 0;
 
     constructor() {
       this._interceptNativeMethod(window.CSSStyleSheet.prototype, 'insertRule', (sheet: CSSStyleSheet) => this._invalidateStyleSheet(sheet));
@@ -131,8 +128,6 @@ export function frameSnapshotStreamer() {
       if (this._readingStyleSheet)
         return;
       this._staleStyleSheets.add(sheet);
-      if (sheet.href !== null)
-        this._allStyleSheetsWithUrlOverride.add(sheet);
     }
 
     private _updateStyleElementStyleSheetTextIfNeeded(sheet: CSSStyleSheet): string | undefined {
@@ -168,29 +163,20 @@ export function frameSnapshotStreamer() {
       (iframeElement as any)[kSnapshotFrameId] = frameId;
     }
 
-    captureSnapshot(snapshotName?: string) {
-      this._streamSnapshot(snapshotName);
-    }
+    reset() {
+      this._staleStyleSheets.clear();
 
-    setSnapshotInterval(interval: number) {
-      this._interval = interval;
-      if (interval)
-        this._streamSnapshot();
-    }
-
-    private _streamSnapshot(snapshotName?: string) {
-      if (this._timer) {
-        clearTimeout(this._timer);
-        this._timer = undefined;
-      }
-      try {
-        const snapshot = this._captureSnapshot(snapshotName);
-        if (snapshot)
-          (window as any)[kSnapshotBinding](snapshot);
-      } catch (e) {
-      }
-      if (this._interval)
-        this._timer = setTimeout(() => this._streamSnapshot(), this._interval);
+      const visitNode = (node: Node | ShadowRoot) => {
+        resetCachedData(node);
+        if (node.nodeType === Node.ELEMENT_NODE) {
+          const element = node as Element;
+          if (element.shadowRoot)
+            visitNode(element.shadowRoot);
+        }
+        for (let child = node.firstChild; child; child = child.nextSibling)
+          visitNode(child);
+      };
+      visitNode(document.documentElement);
     }
 
     private _sanitizeUrl(url: string): string {
@@ -206,7 +192,7 @@ export function frameSnapshotStreamer() {
         if (spaceIndex === -1)
           return this._sanitizeUrl(src);
         return this._sanitizeUrl(src.substring(0, spaceIndex).trim()) + src.substring(spaceIndex);
-      }).join(',');
+      }).join(', ');
     }
 
     private _resolveUrl(base: string, url: string): string {
@@ -240,7 +226,7 @@ export function frameSnapshotStreamer() {
       }
     }
 
-    private _captureSnapshot(snapshotName?: string): SnapshotData | undefined {
+    captureSnapshot(): SnapshotData | undefined {
       const timestamp = performance.now();
       const snapshotNumber = ++this._lastSnapshotNumber;
       let nodeCounter = 0;
@@ -304,11 +290,20 @@ export function frameSnapshotStreamer() {
         const result: NodeSnapshot = [nodeName, attrs];
 
         const visitChild = (child: Node) => {
-          const snapshotted = visitNode(child);
-          if (snapshotted) {
-            result.push(snapshotted.n);
+          const snapshot = visitNode(child);
+          if (snapshot) {
+            result.push(snapshot.n);
             expectValue(child);
-            equals = equals && snapshotted.equals;
+            equals = equals && snapshot.equals;
+          }
+        };
+
+        const visitChildStyleSheet = (child: CSSStyleSheet) => {
+          const snapshot = visitStyleSheet(child);
+          if (snapshot) {
+            result.push(snapshot.n);
+            expectValue(child);
+            equals = equals && snapshot.equals;
           }
         };
 
@@ -327,19 +322,15 @@ export function frameSnapshotStreamer() {
               attrs['checked'] = '';
             }
           }
-          if (element === document.scrollingElement) {
-            // TODO: restoring scroll positions of all elements
-            // is somewhat expensive. Figure this out.
-            if (element.scrollTop) {
-              expectValue(kScrollTopAttribute);
-              expectValue(element.scrollTop);
-              attrs[kScrollTopAttribute] = '' + element.scrollTop;
-            }
-            if (element.scrollLeft) {
-              expectValue(kScrollLeftAttribute);
-              expectValue(element.scrollLeft);
-              attrs[kScrollLeftAttribute] = '' + element.scrollLeft;
-            }
+          if (element.scrollTop) {
+            expectValue(kScrollTopAttribute);
+            expectValue(element.scrollTop);
+            attrs[kScrollTopAttribute] = '' + element.scrollTop;
+          }
+          if (element.scrollLeft) {
+            expectValue(kScrollLeftAttribute);
+            expectValue(element.scrollLeft);
+            attrs[kScrollLeftAttribute] = '' + element.scrollLeft;
           }
           if (element.shadowRoot) {
             ++shadowDomNesting;
@@ -361,19 +352,28 @@ export function frameSnapshotStreamer() {
           }
           for (let child = node.firstChild; child; child = child.nextSibling)
             visitChild(child);
+          expectValue(kEndOfList);
+          let documentOrShadowRoot = null;
+          if (node.ownerDocument!.documentElement === node)
+            documentOrShadowRoot = node.ownerDocument;
+          else if (node.nodeType === Node.DOCUMENT_FRAGMENT_NODE)
+            documentOrShadowRoot = node;
+          if (documentOrShadowRoot) {
+            for (const sheet of (documentOrShadowRoot as any).adoptedStyleSheets || [])
+              visitChildStyleSheet(sheet);
+            expectValue(kEndOfList);
+          }
         }
 
         // Process iframe src attribute before bailing out since it depends on a symbol, not the DOM.
         if (nodeName === 'IFRAME' || nodeName === 'FRAME') {
           const element = node as Element;
-          for (let i = 0; i < element.attributes.length; i++) {
-            const frameId = (element as any)[kSnapshotFrameId];
-            const name = 'src';
-            const value = frameId ? `/snapshot/${frameId}` : '';
-            expectValue(name);
-            expectValue(value);
-            attrs[name] = value;
-          }
+          const frameId = (element as any)[kSnapshotFrameId];
+          const name = 'src';
+          const value = frameId ? `/snapshot/${frameId}` : '';
+          expectValue(name);
+          expectValue(value);
+          attrs[name] = value;
         }
 
         // We can skip attributes comparison because nothing else has changed,
@@ -406,6 +406,7 @@ export function frameSnapshotStreamer() {
             expectValue(value);
             attrs[name] = value;
           }
+          expectValue(kEndOfList);
         }
 
         if (result.length === 2 && !Object.keys(attrs).length)
@@ -413,11 +414,24 @@ export function frameSnapshotStreamer() {
         return checkAndReturn(result);
       };
 
+      const visitStyleSheet = (sheet: CSSStyleSheet) => {
+        const data = ensureCachedData(sheet);
+        const oldCSSText = data.cssText;
+        const cssText = this._updateStyleElementStyleSheetTextIfNeeded(sheet) || '';
+        if (cssText === oldCSSText)
+          return { equals: true, n: [[ snapshotNumber - data.ref![0], data.ref![1] ]] };
+        data.ref = [snapshotNumber, nodeCounter++];
+        return {
+          equals: false,
+          n: ['template', {
+            [kStyleSheetAttribute]: cssText,
+          }]
+        };
+      };
+
       let html: NodeSnapshot;
-      let htmlEquals = false;
       if (document.documentElement) {
-        const { equals, n } = visitNode(document.documentElement)!;
-        htmlEquals = equals;
+        const { n } = visitNode(document.documentElement)!;
         html = n;
       } else {
         html = ['html'];
@@ -432,31 +446,27 @@ export function frameSnapshotStreamer() {
           height: Math.max(document.body ? document.body.offsetHeight : 0, document.documentElement ? document.documentElement.offsetHeight : 0),
         },
         url: location.href,
-        snapshotName,
         timestamp,
         collectionTime: 0,
       };
 
-      let allOverridesAreRefs = true;
-      for (const sheet of this._allStyleSheetsWithUrlOverride) {
+      for (const sheet of this._staleStyleSheets) {
+        if (sheet.href === null)
+          continue;
         const content = this._updateLinkStyleSheetTextIfNeeded(sheet, snapshotNumber);
         if (content === undefined) {
-          // Unable to capture stylsheet contents.
+          // Unable to capture stylesheet contents.
           continue;
         }
-        if (typeof content !== 'number')
-          allOverridesAreRefs = false;
         const base = this._getSheetBase(sheet);
         const url = removeHash(this._resolveUrl(base, sheet.href!));
         result.resourceOverrides.push({ url, content });
       }
 
       result.collectionTime = performance.now() - result.timestamp;
-      if (!snapshotName && htmlEquals && allOverridesAreRefs)
-        return undefined;
       return result;
     }
   }
 
-  (window as any)[kSnapshotStreamer] = new Streamer();
+  (window as any)[snapshotStreamer] = new Streamer();
 }

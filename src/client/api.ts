@@ -18,15 +18,16 @@ export { Accessibility } from './accessibility';
 export { Android, AndroidDevice, AndroidWebView, AndroidInput, AndroidSocket } from './android';
 export { Browser } from './browser';
 export { BrowserContext } from './browserContext';
-export { BrowserServer } from './browserType';
+export type { BrowserServer } from './browserType';
 export { BrowserType } from './browserType';
 export { ConsoleMessage } from './consoleMessage';
+export { Coverage } from './coverage';
 export { Dialog } from './dialog';
 export { Download } from './download';
 export { Electron, ElectronApplication } from './electron';
 export { ElementHandle } from './elementHandle';
 export { FileChooser } from './fileChooser';
-export { Logger } from './types';
+export type { Logger } from './types';
 export { TimeoutError } from '../utils/errors';
 export { Frame } from './frame';
 export { Keyboard, Mouse, Touchscreen } from './input';
@@ -34,15 +35,8 @@ export { JSHandle } from './jsHandle';
 export { Request, Response, Route, WebSocket } from './network';
 export { Page } from './page';
 export { Selectors } from './selectors';
+export { Tracing } from './tracing';
 export { Video } from './video';
 export { Worker } from './worker';
-
-export { ChromiumBrowser } from './chromiumBrowser';
-export { ChromiumBrowserContext } from './chromiumBrowserContext';
-export { ChromiumCoverage } from './chromiumCoverage';
 export { CDPSession } from './cdpSession';
-
-export { WebKitBrowser } from './webkitBrowser';
-
-export { FirefoxBrowser } from './firefoxBrowser';
 export { Playwright } from './playwright';

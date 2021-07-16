@@ -68,7 +68,7 @@ class Documentation {
     for (const [name, clazz] of this.classes.entries()) {
       clazz.validateOrder(errors, clazz);
 
-      if (!clazz.extends || clazz.extends === 'EventEmitter' || clazz.extends === 'Error' || clazz.extends === 'RuntimeException')
+      if (!clazz.extends || ['EventEmitter', 'Error', 'Exception', 'RuntimeException'].includes(clazz.extends))
         continue;
       const superClass = this.classes.get(clazz.extends);
       if (!superClass) {
@@ -304,6 +304,11 @@ Documentation.Member = class {
     };
     this.async = false;
     this.alias = name;
+    /** 
+     * Param is true and option false
+     * @type {Boolean}
+     */
+    this.paramOrOption = null;
   }
 
   index() {
@@ -345,6 +350,7 @@ Documentation.Member = class {
   clone() {
     const result = new Documentation.Member(this.kind, this.langs, this.name, this.type, this.argsArray, this.spec, this.required);
     result.async = this.async;
+    result.paramOrOption = this.paramOrOption;
     return result;
   }
 
@@ -498,6 +504,17 @@ Documentation.Type = class {
         return type.properties;
     }
     return [];
+  }
+
+  /**
+    * @returns {Documentation.Member[]}
+  */
+  sortedProperties() {
+    if (!this.properties)
+      return this.properties;
+    const sortedProperties = [...this.properties];
+    sortedProperties.sort((p1, p2) => p1.name.localeCompare(p2.name));
+    return sortedProperties;
   }
 
   /**

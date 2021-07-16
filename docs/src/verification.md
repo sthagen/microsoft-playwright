@@ -35,10 +35,10 @@ await msg.args[1].jsonValue() // 42
 
 ```java
 // Listen for all System.out.printlns
-page.onConsole(msg -> System.out.println(msg.text()));
+page.onConsoleMessage(msg -> System.out.println(msg.text()));
 
 // Listen for all console events and handle errors
-page.onConsole(msg -> {
+page.onConsoleMessage(msg -> {
   if ("error".equals(msg.type()))
     System.out.println("Error text: " + msg.text());
 });
@@ -56,7 +56,7 @@ msg.args().get(1).jsonValue() // 42
 
 ```python async
 # Listen for all console logs
-page.on("console", msg => print(msg.text))
+page.on("console", lambda msg: print(msg.text))
 
 # Listen for all console events and handle errors
 page.on("console", lambda msg: print(f"error: {msg.text}") if msg.type == "error" else None)
@@ -74,7 +74,7 @@ await msg.args[1].json_value() # 42
 
 ```python sync
 # Listen for all console logs
-page.on("console", msg => print(msg.text))
+page.on("console", lambda msg: print(msg.text))
 
 # Listen for all console events and handle errors
 page.on("console", lambda msg: print(f"error: {msg.text}") if msg.type == "error" else None)
@@ -88,6 +88,26 @@ msg = msg_info.value
 # Deconstruct print arguments
 msg.args[0].json_value() # hello
 msg.args[1].json_value() # 42
+```
+
+```csharp
+// Listen for all System.out.printlns
+page.Console += (_, msg) => Console.WriteLine(msg.Text);
+
+// Listen for all console events and handle errors
+page.Console += (_, msg) =>
+{
+    if ("error".Equals(msg.Type))
+        Console.WriteLine("Error text: " + msg.Text);
+};
+
+// Get the next System.out.println
+var waitForMessageTask = page.WaitForConsoleMessageAsync();
+await page.EvaluateAsync("console.log('hello', 42, { foo: 'bar' });");
+var message = await waitForMessageTask;
+// Deconstruct console.log arguments
+await message.Args.ElementAt(0).JsonValueAsync<string>(); // hello
+await message.Args.ElementAt(1).JsonValueAsync<int>(); // 42
 ```
 
 ### API reference
@@ -137,6 +157,14 @@ page.on("pageerror", lambda exc: print(f"uncaught exception: {exc}"))
 page.goto("data:text/html,<script>throw new Error('test')</script>")
 ```
 
+```csharp
+// Log all uncaught errors to the terminal
+page.PageError += (_, exception) =>
+{
+  Console.WriteLine("Uncaught exception: " + exception);
+};
+```
+
 ### API reference
 - [Page]
 - [`event: Page.pageError`]
@@ -181,6 +209,13 @@ page.onDialog(dialog -> {
 page.on("dialog", lambda dialog: dialog.accept())
 ```
 
+```csharp
+page.RequestFailed += (_, request) =>
+{
+    Console.WriteLine(request.Url + " " + request.Failure);
+};
+```
+
 #### `"popup"` - handle popup windows
 
 ```js
@@ -206,6 +241,13 @@ popup = await popup_info.value
 with page.expect_popup() as popup_info:
     page.click("#open")
 popup = popup_info.value
+```
+
+```csharp
+var popup = await page.RunAndWaitForPopupAsync(async () =>
+{
+    await page.ClickAsync("#open");
+});
 ```
 
 ### API reference

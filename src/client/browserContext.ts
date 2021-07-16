@@ -18,11 +18,11 @@
 import { Page, BindingCall } from './page';
 import * as network from './network';
 import * as channels from '../protocol/channels';
-import * as util from 'util';
 import fs from 'fs';
 import { ChannelOwner } from './channelOwner';
 import { deprecate, evaluationScript, urlMatches } from './clientHelper';
 import { Browser } from './browser';
+import { Worker } from './worker';
 import { Events } from './events';
 import { TimeoutSettings } from '../utils/timeoutSettings';
 import { Waiter } from './waiter';
@@ -31,9 +31,8 @@ import { isUnderTest, headersObjectToArray, mkdirIfNeeded } from '../utils/utils
 import { isSafeCloseError } from '../utils/errors';
 import * as api from '../../types/types';
 import * as structs from '../../types/structs';
-
-const fsWriteFileAsync = util.promisify(fs.writeFile.bind(fs));
-const fsReadFileAsync = util.promisify(fs.readFile.bind(fs));
+import { CDPSession } from './cdpSession';
+import { Tracing } from './tracing';
 
 export class BrowserContext extends ChannelOwner<channels.BrowserContextChannel, channels.BrowserContextInitializer> implements api.BrowserContext {
   _pages = new Set<Page>();
@@ -47,6 +46,12 @@ export class BrowserContext extends ChannelOwner<channels.BrowserContextChannel,
     sdkLanguage: 'javascript'
   };
 
+  readonly tracing: Tracing;
+
+  readonly _backgroundPages = new Set<Page>();
+  readonly _serviceWorkers = new Set<Worker>();
+  readonly _isChromium: boolean;
+
   static from(context: channels.BrowserContextChannel): BrowserContext {
     return (context as any)._object;
   }
@@ -59,22 +64,70 @@ export class BrowserContext extends ChannelOwner<channels.BrowserContextChannel,
     super(parent, type, guid, initializer);
     if (parent instanceof Browser)
       this._browser = parent;
+    this._isChromium = this._browser?._name === 'chromium';
+    this.tracing = new Tracing(this);
 
     this._channel.on('bindingCall', ({binding}) => this._onBinding(BindingCall.from(binding)));
     this._channel.on('close', () => this._onClose());
     this._channel.on('page', ({page}) => this._onPage(Page.from(page)));
     this._channel.on('route', ({ route, request }) => this._onRoute(network.Route.from(route), network.Request.from(request)));
+    this._channel.on('backgroundPage', ({ page }) => {
+      const backgroundPage = Page.from(page);
+      this._backgroundPages.add(backgroundPage);
+      this.emit(Events.BrowserContext.BackgroundPage, backgroundPage);
+    });
+    this._channel.on('serviceWorker', ({worker}) => {
+      const serviceWorker = Worker.from(worker);
+      serviceWorker._context = this;
+      this._serviceWorkers.add(serviceWorker);
+      this.emit(Events.BrowserContext.ServiceWorker, serviceWorker);
+    });
+    this._channel.on('request', ({ request, page }) => this._onRequest(network.Request.from(request), Page.fromNullable(page)));
+    this._channel.on('requestFailed', ({ request, failureText, responseEndTiming, page }) => this._onRequestFailed(network.Request.from(request), responseEndTiming, failureText, Page.fromNullable(page)));
+    this._channel.on('requestFinished', ({ request, responseEndTiming, page }) => this._onRequestFinished(network.Request.from(request), responseEndTiming, Page.fromNullable(page)));
+    this._channel.on('response', ({ response, page }) => this._onResponse(network.Response.from(response), Page.fromNullable(page)));
     this._closedPromise = new Promise(f => this.once(Events.BrowserContext.Close, f));
   }
 
   private _onPage(page: Page): void {
     this._pages.add(page);
     this.emit(Events.BrowserContext.Page, page);
+    if (page._opener && !page._opener.isClosed())
+      page._opener.emit(Events.Page.Popup, page);
+  }
+
+  private _onRequest(request: network.Request, page: Page | null) {
+    this.emit(Events.BrowserContext.Request, request);
+    if (page)
+      page.emit(Events.Page.Request, request);
+  }
+
+  private _onResponse(response: network.Response, page: Page | null) {
+    this.emit(Events.BrowserContext.Response, response);
+    if (page)
+      page.emit(Events.Page.Response, response);
+  }
+
+  private _onRequestFailed(request: network.Request, responseEndTiming: number, failureText: string | undefined, page: Page | null) {
+    request._failureText = failureText || null;
+    if (request._timing)
+      request._timing.responseEnd = responseEndTiming;
+    this.emit(Events.BrowserContext.RequestFailed, request);
+    if (page)
+      page.emit(Events.Page.RequestFailed, request);
+  }
+
+  private _onRequestFinished(request: network.Request, responseEndTiming: number, page: Page | null) {
+    if (request._timing)
+      request._timing.responseEnd = responseEndTiming;
+    this.emit(Events.BrowserContext.RequestFinished, request);
+    if (page)
+      page.emit(Events.Page.RequestFinished, request);
   }
 
   _onRoute(route: network.Route, request: network.Request) {
     for (const {url, handler} of this._routes) {
-      if (urlMatches(request.url(), url)) {
+      if (urlMatches(this._options.baseURL, request.url(), url)) {
         handler(route, request);
         return;
       }
@@ -109,7 +162,7 @@ export class BrowserContext extends ChannelOwner<channels.BrowserContextChannel,
   }
 
   async newPage(): Promise<Page> {
-    return this._wrapApiCall('browserContext.newPage', async (channel: channels.BrowserContextChannel) => {
+    return this._wrapApiCall(async (channel: channels.BrowserContextChannel) => {
       if (this._ownerPage)
         throw new Error('Please use browser.newContext()');
       return Page.from((await channel.newPage()).page);
@@ -121,50 +174,50 @@ export class BrowserContext extends ChannelOwner<channels.BrowserContextChannel,
       urls = [];
     if (urls && typeof urls === 'string')
       urls = [ urls ];
-    return this._wrapApiCall('browserContext.cookies', async (channel: channels.BrowserContextChannel) => {
+    return this._wrapApiCall(async (channel: channels.BrowserContextChannel) => {
       return (await channel.cookies({ urls: urls as string[] })).cookies;
     });
   }
 
   async addCookies(cookies: network.SetNetworkCookieParam[]): Promise<void> {
-    return this._wrapApiCall('browserContext.addCookies', async (channel: channels.BrowserContextChannel) => {
+    return this._wrapApiCall(async (channel: channels.BrowserContextChannel) => {
       await channel.addCookies({ cookies });
     });
   }
 
   async clearCookies(): Promise<void> {
-    return this._wrapApiCall('browserContext.clearCookies', async (channel: channels.BrowserContextChannel) => {
+    return this._wrapApiCall(async (channel: channels.BrowserContextChannel) => {
       await channel.clearCookies();
     });
   }
 
   async grantPermissions(permissions: string[], options?: { origin?: string }): Promise<void> {
-    return this._wrapApiCall('browserContext.grantPermissions', async (channel: channels.BrowserContextChannel) => {
+    return this._wrapApiCall(async (channel: channels.BrowserContextChannel) => {
       await channel.grantPermissions({ permissions, ...options });
     });
   }
 
   async clearPermissions(): Promise<void> {
-    return this._wrapApiCall('browserContext.clearPermissions', async (channel: channels.BrowserContextChannel) => {
+    return this._wrapApiCall(async (channel: channels.BrowserContextChannel) => {
       await channel.clearPermissions();
     });
   }
 
   async setGeolocation(geolocation: { longitude: number, latitude: number, accuracy?: number } | null): Promise<void> {
-    return this._wrapApiCall('browserContext.setGeolocation', async (channel: channels.BrowserContextChannel) => {
+    return this._wrapApiCall(async (channel: channels.BrowserContextChannel) => {
       await channel.setGeolocation({ geolocation: geolocation || undefined });
     });
   }
 
   async setExtraHTTPHeaders(headers: Headers): Promise<void> {
-    return this._wrapApiCall('browserContext.setExtraHTTPHeaders', async (channel: channels.BrowserContextChannel) => {
+    return this._wrapApiCall(async (channel: channels.BrowserContextChannel) => {
       network.validateHeaders(headers);
       await channel.setExtraHTTPHeaders({ headers: headersObjectToArray(headers) });
     });
   }
 
   async setOffline(offline: boolean): Promise<void> {
-    return this._wrapApiCall('browserContext.setOffline', async (channel: channels.BrowserContextChannel) => {
+    return this._wrapApiCall(async (channel: channels.BrowserContextChannel) => {
       await channel.setOffline({ offline });
     });
   }
@@ -172,27 +225,27 @@ export class BrowserContext extends ChannelOwner<channels.BrowserContextChannel,
   async setHTTPCredentials(httpCredentials: { username: string, password: string } | null): Promise<void> {
     if (!isUnderTest())
       deprecate(`context.setHTTPCredentials`, `warning: method |context.setHTTPCredentials()| is deprecated. Instead of changing credentials, create another browser context with new credentials.`);
-    return this._wrapApiCall('browserContext.setHTTPCredentials', async (channel: channels.BrowserContextChannel) => {
+    return this._wrapApiCall(async (channel: channels.BrowserContextChannel) => {
       await channel.setHTTPCredentials({ httpCredentials: httpCredentials || undefined });
     });
   }
 
   async addInitScript(script: Function | string | { path?: string, content?: string }, arg?: any): Promise<void> {
-    return this._wrapApiCall('browserContext.addInitScript', async (channel: channels.BrowserContextChannel) => {
+    return this._wrapApiCall(async (channel: channels.BrowserContextChannel) => {
       const source = await evaluationScript(script, arg);
       await channel.addInitScript({ source });
     });
   }
 
   async exposeBinding(name: string, callback: (source: structs.BindingSource, ...args: any[]) => any, options: { handle?: boolean } = {}): Promise<void> {
-    return this._wrapApiCall('browserContext.exposeBinding', async (channel: channels.BrowserContextChannel) => {
+    return this._wrapApiCall(async (channel: channels.BrowserContextChannel) => {
       await channel.exposeBinding({ name, needsHandle: options.handle });
       this._bindings.set(name, callback);
     });
   }
 
   async exposeFunction(name: string, callback: Function): Promise<void> {
-    return this._wrapApiCall('browserContext.exposeFunction', async (channel: channels.BrowserContextChannel) => {
+    return this._wrapApiCall(async (channel: channels.BrowserContextChannel) => {
       await channel.exposeBinding({ name });
       const binding = (source: structs.BindingSource, ...args: any[]) => callback(...args);
       this._bindings.set(name, binding);
@@ -200,15 +253,15 @@ export class BrowserContext extends ChannelOwner<channels.BrowserContextChannel,
   }
 
   async route(url: URLMatch, handler: network.RouteHandler): Promise<void> {
-    return this._wrapApiCall('browserContext.route', async (channel: channels.BrowserContextChannel) => {
-      this._routes.push({ url, handler });
+    return this._wrapApiCall(async (channel: channels.BrowserContextChannel) => {
+      this._routes.unshift({ url, handler });
       if (this._routes.length === 1)
         await channel.setNetworkInterceptionEnabled({ enabled: true });
     });
   }
 
   async unroute(url: URLMatch, handler?: network.RouteHandler): Promise<void> {
-    return this._wrapApiCall('browserContext.unroute', async (channel: channels.BrowserContextChannel) => {
+    return this._wrapApiCall(async (channel: channels.BrowserContextChannel) => {
       this._routes = this._routes.filter(route => route.url !== url || (handler && route.handler !== handler));
       if (this._routes.length === 0)
         await channel.setNetworkInterceptionEnabled({ enabled: false });
@@ -216,25 +269,42 @@ export class BrowserContext extends ChannelOwner<channels.BrowserContextChannel,
   }
 
   async waitForEvent(event: string, optionsOrPredicate: WaitForEventOptions = {}): Promise<any> {
-    const timeout = this._timeoutSettings.timeout(typeof optionsOrPredicate === 'function'  ? {} : optionsOrPredicate);
-    const predicate = typeof optionsOrPredicate === 'function'  ? optionsOrPredicate : optionsOrPredicate.predicate;
-    const waiter = Waiter.createForEvent(this, 'browserContext', event);
-    waiter.rejectOnTimeout(timeout, `Timeout while waiting for event "${event}"`);
-    if (event !== Events.BrowserContext.Close)
-      waiter.rejectOnEvent(this, Events.BrowserContext.Close, new Error('Context closed'));
-    const result = await waiter.waitForEvent(this, event, predicate as any);
-    waiter.dispose();
-    return result;
+    return this._wrapApiCall(async (channel: channels.BrowserContextChannel) => {
+      const timeout = this._timeoutSettings.timeout(typeof optionsOrPredicate === 'function'  ? {} : optionsOrPredicate);
+      const predicate = typeof optionsOrPredicate === 'function'  ? optionsOrPredicate : optionsOrPredicate.predicate;
+      const waiter = Waiter.createForEvent(this, event);
+      waiter.rejectOnTimeout(timeout, `Timeout while waiting for event "${event}"`);
+      if (event !== Events.BrowserContext.Close)
+        waiter.rejectOnEvent(this, Events.BrowserContext.Close, new Error('Context closed'));
+      const result = await waiter.waitForEvent(this, event, predicate as any);
+      waiter.dispose();
+      return result;
+    });
   }
 
   async storageState(options: { path?: string } = {}): Promise<StorageState> {
-    return await this._wrapApiCall('browserContext.storageState', async (channel: channels.BrowserContextChannel) => {
+    return await this._wrapApiCall(async (channel: channels.BrowserContextChannel) => {
       const state = await channel.storageState();
       if (options.path) {
         await mkdirIfNeeded(options.path);
-        await fsWriteFileAsync(options.path, JSON.stringify(state, undefined, 2), 'utf8');
+        await fs.promises.writeFile(options.path, JSON.stringify(state, undefined, 2), 'utf8');
       }
       return state;
+    });
+  }
+
+  backgroundPages(): Page[] {
+    return [...this._backgroundPages];
+  }
+
+  serviceWorkers(): Worker[] {
+    return [...this._serviceWorkers];
+  }
+
+  async newCDPSession(page: Page): Promise<api.CDPSession> {
+    return this._wrapApiCall(async (channel: channels.BrowserContextChannel) => {
+      const result = await channel.newCDPSession({ page: page._channel });
+      return CDPSession.from(result.session);
     });
   }
 
@@ -246,7 +316,7 @@ export class BrowserContext extends ChannelOwner<channels.BrowserContextChannel,
 
   async close(): Promise<void> {
     try {
-      await this._wrapApiCall('browserContext.close', async (channel: channels.BrowserContextChannel) => {
+      await this._wrapApiCall(async (channel: channels.BrowserContextChannel) => {
         await channel.close();
         await this._closedPromise;
       });
@@ -281,7 +351,7 @@ export async function prepareBrowserContextParams(options: BrowserContextOptions
     viewport: options.viewport === null ? undefined : options.viewport,
     noDefaultViewport: options.viewport === null,
     extraHTTPHeaders: options.extraHTTPHeaders ? headersObjectToArray(options.extraHTTPHeaders) : undefined,
-    storageState: typeof options.storageState === 'string' ? JSON.parse(await fsReadFileAsync(options.storageState, 'utf8')) : options.storageState,
+    storageState: typeof options.storageState === 'string' ? JSON.parse(await fs.promises.readFile(options.storageState, 'utf8')) : options.storageState,
   };
   if (!contextParams.recordVideo && options.videosPath) {
     contextParams.recordVideo = {

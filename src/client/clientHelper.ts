@@ -17,8 +17,7 @@
 
 import * as types from './types';
 import fs from 'fs';
-import * as util from 'util';
-import { isString, isRegExp } from '../utils/utils';
+import { isString, isRegExp, constructURLBasedOnBaseURL } from '../utils/utils';
 
 const deprecatedHits = new Set();
 export function deprecate(methodName: string, message: string) {
@@ -50,7 +49,7 @@ export async function evaluationScript(fun: Function | string | { path?: string,
   if (fun.content !== undefined)
     return fun.content;
   if (fun.path !== undefined) {
-    let source = await util.promisify(fs.readFile)(fun.path, 'utf8');
+    let source = await fs.promises.readFile(fun.path, 'utf8');
     if (addSourceUrl)
       source += '//# sourceURL=' + fun.path.replace(/\n/g, '');
     return source;
@@ -66,9 +65,11 @@ export function parsedURL(url: string): URL | null {
   }
 }
 
-export function urlMatches(urlString: string, match: types.URLMatch | undefined): boolean {
+export function urlMatches(baseURL: string | undefined, urlString: string, match: types.URLMatch | undefined): boolean {
   if (match === undefined || match === '')
     return true;
+  if (isString(match) && !match.startsWith('*'))
+    match = constructURLBasedOnBaseURL(baseURL, match);
   if (isString(match))
     match = globToRegex(match);
   if (isRegExp(match))

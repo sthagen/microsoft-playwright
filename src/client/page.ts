@@ -34,22 +34,18 @@ import { assertMaxArguments, serializeArgument, parseResult, JSHandle } from './
 import { Request, Response, Route, RouteHandler, WebSocket, validateHeaders } from './network';
 import { FileChooser } from './fileChooser';
 import { Buffer } from 'buffer';
-import { ChromiumCoverage } from './chromiumCoverage';
+import { Coverage } from './coverage';
 import { Waiter } from './waiter';
 import * as api from '../../types/types';
 import * as structs from '../../types/structs';
 import fs from 'fs';
 import path from 'path';
-import * as util from 'util';
 import { Size, URLMatch, Headers, LifecycleEvent, WaitForEventOptions, SelectOption, SelectOptionOptions, FilePayload, WaitForFunctionOptions } from './types';
 import { evaluationScript, urlMatches } from './clientHelper';
 import { isString, isRegExp, isObject, mkdirIfNeeded, headersObjectToArray } from '../utils/utils';
 import { isSafeCloseError } from '../utils/errors';
 import { Video } from './video';
-import type { ChromiumBrowserContext } from './chromiumBrowserContext';
-
-const fsWriteFileAsync = util.promisify(fs.writeFile.bind(fs));
-const mkdirAsync = util.promisify(fs.mkdir);
+import { Artifact } from './artifact';
 
 type PDFOptions = Omit<channels.PagePdfParams, 'width' | 'height' | 'margin'> & {
   width?: string | number,
@@ -72,20 +68,20 @@ export class Page extends ChannelOwner<channels.PageChannel, channels.PageInitia
   private _frames = new Set<Frame>();
   _workers = new Set<Worker>();
   private _closed = false;
+  _closedOrCrashedPromise: Promise<void>;
   private _viewportSize: Size | null;
   private _routes: { url: URLMatch, handler: RouteHandler }[] = [];
 
   readonly accessibility: Accessibility;
+  readonly coverage: Coverage;
   readonly keyboard: Keyboard;
   readonly mouse: Mouse;
   readonly touchscreen: Touchscreen;
-  coverage: ChromiumCoverage | null = null;
-  pdf: (options?: PDFOptions) => Promise<Buffer>;
 
   readonly _bindings = new Map<string, (source: structs.BindingSource, ...args: any[]) => any>();
   readonly _timeoutSettings: TimeoutSettings;
-  _isPageCall = false;
   private _video: Video | null = null;
+  readonly _opener: Page | null;
 
   static from(page: channels.PageChannel): Page {
     return (page as any)._object;
@@ -110,6 +106,7 @@ export class Page extends ChannelOwner<channels.PageChannel, channels.PageInitia
     this._frames.add(this._mainFrame);
     this._viewportSize = initializer.viewportSize || null;
     this._closed = initializer.isClosed;
+    this._opener = Page.fromNullable(initializer.opener);
 
     this._channel.on('bindingCall', ({ binding }) => this._onBinding(BindingCall.from(binding)));
     this._channel.on('close', () => this._onClose());
@@ -120,41 +117,30 @@ export class Page extends ChannelOwner<channels.PageChannel, channels.PageInitia
         dialog.dismiss().catch(() => {});
     });
     this._channel.on('domcontentloaded', () => this.emit(Events.Page.DOMContentLoaded, this));
-    this._channel.on('download', ({ download }) => this.emit(Events.Page.Download, Download.from(download)));
+    this._channel.on('download', ({ url, suggestedFilename, artifact }) => {
+      const artifactObject = Artifact.from(artifact);
+      artifactObject._isRemote = !!this._browserContext._browser && !!this._browserContext._browser._remoteType;
+      this.emit(Events.Page.Download, new Download(this, url, suggestedFilename, artifactObject));
+    });
     this._channel.on('fileChooser', ({ element, isMultiple }) => this.emit(Events.Page.FileChooser, new FileChooser(this, ElementHandle.from(element), isMultiple)));
     this._channel.on('frameAttached', ({ frame }) => this._onFrameAttached(Frame.from(frame)));
     this._channel.on('frameDetached', ({ frame }) => this._onFrameDetached(Frame.from(frame)));
     this._channel.on('load', () => this.emit(Events.Page.Load, this));
     this._channel.on('pageError', ({ error }) => this.emit(Events.Page.PageError, parseError(error)));
-    this._channel.on('popup', ({ page }) => this.emit(Events.Page.Popup, Page.from(page)));
-    this._channel.on('request', ({ request }) => this.emit(Events.Page.Request, Request.from(request)));
-    this._channel.on('requestFailed', ({ request, failureText, responseEndTiming }) => this._onRequestFailed(Request.from(request), responseEndTiming, failureText));
-    this._channel.on('requestFinished', ({ request, responseEndTiming }) => this._onRequestFinished(Request.from(request), responseEndTiming));
-    this._channel.on('response', ({ response }) => this.emit(Events.Page.Response, Response.from(response)));
     this._channel.on('route', ({ route, request }) => this._onRoute(Route.from(route), Request.from(request)));
-    this._channel.on('video', ({ relativePath }) => this.video()!._setRelativePath(relativePath));
+    this._channel.on('video', ({ artifact }) => {
+      const artifactObject = Artifact.from(artifact);
+      this._forceVideo()._artifactReady(artifactObject);
+    });
     this._channel.on('webSocket', ({ webSocket }) => this.emit(Events.Page.WebSocket, WebSocket.from(webSocket)));
     this._channel.on('worker', ({ worker }) => this._onWorker(Worker.from(worker)));
 
-    if ((this._browserContext as ChromiumBrowserContext)._isChromium) {
-      this.coverage = new ChromiumCoverage(this._channel);
-      this.pdf = options => this._pdf(options);
-    } else {
-      this.pdf = undefined as any;
-    }
-  }
+    this.coverage = new Coverage(this._channel);
 
-  private _onRequestFailed(request: Request, responseEndTiming: number, failureText: string | undefined) {
-    request._failureText = failureText || null;
-    if (request._timing)
-      request._timing.responseEnd = responseEndTiming;
-    this.emit(Events.Page.RequestFailed,  request);
-  }
-
-  private _onRequestFinished(request: Request, responseEndTiming: number) {
-    if (request._timing)
-      request._timing.responseEnd = responseEndTiming;
-    this.emit(Events.Page.RequestFinished, request);
+    this._closedOrCrashedPromise = Promise.race([
+      new Promise<void>(f => this.once(Events.Page.Close, f)),
+      new Promise<void>(f => this.once(Events.Page.Crash, f)),
+    ]);
   }
 
   private _onFrameAttached(frame: Frame) {
@@ -175,7 +161,7 @@ export class Page extends ChannelOwner<channels.PageChannel, channels.PageInitia
 
   private _onRoute(route: Route, request: Request) {
     for (const {url, handler} of this._routes) {
-      if (urlMatches(request.url(), url)) {
+      if (urlMatches(this._browserContext._options.baseURL, request.url(), url)) {
         handler(route, request);
         return;
       }
@@ -201,6 +187,7 @@ export class Page extends ChannelOwner<channels.PageChannel, channels.PageInitia
   _onClose() {
     this._closed = true;
     this._browserContext._pages.delete(this);
+    this._browserContext._backgroundPages.delete(this);
     this.emit(Events.Page.Close, this);
   }
 
@@ -213,9 +200,9 @@ export class Page extends ChannelOwner<channels.PageChannel, channels.PageInitia
   }
 
   async opener(): Promise<Page | null> {
-    return this._wrapApiCall('page.opener', async (channel: channels.PageChannel) => {
-      return Page.fromNullable((await channel.opener()).page);
-    });
+    if (!this._opener || this._opener.isClosed())
+      return null;
+    return this._opener;
   }
 
   mainFrame(): Frame {
@@ -229,7 +216,7 @@ export class Page extends ChannelOwner<channels.PageChannel, channels.PageInitia
     return this.frames().find(f => {
       if (name)
         return f.name() === name;
-      return urlMatches(f.url(), url);
+      return urlMatches(this._browserContext._options.baseURL, f.url(), url);
     }) || null;
   }
 
@@ -247,70 +234,64 @@ export class Page extends ChannelOwner<channels.PageChannel, channels.PageInitia
     this._channel.setDefaultTimeoutNoReply({ timeout });
   }
 
-  video(): Video | null {
-    if (this._video)
-      return this._video;
-    if (!this._browserContext._options.recordVideo)
-      return null;
-    this._video = new Video(this);
-    // In case of persistent profile, we already have it.
-    if (this._initializer.videoRelativePath)
-      this._video._setRelativePath(this._initializer.videoRelativePath);
+  private _forceVideo(): Video {
+    if (!this._video)
+      this._video = new Video(this);
     return this._video;
   }
 
-  private _attributeToPage<T>(func: () => T): T {
-    try {
-      this._isPageCall = true;
-      return func();
-    } finally {
-      this._isPageCall = false;
-    }
+  video(): Video | null {
+    // Note: we are creating Video object lazily, because we do not know
+    // BrowserContextOptions when constructing the page - it is assigned
+    // too late during launchPersistentContext.
+    if (!this._browserContext._options.recordVideo)
+      return null;
+    return this._forceVideo();
   }
 
   async $(selector: string): Promise<ElementHandle<SVGElement | HTMLElement> | null> {
-    return this._attributeToPage(() => this._mainFrame.$(selector));
+    return this._mainFrame.$(selector);
   }
 
   waitForSelector(selector: string, options: channels.FrameWaitForSelectorOptions & { state: 'attached' | 'visible' }): Promise<ElementHandle<SVGElement | HTMLElement>>;
   waitForSelector(selector: string, options?: channels.FrameWaitForSelectorOptions): Promise<ElementHandle<SVGElement | HTMLElement> | null>;
   async waitForSelector(selector: string, options?: channels.FrameWaitForSelectorOptions): Promise<ElementHandle<SVGElement | HTMLElement> | null> {
-    return this._attributeToPage(() => this._mainFrame.waitForSelector(selector, options));
+    return this._mainFrame.waitForSelector(selector, options);
   }
 
   async dispatchEvent(selector: string, type: string, eventInit?: any, options?: channels.FrameDispatchEventOptions): Promise<void> {
-    return this._attributeToPage(() => this._mainFrame.dispatchEvent(selector, type, eventInit, options));
+    return this._mainFrame.dispatchEvent(selector, type, eventInit, options);
   }
 
   async evaluateHandle<R, Arg>(pageFunction: structs.PageFunction<Arg, R>, arg?: Arg): Promise<structs.SmartHandle<R>> {
     assertMaxArguments(arguments.length, 2);
-    return this._attributeToPage(() => this._mainFrame.evaluateHandle(pageFunction, arg));
+    return this._mainFrame.evaluateHandle(pageFunction, arg);
   }
 
   async $eval<R, Arg>(selector: string, pageFunction: structs.PageFunctionOn<Element, Arg, R>, arg?: Arg): Promise<R> {
     assertMaxArguments(arguments.length, 3);
-    return this._attributeToPage(() => this._mainFrame.$eval(selector, pageFunction, arg));
+    return this._mainFrame.$eval(selector, pageFunction, arg);
   }
 
   async $$eval<R, Arg>(selector: string, pageFunction: structs.PageFunctionOn<Element[], Arg, R>, arg?: Arg): Promise<R> {
     assertMaxArguments(arguments.length, 3);
-    return this._attributeToPage(() => this._mainFrame.$$eval(selector, pageFunction, arg));
+    return this._mainFrame.$$eval(selector, pageFunction, arg);
   }
 
   async $$(selector: string): Promise<ElementHandle<SVGElement | HTMLElement>[]> {
-    return this._attributeToPage(() => this._mainFrame.$$(selector));
+    return this._mainFrame.$$(selector);
   }
 
   async addScriptTag(options: { url?: string; path?: string; content?: string; type?: string; } = {}): Promise<ElementHandle> {
-    return this._attributeToPage(() => this._mainFrame.addScriptTag(options));
+    return this._mainFrame.addScriptTag(options);
   }
 
   async addStyleTag(options: { url?: string; path?: string; content?: string; } = {}): Promise<ElementHandle> {
-    return this._attributeToPage(() => this._mainFrame.addStyleTag(options));
+    return this._mainFrame.addStyleTag(options);
   }
 
   async exposeFunction(name: string, callback: Function) {
-    return this._wrapApiCall('page.exposeFunction', async (channel: channels.PageChannel) => {
+    return this._wrapApiCall(async (channel: channels.PageChannel) => {
       await channel.exposeBinding({ name });
       const binding = (source: structs.BindingSource, ...args: any[]) => callback(...args);
       this._bindings.set(name, binding);
@@ -318,55 +299,59 @@ export class Page extends ChannelOwner<channels.PageChannel, channels.PageInitia
   }
 
   async exposeBinding(name: string, callback: (source: structs.BindingSource, ...args: any[]) => any, options: { handle?: boolean } = {}) {
-    return this._wrapApiCall('page.exposeBinding', async (channel: channels.PageChannel) => {
+    return this._wrapApiCall(async (channel: channels.PageChannel) => {
       await channel.exposeBinding({ name, needsHandle: options.handle });
       this._bindings.set(name, callback);
     });
   }
 
   async setExtraHTTPHeaders(headers: Headers) {
-    return this._wrapApiCall('page.setExtraHTTPHeaders', async (channel: channels.PageChannel) => {
+    return this._wrapApiCall(async (channel: channels.PageChannel) => {
       validateHeaders(headers);
       await channel.setExtraHTTPHeaders({ headers: headersObjectToArray(headers) });
     });
   }
 
   url(): string {
-    return this._attributeToPage(() => this._mainFrame.url());
+    return this._mainFrame.url();
   }
 
   async content(): Promise<string> {
-    return this._attributeToPage(() => this._mainFrame.content());
+    return this._mainFrame.content();
   }
 
   async setContent(html: string, options?: channels.FrameSetContentOptions): Promise<void> {
-    return this._attributeToPage(() => this._mainFrame.setContent(html, options));
+    return this._mainFrame.setContent(html, options);
   }
 
   async goto(url: string, options?: channels.FrameGotoOptions): Promise<Response | null> {
-    return this._attributeToPage(() => this._mainFrame.goto(url, options));
+    return this._mainFrame.goto(url, options);
   }
 
   async reload(options: channels.PageReloadOptions = {}): Promise<Response | null> {
-    return this._wrapApiCall('page.reload', async (channel: channels.PageChannel) => {
+    return this._wrapApiCall(async (channel: channels.PageChannel) => {
       const waitUntil = verifyLoadState('waitUntil', options.waitUntil === undefined ? 'load' : options.waitUntil);
       return Response.fromNullable((await channel.reload({ ...options, waitUntil })).response);
     });
   }
 
   async waitForLoadState(state?: LifecycleEvent, options?: { timeout?: number }): Promise<void> {
-    return this._attributeToPage(() => this._mainFrame.waitForLoadState(state, options));
+    return this._mainFrame.waitForLoadState(state, options);
   }
 
   async waitForNavigation(options?: WaitForNavigationOptions): Promise<Response | null> {
-    return this._attributeToPage(() => this._mainFrame.waitForNavigation(options));
+    return this._mainFrame.waitForNavigation(options);
   }
 
-  async waitForRequest(urlOrPredicate: string | RegExp | ((r: Request) => boolean), options: { timeout?: number } = {}): Promise<Request> {
-    return this._wrapApiCall('page.waitForRequest', async (channel: channels.PageChannel) => {
+  async waitForURL(url: URLMatch, options?: { waitUntil?: LifecycleEvent, timeout?: number }): Promise<void> {
+    return this._mainFrame.waitForURL(url, options);
+  }
+
+  async waitForRequest(urlOrPredicate: string | RegExp | ((r: Request) => boolean | Promise<boolean>), options: { timeout?: number } = {}): Promise<Request> {
+    return this._wrapApiCall(async (channel: channels.PageChannel) => {
       const predicate = (request: Request) => {
         if (isString(urlOrPredicate) || isRegExp(urlOrPredicate))
-          return urlMatches(request.url(), urlOrPredicate);
+          return urlMatches(this._browserContext._options.baseURL, request.url(), urlOrPredicate);
         return urlOrPredicate(request);
       };
       const trimmedUrl = trimUrl(urlOrPredicate);
@@ -375,11 +360,11 @@ export class Page extends ChannelOwner<channels.PageChannel, channels.PageInitia
     });
   }
 
-  async waitForResponse(urlOrPredicate: string | RegExp | ((r: Response) => boolean), options: { timeout?: number } = {}): Promise<Response> {
-    return this._wrapApiCall('page.waitForResponse', async (channel: channels.PageChannel) => {
+  async waitForResponse(urlOrPredicate: string | RegExp | ((r: Response) => boolean | Promise<boolean>), options: { timeout?: number } = {}): Promise<Response> {
+    return this._wrapApiCall(async (channel: channels.PageChannel) => {
       const predicate = (response: Response) => {
         if (isString(urlOrPredicate) || isRegExp(urlOrPredicate))
-          return urlMatches(response.url(), urlOrPredicate);
+          return urlMatches(this._browserContext._options.baseURL, response.url(), urlOrPredicate);
         return urlOrPredicate(response);
       };
       const trimmedUrl = trimUrl(urlOrPredicate);
@@ -389,7 +374,7 @@ export class Page extends ChannelOwner<channels.PageChannel, channels.PageInitia
   }
 
   async waitForEvent(event: string, optionsOrPredicate: WaitForEventOptions = {}): Promise<any> {
-    return this._wrapApiCall('page.waitForEvent', async (channel: channels.PageChannel) => {
+    return this._wrapApiCall(async (channel: channels.PageChannel) => {
       return this._waitForEvent(event, optionsOrPredicate, `waiting for event "${event}"`);
     });
   }
@@ -397,7 +382,7 @@ export class Page extends ChannelOwner<channels.PageChannel, channels.PageInitia
   private async _waitForEvent(event: string, optionsOrPredicate: WaitForEventOptions, logLine?: string): Promise<any> {
     const timeout = this._timeoutSettings.timeout(typeof optionsOrPredicate === 'function' ? {} : optionsOrPredicate);
     const predicate = typeof optionsOrPredicate === 'function' ? optionsOrPredicate : optionsOrPredicate.predicate;
-    const waiter = Waiter.createForEvent(this, 'page', event);
+    const waiter = Waiter.createForEvent(this, event);
     if (logLine)
       waiter.log(logLine);
     waiter.rejectOnTimeout(timeout, `Timeout while waiting for event "${event}"`);
@@ -411,30 +396,31 @@ export class Page extends ChannelOwner<channels.PageChannel, channels.PageInitia
   }
 
   async goBack(options: channels.PageGoBackOptions = {}): Promise<Response | null> {
-    return this._wrapApiCall('page.goBack', async (channel: channels.PageChannel) => {
+    return this._wrapApiCall(async (channel: channels.PageChannel) => {
       const waitUntil = verifyLoadState('waitUntil', options.waitUntil === undefined ? 'load' : options.waitUntil);
       return Response.fromNullable((await channel.goBack({ ...options, waitUntil })).response);
     });
   }
 
   async goForward(options: channels.PageGoForwardOptions = {}): Promise<Response | null> {
-    return this._wrapApiCall('page.goForward', async (channel: channels.PageChannel) => {
+    return this._wrapApiCall(async (channel: channels.PageChannel) => {
       const waitUntil = verifyLoadState('waitUntil', options.waitUntil === undefined ? 'load' : options.waitUntil);
       return Response.fromNullable((await channel.goForward({ ...options, waitUntil })).response);
     });
   }
 
-  async emulateMedia(options: { media?: 'screen' | 'print' | null, colorScheme?: 'dark' | 'light' | 'no-preference' | null } = {}) {
-    return this._wrapApiCall('page.emulateMedia', async (channel: channels.PageChannel) => {
+  async emulateMedia(options: { media?: 'screen' | 'print' | null, colorScheme?: 'dark' | 'light' | 'no-preference' | null, reducedMotion?: 'reduce' | 'no-preference' | null } = {}) {
+    return this._wrapApiCall(async (channel: channels.PageChannel) => {
       await channel.emulateMedia({
         media: options.media === null ? 'null' : options.media,
         colorScheme: options.colorScheme === null ? 'null' : options.colorScheme,
+        reducedMotion: options.reducedMotion === null ? 'null' : options.reducedMotion,
       });
     });
   }
 
   async setViewportSize(viewportSize: Size) {
-    return this._wrapApiCall('page.setViewportSize', async (channel: channels.PageChannel) => {
+    return this._wrapApiCall(async (channel: channels.PageChannel) => {
       this._viewportSize = viewportSize;
       await channel.setViewportSize({ viewportSize });
     });
@@ -446,26 +432,26 @@ export class Page extends ChannelOwner<channels.PageChannel, channels.PageInitia
 
   async evaluate<R, Arg>(pageFunction: structs.PageFunction<Arg, R>, arg?: Arg): Promise<R> {
     assertMaxArguments(arguments.length, 2);
-    return this._attributeToPage(() => this._mainFrame.evaluate(pageFunction, arg));
+    return this._mainFrame.evaluate(pageFunction, arg);
   }
 
   async addInitScript(script: Function | string | { path?: string, content?: string }, arg?: any) {
-    return this._wrapApiCall('page.addInitScript', async (channel: channels.PageChannel) => {
+    return this._wrapApiCall(async (channel: channels.PageChannel) => {
       const source = await evaluationScript(script, arg);
       await channel.addInitScript({ source });
     });
   }
 
   async route(url: URLMatch, handler: RouteHandler): Promise<void> {
-    return this._wrapApiCall('page.route', async (channel: channels.PageChannel) => {
-      this._routes.push({ url, handler });
+    return this._wrapApiCall(async (channel: channels.PageChannel) => {
+      this._routes.unshift({ url, handler });
       if (this._routes.length === 1)
         await channel.setNetworkInterceptionEnabled({ enabled: true });
     });
   }
 
   async unroute(url: URLMatch, handler?: RouteHandler): Promise<void> {
-    return this._wrapApiCall('page.unroute', async (channel: channels.PageChannel) => {
+    return this._wrapApiCall(async (channel: channels.PageChannel) => {
       this._routes = this._routes.filter(route => route.url !== url || (handler && route.handler !== handler));
       if (this._routes.length === 0)
         await channel.setNetworkInterceptionEnabled({ enabled: false });
@@ -473,7 +459,7 @@ export class Page extends ChannelOwner<channels.PageChannel, channels.PageInitia
   }
 
   async screenshot(options: channels.PageScreenshotOptions & { path?: string } = {}): Promise<Buffer> {
-    return this._wrapApiCall('page.screenshot', async (channel: channels.PageChannel) => {
+    return this._wrapApiCall(async (channel: channels.PageChannel) => {
       const copy = { ...options };
       if (!copy.type)
         copy.type = determineScreenshotType(options);
@@ -481,25 +467,25 @@ export class Page extends ChannelOwner<channels.PageChannel, channels.PageInitia
       const buffer = Buffer.from(result.binary, 'base64');
       if (options.path) {
         await mkdirIfNeeded(options.path);
-        await fsWriteFileAsync(options.path, buffer);
+        await fs.promises.writeFile(options.path, buffer);
       }
       return buffer;
     });
   }
 
   async title(): Promise<string> {
-    return this._attributeToPage(() => this._mainFrame.title());
+    return this._mainFrame.title();
   }
 
   async bringToFront(): Promise<void> {
-    return this._wrapApiCall('page.bringToFront', async (channel: channels.PageChannel) => {
+    return this._wrapApiCall(async (channel: channels.PageChannel) => {
       await channel.bringToFront();
     });
   }
 
   async close(options: { runBeforeUnload?: boolean } = {runBeforeUnload: undefined}) {
     try {
-      await this._wrapApiCall('page.close', async (channel: channels.PageChannel) => {
+      await this._wrapApiCall(async (channel: channels.PageChannel) => {
         await channel.close(options);
         if (this._ownedContext)
           await this._ownedContext.close();
@@ -516,99 +502,103 @@ export class Page extends ChannelOwner<channels.PageChannel, channels.PageInitia
   }
 
   async click(selector: string, options?: channels.FrameClickOptions) {
-    return this._attributeToPage(() => this._mainFrame.click(selector, options));
+    return this._mainFrame.click(selector, options);
   }
 
   async dblclick(selector: string, options?: channels.FrameDblclickOptions) {
-    return this._attributeToPage(() => this._mainFrame.dblclick(selector, options));
+    return this._mainFrame.dblclick(selector, options);
   }
 
   async tap(selector: string, options?: channels.FrameTapOptions) {
-    return this._attributeToPage(() => this._mainFrame.tap(selector, options));
+    return this._mainFrame.tap(selector, options);
   }
 
   async fill(selector: string, value: string, options?: channels.FrameFillOptions) {
-    return this._attributeToPage(() => this._mainFrame.fill(selector, value, options));
+    return this._mainFrame.fill(selector, value, options);
   }
 
   async focus(selector: string, options?: channels.FrameFocusOptions) {
-    return this._attributeToPage(() => this._mainFrame.focus(selector, options));
+    return this._mainFrame.focus(selector, options);
   }
 
   async textContent(selector: string, options?: channels.FrameTextContentOptions): Promise<null|string> {
-    return this._attributeToPage(() => this._mainFrame.textContent(selector, options));
+    return this._mainFrame.textContent(selector, options);
   }
 
   async innerText(selector: string, options?: channels.FrameInnerTextOptions): Promise<string> {
-    return this._attributeToPage(() => this._mainFrame.innerText(selector, options));
+    return this._mainFrame.innerText(selector, options);
   }
 
   async innerHTML(selector: string, options?: channels.FrameInnerHTMLOptions): Promise<string> {
-    return this._attributeToPage(() => this._mainFrame.innerHTML(selector, options));
+    return this._mainFrame.innerHTML(selector, options);
   }
 
   async getAttribute(selector: string, name: string, options?: channels.FrameGetAttributeOptions): Promise<string | null> {
-    return this._attributeToPage(() => this._mainFrame.getAttribute(selector, name, options));
+    return this._mainFrame.getAttribute(selector, name, options);
+  }
+
+  async inputValue(selector: string, options?: channels.FrameInputValueOptions): Promise<string> {
+    return this._mainFrame.inputValue(selector, options);
   }
 
   async isChecked(selector: string, options?: channels.FrameIsCheckedOptions): Promise<boolean> {
-    return this._attributeToPage(() => this._mainFrame.isChecked(selector, options));
+    return this._mainFrame.isChecked(selector, options);
   }
 
   async isDisabled(selector: string, options?: channels.FrameIsDisabledOptions): Promise<boolean> {
-    return this._attributeToPage(() => this._mainFrame.isDisabled(selector, options));
+    return this._mainFrame.isDisabled(selector, options);
   }
 
   async isEditable(selector: string, options?: channels.FrameIsEditableOptions): Promise<boolean> {
-    return this._attributeToPage(() => this._mainFrame.isEditable(selector, options));
+    return this._mainFrame.isEditable(selector, options);
   }
 
   async isEnabled(selector: string, options?: channels.FrameIsEnabledOptions): Promise<boolean> {
-    return this._attributeToPage(() => this._mainFrame.isEnabled(selector, options));
+    return this._mainFrame.isEnabled(selector, options);
   }
 
   async isHidden(selector: string, options?: channels.FrameIsHiddenOptions): Promise<boolean> {
-    return this._attributeToPage(() => this._mainFrame.isHidden(selector, options));
+    return this._mainFrame.isHidden(selector, options);
   }
 
   async isVisible(selector: string, options?: channels.FrameIsVisibleOptions): Promise<boolean> {
-    return this._attributeToPage(() => this._mainFrame.isVisible(selector, options));
+    return this._mainFrame.isVisible(selector, options);
   }
 
   async hover(selector: string, options?: channels.FrameHoverOptions) {
-    return this._attributeToPage(() => this._mainFrame.hover(selector, options));
+    return this._mainFrame.hover(selector, options);
   }
 
   async selectOption(selector: string, values: string | api.ElementHandle | SelectOption | string[] | api.ElementHandle[] | SelectOption[] | null, options?: SelectOptionOptions): Promise<string[]> {
-    return this._attributeToPage(() => this._mainFrame.selectOption(selector, values, options));
+    return this._mainFrame.selectOption(selector, values, options);
   }
 
   async setInputFiles(selector: string, files: string | FilePayload | string[] | FilePayload[], options?: channels.FrameSetInputFilesOptions): Promise<void> {
-    return this._attributeToPage(() => this._mainFrame.setInputFiles(selector, files, options));
+    return this._mainFrame.setInputFiles(selector, files, options);
   }
 
   async type(selector: string, text: string, options?: channels.FrameTypeOptions) {
-    return this._attributeToPage(() => this._mainFrame.type(selector, text, options));
+    return this._mainFrame.type(selector, text, options);
   }
 
   async press(selector: string, key: string, options?: channels.FramePressOptions) {
-    return this._attributeToPage(() => this._mainFrame.press(selector, key, options));
+    return this._mainFrame.press(selector, key, options);
   }
 
   async check(selector: string, options?: channels.FrameCheckOptions) {
-    return this._attributeToPage(() => this._mainFrame.check(selector, options));
+    return this._mainFrame.check(selector, options);
   }
 
   async uncheck(selector: string, options?: channels.FrameUncheckOptions) {
-    return this._attributeToPage(() => this._mainFrame.uncheck(selector, options));
+    return this._mainFrame.uncheck(selector, options);
   }
 
   async waitForTimeout(timeout: number) {
-    return this._attributeToPage(() => this._mainFrame.waitForTimeout(timeout));
+    return this._mainFrame.waitForTimeout(timeout);
   }
 
   async waitForFunction<R, Arg>(pageFunction: structs.PageFunction<Arg, R>, arg?: Arg, options?: WaitForFunctionOptions): Promise<structs.SmartHandle<R>> {
-    return this._attributeToPage(() => this._mainFrame.waitForFunction(pageFunction, arg, options));
+    return this._mainFrame.waitForFunction(pageFunction, arg, options);
   }
 
   workers(): Worker[] {
@@ -644,13 +634,13 @@ export class Page extends ChannelOwner<channels.PageChannel, channels.PageInitia
   }
 
   async pause() {
-    return this.context()._wrapApiCall('page.pause', async (channel: channels.BrowserContextChannel) => {
+    return this.context()._wrapApiCall(async (channel: channels.BrowserContextChannel) => {
       await channel.pause();
     });
   }
 
-  async _pdf(options: PDFOptions = {}): Promise<Buffer> {
-    return this._wrapApiCall('page.pdf', async (channel: channels.PageChannel) => {
+  async pdf(options: PDFOptions = {}): Promise<Buffer> {
+    return this._wrapApiCall(async (channel: channels.PageChannel) => {
       const transportOptions: channels.PagePdfParams = { ...options } as channels.PagePdfParams;
       if (transportOptions.margin)
         transportOptions.margin = { ...transportOptions.margin };
@@ -666,8 +656,8 @@ export class Page extends ChannelOwner<channels.PageChannel, channels.PageInitia
       const result = await channel.pdf(transportOptions);
       const buffer = Buffer.from(result.pdf, 'base64');
       if (options.path) {
-        await mkdirAsync(path.dirname(options.path), { recursive: true });
-        await fsWriteFileAsync(options.path, buffer);
+        await fs.promises.mkdir(path.dirname(options.path), { recursive: true });
+        await fs.promises.writeFile(options.path, buffer);
       }
       return buffer;
     });

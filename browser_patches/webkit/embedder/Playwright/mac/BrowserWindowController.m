@@ -163,6 +163,7 @@ static void* keyValueObservingContext = &keyValueObservingContext;
 - (void)awakeFromNib
 {
     _webView = [[WKWebView alloc] initWithFrame:[containerView bounds] configuration:_configuration];
+    _webView._windowOcclusionDetectionEnabled = NO;
 
     _webView.allowsMagnification = YES;
     _webView.allowsBackForwardNavigationGestures = YES;
@@ -439,8 +440,6 @@ static BOOL areEssentiallyEqual(double a, double b)
 
 - (void)windowWillClose:(NSNotification *)notification
 {
-    [_webView removeObserver:self forKeyPath:@"title"];
-    [_webView removeObserver:self forKeyPath:@"URL"];
     [_webView removeFromSuperview];
     _textFinder.hideInterfaceCallback = nil;
     [self release];
@@ -533,7 +532,7 @@ static BOOL areEssentiallyEqual(double a, double b)
         title = url.lastPathComponent ?: url._web_userVisibleString;
     }
 
-    self.window.title = title;
+    self.window.title = [NSString stringWithFormat:@"🎭 Playwright: %@", title];
 }
 
 - (void)observeValueForKeyPath:(NSString *)keyPath ofObject:(id)object change:(NSDictionary *)change context:(void *)context

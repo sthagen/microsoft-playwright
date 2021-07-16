@@ -16,7 +16,7 @@
 
 import { Browser } from './browser';
 import { BrowserContext } from './browserContext';
-import { BrowserType, RemoteBrowser } from './browserType';
+import { BrowserType } from './browserType';
 import { ChannelOwner } from './channelOwner';
 import { ElementHandle } from './elementHandle';
 import { Frame } from './frame';
@@ -26,22 +26,19 @@ import { Page, BindingCall } from './page';
 import { Worker } from './worker';
 import { ConsoleMessage } from './consoleMessage';
 import { Dialog } from './dialog';
-import { Download } from './download';
 import { parseError } from '../protocol/serializers';
 import { CDPSession } from './cdpSession';
 import { Playwright } from './playwright';
 import { Electron, ElectronApplication } from './electron';
 import * as channels from '../protocol/channels';
-import { ChromiumBrowser } from './chromiumBrowser';
-import { ChromiumBrowserContext } from './chromiumBrowserContext';
 import { Stream } from './stream';
-import { WebKitBrowser } from './webkitBrowser';
-import { FirefoxBrowser } from './firefoxBrowser';
 import { debugLogger } from '../utils/debugLogger';
 import { SelectorsOwner } from './selectors';
-import { isUnderTest } from '../utils/utils';
 import { Android, AndroidSocket, AndroidDevice } from './android';
-import { captureStackTrace } from '../utils/stackTrace';
+import { SocksSocket } from './socksSocket';
+import { ParsedStackTrace } from '../utils/stackTrace';
+import { Artifact } from './artifact';
+import { EventEmitter } from 'events';
 
 class Root extends ChannelOwner<channels.Channel, {}> {
   constructor(connection: Connection) {
@@ -49,16 +46,20 @@ class Root extends ChannelOwner<channels.Channel, {}> {
   }
 }
 
-export class Connection {
+export class Connection extends EventEmitter {
   readonly _objects = new Map<string, ChannelOwner>();
   private _waitingForObject = new Map<string, any>();
   onmessage = (message: object): void => {};
   private _lastId = 0;
-  private _callbacks = new Map<number, { resolve: (a: any) => void, reject: (a: Error) => void }>();
+  private _callbacks = new Map<number, { resolve: (a: any) => void, reject: (a: Error) => void, metadata: channels.Metadata }>();
   private _rootObject: ChannelOwner;
+  private _disconnectedErrorMessage: string | undefined;
+  private _onClose?: () => void;
 
-  constructor() {
+  constructor(onClose?: () => void) {
+    super();
     this._rootObject = new Root(this);
+    this._onClose = onClose;
   }
 
   async waitForObjectWithKnownName(guid: string): Promise<any> {
@@ -67,24 +68,28 @@ export class Connection {
     return new Promise(f => this._waitingForObject.set(guid, f));
   }
 
+  pendingProtocolCalls(): channels.Metadata[] {
+    return Array.from(this._callbacks.values()).map(callback => callback.metadata);
+  }
+
   getObjectWithKnownName(guid: string): any {
     return this._objects.get(guid)!;
   }
 
-  async sendMessageToServer(guid: string, method: string, params: any, apiName: string | undefined): Promise<any> {
-    const { stack, frames } = captureStackTrace();
+  async sendMessageToServer(object: ChannelOwner, method: string, params: any, stackTrace: ParsedStackTrace | null): Promise<any> {
+    const guid = object._guid;
+    const { frames, apiName }: ParsedStackTrace = stackTrace || { frameTexts: [], frames: [], apiName: '' };
+
     const id = ++this._lastId;
     const converted = { id, guid, method, params };
     // Do not include metadata in debug logs to avoid noise.
     debugLogger.log('channel:command', converted);
-    this.onmessage({ ...converted, metadata: { stack: frames, apiName } });
-    try {
-      return await new Promise((resolve, reject) => this._callbacks.set(id, { resolve, reject }));
-    } catch (e) {
-      const innerStack = ((process.env.PWDEBUGIMPL || isUnderTest()) && e.stack) ? e.stack.substring(e.stack.indexOf(e.message) + e.message.length) : '';
-      e.stack = e.message + innerStack + '\n' + stack;
-      throw e;
-    }
+    const metadata: channels.Metadata = { stack: frames, apiName };
+    this.onmessage({ ...converted, metadata });
+
+    if (this._disconnectedErrorMessage)
+      throw new Error(this._disconnectedErrorMessage);
+    return await new Promise((resolve, reject) => this._callbacks.set(id, { resolve, reject, metadata }));
   }
 
   _debugScopeState(): any {
@@ -124,6 +129,23 @@ export class Connection {
     object._channel.emit(method, this._replaceGuidsWithChannels(params));
   }
 
+  close() {
+    if (this._onClose)
+      this._onClose();
+  }
+
+  didDisconnect(errorMessage: string) {
+    this._disconnectedErrorMessage = errorMessage;
+    for (const callback of this._callbacks.values())
+      callback.reject(new Error(errorMessage));
+    this._callbacks.clear();
+    this.emit('disconnect');
+  }
+
+  isDisconnected() {
+    return !!this._disconnectedErrorMessage;
+  }
+
   private _replaceGuidsWithChannels(payload: any): any {
     if (!payload)
       return payload;
@@ -156,29 +178,18 @@ export class Connection {
       case 'AndroidDevice':
         result = new AndroidDevice(parent, type, guid, initializer);
         break;
+      case 'Artifact':
+        result = new Artifact(parent, type, guid, initializer);
+        break;
       case 'BindingCall':
         result = new BindingCall(parent, type, guid, initializer);
         break;
-      case 'Browser': {
-        const browserName = (initializer as channels.BrowserInitializer).name;
-        if (browserName === 'chromium')
-          result = new ChromiumBrowser(parent, type, guid, initializer);
-        else if (browserName === 'webkit')
-          result = new WebKitBrowser(parent, type, guid, initializer);
-        else if (browserName === 'firefox')
-          result = new FirefoxBrowser(parent, type, guid, initializer);
-        else
-          result = new Browser(parent, type, guid, initializer);
+      case 'Browser':
+        result = new Browser(parent, type, guid, initializer);
         break;
-      }
-      case 'BrowserContext': {
-        const {isChromium} = (initializer as channels.BrowserContextInitializer);
-        if (isChromium)
-          result = new ChromiumBrowserContext(parent, type, guid, initializer);
-        else
-          result = new BrowserContext(parent, type, guid, initializer);
+      case 'BrowserContext':
+        result = new BrowserContext(parent, type, guid, initializer);
         break;
-      }
       case 'BrowserType':
         result = new BrowserType(parent, type, guid, initializer);
         break;
@@ -190,9 +201,6 @@ export class Connection {
         break;
       case 'Dialog':
         result = new Dialog(parent, type, guid, initializer);
-        break;
-      case 'Download':
-        result = new Download(parent, type, guid, initializer);
         break;
       case 'Electron':
         result = new Electron(parent, type, guid, initializer);
@@ -215,9 +223,6 @@ export class Connection {
       case 'Playwright':
         result = new Playwright(parent, type, guid, initializer);
         break;
-      case 'RemoteBrowser':
-        result = new RemoteBrowser(parent, type, guid, initializer);
-        break;
       case 'Request':
         result = new Request(parent, type, guid, initializer);
         break;
@@ -238,6 +243,9 @@ export class Connection {
         break;
       case 'Worker':
         result = new Worker(parent, type, guid, initializer);
+        break;
+      case 'SocksSocket':
+        result = new SocksSocket(parent, type, guid, initializer);
         break;
       default:
         throw new Error('Missing type ' + type);

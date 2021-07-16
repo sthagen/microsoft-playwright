@@ -33,8 +33,12 @@ export type NavigatingActionWaitOptions = TimeoutOptions & {
   noWaitAfter?: boolean,
 };
 
-export type PointerActionWaitOptions = TimeoutOptions & {
+export type ForceOptions = {
   force?: boolean,
+};
+
+export type PointerActionWaitOptions = TimeoutOptions & ForceOptions & {
+  trial?: boolean;
 };
 
 export type ElementScreenshotOptions = TimeoutOptions & {
@@ -83,6 +87,9 @@ export const mediaTypes: Set<MediaType> = new Set(['screen', 'print']);
 export type ColorScheme = 'dark' | 'light' | 'no-preference';
 export const colorSchemes: Set<ColorScheme> = new Set(['dark', 'light', 'no-preference']);
 
+export type ReducedMotion = 'no-preference' | 'reduce';
+export const reducedMotions: Set<ReducedMotion> = new Set(['no-preference', 'reduce']);
+
 export type DeviceDescriptor = {
   userAgent: string,
   viewport: Size,
@@ -106,7 +113,7 @@ export type PDFOptions = {
   height?: string,
   preferCSSPageSize?: boolean,
   margin?: {top?: string, bottom?: string, left?: string, right?: string},
-}
+};
 
 export type CSSCoverageOptions = {
   resetOnNavigation?: boolean,
@@ -189,6 +196,15 @@ export type NormalizedContinueOverrides = {
   method?: string,
   headers?: HeadersArray,
   postData?: Buffer,
+  interceptResponse?: boolean,
+};
+
+export type NormalizedResponseContinueOverrides = {
+  status?: number,
+  statusText?: string,
+  headers?: HeadersArray,
+  body?: string,
+  isBase64?: boolean,
 };
 
 export type NetworkCookie = {
@@ -214,9 +230,12 @@ export type SetNetworkCookieParam = {
   sameSite?: 'Strict' | 'Lax' | 'None'
 };
 
+export type EmulatedSize = { viewport: Size, screen: Size };
+
 export type BrowserContextOptions = {
   sdkLanguage: string,
   viewport?: Size,
+  screen?: Size,
   noDefaultViewport?: boolean,
   ignoreHTTPSErrors?: boolean,
   javaScriptEnabled?: boolean,
@@ -233,6 +252,7 @@ export type BrowserContextOptions = {
   isMobile?: boolean,
   hasTouch?: boolean,
   colorScheme?: ColorScheme,
+  reducedMotion?: ReducedMotion,
   acceptDownloads?: boolean,
   recordVideo?: {
     dir: string,
@@ -243,16 +263,14 @@ export type BrowserContextOptions = {
     path: string
   },
   proxy?: ProxySettings,
-  _traceDir?: string,
+  baseURL?: string,
   _debugName?: string,
 };
 
 export type EnvArray = { name: string, value: string }[];
 
-export type BrowserChannel = 'chrome' | 'chrome-beta' | 'chrome-dev' | 'chrome-canary' | 'msedge' | 'msedge-beta' | 'msedge-dev' | 'msedge-canary';
-
 type LaunchOptionsBase = {
-  channel?: BrowserChannel,
+  channel?: string,
   executablePath?: string,
   args?: string[],
   ignoreDefaultArgs?: string[],
@@ -269,6 +287,7 @@ type LaunchOptionsBase = {
   chromiumSandbox?: boolean,
   slowMo?: number,
   useWebSocket?: boolean,
+  tracesDir?: string,
 };
 export type LaunchOptions = LaunchOptionsBase & {
   firefoxUserPrefs?: { [key: string]: string | number | boolean },
@@ -338,9 +357,9 @@ export type OriginStorage = {
 export type StorageState = {
   cookies: NetworkCookie[],
   origins: OriginStorage[]
-}
+};
 
 export type SetStorageState = {
   cookies?: SetNetworkCookieParam[],
   origins?: OriginStorage[]
-}
+};

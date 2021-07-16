@@ -34,7 +34,7 @@ declare global {
 export interface RecorderProps {
   sources: Source[],
   paused: boolean,
-  log: Map<number, CallLog>,
+  log: Map<string, CallLog>,
   mode: Mode,
   initialSelector?: string,
 }
@@ -95,6 +95,8 @@ export const Recorder: React.FC<RecorderProps> = ({
       <ToolbarButton icon='debug-step-over' title='Step over' disabled={!paused} onClick={() => {
         window.dispatch({ event: 'step' });
       }}></ToolbarButton>
+      <div style={{flex: 'auto'}}></div>
+      <div>Target:</div>
       <select className='recorder-chooser' hidden={!sources.length} value={file} onChange={event => {
           setFile(event.target.selectedOptions[0].value);
         }}>{
@@ -104,7 +106,6 @@ export const Recorder: React.FC<RecorderProps> = ({
           })
         }
       </select>
-      <div style={{flex: 'auto'}}></div>
       <ToolbarButton icon='clear-all' title='Clear' disabled={!source || !source.text} onClick={() => {
         window.dispatch({ event: 'clear' });
       }}></ToolbarButton>
@@ -121,9 +122,7 @@ export const Recorder: React.FC<RecorderProps> = ({
             window.dispatch({ event: 'selectorUpdated', params: { selector: event.target.value } });
           }} />
         </Toolbar>
-        <CallLogView log={Array.from(log.values())} onHover={(callLog, phase) => {
-          window.dispatch({ event: 'callLogHovered', params: { callLogId: callLog?.id, phase } });
-        }}/>
+        <CallLogView log={Array.from(log.values())}/>
       </div>
     </SplitView>
   </div>;

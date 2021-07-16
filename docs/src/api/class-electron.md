@@ -17,12 +17,12 @@ const { _electron: electron } = require('playwright');
   const electronApp = await electron.launch({ args: ['main.js'] });
 
   // Evaluation expression in the Electron context.
-  const appPath = await electronApp.evaluate(async (electron) => {
-    // This runs in the main Electron process, |electron| parameter
-    // here is always the result of the require('electron') in the main
-    // app script.
-    return electron.getAppPath();
+  const appPath = await electronApp.evaluate(async ({ app }) => {
+    // This runs in the main Electron process, parameter here is always
+    // the result of the require('electron') in the main app script.
+    return app.getAppPath();
   });
+  console.log(appPath);
 
   // Get the first window that the app opens, wait if necessary.
   const window = await electronApp.firstWindow();
@@ -34,13 +34,15 @@ const { _electron: electron } = require('playwright');
   window.on('console', console.log);
   // Click button.
   await window.click('text=Click me');
+  // Exit app.
+  await electronApp.close();
 })();
 ```
 
 Note that since you don't need Playwright to install web browsers when testing Electron, you can omit browser download via setting the following environment variable when installing Playwright:
 
-```sh js
-$ PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 npm i -D playwright
+```bash js
+PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 npm i -D playwright
 ```
 
 ## async method: Electron.launch
@@ -74,3 +76,20 @@ Specifies environment variables that will be visible to Electron. Defaults to `p
 - `timeout` <[float]>
 
 Maximum time in milliseconds to wait for the application to start. Defaults to `30000` (30 seconds). Pass `0` to disable timeout.
+
+### option: Electron.launch.acceptdownloads = %%-context-option-acceptdownloads-%%
+### option: Electron.launch.bypassCSP = %%-context-option-bypasscsp-%%
+### option: Electron.launch.colorScheme = %%-context-option-colorscheme-%%
+### option: Electron.launch.extraHTTPHeaders = %%-context-option-extrahttpheaders-%%
+### option: Electron.launch.geolocation = %%-context-option-geolocation-%%
+### option: Electron.launch.httpcredentials = %%-context-option-httpcredentials-%%
+### option: Electron.launch.ignoreHTTPSErrors = %%-context-option-ignorehttpserrors-%%
+### option: Electron.launch.locale = %%-context-option-locale-%%
+### option: Electron.launch.offline = %%-context-option-offline-%%
+### option: Electron.launch.recordhar = %%-context-option-recordhar-%%
+### option: Electron.launch.recordhar.path = %%-context-option-recordhar-path-%%
+### option: Electron.launch.recordhar.recordHarOmitContent = %%-context-option-recordhar-omit-content-%%
+### option: Electron.launch.recordvideo = %%-context-option-recordvideo-%%
+### option: Electron.launch.recordvideo.dir = %%-context-option-recordvideo-dir-%%
+### option: Electron.launch.recordvideo.size = %%-context-option-recordvideo-size-%%
+### option: Electron.launch.timezoneId = %%-context-option-timezoneid-%%

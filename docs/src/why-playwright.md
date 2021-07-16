@@ -15,7 +15,7 @@ Playwright enables fast, reliable and capable automation across all modern brows
 
 * **Test for mobile**. Use [device emulation](./emulation.md) to test your responsive web apps in mobile web browsers.
 
-* **Headless and headful**. Playwright supports headless (without browser UI) and headful (with browser UI) modes for all browsers and all platforms. Headful is great for debugging, and headless is faster and suited for CI/cloud executions.
+* **Headless and headed**. Playwright supports headless (without browser UI) and headed (with browser UI) modes for all browsers and all platforms. Headed is great for debugging, and headless is faster and suited for CI/cloud executions.
 
 ## Fast and reliable execution
 * **Auto-wait APIs**. Playwright interactions [auto-wait for elements](./actionability.md) to be ready. This improves reliability and simplifies test authoring.
@@ -37,25 +37,25 @@ Playwright enables fast, reliable and capable automation across all modern brows
 
 ## Integrates with your workflow
 * **One-line installation**. Installing Playwright auto-downloads browser dependencies for your team to be onboarded quickly.
-  ```sh js
-  $ npm i playwright
+  ```bash js
+  npm i playwright
   ```
-  ```sh python
-  $ pip install playwright
-  $ playwright install
+  ```bash python
+  pip install playwright
+  playwright install
   ```
 
 * **TypeScript support**. Playwright ships with built-in types for auto-completion and other benefits.
 
 * **Debugging tools**. Playwright works with the [editor debugger and browser developer tools](./debug.md) to pause execution and inspect the web page.
 
-* **Language bindings**. Playwright is available for [Node.js](https://github.com/microsoft/playwright) [Python](https://github.com/microsoft/playwright-python), [C#](https://github.com/microsoft/playwright-sharp) and
+* **Language bindings**. Playwright is available for [Node.js](https://github.com/microsoft/playwright) [Python](https://github.com/microsoft/playwright-python), [.NET](https://github.com/microsoft/playwright-dotnet) and
 [Java](https://github.com/microsoft/playwright-java). Learn more about [supported languages](./languages.md).
 
-* **Deploy tests to CI**. First-party [Docker image](./docker.md) and [GitHub Actions](https://github.com/microsoft/playwright-github-action) to deploy tests to [your preferred CI/CD provider](./ci.md).
+* **Deploy tests to CI**. First-party [Docker image](./docker.md) and [GitHub Actions](./ci.md#github-actions) support to deploy tests to [your preferred CI/CD provider](./ci.md).
 
 ## Limitations
 
 * **Legacy Edge and IE11 support**. Playwright does not support legacy Microsoft Edge or IE11 ([deprecation notice](https://techcommunity.microsoft.com/t5/microsoft-365-blog/microsoft-365-apps-say-farewell-to-internet-explorer-11-and/ba-p/1591666)). The new Microsoft Edge (on Chromium) is supported.
 
-* **Test on real mobile devices**: Playwright uses desktop browsers to emulate mobile devices. If you are interested in running on real mobile devices, please [upvote this issue](https://github.com/microsoft/playwright/issues/1122).
+* **Test on real mobile devices**: Playwright uses desktop browsers to emulate mobile devices. There is experimental Android support available see [here](https://playwright.dev/docs/mobile). If you are interested in iOS, please [upvote this issue](https://github.com/microsoft/playwright/issues/1122).

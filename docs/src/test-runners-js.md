@@ -1,11 +1,15 @@
 ---
 id: test-runners
-title: "Test Runners"
+title: "Third party runners"
 ---
 
-With a few lines of code, you can hook up Playwright to your favorite JavaScript test runner.
+With a few lines of code, you can hook up Playwright to your existing JavaScript test runner.
 
 <!-- TOC -->
+
+## Playwright Test
+
+[Playwright Test](./intro.md) is our first-party recommended test runner to be used with Playwright. Learn more about it [here](./intro.md).
 
 ## Jest / Jasmine
 
@@ -101,4 +105,4 @@ beforeAll(async() => {
 ```
 
 Then set `BROWSER=firefox` to run your tests with firefox, or any other browser.
- 
+

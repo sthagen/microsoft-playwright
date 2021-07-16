@@ -1,7 +1,7 @@
 # class: Android
 * langs: js
 
-Playwright has **experimental** support for Android automation. You can access android namespace via:
+Playwright has **experimental** support for Android automation. See [here](./mobile.md) for more information. You can access android namespace via:
 
 ```js
 const { _android: android } = require('playwright');
@@ -62,8 +62,8 @@ const { _android: android } = require('playwright');
 
 Note that since you don't need Playwright to install web browsers when testing Android, you can omit browser download via setting the following environment variable when installing Playwright:
 
-```sh js
-$ PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 npm i -D playwright
+```bash js
+PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 npm i -D playwright
 ```
 
 ## async method: Android.devices

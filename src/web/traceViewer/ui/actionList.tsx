@@ -14,16 +14,19 @@
   limitations under the License.
 */
 
-import { ActionEntry } from '../../../server/trace/viewer/traceModel';
 import './actionList.css';
+import './tabbedPane.css';
 import * as React from 'react';
+import * as modelUtil from './modelUtil';
+import { ActionTraceEvent } from '../../../server/trace/common/traceEvents';
 
 export interface ActionListProps {
-  actions: ActionEntry[],
-  selectedAction: ActionEntry | undefined,
-  highlightedAction: ActionEntry | undefined,
-  onSelected: (action: ActionEntry) => void,
-  onHighlighted: (action: ActionEntry | undefined) => void,
+  actions: ActionTraceEvent[],
+  selectedAction: ActionTraceEvent | undefined,
+  highlightedAction: ActionTraceEvent | undefined,
+  onSelected: (action: ActionTraceEvent) => void,
+  onHighlighted: (action: ActionTraceEvent | undefined) => void,
+  setSelectedTab: (tab: string) => void,
 }
 
 export const ActionList: React.FC<ActionListProps> = ({
@@ -32,20 +35,66 @@ export const ActionList: React.FC<ActionListProps> = ({
   highlightedAction = undefined,
   onSelected = () => {},
   onHighlighted = () => {},
+  setSelectedTab = () => {},
 }) => {
-  return <div className='action-list'>{actions.map(actionEntry => {
-    const { metadata, actionId } = actionEntry;
-    return <div
-      className={'action-entry' + (actionEntry === selectedAction ? ' selected' : '')}
-      key={actionId}
-      onClick={() => onSelected(actionEntry)}
-      onMouseEnter={() => onHighlighted(actionEntry)}
-      onMouseLeave={() => (highlightedAction === actionEntry) && onHighlighted(undefined)}
+  const actionListRef = React.createRef<HTMLDivElement>();
+
+  React.useEffect(() => {
+    actionListRef.current?.focus();
+  }, [selectedAction]);
+
+  return <div className='action-list vbox'>
+    <div className='.action-list-title tab-strip'>
+      <div className='tab-element'>
+        <div className='tab-label'>Actions</div>
+      </div>
+    </div>
+    <div
+      className='action-list-content'
+      tabIndex={0}
+      onKeyDown={event => {
+        if (event.key !== 'ArrowDown' &&  event.key !== 'ArrowUp')
+          return;
+        const index = selectedAction ? actions.indexOf(selectedAction) : -1;
+        if (event.key === 'ArrowDown') {
+          if (index === -1)
+            onSelected(actions[0]);
+          else
+            onSelected(actions[Math.min(index + 1, actions.length - 1)]);
+        }
+        if (event.key === 'ArrowUp') {
+          if (index === -1)
+            onSelected(actions[actions.length - 1]);
+          else
+            onSelected(actions[Math.max(index - 1, 0)]);
+        }
+      }}
+      ref={actionListRef}
     >
-      <div className={'action-error codicon codicon-issues'} hidden={!metadata.error} />
-      <div className='action-title'>{metadata.method}</div>
-      {metadata.params.selector && <div className='action-selector' title={metadata.params.selector}>{metadata.params.selector}</div>}
-      {metadata.method === 'goto' && metadata.params.url && <div className='action-url' title={metadata.params.url}>{metadata.params.url}</div>}
-    </div>;
-  })}</div>;
+      {actions.map(action => {
+        const { metadata } = action;
+        const selectedSuffix = action === selectedAction ? ' selected' : '';
+        const highlightedSuffix = action === highlightedAction ? ' highlighted' : '';
+        const page = modelUtil.page(action);
+        const { errors, warnings } = modelUtil.stats(action);
+        return <div
+          className={'action-entry' + selectedSuffix + highlightedSuffix}
+          key={metadata.id}
+          onClick={() => onSelected(action)}
+          onMouseEnter={() => onHighlighted(action)}
+          onMouseLeave={() => (highlightedAction === action) && onHighlighted(undefined)}
+        >
+          <div className='action-title'>
+            <span>{metadata.apiName}</span>
+            {metadata.params.selector && <div className='action-selector' title={metadata.params.selector}>{metadata.params.selector}</div>}
+            {metadata.method === 'goto' && metadata.params.url && <div className='action-url' title={metadata.params.url}>{metadata.params.url}</div>}
+          </div>
+          <div className='action-icons' onClick={() => setSelectedTab('console')}>
+            {!!errors && <div className='action-icon'><span className={'codicon codicon-error'}></span><span className="action-icon-value">{errors}</span></div>}
+            {!!warnings && <div className='action-icon'><span className={'codicon codicon-warning'}></span><span className="action-icon-value">{warnings}</span></div>}
+          </div>
+        </div>;
+      })}
+    </div>
+  </div>;
 };

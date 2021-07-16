@@ -51,7 +51,16 @@ export class RequestDispatcher extends Dispatcher<Request, channels.RequestIniti
 
 export class ResponseDispatcher extends Dispatcher<Response, channels.ResponseInitializer> implements channels.ResponseChannel {
 
-  constructor(scope: DispatcherScope, response: Response) {
+  static from(scope: DispatcherScope, response: Response): ResponseDispatcher {
+    const result = existingDispatcher<ResponseDispatcher>(response);
+    return result || new ResponseDispatcher(scope, response);
+  }
+
+  static fromNullable(scope: DispatcherScope, response: Response | null): ResponseDispatcher | undefined {
+    return response ? ResponseDispatcher.from(scope, response) : undefined;
+  }
+
+  private constructor(scope: DispatcherScope, response: Response) {
     super(scope, response, 'Response', {
       // TODO: responses in popups can point to non-reported requests.
       request: RequestDispatcher.from(scope, response.request()),
@@ -71,24 +80,52 @@ export class ResponseDispatcher extends Dispatcher<Response, channels.ResponseIn
   async body(): Promise<channels.ResponseBodyResult> {
     return { binary: (await this._object.body()).toString('base64') };
   }
+
+  async securityDetails(): Promise<channels.ResponseSecurityDetailsResult> {
+    return { value: await this._object.securityDetails() || undefined };
+  }
+
+  async serverAddr(): Promise<channels.ResponseServerAddrResult> {
+    return { value: await this._object.serverAddr() || undefined };
+  }
 }
 
 export class RouteDispatcher extends Dispatcher<Route, channels.RouteInitializer> implements channels.RouteChannel {
 
-  constructor(scope: DispatcherScope, route: Route) {
+  static from(scope: DispatcherScope, route: Route): RouteDispatcher {
+    const result = existingDispatcher<RouteDispatcher>(route);
+    return result || new RouteDispatcher(scope, route);
+  }
+
+  private constructor(scope: DispatcherScope, route: Route) {
     super(scope, route, 'Route', {
       // Context route can point to a non-reported request.
       request: RequestDispatcher.from(scope, route.request())
     });
   }
 
-  async continue(params: channels.RouteContinueParams): Promise<void> {
-    await this._object.continue({
+  async responseBody(params?: channels.RouteResponseBodyParams, metadata?: channels.Metadata): Promise<channels.RouteResponseBodyResult> {
+    return { binary: (await this._object.responseBody()).toString('base64') };
+  }
+
+  async continue(params: channels.RouteContinueParams, metadata?: channels.Metadata): Promise<channels.RouteContinueResult> {
+    const response = await this._object.continue({
       url: params.url,
       method: params.method,
       headers: params.headers,
       postData: params.postData ? Buffer.from(params.postData, 'base64') : undefined,
+      interceptResponse: params.interceptResponse
     });
+    const result: channels.RouteContinueResult = {};
+    if (response) {
+      result.response = {
+        request: RequestDispatcher.from(this._scope, response.request()),
+        status: response.status(),
+        statusText: response.statusText(),
+        headers: response.headers(),
+      };
+    }
+    return result;
   }
 
   async fulfill(params: channels.RouteFulfillParams): Promise<void> {

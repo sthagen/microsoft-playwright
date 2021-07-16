@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import { WKSession, isSwappedOutError } from './wkConnection';
+import { WKSession } from './wkConnection';
 import { Protocol } from './protocol';
 import * as js from '../javascript';
 import { parseEvaluationResultValue } from '../common/utilityScriptSerializers';
@@ -29,7 +29,7 @@ export class WKExecutionContext implements js.ExecutionContextDelegate {
   constructor(session: WKSession, contextId: number | undefined) {
     this._session = session;
     this._contextId = contextId;
-    this._executionContextDestroyedPromise = new Promise((resolve, reject) => {
+    this._executionContextDestroyedPromise = new Promise<void>((resolve, reject) => {
       this._contextDestroyedCallback = resolve;
     });
   }
@@ -38,7 +38,22 @@ export class WKExecutionContext implements js.ExecutionContextDelegate {
     this._contextDestroyedCallback();
   }
 
-  async rawEvaluate(expression: string): Promise<string> {
+  async rawEvaluateJSON(expression: string): Promise<any> {
+    try {
+      const response = await this._session.send('Runtime.evaluate', {
+        expression,
+        contextId: this._contextId,
+        returnByValue: true
+      });
+      if (response.wasThrown)
+        throw new Error('Evaluation failed: ' + response.result.description);
+      return response.result.value;
+    } catch (error) {
+      throw rewriteError(error);
+    }
+  }
+
+  async rawEvaluateHandle(expression: string): Promise<js.ObjectId> {
     try {
       const response = await this._session.send('Runtime.evaluate', {
         expression,
@@ -65,63 +80,32 @@ export class WKExecutionContext implements js.ExecutionContextDelegate {
 
   async evaluateWithArguments(expression: string, returnByValue: boolean, utilityScript: js.JSHandle<any>, values: any[], objectIds: string[]): Promise<any> {
     try {
-      let response = await this._session.send('Runtime.callFunctionOn', {
-        functionDeclaration: expression,
-        objectId: utilityScript._objectId!,
-        arguments: [
-          { objectId: utilityScript._objectId },
-          ...values.map(value => ({ value })),
-          ...objectIds.map(objectId => ({ objectId })),
-        ],
-        returnByValue: false, // We need to return real Promise if that is a promise.
-        emulateUserGesture: true
-      });
-      if (response.result.objectId && response.result.className === 'Promise') {
-        response = await Promise.race([
-          this._executionContextDestroyedPromise.then(() => contextDestroyedResult),
-          this._session.send('Runtime.awaitPromise', {
-            promiseObjectId: response.result.objectId,
-            returnByValue: false
-          })
-        ]);
-      }
+      const response = await Promise.race([
+        this._executionContextDestroyedPromise.then(() => contextDestroyedResult),
+        this._session.send('Runtime.callFunctionOn', {
+          functionDeclaration: expression,
+          objectId: utilityScript._objectId!,
+          arguments: [
+            { objectId: utilityScript._objectId },
+            ...values.map(value => ({ value })),
+            ...objectIds.map(objectId => ({ objectId })),
+          ],
+          returnByValue,
+          emulateUserGesture: true,
+          awaitPromise: true
+        })
+      ]);
       if (response.wasThrown)
         throw new Error('Evaluation failed: ' + response.result.description);
-      if (!returnByValue)
-        return utilityScript._context.createHandle(response.result);
-      if (response.result.objectId) {
-        // Avoid protocol round trip for evaluates that do not return anything.
-        // Otherwise, we can fail with 'execution context destroyed' without any reason.
-        if (response.result.type === 'undefined')
-          return undefined;
-        return await this._returnObjectByValue(utilityScript, response.result.objectId);
-      }
-      return parseEvaluationResultValue(response.result.value);
+      if (returnByValue)
+        return parseEvaluationResultValue(response.result.value);
+      return utilityScript._context.createHandle(response.result);
     } catch (error) {
       throw rewriteError(error);
     }
   }
 
-  private async _returnObjectByValue(utilityScript: js.JSHandle<any>, objectId: Protocol.Runtime.RemoteObjectId): Promise<any> {
-    try {
-      const serializeResponse = await this._session.send('Runtime.callFunctionOn', {
-        functionDeclaration: 'object => object',
-        objectId: utilityScript._objectId!,
-        arguments: [ { objectId } ],
-        returnByValue: true
-      });
-      if (serializeResponse.wasThrown)
-        throw new Error('Evaluation failed: ' + serializeResponse.result.description);
-      return parseEvaluationResultValue(serializeResponse.result.value);
-    } catch (error) {
-      throw rewriteError(error);
-    }
-  }
-
-  async getProperties(handle: js.JSHandle): Promise<Map<string, js.JSHandle>> {
-    const objectId = handle._objectId;
-    if (!objectId)
-      return new Map();
+  async getProperties(context: js.ExecutionContext, objectId: js.ObjectId): Promise<Map<string, js.JSHandle>> {
     const response = await this._session.send('Runtime.getProperties', {
       objectId,
       ownProperties: true
@@ -130,7 +114,7 @@ export class WKExecutionContext implements js.ExecutionContextDelegate {
     for (const property of response.properties) {
       if (!property.enumerable || !property.value)
         continue;
-      result.set(property.name, handle._context.createHandle(property.value));
+      result.set(property.name, context.createHandle(property.value));
     }
     return result;
   }
@@ -140,10 +124,8 @@ export class WKExecutionContext implements js.ExecutionContextDelegate {
     return new js.JSHandle(context, isPromise ? 'promise' : remoteObject.subtype || remoteObject.type, remoteObject.objectId, potentiallyUnserializableValue(remoteObject));
   }
 
-  async releaseHandle(handle: js.JSHandle): Promise<void> {
-    if (!handle._objectId)
-      return;
-    await this._session.send('Runtime.releaseObject', {objectId: handle._objectId});
+  async releaseHandle(objectId: js.ObjectId): Promise<void> {
+    await this._session.send('Runtime.releaseObject', { objectId });
   }
 }
 
@@ -161,7 +143,7 @@ function potentiallyUnserializableValue(remoteObject: Protocol.Runtime.RemoteObj
 }
 
 function rewriteError(error: Error): Error {
-  if (isSwappedOutError(error) || error.message.includes('Missing injected script for given'))
+  if (js.isContextDestroyedError(error))
     return new Error('Execution context was destroyed, most likely because of a navigation.');
   return error;
 }

@@ -15,11 +15,12 @@
  */
 
 import { Point } from '../../../common/types';
+import { SerializedError } from '../../../protocol/channels';
 
 export type Mode = 'inspecting' | 'recording' | 'none';
 
 export type EventData = {
-  event: 'clear' | 'resume' | 'step' | 'pause' | 'setMode' | 'selectorUpdated' | 'callLogHovered';
+  event: 'clear' | 'resume' | 'step' | 'pause' | 'setMode' | 'selectorUpdated';
   params: any;
 };
 
@@ -27,28 +28,22 @@ export type UIState = {
   mode: Mode;
   actionPoint?: Point;
   actionSelector?: string;
-  snapshotUrl?: string;
 };
 
 export type CallLogStatus = 'in-progress' | 'done' | 'error' | 'paused';
 
 export type CallLog = {
-  id: number;
+  id: string;
   title: string;
   messages: string[];
   status: CallLogStatus;
-  error?: string;
+  error?: SerializedError;
   reveal?: boolean;
   duration?: number;
   params: {
     url?: string,
     selector?: string,
   };
-  snapshots: {
-    before: boolean,
-    action: boolean,
-    after: boolean,
-  }
 };
 
 export type SourceHighlight = {

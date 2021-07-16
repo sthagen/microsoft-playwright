@@ -111,6 +111,18 @@ function listMethods(rootNames, apiFileName) {
 
   /**
    * @param {string} className
+   * @param {string} methodName
+   */
+  function shouldSkipMethodByName(className, methodName) {
+    if (methodName.startsWith('_') || methodName === 'T' || methodName === 'toString')
+      return true;
+    if (/** @type {any} */(EventEmitter).prototype.hasOwnProperty(methodName))
+      return true;
+    return false;
+  }
+
+  /**
+   * @param {string} className
    * @param {!ts.Type} classType
    */
   function visitClass(className, classType) {
@@ -120,9 +132,7 @@ function listMethods(rootNames, apiFileName) {
       apiMethods.set(className, methods);
     }
     for (const [name, member] of /** @type {any[]} */(classType.symbol.members || [])) {
-      if (name.startsWith('_') || name === 'T' || name === 'toString')
-        continue;
-      if (/** @type {any} */(EventEmitter).prototype.hasOwnProperty(name))
+      if (shouldSkipMethodByName(className, name))
         continue;
       const memberType = checker.getTypeOfSymbolAtLocation(member, member.valueDeclaration);
       const signature = signatureForType(memberType);

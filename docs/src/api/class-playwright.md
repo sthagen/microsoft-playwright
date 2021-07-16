@@ -65,10 +65,28 @@ with sync_playwright() as playwright:
     run(playwright)
 ```
 
+```csharp
+using Microsoft.Playwright;
+using System.Threading.Tasks;
+
+class PlaywrightExample
+{
+    public static async Task Main()
+    {
+        using var playwright = await Playwright.CreateAsync();
+        await using var browser = await playwright.Chromium.LaunchAsync();
+        var page = await browser.NewPageAsync();
+
+        await page.GotoAsync("https://www.microsoft.com");
+        // other actions...
+    }
+}
+```
+
 ## property: Playwright.chromium
 - type: <[BrowserType]>
 
-This object can be used to launch or connect to Chromium, returning instances of [ChromiumBrowser].
+This object can be used to launch or connect to Chromium, returning instances of [Browser].
 
 ## property: Playwright.devices
 * langs: js, python
@@ -129,6 +147,31 @@ with sync_playwright() as playwright:
     run(playwright)
 ```
 
+## property: Playwright.devices
+* langs: csharp
+- type: <[IReadOnlyDictionary<string, BrowserNewContextOptions>]>
+
+Returns a dictionary of devices to be used with [`method: Browser.newContext`] or [`method: Browser.newPage`].
+
+```csharp
+using Microsoft.Playwright;
+using System.Threading.Tasks;
+
+class PlaywrightExample
+{
+    public static async Task Main()
+    {
+        using var playwright = await Playwright.CreateAsync();
+        await using var browser = await playwright.Webkit.LaunchAsync();
+        await using var context = await browser.NewContextAsync(Playwright.Devices["iPhone 6"]);
+
+        var page = await context.NewPageAsync();
+        await page.GotoAsync("https://www.theverge.com");
+        // other actions...
+    }
+}
+```
+
 ## property: Playwright.errors
 * langs: js
 - type: <[Object]>
@@ -169,7 +212,7 @@ except TimeoutError as e:
 ## property: Playwright.firefox
 - type: <[BrowserType]>
 
-This object can be used to launch or connect to Firefox, returning instances of [FirefoxBrowser].
+This object can be used to launch or connect to Firefox, returning instances of [Browser].
 
 ## property: Playwright.selectors
 - type: <[Selectors]>
@@ -180,4 +223,4 @@ Selectors can be used to install custom selector engines. See
 ## property: Playwright.webkit
 - type: <[BrowserType]>
 
-This object can be used to launch or connect to WebKit, returning instances of [WebKitBrowser].
+This object can be used to launch or connect to WebKit, returning instances of [Browser].

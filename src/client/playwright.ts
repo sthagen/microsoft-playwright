@@ -22,6 +22,7 @@ import { Electron } from './electron';
 import { TimeoutError } from '../utils/errors';
 import { Size } from './types';
 import { Android } from './android';
+import { SocksSocket } from './socksSocket';
 
 type DeviceDescriptor = {
   userAgent: string,
@@ -42,6 +43,8 @@ export class Playwright extends ChannelOwner<channels.PlaywrightChannel, channel
   readonly devices: Devices;
   readonly selectors: Selectors;
   readonly errors: { TimeoutError: typeof TimeoutError };
+  private _selectorsOwner: SelectorsOwner;
+  _forwardPorts: number[] = [];
 
   constructor(parent: ChannelOwner, type: string, guid: string, initializer: channels.PlaywrightInitializer) {
     super(parent, type, guid, initializer);
@@ -55,6 +58,19 @@ export class Playwright extends ChannelOwner<channels.PlaywrightChannel, channel
       this.devices[name] = descriptor;
     this.selectors = sharedSelectors;
     this.errors = { TimeoutError };
-    this.selectors._addChannel(SelectorsOwner.from(initializer.selectors));
+
+    this._selectorsOwner = SelectorsOwner.from(initializer.selectors);
+    this.selectors._addChannel(this._selectorsOwner);
+
+    this._channel.on('incomingSocksSocket', ({socket}) => SocksSocket.from(socket));
+  }
+
+  async _enablePortForwarding(ports: number[]) {
+    this._forwardPorts = ports;
+    await this._channel.setForwardedPorts({ports});
+  }
+
+  _cleanup() {
+    this.selectors._removeChannel(this._selectorsOwner);
   }
 }

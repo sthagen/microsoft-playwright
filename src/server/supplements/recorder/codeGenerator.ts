@@ -28,7 +28,7 @@ export type ActionInContext = {
   isMainFrame: boolean;
   action: Action;
   committed?: boolean;
-}
+};
 
 export class CodeGenerator extends EventEmitter {
   private _currentAction: ActionInContext | null = null;
@@ -40,7 +40,9 @@ export class CodeGenerator extends EventEmitter {
   constructor(browserName: string, generateHeaders: boolean, launchOptions: LaunchOptions, contextOptions: BrowserContextOptions, deviceName: string | undefined, saveStorage: string | undefined) {
     super();
 
+    // Make a copy of options to modify them later.
     launchOptions = { headless: false, ...launchOptions };
+    contextOptions = { ...contextOptions };
     this._enabled = generateHeaders;
     this._options = { browserName, generateHeaders, launchOptions, contextOptions, deviceName, saveStorage };
     this.restart();
@@ -50,6 +52,7 @@ export class CodeGenerator extends EventEmitter {
     this._currentAction = null;
     this._lastAction = null;
     this._actions = [];
+    this.emit('change');
   }
 
   setEnabled(enabled: boolean) {
@@ -99,12 +102,10 @@ export class CodeGenerator extends EventEmitter {
           return;
         }
       }
-      for (const name of ['check', 'uncheck']) {
-        // Check and uncheck erase click.
-        if (lastAction && action.name === name && lastAction.name === 'click') {
-          if ((action as any).selector === (lastAction as any).selector)
-            eraseLastAction = true;
-        }
+      // Check and uncheck erase click.
+      if (lastAction && (action.name === 'check' || action.name === 'uncheck') && lastAction.name === 'click') {
+        if (action.selector === lastAction.selector)
+          eraseLastAction = true;
       }
     }
 
@@ -127,6 +128,11 @@ export class CodeGenerator extends EventEmitter {
   signal(pageAlias: string, frame: Frame, signal: Signal) {
     if (!this._enabled)
       return;
+
+    // We'll need to pass acceptDownloads for any generated downloads code to work.
+    if (signal.name === 'download')
+      this._options.contextOptions.acceptDownloads = true;
+
     // Signal either arrives while action is being performed or shortly after.
     if (this._currentAction) {
       this._currentAction.action.signals.push(signal);
@@ -162,8 +168,11 @@ export class CodeGenerator extends EventEmitter {
     const text = [];
     if (this._options.generateHeaders)
       text.push(languageGenerator.generateHeader(this._options));
-    for (const action of this._actions)
-      text.push(languageGenerator.generateAction(action));
+    for (const action of this._actions) {
+      const actionText = languageGenerator.generateAction(action);
+      if (actionText)
+        text.push(actionText);
+    }
     if (this._options.generateHeaders)
       text.push(languageGenerator.generateFooter(this._options.saveStorage));
     return text.join('\n');

@@ -17,8 +17,10 @@
 import { CallMetadata } from '../../instrumentation';
 import { CallLog, CallLogStatus } from './recorderTypes';
 
-export function metadataToCallLog(metadata: CallMetadata, status: CallLogStatus, snapshots: Set<string>): CallLog {
-  const title = metadata.apiName || metadata.method;
+export function metadataToCallLog(metadata: CallMetadata, status: CallLogStatus): CallLog {
+  let title = metadata.apiName || metadata.method;
+  if (metadata.method === 'waitForEventInfo')
+    title += `(${metadata.params.info.event})`;
   if (metadata.error)
     status = 'error';
   const params = {
@@ -38,23 +40,6 @@ export function metadataToCallLog(metadata: CallMetadata, status: CallLogStatus,
     error: metadata.error,
     params,
     duration,
-    snapshots: {
-      before: showBeforeSnapshot(metadata) && snapshots.has(`before@${metadata.id}`),
-      action: showActionSnapshot(metadata) && snapshots.has(`action@${metadata.id}`),
-      after: showAfterSnapshot(metadata) && snapshots.has(`after@${metadata.id}`),
-    }
   };
   return callLog;
-}
-
-function showBeforeSnapshot(metadata: CallMetadata): boolean {
-  return metadata.method === 'close';
-}
-
-function showActionSnapshot(metadata: CallMetadata): boolean {
-  return ['click', 'dblclick', 'check', 'uncheck', 'fill', 'press'].includes(metadata.method);
-}
-
-function showAfterSnapshot(metadata: CallMetadata): boolean {
-  return ['goto', 'click', 'dblclick', 'dblclick', 'check', 'uncheck', 'fill', 'press'].includes(metadata.method);
 }

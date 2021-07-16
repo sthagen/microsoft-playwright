@@ -18,16 +18,18 @@ type ServerResponse = import('http').ServerResponse;
 type IncomingMessage = import('http').IncomingMessage;
 
 export class TestServer {
-  static create(dirPath: string, port: number): Promise<TestServer>;
-  static createHTTPS(dirPath: string, port: number): Promise<TestServer>;
+  static create(dirPath: string, port: number, loopback?: string): Promise<TestServer>;
+  static createHTTPS(dirPath: string, port: number, loopback?: string): Promise<TestServer>;
   enableHTTPCache(pathPrefix: string);
   setAuth(path: string, username: string, password: string);
   enableGzip(path: string);
   setCSP(path: string, csp: string);
   stop(): Promise<void>;
-  setRoute(path: string, handler: (message: IncomingMessage & {postBody: Buffer}, response: ServerResponse) => void);
+  setRoute(path: string, handler: (message: IncomingMessage & { postBody: Promise<Buffer> }, response: ServerResponse) => void);
   setRedirect(from: string, to: string);
-  waitForRequest(path: string): Promise<IncomingMessage & {postBody: Buffer}>;
+  waitForRequest(path: string): Promise<IncomingMessage & { postBody: Promise<Buffer> }>;
+  waitForWebSocketConnectionRequest(): Promise<IncomingMessage>;
+  sendOnWebSocketConnection(data: string);
   reset();
   serveFile(request: IncomingMessage, response: ServerResponse);
   serveFile(request: IncomingMessage, response: ServerResponse, filePath: string);

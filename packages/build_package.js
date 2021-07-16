@@ -28,7 +28,7 @@ const cpAsync = util.promisify(ncp);
 const SCRIPT_NAME = path.basename(__filename);
 const ROOT_PATH = path.join(__dirname, '..');
 
-const PLAYWRIGHT_CORE_FILES = ['bin/PrintDeps.exe', 'lib', 'types', 'NOTICE', 'LICENSE', 'bin/android-driver.apk', 'bin/android-driver-target.apk'];
+const PLAYWRIGHT_CORE_FILES = ['bin', 'lib', 'types', 'NOTICE', 'LICENSE', ];
 
 const PACKAGES = {
   'playwright': {
@@ -41,6 +41,12 @@ const PACKAGES = {
     description: 'A high-level API to automate web browsers',
     browsers: [],
     files: PLAYWRIGHT_CORE_FILES,
+  },
+  'playwright-test': {
+    description: 'Playwright Test',
+    browsers: ['chromium', 'firefox', 'webkit', 'ffmpeg'],
+    files: PLAYWRIGHT_CORE_FILES,
+    name: '@playwright/test',
   },
   'playwright-webkit': {
     description: 'A high-level API to automate WebKit',
@@ -55,21 +61,26 @@ const PACKAGES = {
   'playwright-chromium': {
     description: 'A high-level API to automate Chromium',
     browsers: ['chromium', 'ffmpeg'],
-    files: [...PLAYWRIGHT_CORE_FILES],
-  },
-  'playwright-electron': {
-    version: '0.4.0', // Manually manage playwright-electron version.
-    description: 'A high-level API to automate Electron',
-    browsers: ['ffmpeg'],
-    files: [...PLAYWRIGHT_CORE_FILES],
-  },
-  'playwright-android': {
-    version: '0.0.8', // Manually manage playwright-android version.
-    description: 'A high-level API to automate Chrome for Android',
-    browsers: ['ffmpeg'],
-    files: [...PLAYWRIGHT_CORE_FILES],
+    files: PLAYWRIGHT_CORE_FILES,
   },
 };
+
+const DEPENDENCIES = [
+  'commander',
+  'debug',
+  'extract-zip',
+  'https-proxy-agent',
+  'jpeg-js',
+  'mime',
+  'pngjs',
+  'progress',
+  'proper-lockfile',
+  'proxy-from-env',
+  'rimraf',
+  'stack-utils',
+  'ws',
+  'yazl',
+];
 
 // 1. Parse CLI arguments
 const args = process.argv.slice(2);
@@ -125,14 +136,15 @@ if (!args.some(arg => arg === '--no-cleanup')) {
   for (const file of package.files)
     await copyToPackage(path.join(ROOT_PATH, file), path.join(packagePath, file));
 
-  await copyToPackage(path.join(ROOT_PATH, 'api.json'), path.join(packagePath, 'api.json'));
-  await copyToPackage(path.join(ROOT_PATH, 'src/protocol/protocol.yml'), path.join(packagePath, 'protocol.yml'));
-
   // 4. Generate package.json
   const pwInternalJSON = require(path.join(ROOT_PATH, 'package.json'));
+  const depNames = packageName === 'playwright-test' ? Object.keys(pwInternalJSON.dependencies) : DEPENDENCIES;
+  const dependencies = {};
+  for (const dep of depNames)
+    dependencies[dep] =  pwInternalJSON.dependencies[dep];
   await writeToPackage('package.json', JSON.stringify({
-    name: packageName,
-    version: package.version || pwInternalJSON.version,
+    name: package.name || packageName,
+    version: pwInternalJSON.version,
     description: package.description,
     repository: pwInternalJSON.repository,
     engines: pwInternalJSON.engines,
@@ -157,7 +169,7 @@ if (!args.some(arg => arg === '--no-cleanup')) {
     },
     author: pwInternalJSON.author,
     license: pwInternalJSON.license,
-    dependencies: pwInternalJSON.dependencies
+    dependencies,
   }, null, 2));
 
   // 5. Generate browsers.json

@@ -17,7 +17,7 @@
 import { ChildProcess } from 'child_process';
 import { assert, monotonicTime } from '../../utils/utils';
 import { Page } from '../page';
-import { launchProcess } from '../processLauncher';
+import { launchProcess } from '../../utils/processLauncher';
 import { Progress, ProgressController } from '../progress';
 import { internalCallMetadata } from '../instrumentation';
 import * as types from '../types';
@@ -43,15 +43,16 @@ export class VideoRecorder {
     const controller = new ProgressController(internalCallMetadata(), page);
     controller.setLogName('browser');
     return await controller.run(async progress => {
-      const recorder = new VideoRecorder(ffmpegPath, progress);
+      const recorder = new VideoRecorder(page, ffmpegPath, progress);
       await recorder._launch(options);
       return recorder;
     });
   }
 
-  private constructor(ffmpegPath: string, progress: Progress) {
+  private constructor(page: Page, ffmpegPath: string, progress: Progress) {
     this._progress = progress;
     this._ffmpegPath = ffmpegPath;
+    page.on(Page.Events.ScreencastFrame, frame => this.writeFrame(frame.buffer, frame.timestamp));
   }
 
   private async _launch(options: types.PageScreencastOptions) {
@@ -91,7 +92,7 @@ export class VideoRecorder {
     const progress = this._progress;
 
     const { launchedProcess, gracefullyClose } = await launchProcess({
-      executablePath: this._ffmpegPath,
+      command: this._ffmpegPath,
       args,
       stdio: 'stdin',
       log: (message: string) => progress.log(message),

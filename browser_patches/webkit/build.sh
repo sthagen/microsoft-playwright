@@ -5,6 +5,7 @@ set +x
 trap "cd $(pwd -P)" EXIT
 cd "$(dirname $0)"
 SCRIPT_FOLDER="$(pwd -P)"
+source "${SCRIPT_FOLDER}/../utils.sh"
 
 build_gtk() {
   if ! [[ -d ./WebKitBuild/GTK/DependenciesGTK ]]; then
@@ -25,7 +26,7 @@ build_wpe() {
   if [[ -n "${EXPORT_COMPILE_COMMANDS}" ]]; then
     CMAKE_ARGS="--cmakeargs=\"-DCMAKE_EXPORT_COMPILE_COMMANDS=1\""
   fi
-  WEBKIT_JHBUILD=1 WEBKIT_JHBUILD_MODULESET=minimal WEBKIT_OUTPUTDIR=$(pwd)/WebKitBuild/WPE ./Tools/Scripts/build-webkit --wpe --release "${CMAKE_ARGS}" --touch-events --orientation-events --no-bubblewrap-sandbox --no-webxr MiniBrowser
+  WEBKIT_JHBUILD=1 WEBKIT_JHBUILD_MODULESET=minimal WEBKIT_OUTPUTDIR=$(pwd)/WebKitBuild/WPE ./Tools/Scripts/build-webkit --wpe --release "${CMAKE_ARGS}" --touch-events --orientation-events --no-bubblewrap-sandbox --no-webxr --cmakeargs=-DENABLE_COG=OFF MiniBrowser
 }
 
 ensure_linux_deps() {
@@ -43,6 +44,15 @@ else
 fi
 
 if [[ "$(uname)" == "Darwin" ]]; then
+  CURRENT_HOST_OS_VERSION=$(getMacVersion)
+  if [[ "${CURRENT_HOST_OS_VERSION}" == "10.15" ]]; then
+    selectXcodeVersionOrDie "11.7"
+  elif [[ "${CURRENT_HOST_OS_VERSION}" == "11."* ]]; then
+    selectXcodeVersionOrDie "12.2"
+  else
+    echo "ERROR: ${CURRENT_HOST_OS_VERSION} is not supported"
+    exit 1
+  fi
   ./Tools/Scripts/build-webkit --release --touch-events --orientation-events
 elif [[ "$(uname)" == "Linux" ]]; then
   if [[ $# == 0 || (-z "$1") ]]; then

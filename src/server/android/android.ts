@@ -19,7 +19,6 @@ import * as types from '../types';
 import { EventEmitter } from 'events';
 import fs from 'fs';
 import * as stream from 'stream';
-import * as util from 'util';
 import * as ws from 'ws';
 import { createGuid, makeWaitForNextTask } from '../../utils/utils';
 import { BrowserOptions, BrowserProcess, PlaywrightOptions } from '../browser';
@@ -34,8 +33,6 @@ import { AndroidWebView } from '../../protocol/channels';
 import { CRPage } from '../chromium/crPage';
 import { SdkObject, internalCallMetadata } from '../instrumentation';
 
-const readFileAsync = util.promisify(fs.readFile);
-
 export interface Backend {
   devices(): Promise<DeviceBackend[]>;
 }
@@ -43,13 +40,14 @@ export interface Backend {
 export interface DeviceBackend {
   serial: string;
   status: string;
-  close(): void;
+  close(): Promise<void>;
   init(): Promise<void>;
   runCommand(command: string): Promise<Buffer>;
   open(command: string): Promise<SocketBackend>;
 }
 
 export interface SocketBackend extends EventEmitter {
+  guid: string;
   write(data: Buffer): Promise<void>;
   close(): void;
 }
@@ -61,7 +59,7 @@ export class Android extends SdkObject {
   readonly _playwrightOptions: PlaywrightOptions;
 
   constructor(backend: Backend, playwrightOptions: PlaywrightOptions) {
-    super(playwrightOptions.rootSdkObject);
+    super(playwrightOptions.rootSdkObject, 'android');
     this._backend = backend;
     this._playwrightOptions = playwrightOptions;
     this._timeoutSettings = new TimeoutSettings();
@@ -115,7 +113,7 @@ export class AndroidDevice extends SdkObject {
   private _isClosed = false;
 
   constructor(android: Android, backend: DeviceBackend, model: string) {
-    super(android);
+    super(android, 'android-device');
     this._android = android;
     this._backend = backend;
     this.model = model;
@@ -173,7 +171,7 @@ export class AndroidDevice extends SdkObject {
 
     debug('pw:android')('Installing the new driver');
     for (const file of ['android-driver.apk', 'android-driver-target.apk'])
-      await this.installApk(await readFileAsync(require.resolve(`../../../bin/${file}`)));
+      await this.installApk(await fs.promises.readFile(require.resolve(`../../../bin/${file}`)));
 
     debug('pw:android')('Starting the new driver');
     this.shell('am instrument -w com.microsoft.playwright.androiddriver.test/androidx.test.runner.AndroidJUnitRunner').catch(e => debug('pw:android')(e));
@@ -264,7 +262,9 @@ export class AndroidDevice extends SdkObject {
       isChromium: true,
       slowMo: 0,
       persistent: { ...options, noDefaultViewport: true },
-      downloadsPath: undefined,
+      artifactsDir: '',
+      downloadsPath: '',
+      tracesDir: '',
       browserProcess: new ClankBrowserProcess(androidBrowser),
       proxy: options.proxy,
       protocolLogger: helper.debugProtocolLogger(),

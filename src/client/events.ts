@@ -37,6 +37,12 @@ export const Events = {
   BrowserContext: {
     Close: 'close',
     Page: 'page',
+    BackgroundPage: 'backgroundpage',
+    ServiceWorker: 'serviceworker',
+    Request: 'request',
+    Response: 'response',
+    RequestFailed: 'requestfailed',
+    RequestFinished: 'requestfinished',
   },
 
   BrowserServer: {
@@ -76,11 +82,6 @@ export const Events = {
 
   Worker: {
     Close: 'close',
-  },
-
-  ChromiumBrowserContext: {
-    BackgroundPage: 'backgroundpage',
-    ServiceWorker: 'serviceworker',
   },
 
   ElectronApplication: {

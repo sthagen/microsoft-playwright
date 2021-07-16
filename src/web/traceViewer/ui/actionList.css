@@ -14,15 +14,19 @@
   limitations under the License.
 */
 
-.action-list {
-  width: var(--sidebar-width);
+.action-list-title {
+  padding: 0 10px;
+}
+
+.action-list-content {
   display: flex;
   flex-direction: column;
-  flex: none;
+  flex: auto;
   position: relative;
-  padding: 0 var(--layout-gap);
   user-select: none;
   color: #555;
+  overflow: auto;
+  outline: none;
 }
 
 .action-entry {
@@ -32,42 +36,80 @@
   align-items: center;
   white-space: nowrap;
   line-height: 28px;
-  padding-left: 3px;
-  border-left: 3px solid transparent;
+  padding-left: 5px;
 }
 
-.action-entry:hover, .action-entry.selected {
-  color: #333;
-}
-
+.action-entry.highlighted,
 .action-entry.selected {
-  border-left: 3px solid #666;
+  background-color: var(--gray);
 }
 
-.action-entry.selected:focus {
-  border-color: var(--orange);
+.action-entry.highlighted {
+  background-color: var(--light-gray);
+}
+
+.action-list-content:focus .action-entry.selected {
+  background-color: var(--blue);
+}
+
+.action-entry.highlighted *,
+.action-entry.selected * {
+  color: white !important;
 }
 
 .action-title {
-  display: inline;
-  white-space: nowrap;
+  flex: auto;
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.action-icon {
+  flex: none;
+  display: flex;
+  align-items: center;
+  padding-right: 3px;
+}
+
+.action-icons {
+  display: flex;
+  flex-direction: row;
+  cursor: pointer;
+  height: 20px;
+  position: relative;
+  top: 1px;
+  border-bottom: 1px solid transparent;
+}
+
+.action-icons:hover {
+  border-bottom: 1px solid white;
 }
 
 .action-error {
   color: red;
-  top: 2px;
   position: relative;
   margin-right: 2px;
+  flex: none;
 }
 
 .action-selector {
   display: inline;
+  flex: none;
   padding-left: 5px;
   color: var(--orange);
 }
 
 .action-url {
   display: inline;
+  flex: none;
   padding-left: 5px;
   color: var(--blue);
+}
+
+.action-entry .codicon-error {
+  color: red;
+}
+
+.action-entry .codicon-warning {
+  color: darkorange;
 }

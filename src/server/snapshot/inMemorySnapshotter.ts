@@ -16,7 +16,7 @@
 
 import { HttpServer } from '../../utils/httpServer';
 import { BrowserContext } from '../browserContext';
-import { helper } from '../helper';
+import { eventsHelper } from '../../utils/eventsHelper';
 import { Page } from '../page';
 import { FrameSnapshot, ResourceSnapshot } from './snapshotTypes';
 import { SnapshotRenderer } from './snapshotRenderer';
@@ -24,8 +24,6 @@ import { SnapshotServer } from './snapshotServer';
 import { BaseSnapshotStorage } from './snapshotStorage';
 import { Snapshotter, SnapshotterBlob, SnapshotterDelegate } from './snapshotter';
 import { ElementHandle } from '../dom';
-
-const kSnapshotInterval = 25;
 
 export class InMemorySnapshotter extends BaseSnapshotStorage implements SnapshotterDelegate {
   private _blobs = new Map<string, Buffer>();
@@ -40,12 +38,8 @@ export class InMemorySnapshotter extends BaseSnapshotStorage implements Snapshot
   }
 
   async initialize(): Promise<string> {
-    await this._snapshotter.initialize();
+    await this._snapshotter.start();
     return await this._server.start();
-  }
-
-  async start(): Promise<void> {
-    await this._snapshotter.setAutoSnapshotInterval(kSnapshotInterval);
   }
 
   async dispose() {
@@ -57,19 +51,15 @@ export class InMemorySnapshotter extends BaseSnapshotStorage implements Snapshot
     if (this._frameSnapshots.has(snapshotName))
       throw new Error('Duplicate snapshot name: ' + snapshotName);
 
-    this._snapshotter.captureSnapshot(page, snapshotName, element);
+    this._snapshotter.captureSnapshot(page, snapshotName, element).catch(() => {});
     return new Promise<SnapshotRenderer>(fulfill => {
-      const listener = helper.addEventListener(this, 'snapshot', (renderer: SnapshotRenderer) => {
+      const listener = eventsHelper.addEventListener(this, 'snapshot', (renderer: SnapshotRenderer) => {
         if (renderer.snapshotName === snapshotName) {
-          helper.removeEventListeners([listener]);
+          eventsHelper.removeEventListeners([listener]);
           fulfill(renderer);
         }
       });
     });
-  }
-
-  async setAutoSnapshotInterval(interval: number): Promise<void> {
-    await this._snapshotter.setAutoSnapshotInterval(interval);
   }
 
   onBlob(blob: SnapshotterBlob): void {

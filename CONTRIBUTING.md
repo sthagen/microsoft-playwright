@@ -130,7 +130,7 @@ A barrier for introducing new installation dependencies is especially high:
 - Tests should be *hermetic*. Tests should not depend on external services.
 - Tests should work on all three platforms: Mac, Linux and Win. This is especially important for screenshot tests.
 
-Playwright tests are located in [`test`](https://github.com/microsoft/playwright/blob/master/test) and use [Folio](https://github.com/microsoft/folio) test runner.
+Playwright tests are located in [`tests`](https://github.com/microsoft/playwright/blob/master/tests) and use `@playwright/test` test runner.
 These are integration tests, making sure public API methods and events work as expected.
 
 - To run all tests:
@@ -166,10 +166,10 @@ it.skip('should work', async ({server, page}) => {
 });
 ```
 
-- To run tests in non-headless (headful) mode:
+- To run tests in non-headless (headed) mode:
 
 ```bash
-HEADLESS=false npm run ctest
+HEADFUL=1 npm run ctest
 ```
 
 - To run tests with custom browser executable, specify `CRPATH`, `WKPATH` or `FFPATH` env variable that points to browser executable:
@@ -181,7 +181,7 @@ CRPATH=<path-to-executable> npm run ctest
 - To run tests in slow-mode:
 
 ```bash
-HEADLESS=false SLOW_MO=500 npm run wtest
+HEADFUL=1 SLOW_MO=500 npm run wtest
 ```
 
 - When should a test be marked with `skip` or `fail`?

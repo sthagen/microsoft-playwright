@@ -23,6 +23,7 @@ import { rewriteErrorMessage } from '../../utils/stackTrace';
 import { debugLogger, RecentLogsCollector } from '../../utils/debugLogger';
 import { ProtocolLogger } from '../types';
 import { helper } from '../helper';
+import { kBrowserClosedError } from '../../utils/errors';
 
 // WKPlaywright uses this special id to issue Browser.close command which we
 // should ignore.
@@ -49,7 +50,7 @@ export class WKConnection {
     this._onDisconnect = onDisconnect;
     this._protocolLogger = protocolLogger;
     this._browserLogsCollector = browserLogsCollector;
-    this.browserSession = new WKSession(this, '', 'Browser has been closed.', (message: any) => {
+    this.browserSession = new WKSession(this, '', kBrowserClosedError, (message: any) => {
       this.rawSend(message);
     });
   }
@@ -183,8 +184,4 @@ export function createProtocolError(error: Error, method: string, protocolError:
   if ('data' in protocolError)
     message += ` ${JSON.stringify(protocolError.data)}`;
   return rewriteErrorMessage(error, message);
-}
-
-export function isSwappedOutError(e: Error) {
-  return e.message.includes('Target was swapped out.');
 }

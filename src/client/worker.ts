@@ -20,7 +20,6 @@ import { ChannelOwner } from './channelOwner';
 import { assertMaxArguments, JSHandle, parseResult, serializeArgument } from './jsHandle';
 import { Page } from './page';
 import { BrowserContext } from './browserContext';
-import { ChromiumBrowserContext } from './chromiumBrowserContext';
 import * as api from '../../types/types';
 import * as structs from '../../types/structs';
 
@@ -38,7 +37,7 @@ export class Worker extends ChannelOwner<channels.WorkerChannel, channels.Worker
       if (this._page)
         this._page._workers.delete(this);
       if (this._context)
-        (this._context as ChromiumBrowserContext)._serviceWorkers.delete(this);
+        this._context._serviceWorkers.delete(this);
       this.emit(Events.Worker.Close, this);
     });
   }
@@ -49,7 +48,7 @@ export class Worker extends ChannelOwner<channels.WorkerChannel, channels.Worker
 
   async evaluate<R, Arg>(pageFunction: structs.PageFunction<Arg, R>, arg?: Arg): Promise<R> {
     assertMaxArguments(arguments.length, 2);
-    return this._wrapApiCall('worker.evaluate', async (channel: channels.WorkerChannel) => {
+    return this._wrapApiCall(async (channel: channels.WorkerChannel) => {
       const result = await channel.evaluateExpression({ expression: String(pageFunction), isFunction: typeof pageFunction === 'function', arg: serializeArgument(arg) });
       return parseResult(result.value);
     });
@@ -57,7 +56,7 @@ export class Worker extends ChannelOwner<channels.WorkerChannel, channels.Worker
 
   async evaluateHandle<R, Arg>(pageFunction: structs.PageFunction<Arg, R>, arg?: Arg): Promise<structs.SmartHandle<R>> {
     assertMaxArguments(arguments.length, 2);
-    return this._wrapApiCall('worker.evaluateHandle', async (channel: channels.WorkerChannel) => {
+    return this._wrapApiCall(async (channel: channels.WorkerChannel) => {
       const result = await channel.evaluateExpressionHandle({ expression: String(pageFunction), isFunction: typeof pageFunction === 'function', arg: serializeArgument(arg) });
       return JSHandle.from(result.handle) as any as structs.SmartHandle<R>;
     });

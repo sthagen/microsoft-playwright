@@ -14,18 +14,20 @@
  * limitations under the License.
  */
 
-import { ActionEntry } from '../../../server/trace/viewer/traceModel';
-import './networkTab.css';
 import * as React from 'react';
+import { ActionTraceEvent } from '../../../server/trace/common/traceEvents';
+import * as modelUtil from './modelUtil';
 import { NetworkResourceDetails } from './networkResourceDetails';
+import './networkTab.css';
 
 export const NetworkTab: React.FunctionComponent<{
-  actionEntry: ActionEntry | undefined,
-}> = ({ actionEntry }) => {
+  action: ActionTraceEvent | undefined,
+}> = ({ action }) => {
   const [selected, setSelected] = React.useState(0);
 
+  const resources = action ? modelUtil.resourcesForAction(action) : [];
   return <div className='network-tab'>{
-    (actionEntry ? actionEntry.resources : []).map((resource, index) => {
+    resources.map((resource, index) => {
       return <NetworkResourceDetails resource={resource} key={index} index={index} selected={selected === index} setSelected={setSelected} />;
     })
   }</div>;

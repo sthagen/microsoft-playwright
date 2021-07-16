@@ -32,13 +32,22 @@ context = browser.new_context(record_video_dir="videos/")
 context.close()
 ```
 
+```csharp
+var context = await browser.NewContextAsync(new BrowserNewContextOptions
+{
+    RecordVideoDir = "videos/"
+});
+// Make sure to close, so that videos are saved.
+await context.CloseAsync();
+```
+
 You can also specify video size, it defaults to viewport size scaled down to fit 800x800.
 
 ```js
 const context = await browser.newContext({
   recordVideo: {
     dir: 'videos/',
-    size: { width: 1024, height: 768 },
+    size: { width: 640, height: 480 },
   }
 });
 ```
@@ -46,21 +55,31 @@ const context = await browser.newContext({
 ```java
 BrowserContext context = browser.newContext(new Browser.NewContextOptions()
   .setRecordVideoDir(Paths.get("videos/"))
-  .setRecordVideoSize(1024, 768));
+  .setRecordVideoSize(640, 480));
 ```
 
 ```python async
 context = await browser.new_context(
     record_video_dir="videos/",
-    record_video_size={"width": 1024, "height": 768}
+    record_video_size={"width": 640, "height": 480}
 )
 ```
 
 ```python sync
 context = browser.new_context(
     record_video_dir="videos/",
-    record_video_size={"width": 1024, "height": 768}
+    record_video_size={"width": 640, "height": 480}
 )
+```
+
+```csharp
+var context = await browser.NewContextAsync(new BrowserNewContextOptions
+{
+    RecordVideoDir = "videos/",
+    RecordVideoSize = new RecordVideoSize() { Width = 640, Height = 480 }
+});
+// Make sure to close, so that videos are saved.
+await context.CloseAsync();
 ```
 
 Saved video files will appear in the specified folder. They all have generated unique names.
@@ -82,6 +101,10 @@ path = await page.video.path()
 
 ```python sync
 path = page.video.path()
+```
+
+```csharp
+var path = await page.Video.PathAsync();
 ```
 
 :::note

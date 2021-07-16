@@ -20,6 +20,7 @@ let success = {
   'playwright-chromium': ['chromium'],
   'playwright-firefox': ['firefox'],
   'playwright-webkit': ['webkit'],
+  '@playwright/test': ['chromium', 'firefox', 'webkit'],
 }[requireName];
 if (process.argv[3] === 'none')
   success = [];
@@ -32,7 +33,7 @@ const playwright = require(requireName);
 
 // Requiring internals should work.
 const errors = require(requireName + '/lib/utils/errors');
-const installer = require(requireName + '/lib/install/installer');
+const registry = require(requireName + '/lib/utils/registry');
 
 (async () => {
   for (const browserType of success) {

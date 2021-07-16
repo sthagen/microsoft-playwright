@@ -15,39 +15,43 @@
  */
 
 import { EventEmitter } from 'events';
-import { captureStackTrace, rewriteErrorMessage } from '../utils/stackTrace';
+import { rewriteErrorMessage } from '../utils/stackTrace';
 import { TimeoutError } from '../utils/errors';
 import { createGuid } from '../utils/utils';
+import * as channels from '../protocol/channels';
 import { ChannelOwner } from './channelOwner';
 
 export class Waiter {
   private _dispose: (() => void)[];
   private _failures: Promise<any>[] = [];
+  private _immediateError?: Error;
   // TODO: can/should we move these logs into wrapApiCall?
   private _logs: string[] = [];
-  private _channelOwner: ChannelOwner;
+  private _channel: channels.EventTargetChannel;
   private _waitId: string;
   private _error: string | undefined;
 
-  constructor(channelOwner: ChannelOwner, name: string) {
+  constructor(channelOwner: ChannelOwner<channels.EventTargetChannel>, event: string) {
     this._waitId = createGuid();
-    this._channelOwner = channelOwner;
-    this._channelOwner._waitForEventInfoBefore(this._waitId, name, captureStackTrace().frames);
+    this._channel = channelOwner._channel;
+    channelOwner._wrapApiCall(async (channel: channels.EventTargetChannel) => {
+      channel.waitForEventInfo({ info: { waitId: this._waitId, phase: 'before', event } }).catch(() => {});
+    });
     this._dispose = [
-      () => this._channelOwner._waitForEventInfoAfter(this._waitId, this._error)
+      () => this._channel.waitForEventInfo({ info: { waitId: this._waitId, phase: 'after', error: this._error } }).catch(() => {})
     ];
   }
 
-  static createForEvent(channelOwner: ChannelOwner, target: string, event: string) {
-    return new Waiter(channelOwner, `${target}.waitForEvent(${event})`);
+  static createForEvent(channelOwner: ChannelOwner<channels.EventTargetChannel>, event: string) {
+    return new Waiter(channelOwner, event);
   }
 
-  async waitForEvent<T = void>(emitter: EventEmitter, event: string, predicate?: (arg: T) => boolean): Promise<T> {
+  async waitForEvent<T = void>(emitter: EventEmitter, event: string, predicate?: (arg: T) => boolean | Promise<boolean>): Promise<T> {
     const { promise, dispose } = waitForEvent(emitter, event, predicate);
     return this.waitForPromise(promise, dispose);
   }
 
-  rejectOnEvent<T = void>(emitter: EventEmitter, event: string, error: Error, predicate?: (arg: T) => boolean) {
+  rejectOnEvent<T = void>(emitter: EventEmitter, event: string, error: Error, predicate?: (arg: T) => boolean | Promise<boolean>) {
     const { promise, dispose } = waitForEvent(emitter, event, predicate);
     this._rejectOn(promise.then(() => { throw error; }), dispose);
   }
@@ -59,6 +63,10 @@ export class Waiter {
     this._rejectOn(promise.then(() => { throw new TimeoutError(message); }), dispose);
   }
 
+  rejectImmediately(error: Error) {
+    this._immediateError = error;
+  }
+
   dispose() {
     for (const dispose of this._dispose)
       dispose();
@@ -66,6 +74,8 @@ export class Waiter {
 
   async waitForPromise<T>(promise: Promise<T>, dispose?: () => void): Promise<T> {
     try {
+      if (this._immediateError)
+        throw this._immediateError;
       const result = await Promise.race([promise, ...this._failures]);
       if (dispose)
         dispose();
@@ -75,14 +85,14 @@ export class Waiter {
         dispose();
       this._error = e.message;
       this.dispose();
-      rewriteErrorMessage(e, e.message + formatLogRecording(this._logs) + kLoggingNote);
+      rewriteErrorMessage(e, e.message + formatLogRecording(this._logs));
       throw e;
     }
   }
 
   log(s: string) {
     this._logs.push(s);
-    this._channelOwner._waitForEventInfoLog(this._waitId, s);
+    this._channel.waitForEventInfo({ info: { waitId: this._waitId, phase: 'log', message: s } }).catch(() => {});
   }
 
   private _rejectOn(promise: Promise<any>, dispose?: () => void) {
@@ -92,12 +102,12 @@ export class Waiter {
   }
 }
 
-function waitForEvent<T = void>(emitter: EventEmitter, event: string, predicate?: (arg: T) => boolean): { promise: Promise<T>, dispose: () => void } {
+function waitForEvent<T = void>(emitter: EventEmitter, event: string, predicate?: (arg: T) => boolean | Promise<boolean>): { promise: Promise<T>, dispose: () => void } {
   let listener: (eventArg: any) => void;
   const promise = new Promise<T>((resolve, reject) => {
-    listener = (eventArg: any) => {
+    listener = async (eventArg: any) => {
       try {
-        if (predicate && !predicate(eventArg))
+        if (predicate && !(await predicate(eventArg)))
           return;
         emitter.removeListener(event, listener);
         resolve(eventArg);
@@ -118,8 +128,6 @@ function waitForTimeout(timeout: number): { promise: Promise<void>, dispose: () 
   const dispose = () => clearTimeout(timeoutId);
   return { promise, dispose };
 }
-
-const kLoggingNote = `\nNote: use DEBUG=pw:api environment variable to capture Playwright logs.`;
 
 function formatLogRecording(log: string[]): string {
   if (!log.length)

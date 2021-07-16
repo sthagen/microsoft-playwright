@@ -36,6 +36,7 @@ export function parseError(error: SerializedError): Error {
   }
   const e = new Error(error.error.message);
   e.stack = error.error.stack || '';
+  e.name = error.error.name;
   return e;
 }
 
@@ -150,5 +151,5 @@ function isDate(obj: any): obj is Date {
 }
 
 function isError(obj: any): obj is Error {
-  return obj instanceof Error || (obj && obj.__proto__ && obj.__proto__.name === 'Error');
+  return obj instanceof Error || obj?.__proto__?.name === 'Error' || (obj?.__proto__ && isError(obj.__proto__));
 }

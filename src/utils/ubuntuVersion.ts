@@ -17,33 +17,50 @@
 
 import fs from 'fs';
 import * as os from 'os';
-import * as util from 'util';
 
-const readFileAsync = util.promisify(fs.readFile.bind(fs));
+let ubuntuVersionCached: string | undefined;
 
 export async function getUbuntuVersion(): Promise<string> {
-  if (os.platform() !== 'linux')
-    return '';
-  const osReleaseText = await readFileAsync('/etc/os-release', 'utf8').catch(e => '');
-  if (!osReleaseText)
-    return '';
-  return getUbuntuVersionInternal(osReleaseText);
+  if (ubuntuVersionCached === undefined)
+    ubuntuVersionCached = await getUbuntuVersionAsyncInternal();
+  return ubuntuVersionCached;
 }
 
 export function getUbuntuVersionSync(): string {
+  if (ubuntuVersionCached === undefined)
+    ubuntuVersionCached = getUbuntuVersionSyncInternal();
+  return ubuntuVersionCached;
+}
+
+async function getUbuntuVersionAsyncInternal(): Promise<string> {
+  if (os.platform() !== 'linux')
+    return '';
+  let osReleaseText = await fs.promises.readFile('/etc/upstream-release/lsb-release', 'utf8').catch(e => '');
+  if (!osReleaseText)
+    osReleaseText = await fs.promises.readFile('/etc/os-release', 'utf8').catch(e => '');
+  if (!osReleaseText)
+    return '';
+  return parseUbuntuVersion(osReleaseText);
+}
+
+function getUbuntuVersionSyncInternal(): string {
   if (os.platform() !== 'linux')
     return '';
   try {
-    const osReleaseText = fs.readFileSync('/etc/os-release', 'utf8');
+    let osReleaseText: string;
+    if (fs.existsSync('/etc/upstream-release/lsb-release'))
+      osReleaseText = fs.readFileSync('/etc/upstream-release/lsb-release', 'utf8');
+    else
+      osReleaseText = fs.readFileSync('/etc/os-release', 'utf8');
     if (!osReleaseText)
       return '';
-    return getUbuntuVersionInternal(osReleaseText);
+    return parseUbuntuVersion(osReleaseText);
   } catch (e) {
     return '';
   }
 }
 
-function getUbuntuVersionInternal(osReleaseText: string): string {
+function parseUbuntuVersion(osReleaseText: string): string {
   const fields = new Map();
   for (const line of osReleaseText.split('\n')) {
     const tokens = line.split('=');
@@ -55,6 +72,10 @@ function getUbuntuVersionInternal(osReleaseText: string): string {
       continue;
     fields.set(name.toLowerCase(), value);
   }
+  // For Linux mint
+  if (fields.get('distrib_id') && fields.get('distrib_id').toLowerCase() === 'ubuntu')
+    return fields.get('distrib_release') || '';
+
   if (!fields.get('name') || fields.get('name').toLowerCase() !== 'ubuntu')
     return '';
   return fields.get('version_id') || '';

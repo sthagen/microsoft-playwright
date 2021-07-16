@@ -65,8 +65,27 @@ with sync_playwright() as playwright:
     run(playwright)
 ```
 
+```csharp
+using Microsoft.Playwright;
+using System.Threading.Tasks;
+
+class BrowserTypeExamples
+{
+    public static async Task Run()
+    {
+        using var playwright = await Playwright.CreateAsync();
+        var chromium = playwright.Chromium;
+        var browser = await chromium.LaunchAsync();
+        var page = await browser.NewPageAsync();
+        await page.GoToAsync("https://www.bing.com");
+        // other actions
+        await browser.CloseAsync();
+    }
+}
+```
+
 ## async method: BrowserType.connect
-* langs: js, java
+* langs: js, python, java
 - returns: <[Browser]>
 
 This methods attaches Playwright to an existing browser instance.
@@ -75,6 +94,7 @@ This methods attaches Playwright to an existing browser instance.
 * langs: js
 - `params` <[Object]>
   - `wsEndpoint` <[string]> A browser websocket endpoint to connect to.
+  - `headers` <[Object]<[string], [string]>> Additional HTTP headers to be sent with web socket connect request. Optional.
   - `slowMo` <[float]> Slows down Playwright operations by the specified amount of milliseconds. Useful so that you
     can see what is going on. Defaults to 0.
   - `logger` <[Logger]> Logger sink for Playwright logging. Optional.
@@ -82,27 +102,33 @@ This methods attaches Playwright to an existing browser instance.
     `30000` (30 seconds). Pass `0` to disable timeout.
 
 ### param: BrowserType.connect.wsEndpoint
-* langs: java
+* langs: java, python
 - `wsEndpoint` <[string]>
 
 A browser websocket endpoint to connect to.
 
+### option: BrowserType.connect.headers
+* langs: java, python
+- `headers` <[Object]<[string], [string]>>
+
+Additional HTTP headers to be sent with web socket connect request. Optional.
+
 ### option: BrowserType.connect.slowMo
-* langs: java
+* langs: java, python
 - `slowMo` <[float]>
 
 Slows down Playwright operations by the specified amount of milliseconds. Useful so that you
 can see what is going on. Defaults to 0.
 
 ### option: BrowserType.connect.timeout
-* langs: java
+* langs: java, python
 - `timeout` <[float]>
 
 Maximum time in milliseconds to wait for the connection to be established. Defaults to
 `30000` (30 seconds). Pass `0` to disable timeout.
 
 ## async method: BrowserType.connectOverCDP
-* langs: js
+* langs: java, js, python
 - returns: <[Browser]>
 
 This methods attaches Playwright to an existing browser instance using the Chrome DevTools Protocol.
@@ -114,13 +140,41 @@ Connecting over the Chrome DevTools Protocol is only supported for Chromium-base
 :::
 
 ### param: BrowserType.connectOverCDP.params
+* langs: js
 - `params` <[Object]>
-  - `wsEndpoint` <[string]> A CDP websocket endpoint to connect to.
+  - `endpointURL` <[string]> A CDP websocket endpoint or http url to connect to. For example `http://localhost:9222/` or `ws://127.0.0.1:9222/devtools/browser/387adf4c-243f-4051-a181-46798f4a46f4`.
+  - `headers` <[Object]<[string], [string]>> Additional HTTP headers to be sent with connect request. Optional.
   - `slowMo` <[float]> Slows down Playwright operations by the specified amount of milliseconds. Useful so that you
     can see what is going on. Defaults to 0.
   - `logger` <[Logger]> Logger sink for Playwright logging. Optional.
   - `timeout` <[float]> Maximum time in milliseconds to wait for the connection to be established. Defaults to
     `30000` (30 seconds). Pass `0` to disable timeout.
+
+### param: BrowserType.connectOverCDP.endpointURL
+* langs: java, python
+- `endpointURL` <[string]>
+
+A CDP websocket endpoint or http url to connect to. For example `http://localhost:9222/` or `ws://127.0.0.1:9222/devtools/browser/387adf4c-243f-4051-a181-46798f4a46f4`.
+
+### option: BrowserType.connectOverCDP.headers
+* langs: java, python
+- `headers` <[Object]<[string], [string]>>
+
+Additional HTTP headers to be sent with connect request. Optional.
+
+### option: BrowserType.connectOverCDP.slowMo
+* langs: java, python
+- `slowMo` <[float]>
+
+Slows down Playwright operations by the specified amount of milliseconds. Useful so that you
+can see what is going on. Defaults to 0.
+
+### option: BrowserType.connectOverCDP.timeout
+* langs: java, python
+- `timeout` <[float]>
+
+Maximum time in milliseconds to wait for the connection to be established. Defaults to
+`30000` (30 seconds). Pass `0` to disable timeout.
 
 ## method: BrowserType.executablePath
 - returns: <[string]>
@@ -158,6 +212,12 @@ browser = playwright.chromium.launch( # or "firefox" or "webkit".
 )
 ```
 
+```csharp
+var browser = await playwright.Chromium.LaunchAsync(new BrowserTypeLaunchOptions {
+    IgnoreDefaultArgs = new[] { "--mute-audio" }
+})
+```
+
 > **Chromium-only** Playwright can also be used to control the Google Chrome or Microsoft Edge browsers, but it works best with the version of
 Chromium it is bundled with. There is no guarantee it will work with any other version. Use [`option: executablePath`]
 option with extreme caution.
@@ -170,102 +230,14 @@ option with extreme caution.
 [This article](https://chromium.googlesource.com/chromium/src/+/lkgr/docs/chromium_browser_vs_google_chrome.md)
 describes some differences for Linux users.
 
-### option: BrowserType.launch.headless
-- `headless` <[boolean]>
+### option: BrowserType.launch.-inline- = %%-shared-browser-options-list-%%
+### option: BrowserType.launch.firefoxUserPrefs = %%-js-python-browser-option-firefoxuserprefs-%%
+### option: BrowserType.launch.firefoxUserPrefs2 = %%-csharp-java-browser-option-firefoxuserprefs-%%
+### option: BrowserType.launch.logger = %%-browser-option-logger-%%
+### option: BrowserType.launch.slowMo = %%-browser-option-slowmo-%%
+### option: BrowserType.launch.ignoreDefaultArgs = %%-csharp-java-browser-option-ignoredefaultargs-%%
+### option: BrowserType.launch.ignoreAllDefaultArgs = %%-csharp-java-browser-option-ignorealldefaultargs-%%
 
-Whether to run browser in headless mode. More details for
-[Chromium](https://developers.google.com/web/updates/2017/04/headless-chrome) and
-[Firefox](https://developer.mozilla.org/en-US/docs/Mozilla/Firefox/Headless_mode). Defaults to `true` unless the
-[`option: devtools`] option is `true`.
-
-### option: BrowserType.launch.channel
-- `channel` <[BrowserChannel]<"chrome"|"chrome-beta"|"chrome-dev"|"chrome-canary"|"msedge"|"msedge-beta"|"msedge-dev"|"msedge-canary">>
-
-Browser distribution channel. Read more about using [Google Chrome and Microsoft Edge](./browsers#google-chrome--microsoft-edge).
-
-### option: BrowserType.launch.executablePath
-- `executablePath` <[path]>
-
-Path to a browser executable to run instead of the bundled one. If [`option: executablePath`] is a relative path, then
-it is resolved relative to the current working directory. Note that Playwright only works with the bundled Chromium,
-Firefox or WebKit, use at your own risk.
-
-### option: BrowserType.launch.args
-- `args` <[Array]<[string]>>
-
-Additional arguments to pass to the browser instance. The list of Chromium flags can be found
-[here](http://peter.sh/experiments/chromium-command-line-switches/).
-
-### option: BrowserType.launch.ignoreDefaultArgs = %%-browser-option-ignoredefaultargs-%%
-
-### option: BrowserType.launch.proxy = %%-browser-option-proxy-%%
-
-### option: BrowserType.launch.downloadsPath
-- `downloadsPath` <[path]>
-
-If specified, accepted downloads are downloaded into this directory. Otherwise, temporary directory is created and is
-deleted when browser is closed.
-
-### option: BrowserType.launch.chromiumSandbox
-- `chromiumSandbox` <[boolean]>
-
-Enable Chromium sandboxing. Defaults to `false`.
-
-### option: BrowserType.launch.firefoxUserPrefs
-* langs: js, python
-- `firefoxUserPrefs` <[Object]<[string], [string]|[float]|[boolean]>>
-
-Firefox user preferences. Learn more about the Firefox user preferences at
-[`about:config`](https://support.mozilla.org/en-US/kb/about-config-editor-firefox).
-
-### option: BrowserType.launch.firefoxUserPrefs
-* langs: csharp, java
-- `firefoxUserPrefs` <[Object]<[string], [any]>>
-
-Firefox user preferences. Learn more about the Firefox user preferences at
-[`about:config`](https://support.mozilla.org/en-US/kb/about-config-editor-firefox).
-
-### option: BrowserType.launch.handleSIGINT
-- `handleSIGINT` <[boolean]>
-
-Close the browser process on Ctrl-C. Defaults to `true`.
-
-### option: BrowserType.launch.handleSIGTERM
-- `handleSIGTERM` <[boolean]>
-
-Close the browser process on SIGTERM. Defaults to `true`.
-
-### option: BrowserType.launch.handleSIGHUP
-- `handleSIGHUP` <[boolean]>
-
-Close the browser process on SIGHUP. Defaults to `true`.
-
-### option: BrowserType.launch.logger
-* langs: js
-- `logger` <[Logger]>
-
-Logger sink for Playwright logging.
-
-### option: BrowserType.launch.timeout
-- `timeout` <[float]>
-
-Maximum time in milliseconds to wait for the browser instance to start. Defaults to `30000` (30 seconds). Pass `0` to
-disable timeout.
-
-### option: BrowserType.launch.env = %%-csharp-java-browser-option-env-%%
-
-### option: BrowserType.launch.env = %%-js-python-browser-option-env-%%
-
-### option: BrowserType.launch.devtools
-- `devtools` <[boolean]>
-
-**Chromium-only** Whether to auto-open a Developer Tools panel for each tab. If this option is `true`, the
-[`option: headless`] option will be set `false`.
-
-### option: BrowserType.launch.slowMo
-- `slowMo` <[float]>
-
-Slows down Playwright operations by the specified amount of milliseconds. Useful so that you can see what is going on.
 
 ## async method: BrowserType.launchPersistentContext
 - returns: <[BrowserContext]>
@@ -283,84 +255,10 @@ Path to a User Data Directory, which stores browser session data like cookies an
 [Firefox](https://developer.mozilla.org/en-US/docs/Mozilla/Command_Line_Options#User_Profile).
 Note that Chromium's user data directory is the **parent** directory of the "Profile Path" seen at `chrome://version`.
 
-### option: BrowserType.launchPersistentContext.headless
-- `headless` <[boolean]>
-
-Whether to run browser in headless mode. More details for
-[Chromium](https://developers.google.com/web/updates/2017/04/headless-chrome) and
-[Firefox](https://developer.mozilla.org/en-US/docs/Mozilla/Firefox/Headless_mode). Defaults to `true` unless the
-[`option: devtools`] option is `true`.
-
-### option: BrowserType.launchPersistentContext.channel
-- `channel` <[BrowserChannel]<"chrome"|"chrome-beta"|"chrome-dev"|"chrome-canary"|"msedge"|"msedge-beta"|"msedge-dev"|"msedge-canary">>
-
-Browser distribution channel.
-
-### option: BrowserType.launchPersistentContext.executablePath
-- `executablePath` <[path]>
-
-Path to a browser executable to run instead of the bundled one. If [`option: executablePath`] is a relative path, then
-it is resolved relative to the current working directory. **BEWARE**: Playwright is only guaranteed to work with the
-bundled Chromium, Firefox or WebKit, use at your own risk.
-
-### option: BrowserType.launchPersistentContext.args
-- `args` <[Array]<[string]>>
-
-Additional arguments to pass to the browser instance. The list of Chromium flags can be found
-[here](http://peter.sh/experiments/chromium-command-line-switches/).
-
-### option: BrowserType.launchPersistentContext.ignoreDefaultArgs = %%-browser-option-ignoredefaultargs-%%
-
-### option: BrowserType.launchPersistentContext.proxy = %%-browser-option-proxy-%%
-
-### option: BrowserType.launchPersistentContext.downloadsPath
-- `downloadsPath` <[path]>
-
-If specified, accepted downloads are downloaded into this directory. Otherwise, temporary directory is created and is
-deleted when browser is closed.
-
-### option: BrowserType.launchPersistentContext.chromiumSandbox
-- `chromiumSandbox` <[boolean]>
-
-Enable Chromium sandboxing. Defaults to `true`.
-
-### option: BrowserType.launchPersistentContext.handleSIGINT
-- `handleSIGINT` <[boolean]>
-
-Close the browser process on Ctrl-C. Defaults to `true`.
-
-### option: BrowserType.launchPersistentContext.handleSIGTERM
-- `handleSIGTERM` <[boolean]>
-
-Close the browser process on SIGTERM. Defaults to `true`.
-
-### option: BrowserType.launchPersistentContext.handleSIGHUP
-- `handleSIGHUP` <[boolean]>
-
-Close the browser process on SIGHUP. Defaults to `true`.
-
-### option: BrowserType.launchPersistentContext.timeout
-- `timeout` <[float]>
-
-Maximum time in milliseconds to wait for the browser instance to start. Defaults to `30000` (30 seconds). Pass `0` to
-disable timeout.
-
-### option: BrowserType.launchPersistentContext.env = %%-csharp-java-browser-option-env-%%
-
-### option: BrowserType.launchPersistentContext.env = %%-js-python-browser-option-env-%%
-
-### option: BrowserType.launchPersistentContext.devtools
-- `devtools` <[boolean]>
-
-**Chromium-only** Whether to auto-open a Developer Tools panel for each tab. If this option is `true`, the
-[`option: headless`] option will be set `false`.
-
-### option: BrowserType.launchPersistentContext.slowMo
-- `slowMo` <[float]>
-
-Slows down Playwright operations by the specified amount of milliseconds. Useful so that you can see what is going on.
-Defaults to 0.
-
+### option: BrowserType.launchPersistentContext.-inline- = %%-shared-browser-options-list-%%
+### option: BrowserType.launchPersistentContext.slowMo = %%-browser-option-slowmo-%%
+### option: BrowserType.launchPersistentContext.ignoreDefaultArgs = %%-csharp-java-browser-option-ignoredefaultargs-%%
+### option: BrowserType.launchPersistentContext.ignoreAllDefaultArgs = %%-csharp-java-browser-option-ignorealldefaultargs-%%
 ### option: BrowserType.launchPersistentContext.-inline- = %%-shared-context-params-list-%%
 
 ## async method: BrowserType.launchServer
@@ -385,87 +283,15 @@ const { chromium } = require('playwright');  // Or 'webkit' or 'firefox'.
 })();
 ```
 
-### option: BrowserType.launchServer.headless
-- `headless` <[boolean]>
-
-Whether to run browser in headless mode. More details for
-[Chromium](https://developers.google.com/web/updates/2017/04/headless-chrome) and
-[Firefox](https://developer.mozilla.org/en-US/docs/Mozilla/Firefox/Headless_mode). Defaults to `true` unless the
-[`option: devtools`] option is `true`.
+### option: BrowserType.launchServer.-inline- = %%-shared-browser-options-list-%%
+### option: BrowserType.launchServer.firefoxUserPrefs = %%-js-python-browser-option-firefoxuserprefs-%%
+### option: BrowserType.launchServer.firefoxUserPrefs2 = %%-csharp-java-browser-option-firefoxuserprefs-%%
+### option: BrowserType.launchServer.logger = %%-browser-option-logger-%%
 
 ### option: BrowserType.launchServer.port
 - `port` <[int]>
 
 Port to use for the web socket. Defaults to 0 that picks any available port.
-
-### option: BrowserType.launchServer.executablePath
-- `executablePath` <[path]>
-
-Path to a browser executable to run instead of the bundled one. If [`option: executablePath`] is a relative path, then
-it is resolved relative to the current working directory. **BEWARE**: Playwright is only guaranteed to work with the
-bundled Chromium, Firefox or WebKit, use at your own risk.
-
-### option: BrowserType.launchServer.args
-- `args` <[Array]<[string]>>
-
-Additional arguments to pass to the browser instance. The list of Chromium flags can be found
-[here](http://peter.sh/experiments/chromium-command-line-switches/).
-
-### option: BrowserType.launchServer.ignoreDefaultArgs = %%-browser-option-ignoredefaultargs-%%
-
-### option: BrowserType.launchServer.proxy = %%-browser-option-proxy-%%
-
-### option: BrowserType.launchServer.downloadsPath
-- `downloadsPath` <[path]>
-
-If specified, accepted downloads are downloaded into this directory. Otherwise, temporary directory is created and is
-deleted when browser is closed.
-
-### option: BrowserType.launchServer.chromiumSandbox
-- `chromiumSandbox` <[boolean]>
-
-Enable Chromium sandboxing. Defaults to `true`.
-
-### option: BrowserType.launchServer.firefoxUserPrefs
-- `firefoxUserPrefs` <[Object]<[string], [string]|[float]|[boolean]>>
-
-Firefox user preferences. Learn more about the Firefox user preferences at
-[`about:config`](https://support.mozilla.org/en-US/kb/about-config-editor-firefox).
-
-### option: BrowserType.launchServer.handleSIGINT
-- `handleSIGINT` <[boolean]>
-
-Close the browser process on Ctrl-C. Defaults to `true`.
-
-### option: BrowserType.launchServer.handleSIGTERM
-- `handleSIGTERM` <[boolean]>
-
-Close the browser process on SIGTERM. Defaults to `true`.
-
-### option: BrowserType.launchServer.handleSIGHUP
-- `handleSIGHUP` <[boolean]>
-
-Close the browser process on SIGHUP. Defaults to `true`.
-
-### option: BrowserType.launchServer.logger
-* langs: js
-- `logger` <[Logger]>
-
-Logger sink for Playwright logging.
-
-### option: BrowserType.launchServer.timeout
-- `timeout` <[float]>
-
-Maximum time in milliseconds to wait for the browser instance to start. Defaults to `30000` (30 seconds). Pass `0` to
-disable timeout.
-
-### option: BrowserType.launchServer.env = %%-js-python-browser-option-env-%%
-
-### option: BrowserType.launchServer.devtools
-- `devtools` <[boolean]>
-
-**Chromium-only** Whether to auto-open a Developer Tools panel for each tab. If this option is `true`, the
-[`option: headless`] option will be set `false`.
 
 ## method: BrowserType.name
 - returns: <[string]>

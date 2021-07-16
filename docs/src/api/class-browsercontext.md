@@ -25,7 +25,7 @@ BrowserContext context = browser.newContext();
 // Create a new page inside context.
 Page page = context.newPage();
 page.navigate("https://example.com");
-// Dispose context once it"s no longer needed.
+// Dispose context once it is no longer needed.
 context.close();
 ```
 
@@ -35,7 +35,7 @@ context = await browser.new_context()
 # create a new page inside context.
 page = await context.new_page()
 await page.goto("https://example.com")
-# dispose context once it"s no longer needed.
+# dispose context once it is no longer needed.
 await context.close()
 ```
 
@@ -45,8 +45,43 @@ context = browser.new_context()
 # create a new page inside context.
 page = context.new_page()
 page.goto("https://example.com")
-# dispose context once it"s no longer needed.
+# dispose context once it is no longer needed.
 context.close()
+```
+
+```csharp
+using var playwright = await Playwright.CreateAsync();
+var browser = await playwright.Firefox.LaunchAsync(new BrowserTypeLaunchOptions { Headless = false });
+// Create a new incognito browser context
+var context = await browser.NewContextAsync();
+// Create a new page inside context.
+var page = await context.NewPageAsync();
+await page.GotoAsync("https://bing.com");
+// Dispose context once it is no longer needed.
+await context.CloseAsync();
+```
+
+## event: BrowserContext.backgroundPage
+* langs: js, python
+- argument: <[Page]>
+
+:::note
+Only works with Chromium browser's persistent context.
+:::
+
+Emitted when new background page is created in the context.
+
+
+```js
+const backgroundPage = await context.waitForEvent('backgroundpage');
+```
+
+```python async
+background_page = await context.wait_for_event("backgroundpage")
+```
+
+```python sync
+background_page = context.wait_for_event("backgroundpage")
 ```
 
 ## event: BrowserContext.close
@@ -96,10 +131,63 @@ page = page_info.value
 print(page.evaluate("location.href"))
 ```
 
+```csharp
+var popup = await context.RunAndWaitForPageAsync(async =>
+{
+    await page.ClickAsync("a");
+});
+Console.WriteLine(await popup.EvaluateAsync<string>("location.href"));
+```
+
 :::note
 Use [`method: Page.waitForLoadState`] to wait until the page gets to a particular state (you should not need it in most
 cases).
 :::
+
+## event: BrowserContext.request
+- argument: <[Request]>
+
+Emitted when a request is issued from any pages created through this context.
+The [request] object is read-only. To only listen for requests from a particular
+page, use [`event: Page.request`].
+
+In order to intercept and mutate requests, see [`method: BrowserContext.route`]
+or [`method: Page.route`].
+
+## event: BrowserContext.requestFailed
+- argument: <[Request]>
+
+Emitted when a request fails, for example by timing out. To only listen for
+failed requests from a particular page, use [`event: Page.requestFailed`].
+
+:::note
+HTTP Error responses, such as 404 or 503, are still successful responses from HTTP standpoint, so request will complete
+with [`event: BrowserContext.requestFinished`] event and not with [`event: BrowserContext.requestFailed`].
+:::
+
+## event: BrowserContext.requestFinished
+- argument: <[Request]>
+
+Emitted when a request finishes successfully after downloading the response body. For a successful response, the
+sequence of events is `request`, `response` and `requestfinished`. To listen for
+successful requests from a particular page, use [`event: Page.requestFinished`].
+
+## event: BrowserContext.response
+- argument: <[Response]>
+
+Emitted when [response] status and headers are received for a request. For a successful response, the sequence of events
+is `request`, `response` and `requestfinished`. To listen for response events
+from a particular page, use [`event: Page.response`].
+
+## event: BrowserContext.serviceWorker
+* langs: js, python
+- argument: <[Worker]>
+
+:::note
+Service workers are only supported on Chromium-based browsers.
+:::
+
+Emitted when new service worker is created in the context.
 
 ## async method: BrowserContext.addCookies
 
@@ -120,6 +208,10 @@ await browser_context.add_cookies([cookie_object1, cookie_object2])
 
 ```python sync
 browser_context.add_cookies([cookie_object1, cookie_object2])
+```
+
+```csharp
+await context.AddCookiesAsync(new[] { cookie1, cookie2 });
 ```
 
 ### param: BrowserContext.addCookies.cookies
@@ -173,6 +265,10 @@ await browser_context.add_init_script(path="preload.js")
 browser_context.add_init_script(path="preload.js")
 ```
 
+```csharp
+await context.AddInitScriptAsync(new BrowserContextAddInitScriptOptions { ScriptPath = "preload.js" });
+```
+
 :::note
 The order of evaluation of multiple scripts installed via [`method: BrowserContext.addInitScript`] and
 [`method: Page.addInitScript`] is not defined.
@@ -198,6 +294,16 @@ Script to be evaluated in all pages in the browser context.
 - `arg` <[Serializable]>
 
 Optional argument to pass to [`param: script`] (only supported when passing a function).
+
+## method: BrowserContext.backgroundPages
+* langs: js, python
+- returns: <[Array]<[Page]>>
+
+:::note
+Background pages are only supported on Chromium-based browsers.
+:::
+
+All existing background pages in the context.
 
 ## method: BrowserContext.browser
 - returns: <[null]|[Browser]>
@@ -240,6 +346,15 @@ context.grant_permissions(["clipboard-read"])
 context.clear_permissions()
 ```
 
+```csharp
+var context = await browser.NewContextAsync();
+await context.GrantPermissionsAsync(new[] { "clipboard-read" });
+// Alternatively, you can use the helper class ContextPermissions 
+//  to specify the permissions...
+// do stuff ...
+await context.ClearPermissionsAsync();
+```
+
 ## async method: BrowserContext.close
 
 Closes the browser context. All the pages that belong to the browser context will be closed.
@@ -249,8 +364,6 @@ The default browser context cannot be closed.
 :::
 
 ## async method: BrowserContext.cookies
-* langs:
-  - alias-csharp: GetCookiesAsync
 - returns: <[Array]<[Object]>>
   - `name` <[string]>
   - `value` <[string]>
@@ -378,6 +491,32 @@ with sync_playwright() as playwright:
     run(playwright)
 ```
 
+```csharp
+using Microsoft.Playwright;
+using System.Threading.Tasks;
+
+class Program
+{
+    public static async Task Main()
+    {
+        using var playwright = await Playwright.CreateAsync();
+        var browser = await playwright.Webkit.LaunchAsync(new BrowserTypeLaunchOptions { Headless = false });
+        var context = await browser.NewContextAsync();
+
+        await context.ExposeBindingAsync("pageURL", source => source.Page.Url);
+        var page = await context.NewPageAsync();
+        await page.SetContentAsync("<script>\n" +
+        "  async function onClick() {\n" +
+        "    document.querySelector('div').textContent = await window.pageURL();\n" +
+        "  }\n" +
+        "</script>\n" +
+        "<button onclick=\"onClick()\">Click me</button>\n" +
+        "<div></div>");
+        await page.ClickAsync("button");
+    }
+}
+```
+
 An example of passing an element handle:
 
 ```js
@@ -435,6 +574,26 @@ page.set_content("""
 """)
 ```
 
+```csharp
+var result = new TaskCompletionSource<string>();
+var page = await Context.NewPageAsync();
+await Context.ExposeBindingAsync("clicked", async (BindingSource _, IJSHandle t) =>
+{
+    return result.TrySetResult(await t.AsElement().TextContentAsync());
+});
+
+await page.SetContentAsync("<script>\n" +
+  "  document.addEventListener('click', event => window.clicked(event.target));\n" +
+  "</script>\n" +
+  "<div>Click me</div>\n" +
+  "<div>Or click me</div>\n");
+
+await page.ClickAsync("div");
+// Note: it makes sense to await the result here, because otherwise, the context 
+//  gets closed and the binding function will throw an exception.
+Assert.Equal("Click me", await result.Task);
+```
+
 ### param: BrowserContext.exposeBinding.name
 - `name` <[string]>
 
@@ -461,7 +620,7 @@ If the [`param: callback`] returns a [Promise], it will be awaited.
 
 See [`method: Page.exposeFunction`] for page-only version.
 
-An example of adding an `md5` function to all pages in the context:
+An example of adding a `sha256` function to all pages in the context:
 
 ```js
 const { webkit } = require('playwright');  // Or 'chromium' or 'firefox'.
@@ -470,12 +629,12 @@ const crypto = require('crypto');
 (async () => {
   const browser = await webkit.launch({ headless: false });
   const context = await browser.newContext();
-  await context.exposeFunction('md5', text => crypto.createHash('md5').update(text).digest('hex'));
+  await context.exposeFunction('sha256', text => crypto.createHash('sha256').update(text).digest('hex'));
   const page = await context.newPage();
   await page.setContent(`
     <script>
       async function onClick() {
-        document.querySelector('div').textContent = await window.md5('PLAYWRIGHT');
+        document.querySelector('div').textContent = await window.sha256('PLAYWRIGHT');
       }
     </script>
     <button onclick="onClick()">Click me</button>
@@ -498,11 +657,11 @@ public class Example {
     try (Playwright playwright = Playwright.create()) {
       BrowserType webkit = playwright.webkit()
       Browser browser = webkit.launch(new BrowserType.LaunchOptions().setHeadless(false));
-      context.exposeFunction("sha1", args -> {
+      context.exposeFunction("sha256", args -> {
         String text = (String) args[0];
         MessageDigest crypto;
         try {
-          crypto = MessageDigest.getInstance("SHA-1");
+          crypto = MessageDigest.getInstance("SHA-256");
         } catch (NoSuchAlgorithmException e) {
           return null;
         }
@@ -512,7 +671,7 @@ public class Example {
       Page page = context.newPage();
       page.setContent("<script>\n" +
         "  async function onClick() {\n" +
-        "    document.querySelector('div').textContent = await window.sha1('PLAYWRIGHT');\n" +
+        "    document.querySelector('div').textContent = await window.sha256('PLAYWRIGHT');\n" +
         "  }\n" +
         "</script>\n" +
         "<button onclick=\"onClick()\">Click me</button>\n" +
@@ -528,8 +687,8 @@ import asyncio
 import hashlib
 from playwright.async_api import async_playwright
 
-async def sha1(text):
-    m = hashlib.sha1()
+def sha256(text):
+    m = hashlib.sha256()
     m.update(bytes(text, "utf8"))
     return m.hexdigest()
 
@@ -538,12 +697,12 @@ async def run(playwright):
     webkit = playwright.webkit
     browser = await webkit.launch(headless=False)
     context = await browser.new_context()
-    await context.expose_function("sha1", sha1)
+    await context.expose_function("sha256", sha256)
     page = await context.new_page()
     await page.set_content("""
         <script>
           async function onClick() {
-            document.querySelector('div').textContent = await window.sha1('PLAYWRIGHT');
+            document.querySelector('div').textContent = await window.sha256('PLAYWRIGHT');
           }
         </script>
         <button onclick="onClick()">Click me</button>
@@ -561,8 +720,8 @@ asyncio.run(main())
 import hashlib
 from playwright.sync_api import sync_playwright
 
-def sha1(text):
-    m = hashlib.sha1()
+def sha256(text):
+    m = hashlib.sha256()
     m.update(bytes(text, "utf8"))
     return m.hexdigest()
 
@@ -571,13 +730,12 @@ def run(playwright):
     webkit = playwright.webkit
     browser = webkit.launch(headless=False)
     context = browser.new_context()
-    context.expose_function("sha1", sha1)
+    context.expose_function("sha256", sha256)
     page = context.new_page()
-    page.expose_function("sha1", sha1)
     page.set_content("""
         <script>
           async function onClick() {
-            document.querySelector('div').textContent = await window.sha1('PLAYWRIGHT');
+            document.querySelector('div').textContent = await window.sha256('PLAYWRIGHT');
           }
         </script>
         <button onclick="onClick()">Click me</button>
@@ -587,6 +745,41 @@ def run(playwright):
 
 with sync_playwright() as playwright:
     run(playwright)
+```
+
+```csharp
+using Microsoft.Playwright;
+using System;
+using System.Security.Cryptography;
+using System.Threading.Tasks;
+
+class BrowserContextExamples
+{
+    public static async Task Main()
+    {
+        using var playwright = await Playwright.CreateAsync();
+        var browser = await playwright.Webkit.LaunchAsync(new BrowserTypeLaunchOptions { Headless = false });
+        var context = await browser.NewContextAsync();
+
+        await context.ExposeFunctionAsync("sha256", (string input) =>
+        {
+            return Convert.ToBase64String(
+                SHA256.Create().ComputeHash(System.Text.Encoding.UTF8.GetBytes(input)));
+        });
+
+        var page = await context.NewPageAsync();
+        await page.SetContentAsync("<script>\n" +
+        "  async function onClick() {\n" +
+        "    document.querySelector('div').textContent = await window.sha256('PLAYWRIGHT');\n" +
+        "  }\n" +
+        "</script>\n" +
+        "<button onclick=\"onClick()\">Click me</button>\n" +
+        "<div></div>");
+
+        await page.ClickAsync("button");
+        Console.WriteLine(await page.TextContentAsync("div"));
+    }
+}
 ```
 
 ### param: BrowserContext.exposeFunction.name
@@ -629,6 +822,21 @@ A permission or an array of permissions to grant. Permissions can be one of the 
 - `origin` <[string]>
 
 The [origin] to grant permissions to, e.g. "https://example.com".
+
+## async method: BrowserContext.newCDPSession
+* langs: js, python
+- returns: <[CDPSession]>
+
+:::note
+CDP sessions are only supported on Chromium-based browsers.
+:::
+
+Returns the newly created session.
+
+### param: BrowserContext.newCDPSession.page
+- `page` <[Page]>
+
+Page to create new session for.
 
 ## async method: BrowserContext.newPage
 - returns: <[Page]>
@@ -679,6 +887,14 @@ page.goto("https://example.com")
 browser.close()
 ```
 
+```csharp
+var context = await browser.NewContextAsync();
+var page = await context.NewPageAsync();
+await context.RouteAsync("**/*.{png,jpg,jpeg}", r => r.AbortAsync());
+await page.GotoAsync("https://theverge.com");
+await browser.CloseAsync();
+```
+
 or the same snippet using a regex pattern instead:
 
 ```js
@@ -716,8 +932,66 @@ page.goto("https://example.com")
 browser.close()
 ```
 
+```csharp
+var context = await browser.NewContextAsync();
+var page = await context.NewPageAsync();
+await context.RouteAsync(new Regex("(\\.png$)|(\\.jpg$)"), r => r.AbortAsync());
+await page.GotoAsync("https://theverge.com");
+await browser.CloseAsync();
+```
+
+It is possible to examine the request to decide the route action. For example, mocking all requests that contain some post data, and leaving all other requests as is:
+
+```js
+await context.route('/api/**', route => {
+  if (route.request().postData().includes('my-string'))
+    route.fulfill({ body: 'mocked-data' });
+  else
+    route.continue();
+});
+```
+
+```java
+context.route("/api/**", route -> {
+  if (route.request().postData().contains("my-string"))
+    route.fulfill(new Route.FulfillOptions().setBody("mocked-data"));
+  else
+    route.resume();
+});
+```
+
+```python async
+def handle_route(route):
+  if ("my-string" in route.request.post_data)
+    route.fulfill(body="mocked-data")
+  else
+    route.continue_()
+await context.route("/api/**", handle_route)
+```
+
+```python sync
+def handle_route(route):
+  if ("my-string" in route.request.post_data)
+    route.fulfill(body="mocked-data")
+  else
+    route.continue_()
+context.route("/api/**", handle_route)
+```
+
+```csharp
+await page.RouteAsync("/api/**", async r =>
+{
+    if (r.Request.PostData.Contains("my-string"))
+        await r.FulfillAsync(body: "mocked-data");
+    else
+        await r.ContinueAsync();
+});
+```
+
 Page routes (set up with [`method: Page.route`]) take precedence over browser context routes when request matches both
 handlers.
+
+To remove a route with its handler you can use [`method: BrowserContext.unroute`].
 
 :::note
 Enabling routing disables http cache.
@@ -727,6 +1001,8 @@ Enabling routing disables http cache.
 - `url` <[string]|[RegExp]|[function]\([URL]\):[boolean]>
 
 A glob pattern, regex pattern or predicate receiving [URL] to match while routing.
+When a [`option: baseURL`] via the context options was provided and the passed URL is a path,
+it gets merged via the [`new URL()`](https://developer.mozilla.org/en-US/docs/Web/API/URL/URL) constructor.
 
 ### param: BrowserContext.route.handler
 * langs: js, python
@@ -739,6 +1015,16 @@ handler function to route the request.
 - `handler` <[function]\([Route]\)>
 
 handler function to route the request.
+
+## method: BrowserContext.serviceWorkers
+* langs: js, python
+- returns: <[Array]<[Worker]>>
+
+:::note
+Service workers are only supported on Chromium-based browsers.
+:::
+
+All existing service workers in the context.
 
 ## method: BrowserContext.setDefaultNavigationTimeout
 
@@ -809,6 +1095,14 @@ await browser_context.set_geolocation({"latitude": 59.95, "longitude": 30.31667}
 browser_context.set_geolocation({"latitude": 59.95, "longitude": 30.31667})
 ```
 
+```csharp
+await context.SetGeolocationAsync(new Geolocation()
+{
+    Latitude = 59.95f,
+    Longitude = 30.31667f
+});
+```
+
 :::note
 Consider using [`method: BrowserContext.grantPermissions`] to grant permissions for the browser context pages to read
 its geolocation.
@@ -857,7 +1151,7 @@ Whether to emulate network being offline for the browser context.
 Returns storage state for this browser context, contains current cookies and local storage snapshot.
 
 ## async method: BrowserContext.storageState
-* langs: charp, java
+* langs: csharp, java
 - returns: <[string]>
 
 ### option: BrowserContext.storageState.path
@@ -866,6 +1160,9 @@ Returns storage state for this browser context, contains current cookies and loc
 The file path to save the storage state to. If [`option: path`] is a relative path, then it is resolved relative to
 current working directory. If no path is provided, storage
 state is still returned, but won't be saved to the disk.
+
+## property: BrowserContext.tracing
+- type: <[Tracing]>
 
 ## async method: BrowserContext.unroute
 
@@ -891,7 +1188,7 @@ Optional handler function used to register a routing with [`method: BrowserConte
 Optional handler function used to register a routing with [`method: BrowserContext.route`].
 
 ## async method: BrowserContext.waitForEvent
-* langs: csharp, js, python
+* langs: js, python
   - alias-python: expect_event
 - returns: <[any]>
 
@@ -921,6 +1218,13 @@ with context.expect_event("page") as event_info:
 page = event_info.value
 ```
 
+```csharp
+var page = await context.RunAndWaitForPageAsync(async () =>
+{
+    await page.ClickAsync("button");
+});
+```
+
 ### param: BrowserContext.waitForEvent.event
 - `event` <[string]>
 
@@ -936,8 +1240,9 @@ Event name, same one would pass into `browserContext.on(event)`.
 Either a predicate that receives an event or an options object. Optional.
 
 ## async method: BrowserContext.waitForPage
-* langs: csharp, java, python
+* langs: java, python, csharp
   - alias-python: expect_page
+  - alias-csharp: RunAndWaitForPage
 - returns: <[Page]>
 
 Performs action and waits for a new [Page] to be created in the context. If predicate is provided, it passes
@@ -951,3 +1256,20 @@ Will throw an error if the context closes before new [Page] is created.
 Receives the [Page] object and resolves to truthy value when the waiting should resolve.
 
 ### option: BrowserContext.waitForPage.timeout = %%-wait-for-event-timeout-%%
+
+## async method: BrowserContext.waitForEvent2
+* langs: python
+  - alias-python: wait_for_event
+- returns: <[any]>
+
+:::note
+In most cases, you should use [`method: BrowserContext.waitForEvent`].
+:::
+
+Waits for given `event` to fire. If predicate is provided, it passes
+event's value into the `predicate` function and waits for `predicate(event)` to return a truthy value.
+Will throw an error if the browser context is closed before the `event` is fired.
+
+### param: BrowserContext.waitForEvent2.event = %%-wait-for-event-event-%%
+### option: BrowserContext.waitForEvent2.predicate = %%-wait-for-event-predicate-%%
+### option: BrowserContext.waitForEvent2.timeout = %%-wait-for-event-timeout-%%

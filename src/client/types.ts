@@ -33,7 +33,7 @@ export type WaitForEventOptions = Function | { predicate?: Function, timeout?: n
 export type WaitForFunctionOptions = { timeout?: number, polling?: 'raf' | number };
 
 export type SelectOption = { value?: string, label?: string, index?: number };
-export type SelectOptionOptions = { timeout?: number, noWaitAfter?: boolean };
+export type SelectOptionOptions = { force?: boolean, timeout?: number, noWaitAfter?: boolean };
 export type FilePayload = { name: string, mimeType: string, buffer: Buffer };
 export type StorageState = {
   cookies: channels.NetworkCookie[],
@@ -70,11 +70,15 @@ export type LaunchPersistentContextOptions = Omit<LaunchOptionsBase & BrowserCon
 
 export type ConnectOptions = {
   wsEndpoint: string,
+  headers?: { [key: string]: string; };
+  _forwardPorts?: number[];
   slowMo?: number,
   timeout?: number,
   logger?: Logger,
 };
 export type LaunchServerOptions = {
+  _acceptForwardedPorts?: boolean,
+  channel?: channels.BrowserTypeLaunchOptions['channel'],
   executablePath?: string,
   args?: string[],
   ignoreDefaultArgs?: boolean | string[],
@@ -107,3 +111,6 @@ export type SelectorEngine = {
    */
   queryAll(root: HTMLElement, selector: string): HTMLElement[];
 };
+
+export type RemoteAddr = channels.RemoteAddr;
+export type SecurityDetails = channels.SecurityDetails;

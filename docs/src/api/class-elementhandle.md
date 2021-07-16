@@ -69,6 +69,24 @@ with sync_playwright() as playwright:
     run(playwright)
 ```
 
+```csharp
+using Microsoft.Playwright;
+using System.Threading.Tasks;
+
+class HandleExamples
+{
+    public static async Task Run()
+    {
+        using var playwright = await Playwright.CreateAsync();
+        var browser = await playwright.Chromium.LaunchAsync();
+        var page = await browser.NewPageAsync();
+        await page.GotoAsync("https://www.bing.com");
+        var handle = await page.QuerySelectorAsync("a");
+        await handle.ClickAsync();
+    }
+}
+```
+
 ElementHandle prevents DOM element from garbage collection unless the handle is disposed with
 [`method: JSHandle.dispose`]. ElementHandles are auto-disposed when their origin frame gets navigated.
 
@@ -114,27 +132,36 @@ box = element_handle.bounding_box()
 page.mouse.click(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
 ```
 
+```csharp
+var box = await elementHandle.BoundingBoxAsync();
+await page.Mouse.ClickAsync(box.X + box.Width / 2, box.Y + box.Height / 2);
+```
+
 ## async method: ElementHandle.check
 
 This method checks the element by performing the following steps:
-1. Ensure that element is a checkbox or a radio input. If not, this method rejects. If the element is already
+1. Ensure that element is a checkbox or a radio input. If not, this method throws. If the element is already
    checked, this method returns immediately.
 1. Wait for [actionability](./actionability.md) checks on the element, unless [`option: force`] option is set.
 1. Scroll the element into view if needed.
 1. Use [`property: Page.mouse`] to click in the center of the element.
 1. Wait for initiated navigations to either succeed or fail, unless [`option: noWaitAfter`] option is set.
-1. Ensure that the element is now checked. If not, this method rejects.
+1. Ensure that the element is now checked. If not, this method throws.
 
-If the element is detached from the DOM at any moment during the action, this method rejects.
+If the element is detached from the DOM at any moment during the action, this method throws.
 
-When all steps combined have not finished during the specified [`option: timeout`], this method rejects with a
+When all steps combined have not finished during the specified [`option: timeout`], this method throws a
 [TimeoutError]. Passing zero timeout disables this.
+
+### option: ElementHandle.check.position = %%-input-position-%%
 
 ### option: ElementHandle.check.force = %%-input-force-%%
 
 ### option: ElementHandle.check.noWaitAfter = %%-input-no-wait-after-%%
 
 ### option: ElementHandle.check.timeout = %%-input-timeout-%%
+
+### option: ElementHandle.check.trial = %%-input-trial-%%
 
 ## async method: ElementHandle.click
 
@@ -144,9 +171,9 @@ This method clicks the element by performing the following steps:
 1. Use [`property: Page.mouse`] to click in the center of the element, or the specified [`option: position`].
 1. Wait for initiated navigations to either succeed or fail, unless [`option: noWaitAfter`] option is set.
 
-If the element is detached from the DOM at any moment during the action, this method rejects.
+If the element is detached from the DOM at any moment during the action, this method throws.
 
-When all steps combined have not finished during the specified [`option: timeout`], this method rejects with a
+When all steps combined have not finished during the specified [`option: timeout`], this method throws a
 [TimeoutError]. Passing zero timeout disables this.
 
 ### option: ElementHandle.click.button = %%-input-button-%%
@@ -165,23 +192,27 @@ When all steps combined have not finished during the specified [`option: timeout
 
 ### option: ElementHandle.click.timeout = %%-input-timeout-%%
 
+### option: ElementHandle.click.trial = %%-input-trial-%%
+
 ## async method: ElementHandle.contentFrame
 - returns: <[null]|[Frame]>
 
 Returns the content frame for element handles referencing iframe nodes, or `null` otherwise
 
 ## async method: ElementHandle.dblclick
+* langs:
+  - alias-csharp: DblClickAsync
 
 This method double clicks the element by performing the following steps:
 1. Wait for [actionability](./actionability.md) checks on the element, unless [`option: force`] option is set.
 1. Scroll the element into view if needed.
 1. Use [`property: Page.mouse`] to double click in the center of the element, or the specified [`option: position`].
 1. Wait for initiated navigations to either succeed or fail, unless [`option: noWaitAfter`] option is set. Note that
-   if the first click of the `dblclick()` triggers a navigation event, this method will reject.
+   if the first click of the `dblclick()` triggers a navigation event, this method will throw.
 
-If the element is detached from the DOM at any moment during the action, this method rejects.
+If the element is detached from the DOM at any moment during the action, this method throws.
 
-When all steps combined have not finished during the specified [`option: timeout`], this method rejects with a
+When all steps combined have not finished during the specified [`option: timeout`], this method throws a
 [TimeoutError]. Passing zero timeout disables this.
 
 :::note
@@ -201,6 +232,8 @@ When all steps combined have not finished during the specified [`option: timeout
 ### option: ElementHandle.dblclick.noWaitAfter = %%-input-no-wait-after-%%
 
 ### option: ElementHandle.dblclick.timeout = %%-input-timeout-%%
+
+### option: ElementHandle.dblclick.trial = %%-input-trial-%%
 
 ## async method: ElementHandle.dispatchEvent
 
@@ -222,6 +255,10 @@ await element_handle.dispatch_event("click")
 
 ```python sync
 element_handle.dispatch_event("click")
+```
+
+```csharp
+await elementHandle.DispatchEventAsync("click");
 ```
 
 Under the hood, it creates an instance of an event based on the given [`param: type`], initializes it with
@@ -264,6 +301,14 @@ await element_handle.dispatch_event("#source", "dragstart", {"dataTransfer": dat
 # note you can only create data_transfer in chromium and firefox
 data_transfer = page.evaluate_handle("new DataTransfer()")
 element_handle.dispatch_event("#source", "dragstart", {"dataTransfer": data_transfer})
+```
+
+```csharp
+var handle = await page.EvaluateHandleAsync("() => new DataTransfer()");
+await handle.AsElement().DispatchEventAsync("dragstart", new Dictionary<string, object>
+{
+    { "dataTransfer", dataTransfer }
+});
 ```
 
 ### param: ElementHandle.dispatchEvent.type
@@ -315,6 +360,12 @@ assert await tweet_handle.eval_on_selector(".retweets", "node => node.innerText"
 tweet_handle = page.query_selector(".tweet")
 assert tweet_handle.eval_on_selector(".like", "node => node.innerText") == "100"
 assert tweet_handle.eval_on_selector(".retweets", "node => node.innerText") = "10"
+```
+
+```csharp
+var tweetHandle = await page.QuerySelectorAsync(".tweet");
+Assert.Equals("100", await tweetHandle.EvalOnSelectorAsync(".like", "node => node.innerText"));
+Assert.Equals("10", await tweetHandle.EvalOnSelectorAsync(".retweets", "node => node.innerText"));
 ```
 
 ### param: ElementHandle.evalOnSelector.selector = %%-query-selector-%%
@@ -370,6 +421,11 @@ feed_handle = page.query_selector(".feed")
 assert feed_handle.eval_on_selector_all(".tweet", "nodes => nodes.map(n => n.innerText)") == ["hello!", "hi!"]
 ```
 
+```csharp
+var feedHandle = await page.QuerySelectorAsync(".feed");
+Assert.Equals(new [] { "Hello!", "Hi!" }, await feedHandle.EvalOnSelectorAllAsync<string[]>(".tweet", "nodes => nodes.map(n => n.innerText)"));
+```
+
 ### param: ElementHandle.evalOnSelectorAll.selector = %%-query-selector-%%
 
 ### param: ElementHandle.evalOnSelectorAll.expression = %%-evaluate-expression-%%
@@ -381,18 +437,19 @@ Optional argument to pass to [`param: expression`].
 
 ## async method: ElementHandle.fill
 
-This method waits for [actionability](./actionability.md) checks, focuses the element, fills it and triggers an `input` event after filling.
-If the element is inside the `<label>` element that has associated [control](https://developer.mozilla.org/en-US/docs/Web/API/HTMLLabelElement/control), that control will be filled instead.
-If the element to be filled is not an `<input>`, `<textarea>` or `[contenteditable]` element, this method throws an error.
-Note that you can pass an empty string to clear the input field.
+This method waits for [actionability](./actionability.md) checks, focuses the element, fills it and triggers an `input` event after filling. Note that you can pass an empty string to clear the input field.
+
+If the target element is not an `<input>`, `<textarea>` or `[contenteditable]` element, this method throws an error. However, if the element is inside the `<label>` element that has an associated [control](https://developer.mozilla.org/en-US/docs/Web/API/HTMLLabelElement/control), the control will be filled instead.
+
+To send fine-grained keyboard events, use [`method: ElementHandle.type`].
 
 ### param: ElementHandle.fill.value
 - `value` <[string]>
 
 Value to set for the `<input>`, `<textarea>` or `[contenteditable]` element.
 
+### option: ElementHandle.fill.force = %%-input-force-%%
 ### option: ElementHandle.fill.noWaitAfter = %%-input-no-wait-after-%%
-
 ### option: ElementHandle.fill.timeout = %%-input-timeout-%%
 
 ## async method: ElementHandle.focus
@@ -417,9 +474,9 @@ This method hovers over the element by performing the following steps:
 1. Use [`property: Page.mouse`] to hover over the center of the element, or the specified [`option: position`].
 1. Wait for initiated navigations to either succeed or fail, unless `noWaitAfter` option is set.
 
-If the element is detached from the DOM at any moment during the action, this method rejects.
+If the element is detached from the DOM at any moment during the action, this method throws.
 
-When all steps combined have not finished during the specified [`option: timeout`], this method rejects with a
+When all steps combined have not finished during the specified [`option: timeout`], this method throws a
 [TimeoutError]. Passing zero timeout disables this.
 
 ### option: ElementHandle.hover.position = %%-input-position-%%
@@ -430,6 +487,8 @@ When all steps combined have not finished during the specified [`option: timeout
 
 ### option: ElementHandle.hover.timeout = %%-input-timeout-%%
 
+### option: ElementHandle.hover.trial = %%-input-trial-%%
+
 ## async method: ElementHandle.innerHTML
 - returns: <[string]>
 
@@ -439,6 +498,13 @@ Returns the `element.innerHTML`.
 - returns: <[string]>
 
 Returns the `element.innerText`.
+
+## async method: ElementHandle.inputValue
+- returns: <[string]>
+
+Returns `input.value` for `<input>` or `<textarea>` element. Throws for non-input elements.
+
+### option: ElementHandle.inputValue.timeout = %%-input-timeout-%%
 
 ## async method: ElementHandle.isChecked
 - returns: <[boolean]>
@@ -579,12 +645,13 @@ Throws when `elementHandle` does not point to an element
 ## async method: ElementHandle.selectOption
 - returns: <[Array]<[string]>>
 
+This method waits for [actionability](./actionability.md) checks, waits until all specified options are present in the `<select>` element and selects these options.
+
+If the target element is not a `<select>` element, this method throws an error. However, if the element is inside the `<label>` element that has an associated [control](https://developer.mozilla.org/en-US/docs/Web/API/HTMLLabelElement/control), the control will be used instead.
+
 Returns the array of option values that have been successfully selected.
 
-Triggers a `change` and `input` event once all the provided options have been selected. If element is not a `<select>`
-element, the method throws an error.
-
-Will wait until all specified options are present in the `<select>` element.
+Triggers a `change` and `input` event once all the provided options have been selected.
 
 ```js
 // single selection matching the value
@@ -635,10 +702,23 @@ handle.select_option("red", "green", "blue")
 handle.select_option(value="blue", { index: 2 }, "red")
 ```
 
+```csharp
+// single selection matching the value
+await handle.SelectOptionAsync(new[] { "blue" });
+// single selection matching the label
+await handle.SelectOptionAsync(new[] { new SelectOptionValue() { Label = "blue" } });
+// multiple selection
+await handle.SelectOptionAsync(new[] { "red", "green", "blue" });
+// multiple selection for blue, red and second option
+await handle.SelectOptionAsync(new[] {
+    new SelectOptionValue() { Label = "blue" },
+    new SelectOptionValue() { Index = 2 },
+    new SelectOptionValue() { Value = "red" }});
+```
+
 ### param: ElementHandle.selectOption.values = %%-select-options-values-%%
-
+### option: ElementHandle.selectOption.force = %%-input-force-%%
 ### option: ElementHandle.selectOption.noWaitAfter = %%-input-no-wait-after-%%
-
 ### option: ElementHandle.selectOption.timeout = %%-input-timeout-%%
 
 ## async method: ElementHandle.selectText
@@ -646,6 +726,7 @@ handle.select_option(value="blue", { index: 2 }, "red")
 This method waits for [actionability](./actionability.md) checks, then focuses the element and selects all its text
 content.
 
+### option: ElementHandle.selectText.force = %%-input-force-%%
 ### option: ElementHandle.selectText.timeout = %%-input-timeout-%%
 
 ## async method: ElementHandle.setInputFiles
@@ -670,9 +751,9 @@ This method taps the element by performing the following steps:
 1. Use [`property: Page.touchscreen`] to tap the center of the element, or the specified [`option: position`].
 1. Wait for initiated navigations to either succeed or fail, unless [`option: noWaitAfter`] option is set.
 
-If the element is detached from the DOM at any moment during the action, this method rejects.
+If the element is detached from the DOM at any moment during the action, this method throws.
 
-When all steps combined have not finished during the specified [`option: timeout`], this method rejects with a
+When all steps combined have not finished during the specified [`option: timeout`], this method throws a
 [TimeoutError]. Passing zero timeout disables this.
 
 :::note
@@ -688,6 +769,8 @@ When all steps combined have not finished during the specified [`option: timeout
 ### option: ElementHandle.tap.noWaitAfter = %%-input-no-wait-after-%%
 
 ### option: ElementHandle.tap.timeout = %%-input-timeout-%%
+
+### option: ElementHandle.tap.trial = %%-input-trial-%%
 
 ## async method: ElementHandle.textContent
 - returns: <[null]|[string]>
@@ -720,6 +803,11 @@ element_handle.type("hello") # types instantly
 element_handle.type("world", delay=100) # types slower, like a user
 ```
 
+```csharp
+await elementHandle.TypeAsync("Hello"); // Types instantly
+await elementHandle.TypeAsync("World", delay: 100); // Types slower, like a user
+```
+
 An example of typing into a text field and then submitting the form:
 
 ```js
@@ -746,6 +834,12 @@ element_handle.type("some text")
 element_handle.press("Enter")
 ```
 
+```csharp
+var elementHandle = await page.QuerySelectorAsync("input");
+await elementHandle.TypeAsync("some text");
+await elementHandle.PressAsync("Enter");
+```
+
 ### param: ElementHandle.type.text
 - `text` <[string]>
 
@@ -763,24 +857,28 @@ Time to wait between key presses in milliseconds. Defaults to 0.
 ## async method: ElementHandle.uncheck
 
 This method checks the element by performing the following steps:
-1. Ensure that element is a checkbox or a radio input. If not, this method rejects. If the element is already
+1. Ensure that element is a checkbox or a radio input. If not, this method throws. If the element is already
    unchecked, this method returns immediately.
 1. Wait for [actionability](./actionability.md) checks on the element, unless [`option: force`] option is set.
 1. Scroll the element into view if needed.
 1. Use [`property: Page.mouse`] to click in the center of the element.
 1. Wait for initiated navigations to either succeed or fail, unless [`option: noWaitAfter`] option is set.
-1. Ensure that the element is now unchecked. If not, this method rejects.
+1. Ensure that the element is now unchecked. If not, this method throws.
 
-If the element is detached from the DOM at any moment during the action, this method rejects.
+If the element is detached from the DOM at any moment during the action, this method throws.
 
-When all steps combined have not finished during the specified [`option: timeout`], this method rejects with a
+When all steps combined have not finished during the specified [`option: timeout`], this method throws a
 [TimeoutError]. Passing zero timeout disables this.
+
+### option: ElementHandle.uncheck.position = %%-input-position-%%
 
 ### option: ElementHandle.uncheck.force = %%-input-force-%%
 
 ### option: ElementHandle.uncheck.noWaitAfter = %%-input-no-wait-after-%%
 
 ### option: ElementHandle.uncheck.timeout = %%-input-timeout-%%
+
+### option: ElementHandle.uncheck.trial = %%-input-trial-%%
 
 ## async method: ElementHandle.waitForElementState
 
@@ -844,6 +942,13 @@ page.set_content("<div><span></span></div>")
 div = page.query_selector("div")
 # waiting for the "span" selector relative to the div.
 span = div.wait_for_selector("span", state="attached")
+```
+
+```csharp
+await page.SetContentAsync("<div><span></span></div>");
+var div = await page.QuerySelectorAsync("div");
+// Waiting for the "span" selector relative to the div.
+var span = await page.WaitForSelectorAsync("span", WaitForSelectorState.Attached);
 ```
 
 :::note

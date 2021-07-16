@@ -58,6 +58,13 @@ page.navigate("https://www.w3.org/");
 playwright.close();
 ```
 
+### option: Playwright.create.env
+* langs: java
+- `env` <[Object]<[string], [string]>>
+
+Additional environment variables that will be passed to the driver process. By default driver
+process inherits environment variables of the Playwright process.
+
 ### param: BrowserContext.waitForPage.callback = %%-java-wait-for-event-callback-%%
 
 ### param: Frame.waitForNavigation.callback = %%-java-wait-for-event-callback-%%
@@ -74,6 +81,8 @@ playwright.close();
 
 ### param: Page.waitForRequest.callback = %%-java-wait-for-event-callback-%%
 
+### param: Page.waitForRequestFinished.callback = %%-java-wait-for-event-callback-%%
+
 ### param: Page.waitForResponse.callback = %%-java-wait-for-event-callback-%%
 
 ### param: Page.waitForNavigation.callback = %%-java-wait-for-event-callback-%%
@@ -87,8 +96,3 @@ playwright.close();
 ### param: WebSocket.waitForFrameSent.callback = %%-java-wait-for-event-callback-%%
 
 ### param: Worker.waitForClose.callback = %%-java-wait-for-event-callback-%%
-
-### option: BrowserType.launch.ignoreDefaultArgs = %%-csharp-java-browser-option-ignoredefaultargs-%%
-### option: BrowserType.launchPersistentContext.ignoreDefaultArgs = %%-csharp-java-browser-option-ignoredefaultargs-%%
-### option: BrowserType.launch.ignoreAllDefaultArgs = %%-csharp-java-browser-option-ignorealldefaultargs-%%
-### option: BrowserType.launchPersistentContext.ignoreAllDefaultArgs = %%-csharp-java-browser-option-ignorealldefaultargs-%%

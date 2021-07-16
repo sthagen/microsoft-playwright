@@ -61,12 +61,16 @@ export class CRBrowser extends Browser {
       return browser;
     }
     browser._defaultContext = new CRBrowserContext(browser, undefined, options.persistent);
-
     await Promise.all([
-      session.send('Target.setAutoAttach', { autoAttach: true, waitForDebuggerOnStart: true, flatten: true }),
+      session.send('Target.setAutoAttach', { autoAttach: true, waitForDebuggerOnStart: true, flatten: true }).then(async () => {
+        // Target.setAutoAttach has a bug where it does not wait for new Targets being attached.
+        // However making a dummy call afterwards fixes this.
+        // This can be removed after https://chromium-review.googlesource.com/c/chromium/src/+/2885888 lands in stable.
+        await session.send('Target.getTargetInfo');
+      }),
       (browser._defaultContext as CRBrowserContext)._initialize(),
     ]);
-
+    await browser._waitForAllPagesToBeInitialized();
     return browser;
   }
 
@@ -77,6 +81,8 @@ export class CRBrowser extends Browser {
     this._connection.on(ConnectionEvents.Disconnected, () => this._didClose());
     this._session.on('Target.attachedToTarget', this._onAttachedToTarget.bind(this));
     this._session.on('Target.detachedFromTarget', this._onDetachedFromTarget.bind(this));
+    this._session.on('Browser.downloadWillBegin', this._onDownloadWillBegin.bind(this));
+    this._session.on('Browser.downloadProgress', this._onDownloadProgress.bind(this));
   }
 
   async newContext(options: types.BrowserContextOptions): Promise<BrowserContext> {
@@ -102,6 +108,10 @@ export class CRBrowser extends Browser {
 
   isClank(): boolean {
     return this.options.name === 'clank';
+  }
+
+  async _waitForAllPagesToBeInitialized() {
+    await Promise.all([...this._crPages.values()].map(page => page.pageOrError()));
   }
 
   _onAttachedToTarget({targetInfo, sessionId, waitingForDebugger}: Protocol.Target.attachedToTargetPayload) {
@@ -136,20 +146,15 @@ export class CRBrowser extends Browser {
     assert(!this._serviceWorkers.has(targetInfo.targetId), 'Duplicate target ' + targetInfo.targetId);
 
     if (targetInfo.type === 'background_page') {
-      const backgroundPage = new CRPage(session, targetInfo.targetId, context, null, false);
+      const backgroundPage = new CRPage(session, targetInfo.targetId, context, null, false, true);
       this._backgroundPages.set(targetInfo.targetId, backgroundPage);
-      backgroundPage.pageOrError().then(pageOrError => {
-        if (pageOrError instanceof Page)
-          context!.emit(CRBrowserContext.CREvents.BackgroundPage, backgroundPage._page);
-      });
       return;
     }
 
     if (targetInfo.type === 'page') {
       const opener = targetInfo.openerId ? this._crPages.get(targetInfo.openerId) || null : null;
-      const crPage = new CRPage(session, targetInfo.targetId, context, opener, true);
+      const crPage = new CRPage(session, targetInfo.targetId, context, opener, true, false);
       this._crPages.set(targetInfo.targetId, crPage);
-      crPage._page.reportAsNew();
       return;
     }
 
@@ -183,6 +188,36 @@ export class CRBrowser extends Browser {
       serviceWorker.emit(Worker.Events.Close);
       return;
     }
+  }
+
+  private _findOwningPage(frameId: string) {
+    for (const crPage of this._crPages.values()) {
+      const frame = crPage._page._frameManager.frame(frameId);
+      if (frame)
+        return crPage;
+    }
+    return null;
+  }
+
+  _onDownloadWillBegin(payload: Protocol.Browser.downloadWillBeginPayload) {
+    const page = this._findOwningPage(payload.frameId);
+    assert(page, 'Download started in unknown page: ' + JSON.stringify(payload));
+    page.willBeginDownload();
+
+    let originPage = page._initializedPage;
+    // If it's a new window download, report it on the opener page.
+    if (!originPage && page._opener)
+      originPage = page._opener._initializedPage;
+    if (!originPage)
+      return;
+    this._downloadCreated(originPage, payload.guid, payload.url, payload.suggestedFilename);
+  }
+
+  _onDownloadProgress(payload: any) {
+    if (payload.state === 'completed')
+      this._downloadFinished(payload.guid, '');
+    if (payload.state === 'canceled')
+      this._downloadFinished(payload.guid, 'canceled');
   }
 
   async _closePage(crPage: CRPage) {
@@ -276,11 +311,12 @@ export class CRBrowserContext extends BrowserContext {
   async _initialize() {
     assert(!Array.from(this._browser._crPages.values()).some(page => page._browserContext === this));
     const promises: Promise<any>[] = [ super._initialize() ];
-    if (this._browser.options.downloadsPath) {
+    if (this._browser.options.name !== 'electron' && this._browser.options.name !== 'clank') {
       promises.push(this._browser._session.send('Browser.setDownloadBehavior', {
         behavior: this._options.acceptDownloads ? 'allowAndName' : 'deny',
         browserContextId: this._browserContextId,
-        downloadPath: this._browser.options.downloadsPath
+        downloadPath: this._browser.options.downloadsPath,
+        eventsEnabled: true,
       }));
     }
     if (this._options.permissions)
@@ -432,6 +468,27 @@ export class CRBrowserContext extends BrowserContext {
       serviceWorker.emit(Worker.Events.Close);
       this._browser._serviceWorkers.delete(targetId);
     }
+  }
+
+  _onClosePersistent() {
+    // When persistent context is closed, we do not necessary get Target.detachedFromTarget
+    // for all the background pages.
+    for (const [targetId, backgroundPage] of this._browser._backgroundPages.entries()) {
+      if (backgroundPage._browserContext === this && backgroundPage._initializedPage) {
+        backgroundPage.didClose();
+        this._browser._backgroundPages.delete(targetId);
+      }
+    }
+  }
+
+  async _doCancelDownload(guid: string) {
+    // The upstream CDP method is implemented in a way that no explicit error would be given
+    // regarding the requested `guid`, even if the download is in a state not suitable for
+    // cancellation (finished, cancelled, etc.) or the guid is invalid at all.
+    await this._browser._session.send('Browser.cancelDownload', {
+      guid: guid,
+      browserContextId: this._browserContextId,
+    });
   }
 
   backgroundPages(): Page[] {

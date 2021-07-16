@@ -20,15 +20,13 @@ import { generateSelector, querySelector } from './selectorGenerator';
 import type { Point } from '../../../common/types';
 import type { UIState } from '../recorder/recorderTypes';
 
-declare global {
-  interface Window {
-    _playwrightRecorderPerformAction: (action: actions.Action) => Promise<void>;
-    _playwrightRecorderRecordAction: (action: actions.Action) => Promise<void>;
-    _playwrightRecorderCommitAction: () => Promise<void>;
-    _playwrightRecorderState: () => Promise<UIState>;
-    _playwrightRecorderSetSelector: (selector: string) => Promise<void>;
-    _playwrightRefreshOverlay: () => void;
-  }
+
+declare module globalThis {
+  let _playwrightRecorderPerformAction: (action: actions.Action) => Promise<void>;
+  let _playwrightRecorderRecordAction: (action: actions.Action) => Promise<void>;
+  let _playwrightRecorderState: () => Promise<UIState>;
+  let _playwrightRecorderSetSelector: (selector: string) => Promise<void>;
+  let _playwrightRefreshOverlay: () => void;
 }
 
 const scriptSymbol = Symbol('scriptSymbol');
@@ -52,11 +50,8 @@ export class Recorder {
   private _actionPoint: Point | undefined;
   private _actionSelector: string | undefined;
   private _params: { isUnderTest: boolean; };
-  private _snapshotIframe: HTMLIFrameElement | undefined;
-  private _snapshotUrl: string | undefined;
-  private _snapshotBaseUrl: string;
 
-  constructor(injectedScript: InjectedScript, params: { isUnderTest: boolean, snapshotBaseUrl: string }) {
+  constructor(injectedScript: InjectedScript, params: { isUnderTest: boolean }) {
     this._params = params;
     this._injectedScript = injectedScript;
     this._outerGlassPaneElement = document.createElement('x-pw-glass');
@@ -68,7 +63,6 @@ export class Recorder {
     this._outerGlassPaneElement.style.zIndex = '2147483647';
     this._outerGlassPaneElement.style.pointerEvents = 'none';
     this._outerGlassPaneElement.style.display = 'flex';
-    this._snapshotBaseUrl = params.snapshotBaseUrl;
 
     this._tooltipElement = document.createElement('x-pw-tooltip');
     this._actionPointElement = document.createElement('x-pw-action-point');
@@ -126,15 +120,15 @@ export class Recorder {
     this._refreshListenersIfNeeded();
     setInterval(() => {
       this._refreshListenersIfNeeded();
-      if ((window as any)._recorderScriptReadyForTest) {
-        (window as any)._recorderScriptReadyForTest();
-        delete (window as any)._recorderScriptReadyForTest;
+      if (params.isUnderTest && !(this as any)._reportedReadyForTest) {
+        (this as any)._reportedReadyForTest = true;
+        console.error('Recorder script ready for test');
       }
     }, 500);
-    window._playwrightRefreshOverlay = () => {
+    globalThis._playwrightRefreshOverlay = () => {
       this._pollRecorderMode().catch(e => console.log(e)); // eslint-disable-line no-console
     };
-    window._playwrightRefreshOverlay();
+    globalThis._playwrightRefreshOverlay();
   }
 
   private _refreshListenersIfNeeded() {
@@ -144,6 +138,7 @@ export class Recorder {
     removeEventListeners(this._listeners);
     this._listeners = [
       addEventListener(document, 'click', event => this._onClick(event as MouseEvent), true),
+      addEventListener(document, 'auxclick', event => this._onClick(event as MouseEvent), true),
       addEventListener(document, 'input', event => this._onInput(event), true),
       addEventListener(document, 'keydown', event => this._onKeyDown(event as KeyboardEvent), true),
       addEventListener(document, 'keyup', event => this._onKeyUp(event as KeyboardEvent), true),
@@ -161,39 +156,17 @@ export class Recorder {
     document.documentElement.appendChild(this._outerGlassPaneElement);
   }
 
-  private _createSnapshotIframeIfNeeded(): HTMLIFrameElement | undefined {
-    if (this._snapshotIframe)
-      return this._snapshotIframe;
-    if (window.top === window) {
-      this._snapshotIframe = document.createElement('iframe');
-      this._snapshotIframe.src = this._snapshotBaseUrl;
-      this._snapshotIframe.style.background = '#ff000060';
-      this._snapshotIframe.style.position = 'fixed';
-      this._snapshotIframe.style.top = '0';
-      this._snapshotIframe.style.right = '0';
-      this._snapshotIframe.style.bottom = '0';
-      this._snapshotIframe.style.left = '0';
-      this._snapshotIframe.style.border = 'none';
-      this._snapshotIframe.style.width = '100%';
-      this._snapshotIframe.style.height = '100%';
-      this._snapshotIframe.style.zIndex = '2147483647';
-      this._snapshotIframe.style.visibility = 'hidden';
-      document.documentElement.appendChild(this._snapshotIframe);
-    }
-    return this._snapshotIframe;
-  }
-
   private async _pollRecorderMode() {
     const pollPeriod = 1000;
     if (this._pollRecorderModeTimer)
       clearTimeout(this._pollRecorderModeTimer);
-    const state = await window._playwrightRecorderState().catch(e => null);
+    const state = await globalThis._playwrightRecorderState().catch(e => null);
     if (!state) {
       this._pollRecorderModeTimer = setTimeout(() => this._pollRecorderMode(), pollPeriod);
       return;
     }
 
-    const { mode, actionPoint, actionSelector, snapshotUrl } = state;
+    const { mode, actionPoint, actionSelector } = state;
     if (mode !== this._mode) {
       this._mode = mode;
       this._clearHighlight();
@@ -221,18 +194,6 @@ export class Recorder {
       this._hoveredModel = actionSelector ? querySelector(this._injectedScript, actionSelector, document) : null;
       this._updateHighlight();
       this._actionSelector = actionSelector;
-    }
-    if (snapshotUrl !== this._snapshotUrl) {
-      this._snapshotUrl = snapshotUrl;
-      const snapshotIframe = this._createSnapshotIframeIfNeeded();
-      if (snapshotIframe) {
-        if (!snapshotUrl) {
-          snapshotIframe.style.visibility = 'hidden';
-        } else {
-          snapshotIframe.style.visibility = 'visible';
-          snapshotIframe.contentWindow?.postMessage({ snapshotUrl }, '*');
-        }
-      }
     }
     this._pollRecorderModeTimer = setTimeout(() => this._pollRecorderMode(), pollPeriod);
   }
@@ -268,7 +229,7 @@ export class Recorder {
 
   private _onClick(event: MouseEvent) {
     if (this._mode === 'inspecting')
-      window._playwrightRecorderSetSelector(this._hoveredModel ? this._hoveredModel.selector : '');
+      globalThis._playwrightRecorderSetSelector(this._hoveredModel ? this._hoveredModel.selector : '');
     if (this._shouldIgnoreMouseEvent(event))
       return;
     if (this._actionInProgress(event))
@@ -335,15 +296,14 @@ export class Recorder {
     if (this._hoveredElement === target)
       return;
     this._hoveredElement = target;
-    // Mouse moved -> mark last action as committed via committing a commit action.
-    this._commitActionAndUpdateModelForHoveredElement();
+    this._updateModelForHoveredElement();
   }
 
   private _onMouseLeave(event: MouseEvent) {
     // Leaving iframe.
     if (this._deepEventTarget(event).nodeType === Node.DOCUMENT_NODE) {
       this._hoveredElement = null;
-      this._commitActionAndUpdateModelForHoveredElement();
+      this._updateModelForHoveredElement();
     }
   }
 
@@ -351,11 +311,11 @@ export class Recorder {
     const activeElement = this._deepActiveElement(document);
     const result = activeElement ? generateSelector(this._injectedScript, activeElement) : null;
     this._activeModel = result && result.selector ? result : null;
-    if ((window as any)._highlightUpdatedForTest)
-      (window as any)._highlightUpdatedForTest(result ? result.selector : null);
+    if (this._params.isUnderTest)
+      console.error('Highlight updated for test: ' + (result ? result.selector : null));
   }
 
-  private _commitActionAndUpdateModelForHoveredElement() {
+  private _updateModelForHoveredElement() {
     if (!this._hoveredElement) {
       this._hoveredModel = null;
       this._updateHighlight();
@@ -365,11 +325,10 @@ export class Recorder {
     const { selector, elements } = generateSelector(this._injectedScript, hoveredElement);
     if ((this._hoveredModel && this._hoveredModel.selector === selector) || this._hoveredElement !== hoveredElement)
       return;
-    window._playwrightRecorderCommitAction();
     this._hoveredModel = selector ? { selector, elements } : null;
     this._updateHighlight();
-    if ((window as any)._highlightUpdatedForTest)
-      (window as any)._highlightUpdatedForTest(selector);
+    if (this._params.isUnderTest)
+      console.error('Highlight updated for test: ' + selector);
   }
 
   private _updateHighlight() {
@@ -458,7 +417,7 @@ export class Recorder {
       }
 
       if (elementType === 'file') {
-        window._playwrightRecorderRecordAction({
+        globalThis._playwrightRecorderRecordAction({
           name: 'setInputFiles',
           selector: this._activeModel!.selector,
           signals: [],
@@ -470,7 +429,7 @@ export class Recorder {
       // Non-navigating actions are simply recorded by Playwright.
       if (this._consumedDueWrongTarget(event))
         return;
-      window._playwrightRecorderRecordAction({
+      globalThis._playwrightRecorderRecordAction({
         name: 'fill',
         selector: this._activeModel!.selector,
         signals: [],
@@ -492,8 +451,8 @@ export class Recorder {
   }
 
   private _shouldGenerateKeyPressFor(event: KeyboardEvent): boolean {
-    // Backspace, Delete are changing input, will handle it there.
-    if (['Backspace', 'Delete'].includes(event.key))
+    // Backspace, Delete, AltGraph are changing input, will handle it there.
+    if (['Backspace', 'Delete', 'AltGraph'].includes(event.key))
       return false;
     // Ignore the QWERTZ shortcut for creating a at sign on MacOS
     if (event.key === '@' && event.code === 'KeyL')
@@ -567,19 +526,21 @@ export class Recorder {
 
   private async _performAction(action: actions.Action) {
     this._performingAction = true;
-    await window._playwrightRecorderPerformAction(action).catch(() => {});
+    await globalThis._playwrightRecorderPerformAction(action).catch(() => {});
     this._performingAction = false;
 
     // Action could have changed DOM, update hovered model selectors.
-    this._commitActionAndUpdateModelForHoveredElement();
+    this._updateModelForHoveredElement();
     // If that was a keyboard action, it similarly requires new selectors for active model.
     this._onFocus();
 
-    if ((window as any)._actionPerformedForTest) {
-      (window as any)._actionPerformedForTest({
+    if (this._params.isUnderTest) {
+      // Serialize all to string as we cannot attribute console message to isolated world
+      // in Firefox.
+      console.error('Action performed for test: ' + JSON.stringify({
         hovered: this._hoveredModel ? this._hoveredModel.selector : null,
         active: this._activeModel ? this._activeModel.selector : null,
-      });
+      }));
     }
   }
 

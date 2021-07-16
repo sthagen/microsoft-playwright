@@ -32,10 +32,9 @@ lib/**/injected/
 !README.md
 !LICENSE
 !NOTICE
-# Include protocol and api docs, so that dependent packages can consume them.
-!api.json
-!protocol.yml
 # Include browser descriptors.
 !browsers.json
 # Include commit info
 !commitinfo
+# Include generated devices descriptors
+!deviceDescriptorsSource.json

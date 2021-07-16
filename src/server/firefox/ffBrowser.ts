@@ -15,6 +15,7 @@
  * limitations under the License.
  */
 
+import { kBrowserClosedError } from '../../utils/errors';
 import { assert } from '../../utils/utils';
 import { Browser, BrowserOptions } from '../browser';
 import { assertBrowserContextIsNotOwned, BrowserContext, validateBrowserContextOptions, verifyGeolocation } from '../browserContext';
@@ -23,7 +24,7 @@ import { Page, PageBinding, PageDelegate } from '../page';
 import { ConnectionTransport } from '../transport';
 import * as types from '../types';
 import { ConnectionEvents, FFConnection } from './ffConnection';
-import { FFPage } from './ffPage';
+import { FFPage, UTILITY_WORLD_NAME } from './ffPage';
 import { Protocol } from './protocol';
 
 export class FFBrowser extends Browser {
@@ -56,12 +57,12 @@ export class FFBrowser extends Browser {
     this._connection = connection;
     this._ffPages = new Map();
     this._contexts = new Map();
-    this._connection.on(ConnectionEvents.Disconnected, () => this._didClose());
+    this._connection.on(ConnectionEvents.Disconnected, () => this._onDisconnect());
     this._connection.on('Browser.attachedToTarget', this._onAttachedToTarget.bind(this));
     this._connection.on('Browser.detachedFromTarget', this._onDetachedFromTarget.bind(this));
     this._connection.on('Browser.downloadCreated', this._onDownloadCreated.bind(this));
     this._connection.on('Browser.downloadFinished', this._onDownloadFinished.bind(this));
-    this._connection.on('Browser.screencastFinished', this._onScreencastFinished.bind(this));
+    this._connection.on('Browser.videoRecordingFinished', this._onVideoRecordingFinished.bind(this));
   }
 
   async _initVersion() {
@@ -107,7 +108,6 @@ export class FFBrowser extends Browser {
     const opener = openerId ? this._ffPages.get(openerId)! : null;
     const ffPage = new FFPage(session, context, opener);
     this._ffPages.set(targetId, ffPage);
-    ffPage._page.reportAsNew();
   }
 
   _onDownloadCreated(payload: Protocol.Browser.downloadCreatedPayload) {
@@ -120,7 +120,7 @@ export class FFBrowser extends Browser {
     if (!originPage) {
       // Resume the page creation with an error. The page will automatically close right
       // after the download begins.
-      ffPage._pageCallback(new Error('Starting new page download'));
+      ffPage._markAsError(new Error('Starting new page download'));
       if (ffPage._opener)
         originPage = ffPage._opener._initializedPage;
     }
@@ -134,8 +134,15 @@ export class FFBrowser extends Browser {
     this._downloadFinished(payload.uuid, error);
   }
 
-  _onScreencastFinished(payload: Protocol.Browser.screencastFinishedPayload) {
-    this._videoFinished(payload.screencastId);
+  _onVideoRecordingFinished(payload: Protocol.Browser.videoRecordingFinishedPayload) {
+    this._takeVideo(payload.screencastId)?.reportFinished();
+  }
+
+  _onDisconnect() {
+    for (const video of this._idToVideo.values())
+      video.artifact.reportFinished(kBrowserClosedError);
+    this._idToVideo.clear();
+    this._didClose();
   }
 }
 
@@ -151,15 +158,13 @@ export class FFBrowserContext extends BrowserContext {
     assert(!this._ffPages().length);
     const browserContextId = this._browserContextId;
     const promises: Promise<any>[] = [ super._initialize() ];
-    if (this._browser.options.downloadsPath) {
-      promises.push(this._browser._connection.send('Browser.setDownloadOptions', {
-        browserContextId,
-        downloadOptions: {
-          behavior: this._options.acceptDownloads ? 'saveToDisk' : 'cancel',
-          downloadsDir: this._browser.options.downloadsPath,
-        },
-      }));
-    }
+    promises.push(this._browser._connection.send('Browser.setDownloadOptions', {
+      browserContextId,
+      downloadOptions: {
+        behavior: this._options.acceptDownloads ? 'saveToDisk' : 'cancel',
+        downloadsDir: this._browser.options.downloadsPath,
+      },
+    }));
     if (this._options.viewport) {
       const viewport = {
         viewportSize: { width: this._options.viewport.width, height: this._options.viewport.height },
@@ -191,11 +196,17 @@ export class FFBrowserContext extends BrowserContext {
       promises.push(this.setGeolocation(this._options.geolocation));
     if (this._options.offline)
       promises.push(this.setOffline(this._options.offline));
-    if (this._options.colorScheme)
-      promises.push(this._browser._connection.send('Browser.setColorScheme', { browserContextId, colorScheme: this._options.colorScheme }));
+    promises.push(this._browser._connection.send('Browser.setColorScheme', {
+      browserContextId,
+      colorScheme: this._options.colorScheme !== undefined  ? this._options.colorScheme : 'light',
+    }));
+    promises.push(this._browser._connection.send('Browser.setReducedMotion', {
+      browserContextId,
+      reducedMotion: this._options.reducedMotion !== undefined  ? this._options.reducedMotion : 'no-preference',
+    }));
     if (this._options.recordVideo) {
       promises.push(this._ensureVideosPath().then(() => {
-        return this._browser._connection.send('Browser.setScreencastOptions', {
+        return this._browser._connection.send('Browser.setVideoRecordingOptions', {
           // validateBrowserContextOptions ensures correct video size.
           ...this._options.recordVideo!.size!,
           dir: this._options.recordVideo!.dir,
@@ -304,19 +315,24 @@ export class FFBrowserContext extends BrowserContext {
   }
 
   async _doExposeBinding(binding: PageBinding) {
-    if (binding.world !== 'main')
-      throw new Error('Only main context bindings are supported in Firefox.');
-    await this._browser._connection.send('Browser.addBinding', { browserContextId: this._browserContextId, name: binding.name, script: binding.source });
+    const worldName = binding.world === 'utility' ? UTILITY_WORLD_NAME : '';
+    await this._browser._connection.send('Browser.addBinding', { browserContextId: this._browserContextId, worldName, name: binding.name, script: binding.source });
   }
 
   async _doUpdateRequestInterception(): Promise<void> {
     await this._browser._connection.send('Browser.setRequestInterception', { browserContextId: this._browserContextId, enabled: !!this._requestInterceptor });
   }
 
+  _onClosePersistent() {}
+
   async _doClose() {
     assert(this._browserContextId);
     await this._browser._connection.send('Browser.removeBrowserContext', { browserContextId: this._browserContextId });
     this._browser._contexts.delete(this._browserContextId);
+  }
+
+  async _doCancelDownload(uuid: string) {
+    await this._browser._connection.send('Browser.cancelDownload', { uuid });
   }
 }
 

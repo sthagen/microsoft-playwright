@@ -15,9 +15,11 @@
  * limitations under the License.
  */
 
+import fs from 'fs';
+import os from 'os';
 import path from 'path';
 import { CRBrowser } from './crBrowser';
-import { Env } from '../processLauncher';
+import { Env } from '../../utils/processLauncher';
 import { kBrowserCloseMessageId } from './crConnection';
 import { rewriteErrorMessage } from '../../utils/stackTrace';
 import { BrowserType } from '../browserType';
@@ -25,13 +27,16 @@ import { ConnectionTransport, ProtocolRequest, WebSocketTransport } from '../tra
 import { CRDevTools } from './crDevTools';
 import { BrowserOptions, BrowserProcess, PlaywrightOptions } from '../browser';
 import * as types from '../types';
-import { isDebugMode } from '../../utils/utils';
+import { debugMode, headersArrayToObject, removeFolders } from '../../utils/utils';
 import { RecentLogsCollector } from '../../utils/debugLogger';
 import { ProgressController } from '../progress';
 import { TimeoutSettings } from '../../utils/timeoutSettings';
 import { helper } from '../helper';
 import { CallMetadata } from '../instrumentation';
-import { findChromiumChannel } from './findChromiumChannel';
+import http from 'http';
+import { registry } from '../../utils/registry';
+
+const ARTIFACTS_FOLDER = path.join(os.tmpdir(), 'playwright-artifacts-');
 
 export class Chromium extends BrowserType {
   private _devtools: CRDevTools | undefined;
@@ -39,27 +44,29 @@ export class Chromium extends BrowserType {
   constructor(playwrightOptions: PlaywrightOptions) {
     super('chromium', playwrightOptions);
 
-    if (isDebugMode())
+    if (debugMode())
       this._devtools = this._createDevTools();
   }
 
-  executablePath(options?: types.LaunchOptions): string {
-    if (options?.channel)
-      return findChromiumChannel(options.channel);
-    return super.executablePath(options);
-  }
-
-  async connectOverCDP(metadata: CallMetadata, wsEndpoint: string, options: { slowMo?: number, sdkLanguage: string }, timeout?: number) {
+  async connectOverCDP(metadata: CallMetadata, endpointURL: string, options: { slowMo?: number, sdkLanguage: string, headers?: types.HeadersArray }, timeout?: number) {
     const controller = new ProgressController(metadata, this);
     controller.setLogName('browser');
     const browserLogsCollector = new RecentLogsCollector();
     return controller.run(async progress => {
-      const chromeTransport = await WebSocketTransport.connect(progress, wsEndpoint);
+      let headersMap: { [key: string]: string; } | undefined;
+      if (options.headers)
+        headersMap = headersArrayToObject(options.headers, false);
+
+      const artifactsDir = await fs.promises.mkdtemp(ARTIFACTS_FOLDER);
+
+      const chromeTransport = await WebSocketTransport.connect(progress, await urlToWSEndpoint(endpointURL), headersMap);
       const browserProcess: BrowserProcess = {
         close: async () => {
+          await removeFolders([ artifactsDir ]);
           await chromeTransport.closeAndWait();
         },
         kill: async () => {
+          await removeFolders([ artifactsDir ]);
           await chromeTransport.closeAndWait();
         }
       };
@@ -72,13 +79,18 @@ export class Chromium extends BrowserType {
         browserProcess,
         protocolLogger: helper.debugProtocolLogger(),
         browserLogsCollector,
+        artifactsDir,
+        downloadsPath: artifactsDir,
+        tracesDir: artifactsDir
       };
       return await CRBrowser.connect(chromeTransport, browserOptions);
     }, TimeoutSettings.timeout({timeout}));
   }
 
   private _createDevTools() {
-    return new CRDevTools(path.join(this._registry.browserDirectory('chromium'), 'devtools-preferences.json'));
+    // TODO: this is totally wrong when using channels.
+    const directory = registry.findExecutable('chromium').directory;
+    return directory ? new CRDevTools(path.join(directory, 'devtools-preferences.json')) : undefined;
   }
 
   async _connectToTransport(transport: ConnectionTransport, options: BrowserOptions): Promise<CRBrowser> {
@@ -126,6 +138,11 @@ export class Chromium extends BrowserType {
       throw new Error('Arguments can not specify page to be opened');
     const chromeArguments = [...DEFAULT_ARGS];
     chromeArguments.push(`--user-data-dir=${userDataDir}`);
+
+    // See https://github.com/microsoft/playwright/issues/7362
+    if (os.platform() === 'darwin')
+      chromeArguments.push('--enable-use-zoom-for-dsf=false');
+
     if (options.useWebSocket)
       chromeArguments.push('--remote-debugging-port=0');
     else
@@ -151,10 +168,14 @@ export class Chromium extends BrowserType {
         chromeArguments.push(`--host-resolver-rules="MAP * ~NOTFOUND , EXCLUDE ${proxyURL.hostname}"`);
       }
       chromeArguments.push(`--proxy-server=${proxy.server}`);
-      if (proxy.bypass) {
-        const patterns = proxy.bypass.split(',').map(t => t.trim()).map(t => t.startsWith('.') ? '*' + t : t);
-        chromeArguments.push(`--proxy-bypass-list=${patterns.join(';')}`);
-      }
+      const proxyBypassRules = [];
+      // https://source.chromium.org/chromium/chromium/src/+/master:net/docs/proxy.md;l=548;drc=71698e610121078e0d1a811054dcf9fd89b49578
+      if (this._playwrightOptions.loopbackProxyOverride)
+        proxyBypassRules.push('<-loopback>');
+      if (proxy.bypass)
+        proxyBypassRules.push(...proxy.bypass.split(',').map(t => t.trim()).map(t => t.startsWith('.') ? '*' + t : t));
+      if (proxyBypassRules.length > 0)
+        chromeArguments.push(`--proxy-bypass-list=${proxyBypassRules.join(';')}`);
     }
     chromeArguments.push(...args);
     if (isPersistent)
@@ -177,7 +198,8 @@ const DEFAULT_ARGS = [
   '--disable-dev-shm-usage',
   '--disable-extensions',
   // BlinkGenPropertyTrees disabled due to crbug.com/937609
-  '--disable-features=TranslateUI,BlinkGenPropertyTrees,ImprovedCookieControls,SameSiteByDefaultCookies,LazyFrameLoading',
+  '--disable-features=TranslateUI,BlinkGenPropertyTrees,ImprovedCookieControls,SameSiteByDefaultCookies,LazyFrameLoading,GlobalMediaControls,DestroyProfileOnBrowserClose',
+  '--allow-pre-commit-input',
   '--disable-hang-monitor',
   '--disable-ipc-flooding-protection',
   '--disable-popup-blocking',
@@ -190,4 +212,24 @@ const DEFAULT_ARGS = [
   '--enable-automation',
   '--password-store=basic',
   '--use-mock-keychain',
+  // See https://chromium-review.googlesource.com/c/chromium/src/+/2436773
+  '--no-service-autorun',
 ];
+
+async function urlToWSEndpoint(endpointURL: string) {
+  if (endpointURL.startsWith('ws'))
+    return endpointURL;
+  const httpURL = endpointURL.endsWith('/') ? `${endpointURL}json/version/` : `${endpointURL}/json/version/`;
+  const json = await new Promise<string>((resolve, reject) => {
+    http.get(httpURL, resp => {
+      if (resp.statusCode! < 200 || resp.statusCode! >= 400) {
+        reject(new Error(`Unexpected status ${resp.statusCode} when connecting to ${httpURL}.\n` +
+        `This does not look like a DevTools server, try connecting via ws://.`));
+      }
+      let data = '';
+      resp.on('data', chunk => data += chunk);
+      resp.on('end', () => resolve(data));
+    }).on('error', reject);
+  });
+  return JSON.parse(json).webSocketDebuggerUrl;
+}

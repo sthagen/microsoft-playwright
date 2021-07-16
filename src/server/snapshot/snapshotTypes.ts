@@ -19,6 +19,7 @@ export type ResourceSnapshot = {
   pageId: string,
   frameId: string,
   url: string,
+  type: string,
   contentType: string,
   responseHeaders: { name: string, value: string }[],
   requestHeaders: { name: string, value: string }[],
@@ -54,12 +55,12 @@ export type FrameSnapshot = {
   frameId: string,
   frameUrl: string,
   timestamp: number,
-  pageTimestamp: number,
   collectionTime: number,
   doctype?: string,
   html: NodeSnapshot,
   resourceOverrides: ResourceOverride[],
   viewport: { width: number, height: number },
+  isMainFrame: boolean,
 };
 
 export type ContextResources = Map<string, { resourceId: string, frameId: string }[]>;
