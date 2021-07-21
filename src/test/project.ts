@@ -15,7 +15,7 @@
  */
 
 import type { TestType, FullProject, Fixtures, FixturesWithLocation } from './types';
-import { Suite, Test } from './test';
+import { Suite, TestCase } from './test';
 import { FixturePool } from './fixtures';
 import { DeclaredFixtures, TestTypeImpl } from './testType';
 
@@ -24,7 +24,7 @@ export class ProjectImpl {
   private index: number;
   private defines = new Map<TestType<any, any>, Fixtures>();
   private testTypePools = new Map<TestTypeImpl, FixturePool>();
-  private testPools = new Map<Test, FixturePool>();
+  private testPools = new Map<TestCase, FixturePool>();
 
   constructor(project: FullProject, index: number) {
     this.config = project;
@@ -53,24 +53,21 @@ export class ProjectImpl {
   }
 
   // TODO: we can optimize this function by building the pool inline in cloneSuite
-  private buildPool(test: Test): FixturePool {
+  private buildPool(test: TestCase): FixturePool {
     if (!this.testPools.has(test)) {
       let pool = this.buildTestTypePool(test._testType);
       const overrides: Fixtures = test.parent!._buildFixtureOverrides();
       if (Object.entries(overrides).length) {
         const overridesWithLocation = {
           fixtures: overrides,
-          location: {
-            file: test.file,
-            line: 1,  // TODO: capture location
-            column: 1,  // TODO: capture location
-          }
+          // TODO: pass location from test.use() callsite.
+          location: test.location,
         };
         pool = new FixturePool([overridesWithLocation], pool);
       }
       this.testPools.set(test, pool);
 
-      pool.validateFunction(test.fn, 'Test', true, test);
+      pool.validateFunction(test.fn, 'Test', true, test.location);
       for (let parent = test.parent; parent; parent = parent.parent) {
         for (const hook of parent._hooks)
           pool.validateFunction(hook.fn, hook.type + ' hook', hook.type === 'beforeEach' || hook.type === 'afterEach', hook.location);
@@ -81,15 +78,15 @@ export class ProjectImpl {
     return this.testPools.get(test)!;
   }
 
-  cloneSuite(suite: Suite, repeatEachIndex: number, filter: (test: Test) => boolean): Suite | undefined {
-    const result = suite._clone();
-    result._repeatEachIndex = repeatEachIndex;
-    result._projectIndex = this.index;
-    for (const entry of suite._entries) {
+  private _cloneEntries(from: Suite, to: Suite, repeatEachIndex: number, filter: (test: TestCase) => boolean): boolean {
+    for (const entry of from._entries) {
       if (entry instanceof Suite) {
-        const cloned = this.cloneSuite(entry, repeatEachIndex, filter);
-        if (cloned)
-          result._addSuite(cloned);
+        const suite = entry._clone();
+        to._addSuite(suite);
+        if (!this._cloneEntries(entry, suite, repeatEachIndex, filter)) {
+          to._entries.pop();
+          to.suites.pop();
+        }
       } else {
         const pool = this.buildPool(entry);
         const test = entry._clone();
@@ -98,14 +95,21 @@ export class ProjectImpl {
         test._workerHash = `run${this.index}-${pool.digest}-repeat${repeatEachIndex}`;
         test._id = `${entry._ordinalInFile}@${entry._requireFile}#run${this.index}-repeat${repeatEachIndex}`;
         test._pool = pool;
-        test._buildFullTitle(suite.fullTitle());
-        if (!filter(test))
-          continue;
-        result._addTest(test);
+        test._repeatEachIndex = repeatEachIndex;
+        test._projectIndex = this.index;
+        to._addTest(test);
+        if (!filter(test)) {
+          to._entries.pop();
+          to.suites.pop();
+        }
       }
     }
-    if (result._entries.length)
-      return result;
+    return to._entries.length > 0;
+  }
+
+  cloneFileSuite(suite: Suite, repeatEachIndex: number, filter: (test: TestCase) => boolean): Suite | undefined {
+    const result = suite._clone();
+    return this._cloneEntries(suite, result, repeatEachIndex, filter) ? result : undefined;
   }
 
   private resolveFixtures(testType: TestTypeImpl): FixturesWithLocation[] {

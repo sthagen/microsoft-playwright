@@ -146,6 +146,9 @@ export type LaunchConfig = {
   cwd?: string,
 };
 
+type LiteralUnion<T extends U, U = string> = T | (U & { zz_IGNORE_ME?: never })
+
+
 /**
  * Testing configuration.
  */
@@ -213,7 +216,7 @@ interface ConfigBase {
    * It is possible to pass multiple reporters. A common pattern is using one terminal reporter
    * like `'line'` or `'list'`, and one file reporter like `'json'` or `'junit'`.
    */
-  reporter?: 'dot' | 'line' | 'list' | 'junit' | 'json' | 'null' | ReporterDescription[];
+  reporter?: LiteralUnion<'list'|'dot'|'line'|'json'|'junit'|'null', string> | ReporterDescription[];
 
   /**
    * Whether to report slow tests. When `null`, slow tests are not reported.
@@ -237,7 +240,7 @@ interface ConfigBase {
   /**
    * Launch a web server before running tests.
    */
-  launch?: LaunchConfig | LaunchConfig[];
+  _launch?: LaunchConfig | LaunchConfig[];
 
   /**
    * The maximum number of concurrent worker processes to use for parallelizing tests.
@@ -272,7 +275,7 @@ export interface FullConfig {
   shard: Shard;
   updateSnapshots: UpdateSnapshots;
   workers: number;
-  launch: LaunchConfig[];
+  _launch: LaunchConfig[];
 }
 
 export type TestStatus = 'passed' | 'failed' | 'timedOut' | 'skipped';
@@ -399,9 +402,9 @@ export interface TestInfo extends WorkerInfo {
   annotations: { type: string, description?: string }[];
 
   /**
-   * Arbitrary data that test fixtures can provide for the test report.
+   * File attachments for this test.
    */
-  data: { [key: string]: any };
+  attachments: { name: string, path?: string, body?: Buffer, contentType: string }[];
 
   /**
    * When tests are run multiple times, each run gets a unique `repeatEachIndex`.

@@ -16,15 +16,17 @@
 
 import { installTransform } from './transform';
 import type { FullConfig, Config, FullProject, Project, ReporterDescription, PreserveOutput } from './types';
-import { isRegExp, mergeObjects } from './util';
+import { isRegExp, mergeObjects, errorWithFile } from './util';
 import { setCurrentlyLoadingFileSuite } from './globals';
 import { Suite } from './test';
 import { SerializedLoaderData } from './ipc';
 import * as path from 'path';
 import * as url from 'url';
+import * as fs from 'fs';
 import { ProjectImpl } from './project';
-import { Reporter } from './reporter';
+import { Reporter } from '../../types/testReporter';
 import { LaunchConfig } from '../../types/test';
+import { BuiltInReporter, builtInReporters } from './runner';
 
 export class Loader {
   private _defaultConfig: Config;
@@ -73,14 +75,14 @@ export class Loader {
 
     // Resolve script hooks relative to the root dir.
     if (this._config.globalSetup)
-      this._config.globalSetup = path.resolve(rootDir, this._config.globalSetup);
+      this._config.globalSetup = resolveScript(this._config.globalSetup, rootDir);
     if (this._config.globalTeardown)
-      this._config.globalTeardown = path.resolve(rootDir, this._config.globalTeardown);
+      this._config.globalTeardown = resolveScript(this._config.globalTeardown, rootDir);
 
     const configUse = mergeObjects(this._defaultConfig.use, this._config.use);
     this._config = mergeObjects(mergeObjects(this._defaultConfig, this._config), { use: configUse });
 
-    if (('testDir' in this._config) && this._config.testDir !== undefined && !path.isAbsolute(this._config.testDir))
+    if (this._config.testDir !== undefined)
       this._config.testDir = path.resolve(rootDir, this._config.testDir);
     const projects: Project[] = ('projects' in this._config) && this._config.projects !== undefined ? this._config.projects : [this._config];
 
@@ -93,13 +95,13 @@ export class Loader {
     this._fullConfig.grepInvert = takeFirst(this._configOverrides.grepInvert, this._config.grepInvert, baseFullConfig.grepInvert);
     this._fullConfig.maxFailures = takeFirst(this._configOverrides.maxFailures, this._config.maxFailures, baseFullConfig.maxFailures);
     this._fullConfig.preserveOutput = takeFirst<PreserveOutput>(this._configOverrides.preserveOutput, this._config.preserveOutput, baseFullConfig.preserveOutput);
-    this._fullConfig.reporter = takeFirst(toReporters(this._configOverrides.reporter), toReporters(this._config.reporter), baseFullConfig.reporter);
+    this._fullConfig.reporter = takeFirst(toReporters(this._configOverrides.reporter as any), resolveReporters(this._config.reporter, rootDir), baseFullConfig.reporter);
     this._fullConfig.reportSlowTests = takeFirst(this._configOverrides.reportSlowTests, this._config.reportSlowTests, baseFullConfig.reportSlowTests);
     this._fullConfig.quiet = takeFirst(this._configOverrides.quiet, this._config.quiet, baseFullConfig.quiet);
     this._fullConfig.shard = takeFirst(this._configOverrides.shard, this._config.shard, baseFullConfig.shard);
     this._fullConfig.updateSnapshots = takeFirst(this._configOverrides.updateSnapshots, this._config.updateSnapshots, baseFullConfig.updateSnapshots);
     this._fullConfig.workers = takeFirst(this._configOverrides.workers, this._config.workers, baseFullConfig.workers);
-    this._fullConfig.launch = takeFirst(toLaunchServers(this._configOverrides.launch), toLaunchServers(this._config.launch), baseFullConfig.launch);
+    this._fullConfig._launch = takeFirst(toLaunchServers(this._configOverrides._launch), toLaunchServers(this._config._launch), baseFullConfig._launch);
 
     for (const project of projects)
       this._addProject(project, this._fullConfig.rootDir);
@@ -110,9 +112,9 @@ export class Loader {
     if (this._fileSuites.has(file))
       return this._fileSuites.get(file)!;
     try {
-      const suite = new Suite('');
+      const suite = new Suite(path.relative(this._fullConfig.rootDir, file) || path.basename(file));
       suite._requireFile = file;
-      suite.file = file;
+      suite.location = { file, line: 0, column: 0 };
       setCurrentlyLoadingFileSuite(suite);
       await this._requireOrImport(file);
       this._fileSuites.set(file, suite);
@@ -220,7 +222,7 @@ function takeFirst<T>(...args: (T | undefined)[]): T {
   return undefined as any as T;
 }
 
-function toReporters(reporters: 'dot' | 'line' | 'list' | 'junit' | 'json' | 'null' | ReporterDescription[] | undefined): ReporterDescription[] | undefined {
+function toReporters(reporters: BuiltInReporter | ReporterDescription[] | undefined): ReporterDescription[] | undefined {
   if (!reporters)
     return;
   if (typeof reporters === 'string')
@@ -234,10 +236,6 @@ function toLaunchServers(launchConfigs?: LaunchConfig | LaunchConfig[]): LaunchC
   if (!Array.isArray(launchConfigs))
     return [launchConfigs];
   return launchConfigs;
-}
-
-function errorWithFile(file: string, message: string) {
-  return new Error(`${file}: ${message}`);
 }
 
 function validateConfig(file: string, config: Config) {
@@ -317,10 +315,8 @@ function validateConfig(file: string, config: Config) {
         if (!Array.isArray(item) || item.length <= 0 || item.length > 2 || typeof item[0] !== 'string')
           throw errorWithFile(file, `config.reporter[${index}] must be a tuple [name, optionalArgument]`);
       });
-    } else {
-      const builtinReporters = ['dot', 'line', 'list', 'junit', 'json', 'null'];
-      if (typeof config.reporter !== 'string' || !builtinReporters.includes(config.reporter))
-        throw errorWithFile(file, `config.reporter must be one of ${builtinReporters.map(name => `"${name}"`).join(', ')}`);
+    } else if (typeof config.reporter !== 'string') {
+      throw errorWithFile(file, `config.reporter must be a string`);
     }
   }
 
@@ -439,5 +435,20 @@ const baseFullConfig: FullConfig = {
   shard: null,
   updateSnapshots: 'missing',
   workers: 1,
-  launch: [],
+  _launch: [],
 };
+
+function resolveReporters(reporters: Config['reporter'], rootDir: string): ReporterDescription[]|undefined {
+  return toReporters(reporters as any)?.map(([id, arg]) => {
+    if (builtInReporters.includes(id as any))
+      return [id, arg];
+    return [require.resolve(id, { paths: [ rootDir ] }), arg];
+  });
+}
+
+function resolveScript(id: string, rootDir: string) {
+  const localPath = path.resolve(rootDir, id);
+  if (fs.existsSync(localPath))
+    return localPath;
+  return require.resolve(id, { paths: [rootDir] });
+}

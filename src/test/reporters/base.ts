@@ -21,7 +21,7 @@ import fs from 'fs';
 import milliseconds from 'ms';
 import path from 'path';
 import StackUtils from 'stack-utils';
-import { FullConfig, TestStatus, Test, Suite, TestResult, TestError, Reporter, FullResult } from '../reporter';
+import { FullConfig, TestStatus, TestCase, Suite, TestResult, TestError, Reporter, FullResult } from '../../../types/testReporter';
 
 const stackUtils = new StackUtils();
 
@@ -33,16 +33,10 @@ export class BaseReporter implements Reporter  {
   fileDurations = new Map<string, number>();
   monotonicStartTime: number = 0;
 
-  constructor() {
-  }
-
   onBegin(config: FullConfig, suite: Suite) {
     this.monotonicStartTime = monotonicTime();
     this.config = config;
     this.suite = suite;
-  }
-
-  onTestBegin(test: Test) {
   }
 
   onStdOut(chunk: string | Buffer) {
@@ -55,9 +49,10 @@ export class BaseReporter implements Reporter  {
       process.stderr.write(chunk);
   }
 
-  onTestEnd(test: Test, result: TestResult) {
+  onTestEnd(test: TestCase, result: TestResult) {
+    const projectName = test.titlePath()[1];
     const relativePath = relativeTestPath(this.config, test);
-    const fileAndProject = relativePath + (test.projectName ? ` [${test.projectName}]` : '');
+    const fileAndProject = (projectName ? `[${projectName}] › ` : '') + relativePath;
     const duration = this.fileDurations.get(fileAndProject) || 0;
     this.fileDurations.set(fileAndProject, duration + result.duration);
   }
@@ -88,11 +83,11 @@ export class BaseReporter implements Reporter  {
   epilogue(full: boolean) {
     let skipped = 0;
     let expected = 0;
-    const unexpected: Test[] = [];
-    const flaky: Test[] = [];
+    const unexpected: TestCase[] = [];
+    const flaky: TestCase[] = [];
 
-    this.suite.findTest(test => {
-      switch (test.status()) {
+    this.suite.allTests().forEach(test => {
+      switch (test.outcome()) {
         case 'skipped': ++skipped; break;
         case 'expected': ++expected; break;
         case 'unexpected': unexpected.push(test); break;
@@ -124,28 +119,28 @@ export class BaseReporter implements Reporter  {
       console.log(colors.red(`  Timed out waiting ${this.config.globalTimeout / 1000}s for the entire test run`));
   }
 
-  private _printTestHeaders(tests: Test[]) {
+  private _printTestHeaders(tests: TestCase[]) {
     tests.forEach(test => {
       console.log(formatTestHeader(this.config, test, '    '));
     });
   }
 
-  private _printFailures(failures: Test[]) {
+  private _printFailures(failures: TestCase[]) {
     failures.forEach((test, index) => {
       console.log(formatFailure(this.config, test, index + 1));
     });
   }
 
-  hasResultWithStatus(test: Test, status: TestStatus): boolean {
+  hasResultWithStatus(test: TestCase, status: TestStatus): boolean {
     return !!test.results.find(r => r.status === status);
   }
 
-  willRetry(test: Test, result: TestResult): boolean {
+  willRetry(test: TestCase, result: TestResult): boolean {
     return result.status !== 'passed' && result.status !== test.expectedStatus && test.results.length <= test.retries;
   }
 }
 
-export function formatFailure(config: FullConfig, test: Test, index?: number): string {
+export function formatFailure(config: FullConfig, test: TestCase, index?: number): string {
   const tokens: string[] = [];
   tokens.push(formatTestHeader(config, test, '  ', index));
   for (const result of test.results) {
@@ -157,24 +152,26 @@ export function formatFailure(config: FullConfig, test: Test, index?: number): s
   return tokens.join('\n');
 }
 
-function relativeTestPath(config: FullConfig, test: Test): string {
-  return path.relative(config.rootDir, test.file) || path.basename(test.file);
+function relativeTestPath(config: FullConfig, test: TestCase): string {
+  return path.relative(config.rootDir, test.location.file) || path.basename(test.location.file);
 }
 
-export function formatTestTitle(config: FullConfig, test: Test): string {
-  let relativePath = relativeTestPath(config, test);
-  relativePath += ':' + test.line + ':' + test.column;
-  return `${relativePath} › ${test.fullTitle()}`;
+export function formatTestTitle(config: FullConfig, test: TestCase): string {
+  // root, project, file, ...describes, test
+  const [, projectName, , ...titles] = test.titlePath();
+  const location = `${relativeTestPath(config, test)}:${test.location.line}:${test.location.column}`;
+  const projectTitle = projectName ? `[${projectName}] › ` : '';
+  return `${projectTitle}${location} › ${titles.join(' ')}`;
 }
 
-function formatTestHeader(config: FullConfig, test: Test, indent: string, index?: number): string {
+function formatTestHeader(config: FullConfig, test: TestCase, indent: string, index?: number): string {
   const title = formatTestTitle(config, test);
   const passedUnexpectedlySuffix = test.results[0].status === 'passed' ? ' -- passed unexpectedly' : '';
   const header = `${indent}${index ? index + ') ' : ''}${title}${passedUnexpectedlySuffix}`;
   return colors.red(pad(header, '='));
 }
 
-function formatFailedResult(test: Test, result: TestResult): string {
+function formatFailedResult(test: TestCase, result: TestResult): string {
   const tokens: string[] = [];
   if (result.retry)
     tokens.push(colors.gray(pad(`\n    Retry #${result.retry}`, '-')));
@@ -182,9 +179,9 @@ function formatFailedResult(test: Test, result: TestResult): string {
     tokens.push('');
     tokens.push(indent(colors.red(`Timeout of ${test.timeout}ms exceeded.`), '    '));
     if (result.error !== undefined)
-      tokens.push(indent(formatError(result.error, test.file), '    '));
+      tokens.push(indent(formatError(result.error, test.location.file), '    '));
   } else {
-    tokens.push(indent(formatError(result.error!, test.file), '    '));
+    tokens.push(indent(formatError(result.error!, test.location.file), '    '));
   }
   return tokens.join('\n');
 }

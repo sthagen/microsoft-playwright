@@ -22,9 +22,9 @@ import * as path from 'path';
 import { promisify } from 'util';
 import { Dispatcher } from './dispatcher';
 import { createMatcher, FilePatternFilter, monotonicTime, raceAgainstDeadline } from './util';
-import { Test, Suite } from './test';
+import { TestCase, Suite } from './test';
 import { Loader } from './loader';
-import { Reporter } from './reporter';
+import { Reporter } from '../../types/testReporter';
 import { Multiplexer } from './reporters/multiplexer';
 import DotReporter from './reporters/dot';
 import LineReporter from './reporters/line';
@@ -34,7 +34,7 @@ import JUnitReporter from './reporters/junit';
 import EmptyReporter from './reporters/empty';
 import { ProjectImpl } from './project';
 import { Minimatch } from 'minimatch';
-import { Config } from './types';
+import { Config, FullConfig } from './types';
 import { LaunchServers } from './launchServer';
 
 const removeFolderAsync = promisify(rimraf);
@@ -50,7 +50,7 @@ type RunResult = {
   locations: string[]
 } | {
   status: 'clashing-test-titles',
-  clashingTests: Map<string, Test[]>
+  clashingTests: Map<string, TestCase[]>
 };
 
 export class Runner {
@@ -62,12 +62,12 @@ export class Runner {
     this._loader = new Loader(defaultConfig, configOverrides);
   }
 
-  private async _createReporter() {
+  private async _createReporter(list: boolean) {
     const reporters: Reporter[] = [];
-    const defaultReporters = {
-      dot: DotReporter,
-      line: LineReporter,
-      list: ListReporter,
+    const defaultReporters: {[key in BuiltInReporter]: new(arg: any) => Reporter} = {
+      dot: list ? ListModeReporter : DotReporter,
+      line: list ? ListModeReporter : LineReporter,
+      list: list ? ListModeReporter : ListReporter,
       json: JSONReporter,
       junit: JUnitReporter,
       null: EmptyReporter,
@@ -93,14 +93,14 @@ export class Runner {
   }
 
   async run(list: boolean, filePatternFilters: FilePatternFilter[], projectName?: string): Promise<RunResultStatus> {
-    this._reporter = await this._createReporter();
+    this._reporter = await this._createReporter(list);
     const config = this._loader.fullConfig();
     const globalDeadline = config.globalTimeout ? config.globalTimeout + monotonicTime() : undefined;
     const { result, timedOut } = await raceAgainstDeadline(this._run(list, filePatternFilters, projectName), globalDeadline);
     if (timedOut) {
       if (!this._didBegin)
-        this._reporter.onBegin(config, new Suite(''));
-      await this._reporter.onEnd({ status: 'timedout' });
+        this._reporter.onBegin?.(config, new Suite(''));
+      await this._reporter.onEnd?.({ status: 'timedout' });
       await this._flushOutput();
       return 'failed';
     }
@@ -167,7 +167,7 @@ export class Runner {
       testFiles.forEach(file => allTestFiles.add(file));
     }
 
-    const launchServers = await LaunchServers.create(config.launch);
+    const launchServers = await LaunchServers.create(config._launch);
     let globalSetupResult: any;
     if (config.globalSetup)
       globalSetupResult = await (await this._loader.loadGlobalHook(config.globalSetup, 'globalSetup'))(this._loader.fullConfig());
@@ -180,8 +180,14 @@ export class Runner {
         preprocessRoot._addSuite(fileSuite);
       if (config.forbidOnly) {
         const onlyTestsAndSuites = preprocessRoot._getOnlyItems();
-        if (onlyTestsAndSuites.length > 0)
-          return { status: 'forbid-only', locations: onlyTestsAndSuites.map(testOrSuite => `${buildItemLocation(config.rootDir, testOrSuite)} > ${testOrSuite.fullTitle()}`) };
+        if (onlyTestsAndSuites.length > 0) {
+          const locations = onlyTestsAndSuites.map(testOrSuite => {
+            // Skip root and file.
+            const title = testOrSuite.titlePath().slice(2).join(' ');
+            return `${buildItemLocation(config.rootDir, testOrSuite)} > ${title}`;
+          });
+          return { status: 'forbid-only', locations };
+        }
       }
       const clashingTests = getClashingTestsPerSuite(preprocessRoot);
       if (clashingTests.size > 0)
@@ -198,25 +204,27 @@ export class Runner {
       const grepInvertMatcher = config.grepInvert ? createMatcher(config.grepInvert) : null;
       const rootSuite = new Suite('');
       for (const project of projects) {
+        const projectSuite = new Suite(project.config.name);
+        rootSuite._addSuite(projectSuite);
         for (const file of files.get(project)!) {
           const fileSuite = fileSuites.get(file);
           if (!fileSuite)
             continue;
           for (let repeatEachIndex = 0; repeatEachIndex < project.config.repeatEach; repeatEachIndex++) {
-            const cloned = project.cloneSuite(fileSuite, repeatEachIndex, test => {
-              const fullTitle = test.fullTitle();
-              if (grepInvertMatcher?.(fullTitle))
+            const cloned = project.cloneFileSuite(fileSuite, repeatEachIndex, test => {
+              const grepTitle = test.titlePath().join(' ');
+              if (grepInvertMatcher?.(grepTitle))
                 return false;
-              return grepMatcher(fullTitle);
+              return grepMatcher(grepTitle);
             });
             if (cloned)
-              rootSuite._addSuite(cloned);
+              projectSuite._addSuite(cloned);
           }
         }
         outputDirs.add(project.config.outputDir);
       }
 
-      const total = rootSuite.totalTestCount();
+      const total = rootSuite.allTests().length;
       if (!total)
         return { status: 'no-tests' };
 
@@ -238,7 +246,7 @@ export class Runner {
 
       if (process.stdout.isTTY) {
         const workers = new Set();
-        rootSuite.findTest(test => {
+        rootSuite.allTests().forEach(test => {
           workers.add(test._requireFile + test._workerHash);
         });
         console.log();
@@ -248,7 +256,7 @@ export class Runner {
         console.log(`Running ${total} test${total > 1 ? 's' : ''} using ${jobs} worker${jobs > 1 ? 's' : ''}${shardDetails}`);
       }
 
-      this._reporter.onBegin(config, rootSuite);
+      this._reporter.onBegin?.(config, rootSuite);
       this._didBegin = true;
       let hasWorkerErrors = false;
       if (!list) {
@@ -259,12 +267,12 @@ export class Runner {
       }
 
       if (sigint) {
-        await this._reporter.onEnd({ status: 'interrupted' });
+        await this._reporter.onEnd?.({ status: 'interrupted' });
         return { status: 'sigint' };
       }
 
-      const failed = hasWorkerErrors || rootSuite.findTest(test => !test.ok());
-      await this._reporter.onEnd({ status: failed ? 'failed' : 'passed' });
+      const failed = hasWorkerErrors || rootSuite.allTests().some(test => !test.ok());
+      await this._reporter.onEnd?.({ status: failed ? 'failed' : 'passed' });
       return { status: failed ? 'failed' : 'passed' };
     } finally {
       if (globalSetupResult && typeof globalSetupResult === 'function')
@@ -278,7 +286,7 @@ export class Runner {
 
 function filterOnly(suite: Suite) {
   const suiteFilter = (suite: Suite) => suite._only;
-  const testFilter = (test: Test) => test._only;
+  const testFilter = (test: TestCase) => test._only;
   return filterSuite(suite, suiteFilter, testFilter);
 }
 
@@ -287,12 +295,12 @@ function filterByFocusedLine(suite: Suite, focusedTestFileLines: FilePatternFilt
     re.lastIndex = 0;
     return re.test(testFileName) && (line === testLine || line === null);
   });
-  const suiteFilter = (suite: Suite) => testFileLineMatches(suite.file, suite.line);
-  const testFilter = (test: Test) => testFileLineMatches(test.file, test.line);
+  const suiteFilter = (suite: Suite) => !!suite.location && testFileLineMatches(suite.location.file, suite.location.line);
+  const testFilter = (test: TestCase) => testFileLineMatches(test.location.file, test.location.line);
   return filterSuite(suite, suiteFilter, testFilter);
 }
 
-function filterSuite(suite: Suite, suiteFilter: (suites: Suite) => boolean, testFilter: (test: Test) => boolean) {
+function filterSuite(suite: Suite, suiteFilter: (suites: Suite) => boolean, testFilter: (test: TestCase) => boolean) {
   const onlySuites = suite.suites.filter(child => filterSuite(child, suiteFilter, testFilter) || suiteFilter(child));
   const onlyTests = suite.tests.filter(testFilter);
   const onlyEntries = new Set([...onlySuites, ...onlyTests]);
@@ -374,20 +382,20 @@ async function collectFiles(testDir: string): Promise<string[]> {
   return files;
 }
 
-function getClashingTestsPerSuite(rootSuite: Suite): Map<string, Test[]> {
-  function visit(suite: Suite, clashingTests: Map<string, Test[]>) {
+function getClashingTestsPerSuite(rootSuite: Suite): Map<string, TestCase[]> {
+  function visit(suite: Suite, clashingTests: Map<string, TestCase[]>) {
     for (const childSuite of suite.suites)
       visit(childSuite, clashingTests);
     for (const test of suite.tests) {
-      const fullTitle = test.fullTitle();
+      const fullTitle = test.titlePath().slice(2).join(' ');
       if (!clashingTests.has(fullTitle))
         clashingTests.set(fullTitle, []);
       clashingTests.set(fullTitle, clashingTests.get(fullTitle)!.concat(test));
     }
   }
-  const out = new Map<string, Test[]>();
+  const out = new Map<string, TestCase[]>();
   for (const fileSuite of rootSuite.suites) {
-    const clashingTests = new Map<string, Test[]>();
+    const clashingTests = new Map<string, TestCase[]>();
     visit(fileSuite, clashingTests);
     for (const [title, tests] of clashingTests.entries()) {
       if (tests.length > 1)
@@ -397,6 +405,28 @@ function getClashingTestsPerSuite(rootSuite: Suite): Map<string, Test[]> {
   return out;
 }
 
-function buildItemLocation(rootDir: string, testOrSuite: Suite | Test) {
-  return `${path.relative(rootDir, testOrSuite.file)}:${testOrSuite.line}`;
+function buildItemLocation(rootDir: string, testOrSuite: Suite | TestCase) {
+  if (!testOrSuite.location)
+    return '';
+  return `${path.relative(rootDir, testOrSuite.location.file)}:${testOrSuite.location.line}`;
 }
+
+class ListModeReporter implements Reporter {
+  onBegin(config: FullConfig, suite: Suite): void {
+    console.log(`Listing tests:`);
+    const tests = suite.allTests();
+    const files = new Set<string>();
+    for (const test of tests) {
+      // root, project, file, ...describes, test
+      const [, projectName, , ...titles] = test.titlePath();
+      const location = `${path.relative(config.rootDir, test.location.file)}:${test.location.line}:${test.location.column}`;
+      const projectTitle = projectName ? `[${projectName}] › ` : '';
+      console.log(`  ${projectTitle}${location} › ${titles.join(' ')}`);
+      files.add(test.location.file);
+    }
+    console.log(`Total: ${tests.length} ${tests.length === 1 ? 'test' : 'tests'} in ${files.size} ${files.size === 1 ? 'file' : 'files'}`);
+  }
+}
+
+export const builtInReporters = ['list', 'line', 'dot', 'json', 'junit', 'null'] as const;
+export type BuiltInReporter = typeof builtInReporters[number];

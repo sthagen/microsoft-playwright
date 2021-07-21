@@ -23,7 +23,7 @@ import { monotonicTime, DeadlineRunner, raceAgainstDeadline, serializeError } fr
 import { TestBeginPayload, TestEndPayload, RunPayload, TestEntry, DonePayload, WorkerInitParams } from './ipc';
 import { setCurrentTestInfo } from './globals';
 import { Loader } from './loader';
-import { Modifier, Suite, Test } from './test';
+import { Modifier, Suite, TestCase } from './test';
 import { Annotations, TestError, TestInfo, WorkerInfo } from './types';
 import { ProjectImpl } from './project';
 import { FixturePool, FixtureRunner } from './fixtures';
@@ -119,7 +119,7 @@ export class WorkerRunner extends EventEmitter {
 
     const fileSuite = await this._loader.loadTestFile(runPayload.file);
     let anyPool: FixturePool | undefined;
-    const suite = this._project.cloneSuite(fileSuite, this._params.repeatEachIndex, test => {
+    const suite = this._project.cloneFileSuite(fileSuite, this._params.repeatEachIndex, test => {
       if (!this._entries.has(test._id))
         return false;
       anyPool = test._pool;
@@ -191,7 +191,7 @@ export class WorkerRunner extends EventEmitter {
     }
   }
 
-  private async _runTest(test: Test, annotations: Annotations) {
+  private async _runTest(test: TestCase, annotations: Annotations) {
     if (this._isStopped)
       return;
     const entry = this._entries.get(test._id);
@@ -199,6 +199,7 @@ export class WorkerRunner extends EventEmitter {
       return;
 
     const startTime = monotonicTime();
+    const startWallTime = Date.now();
     let deadlineRunner: DeadlineRunner<any> | undefined;
     const testId = test._id;
 
@@ -218,15 +219,15 @@ export class WorkerRunner extends EventEmitter {
     const testInfo: TestInfo = {
       ...this._workerInfo,
       title: test.title,
-      file: test.file,
-      line: test.line,
-      column: test.column,
+      file: test.location.file,
+      line: test.location.line,
+      column: test.location.column,
       fn: test.fn,
       repeatEachIndex: this._params.repeatEachIndex,
       retry: entry.retry,
       expectedStatus: 'passed',
       annotations: [],
-      data: {},
+      attachments: [],
       duration: 0,
       status: 'passed',
       stdout: [],
@@ -293,7 +294,7 @@ export class WorkerRunner extends EventEmitter {
       return testInfo.timeout ? startTime + testInfo.timeout : undefined;
     };
 
-    this.emit('testBegin', buildTestBeginPayload(testId, testInfo));
+    this.emit('testBegin', buildTestBeginPayload(testId, testInfo, startWallTime));
 
     if (testInfo.expectedStatus === 'skipped') {
       testInfo.status = 'skipped';
@@ -350,7 +351,7 @@ export class WorkerRunner extends EventEmitter {
     setCurrentTestInfo(currentTest ? currentTest.testInfo : null);
   }
 
-  private async _runTestWithBeforeHooks(test: Test, testInfo: TestInfo) {
+  private async _runTestWithBeforeHooks(test: TestCase, testInfo: TestInfo) {
     try {
       const beforeEachModifiers: Modifier[] = [];
       for (let s = test.parent; s; s = s.parent) {
@@ -398,7 +399,7 @@ export class WorkerRunner extends EventEmitter {
     }
   }
 
-  private async _runAfterHooks(test: Test, testInfo: TestInfo) {
+  private async _runAfterHooks(test: TestCase, testInfo: TestInfo) {
     try {
       await this._runHooks(test.parent!, 'afterEach', testInfo);
     } catch (error) {
@@ -461,10 +462,11 @@ export class WorkerRunner extends EventEmitter {
   }
 }
 
-function buildTestBeginPayload(testId: string, testInfo: TestInfo): TestBeginPayload {
+function buildTestBeginPayload(testId: string, testInfo: TestInfo, startWallTime: number): TestBeginPayload {
   return {
     testId,
-    workerIndex: testInfo.workerIndex
+    workerIndex: testInfo.workerIndex,
+    startWallTime,
   };
 }
 
@@ -477,7 +479,12 @@ function buildTestEndPayload(testId: string, testInfo: TestInfo): TestEndPayload
     expectedStatus: testInfo.expectedStatus,
     annotations: testInfo.annotations,
     timeout: testInfo.timeout,
-    data: testInfo.data,
+    attachments: testInfo.attachments.map(a => ({
+      name: a.name,
+      contentType: a.contentType,
+      path: a.path,
+      body: a.body?.toString('base64')
+    }))
   };
 }
 

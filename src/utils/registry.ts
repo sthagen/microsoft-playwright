@@ -21,7 +21,7 @@ import * as util from 'util';
 import * as fs from 'fs';
 import lockfile from 'proper-lockfile';
 import { getUbuntuVersion } from './ubuntuVersion';
-import { getFromENV, getAsBooleanFromENV, calculateSha1, removeFolders, existsAsync, hostPlatform, canAccessFile, spawnAsync, fetchData } from './utils';
+import { getFromENV, getAsBooleanFromENV, calculateSha1, removeFolders, existsAsync, hostPlatform, canAccessFile, spawnAsync, fetchData, wrapInASCIIBox } from './utils';
 import { DependencyGroup, installDependenciesLinux, installDependenciesWindows, validateDependenciesLinux, validateDependenciesWindows } from './dependencies';
 import { downloadBrowserWithProgressBar, logPolitely } from './browserFetcher';
 
@@ -244,12 +244,21 @@ export class Registry {
       const tokens = EXECUTABLE_PATHS[name][hostPlatform];
       return tokens ? path.join(dir, ...tokens) : undefined;
     };
-    const executablePathOrDie = (name: string, e: string | undefined) => {
+    const executablePathOrDie = (name: string, e: string | undefined, installByDefault: boolean) => {
       if (!e)
         throw new Error(`${name} is not supported on ${hostPlatform}`);
       // TODO: language-specific error message
-      if (!canAccessFile(e))
-        throw new Error(`Executable doesn't exist at ${e}\nRun "npx playwright install ${name}"`);
+      if (!canAccessFile(e)) {
+        const prettyMessage = [
+          `Looks like Playwright Test or Playwright was just installed or updated.`,
+          `Please run the following command to download new browser${installByDefault ? 's' : ''}:`,
+          ``,
+          `    npx playwright install${installByDefault ? '' : ' ' + name}`,
+          ``,
+          `<3 Playwright Team`,
+        ].join('\n');
+        throw new Error(`Executable doesn't exist at ${e}\n${wrapInASCIIBox(prettyMessage, 1)}`);
+      }
       return e;
     };
     this._executables = [];
@@ -262,7 +271,7 @@ export class Registry {
       browserName: 'chromium',
       directory: chromium.dir,
       executablePath: () => chromiumExecutable,
-      executablePathOrDie: () => executablePathOrDie('chromium', chromiumExecutable),
+      executablePathOrDie: () => executablePathOrDie('chromium', chromiumExecutable, chromium.installByDefault),
       installType: chromium.installByDefault ? 'download-by-default' : 'download-on-demand',
       validateHostRequirements: () => this._validateHostRequirements('chromium', chromium.dir, ['chrome-linux'], [], ['chrome-win']),
       _install: () => this._downloadExecutable(chromium, chromiumExecutable, DOWNLOAD_URLS['chromium'][hostPlatform], 'PLAYWRIGHT_CHROMIUM_DOWNLOAD_HOST'),
@@ -277,7 +286,7 @@ export class Registry {
       browserName: 'chromium',
       directory: chromiumWithSymbols.dir,
       executablePath: () => chromiumWithSymbolsExecutable,
-      executablePathOrDie: () => executablePathOrDie('chromium-with-symbols', chromiumWithSymbolsExecutable),
+      executablePathOrDie: () => executablePathOrDie('chromium-with-symbols', chromiumWithSymbolsExecutable, chromiumWithSymbols.installByDefault),
       installType: chromiumWithSymbols.installByDefault ? 'download-by-default' : 'download-on-demand',
       validateHostRequirements: () => this._validateHostRequirements('chromium', chromiumWithSymbols.dir, ['chrome-linux'], [], ['chrome-win']),
       _install: () => this._downloadExecutable(chromiumWithSymbols, chromiumWithSymbolsExecutable, DOWNLOAD_URLS['chromium-with-symbols'][hostPlatform], 'PLAYWRIGHT_CHROMIUM_DOWNLOAD_HOST'),
@@ -340,7 +349,11 @@ export class Registry {
       'linux': '/opt/microsoft/msedge-dev/msedge',
       'darwin': '/Applications/Microsoft Edge Dev.app/Contents/MacOS/Microsoft Edge Dev',
       'win32': `\\Microsoft\\Edge Dev\\Application\\msedge.exe`,
-    }));
+    }, () => this._installMSEdgeChannel('msedge-dev', {
+      'darwin': 'reinstall_msedge_dev_mac.sh',
+      'linux': 'reinstall_msedge_dev_linux.sh',
+      'win32': 'reinstall_msedge_dev_win.ps1',
+    })));
 
     this._executables.push(this._createChromiumChannel('msedge-canary', {
       'linux': '',
@@ -356,7 +369,7 @@ export class Registry {
       browserName: 'firefox',
       directory: firefox.dir,
       executablePath: () => firefoxExecutable,
-      executablePathOrDie: () => executablePathOrDie('firefox', firefoxExecutable),
+      executablePathOrDie: () => executablePathOrDie('firefox', firefoxExecutable, firefox.installByDefault),
       installType: firefox.installByDefault ? 'download-by-default' : 'download-on-demand',
       validateHostRequirements: () => this._validateHostRequirements('firefox', firefox.dir, ['firefox'], [], ['firefox']),
       _install: () => this._downloadExecutable(firefox, firefoxExecutable, DOWNLOAD_URLS['firefox'][hostPlatform], 'PLAYWRIGHT_FIREFOX_DOWNLOAD_HOST'),
@@ -371,7 +384,7 @@ export class Registry {
       browserName: 'firefox',
       directory: firefoxBeta.dir,
       executablePath: () => firefoxBetaExecutable,
-      executablePathOrDie: () => executablePathOrDie('firefox-beta', firefoxBetaExecutable),
+      executablePathOrDie: () => executablePathOrDie('firefox-beta', firefoxBetaExecutable, firefoxBeta.installByDefault),
       installType: firefoxBeta.installByDefault ? 'download-by-default' : 'download-on-demand',
       validateHostRequirements: () => this._validateHostRequirements('firefox', firefoxBeta.dir, ['firefox'], [], ['firefox']),
       _install: () => this._downloadExecutable(firefoxBeta, firefoxBetaExecutable, DOWNLOAD_URLS['firefox-beta'][hostPlatform], 'PLAYWRIGHT_FIREFOX_DOWNLOAD_HOST'),
@@ -394,7 +407,7 @@ export class Registry {
       browserName: 'webkit',
       directory: webkit.dir,
       executablePath: () => webkitExecutable,
-      executablePathOrDie: () => executablePathOrDie('webkit', webkitExecutable),
+      executablePathOrDie: () => executablePathOrDie('webkit', webkitExecutable, webkit.installByDefault),
       installType: webkit.installByDefault ? 'download-by-default' : 'download-on-demand',
       validateHostRequirements: () => this._validateHostRequirements('webkit', webkit.dir, webkitLinuxLddDirectories, ['libGLESv2.so.2', 'libx264.so'], ['']),
       _install: () => this._downloadExecutable(webkit, webkitExecutable, DOWNLOAD_URLS['webkit'][hostPlatform], 'PLAYWRIGHT_WEBKIT_DOWNLOAD_HOST'),
@@ -409,7 +422,7 @@ export class Registry {
       browserName: undefined,
       directory: ffmpeg.dir,
       executablePath: () => ffmpegExecutable,
-      executablePathOrDie: () => executablePathOrDie('ffmpeg', ffmpegExecutable),
+      executablePathOrDie: () => executablePathOrDie('ffmpeg', ffmpegExecutable, ffmpeg.installByDefault),
       installType: ffmpeg.installByDefault ? 'download-by-default' : 'download-on-demand',
       validateHostRequirements: () => Promise.resolve(),
       _install: () => this._downloadExecutable(ffmpeg, ffmpegExecutable, DOWNLOAD_URLS['ffmpeg'][hostPlatform], 'PLAYWRIGHT_FFMPEG_DOWNLOAD_HOST'),
@@ -561,11 +574,15 @@ export class Registry {
     await fs.promises.writeFile(markerFilePath(descriptor.dir), '');
   }
 
-  private async _installMSEdgeChannel(channel: string, scripts: Record<'linux' | 'darwin' | 'win32', string>) {
+  private async _installMSEdgeChannel(channel: 'msedge'|'msedge-beta'|'msedge-dev', scripts: Record<'linux' | 'darwin' | 'win32', string>) {
     const scriptArgs: string[] = [];
     if (process.platform !== 'linux') {
       const products = JSON.parse(await fetchData('https://edgeupdates.microsoft.com/api/products'));
-      const productName = channel === 'msedge' ? 'Stable' : 'Beta';
+      const productName = {
+        'msedge': 'Stable',
+        'msedge-beta': 'Beta',
+        'msedge-dev': 'Dev',
+      }[channel];
       const product = products.find((product: any) => product.Product === productName);
       const searchConfig = ({
         darwin: {platform: 'MacOS', arch: 'universal', artifact: 'pkg'},

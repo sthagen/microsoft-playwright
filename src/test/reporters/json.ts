@@ -16,8 +16,7 @@
 
 import fs from 'fs';
 import path from 'path';
-import EmptyReporter from './empty';
-import { FullConfig, Test, Suite, TestResult, TestError, FullResult, TestStatus } from '../reporter';
+import { FullConfig, TestCase, Suite, TestResult, TestError, FullResult, TestStatus, Location, Reporter } from '../../../types/testReporter';
 
 export interface JSONReport {
   config: Omit<FullConfig, 'projects'> & {
@@ -68,7 +67,7 @@ export interface JSONReportTestResult {
   stdout: JSONReportSTDIOEntry[],
   stderr: JSONReportSTDIOEntry[],
   retry: number;
-  data: { [key: string]: any },
+  attachments: { name: string, path?: string, body?: string, contentType: string }[];
 }
 export type JSONReportSTDIOEntry = { text: string } | { buffer: string };
 
@@ -76,14 +75,13 @@ function toPosixPath(aPath: string): string {
   return aPath.split(path.sep).join(path.posix.sep);
 }
 
-class JSONReporter extends EmptyReporter {
+class JSONReporter implements Reporter {
   config!: FullConfig;
   suite!: Suite;
   private _errors: TestError[] = [];
   private _outputFile: string | undefined;
 
   constructor(options: { outputFile?: string } = {}) {
-    super();
     this._outputFile = options.outputFile;
   }
 
@@ -125,26 +123,43 @@ class JSONReporter extends EmptyReporter {
   }
 
   private _mergeSuites(suites: Suite[]): JSONReportSuite[] {
-    debugger;
     const fileSuites = new Map<string, JSONReportSuite>();
     const result: JSONReportSuite[] = [];
-    for (const suite of suites) {
-      if (!fileSuites.has(suite.file)) {
-        const serialized = this._serializeSuite(suite);
-        if (serialized) {
-          fileSuites.set(suite.file, serialized);
-          result.push(serialized);
+    for (const projectSuite of suites) {
+      for (const fileSuite of projectSuite.suites) {
+        const file = fileSuite.location!.file;
+        if (!fileSuites.has(file)) {
+          const serialized = this._serializeSuite(fileSuite);
+          if (serialized) {
+            fileSuites.set(file, serialized);
+            result.push(serialized);
+          }
+        } else {
+          this._mergeTestsFromSuite(fileSuites.get(file)!, fileSuite);
         }
-      } else {
-        this._mergeTestsFromSuite(fileSuites.get(suite.file)!, suite);
       }
     }
     return result;
   }
 
+  private _relativeLocation(location: Location | undefined): Location {
+    if (!location)
+      return { file: '', line: 0, column: 0 };
+    return {
+      file: toPosixPath(path.relative(this.config.rootDir, location.file)),
+      line: location.line,
+      column: location.column,
+    };
+  }
+
+  private _locationMatches(s: JSONReportSuite | JSONReportSpec, location: Location | undefined) {
+    const relative = this._relativeLocation(location);
+    return s.file === relative.file && s.line === relative.line && s.column === relative.column;
+  }
+
   private _mergeTestsFromSuite(to: JSONReportSuite, from: Suite) {
     for (const fromSuite of from.suites) {
-      const toSuite = (to.suites || []).find(s => s.title === fromSuite.title && s.file === toPosixPath(path.relative(this.config.rootDir, fromSuite.file)) && s.line === fromSuite.line && s.column === fromSuite.column);
+      const toSuite = (to.suites || []).find(s => s.title === fromSuite.title && this._locationMatches(s, from.location));
       if (toSuite) {
         this._mergeTestsFromSuite(toSuite, fromSuite);
       } else {
@@ -157,7 +172,7 @@ class JSONReporter extends EmptyReporter {
       }
     }
     for (const test of from.tests) {
-      const toSpec = to.specs.find(s => s.title === test.title && s.file === toPosixPath(path.relative(this.config.rootDir, test.file)) && s.line === test.line && s.column === test.column);
+      const toSpec = to.specs.find(s => s.title === test.title && s.file === toPosixPath(path.relative(this.config.rootDir, test.location.file)) && s.line === test.location.line && s.column === test.location.column);
       if (toSpec)
         toSpec.tests.push(this._serializeTest(test));
       else
@@ -166,38 +181,34 @@ class JSONReporter extends EmptyReporter {
   }
 
   private _serializeSuite(suite: Suite): null | JSONReportSuite {
-    if (!suite.findTest(test => true))
+    if (!suite.allTests().length)
       return null;
     const suites = suite.suites.map(suite => this._serializeSuite(suite)).filter(s => s) as JSONReportSuite[];
     return {
       title: suite.title,
-      file: toPosixPath(path.relative(this.config.rootDir, suite.file)),
-      line: suite.line,
-      column: suite.column,
+      ...this._relativeLocation(suite.location),
       specs: suite.tests.map(test => this._serializeTestSpec(test)),
       suites: suites.length ? suites : undefined,
     };
   }
 
-  private _serializeTestSpec(test: Test): JSONReportSpec {
+  private _serializeTestSpec(test: TestCase): JSONReportSpec {
     return {
       title: test.title,
       ok: test.ok(),
       tests: [ this._serializeTest(test) ],
-      file: toPosixPath(path.relative(this.config.rootDir, test.file)),
-      line: test.line,
-      column: test.column,
+      ...this._relativeLocation(test.location),
     };
   }
 
-  private _serializeTest(test: Test): JSONReportTest {
+  private _serializeTest(test: TestCase): JSONReportTest {
     return {
       timeout: test.timeout,
       annotations: test.annotations,
       expectedStatus: test.expectedStatus,
-      projectName: test.projectName,
+      projectName: test.titlePath()[1],
       results: test.results.map(r => this._serializeTestResult(r)),
-      status: test.status(),
+      status: test.outcome(),
     };
   }
 
@@ -210,7 +221,12 @@ class JSONReporter extends EmptyReporter {
       stdout: result.stdout.map(s => stdioEntry(s)),
       stderr: result.stderr.map(s => stdioEntry(s)),
       retry: result.retry,
-      data: result.data,
+      attachments: result.attachments.map(a => ({
+        name: a.name,
+        contentType: a.contentType,
+        path: a.path,
+        body: a.body?.toString('base64')
+      })),
     };
   }
 }

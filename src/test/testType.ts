@@ -16,7 +16,7 @@
 
 import { expect } from './expect';
 import { currentlyLoadingFileSuite, currentTestInfo, setCurrentlyLoadingFileSuite } from './globals';
-import { Test, Suite } from './test';
+import { TestCase, Suite } from './test';
 import { wrapFunctionWithLocation } from './transform';
 import { Fixtures, FixturesWithLocation, Location, TestType } from './types';
 
@@ -62,13 +62,9 @@ export class TestTypeImpl {
     const ordinalInFile = countByFile.get(suite._requireFile) || 0;
     countByFile.set(suite._requireFile, ordinalInFile + 1);
 
-    const test = new Test(title, fn, ordinalInFile, this);
+    const test = new TestCase(title, fn, ordinalInFile, this, location);
     test._requireFile = suite._requireFile;
-    test.file = location.file;
-    test.line = location.line;
-    test.column = location.column;
     suite._addTest(test);
-    test._buildFullTitle(suite.fullTitle());
 
     if (type === 'only')
       test._only = true;
@@ -81,11 +77,8 @@ export class TestTypeImpl {
 
     const child = new Suite(title);
     child._requireFile = suite._requireFile;
-    child.file = location.file;
-    child.line = location.line;
-    child.column = location.column;
+    child.location = location;
     suite._addSuite(child);
-    child._buildFullTitle(suite.fullTitle());
 
     if (type === 'only')
       child._only = true;

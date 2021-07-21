@@ -18,8 +18,8 @@ import child_process from 'child_process';
 import path from 'path';
 import { EventEmitter } from 'events';
 import { RunPayload, TestBeginPayload, TestEndPayload, DonePayload, TestOutputPayload, WorkerInitParams } from './ipc';
-import type { TestResult, Reporter, TestStatus } from './reporter';
-import { Suite, Test } from './test';
+import type { TestResult, Reporter, TestStatus } from '../../types/testReporter';
+import { Suite, TestCase } from './test';
 import { Loader } from './loader';
 
 type DispatcherEntry = {
@@ -34,7 +34,7 @@ export class Dispatcher {
   private _freeWorkers: Worker[] = [];
   private _workerClaimers: (() => void)[] = [];
 
-  private _testById = new Map<string, { test: Test, result: TestResult }>();
+  private _testById = new Map<string, { test: TestCase, result: TestResult }>();
   private _queue: DispatcherEntry[] = [];
   private _stopCallback = () => {};
   readonly _loader: Loader;
@@ -50,7 +50,7 @@ export class Dispatcher {
 
     this._suite = suite;
     for (const suite of this._suite.suites) {
-      for (const test of suite._allTests())
+      for (const test of suite.allTests())
         this._testById.set(test._id, { test, result: test._appendTestResult() });
     }
 
@@ -59,7 +59,7 @@ export class Dispatcher {
     // Shard tests.
     const shard = this._loader.fullConfig().shard;
     if (shard) {
-      let total = this._suite.totalTestCount();
+      let total = this._suite.allTests().length;
       const shardSize = Math.ceil(total / shard.total);
       const from = shardSize * shard.current;
       const to = shardSize * (shard.current + 1);
@@ -79,14 +79,14 @@ export class Dispatcher {
 
   _filesSortedByWorkerHash(): DispatcherEntry[] {
     const entriesByWorkerHashAndFile = new Map<string, Map<string, DispatcherEntry>>();
-    for (const fileSuite of this._suite.suites) {
-      const file = fileSuite._requireFile;
-      for (const test of fileSuite._allTests()) {
+    for (const projectSuite of this._suite.suites) {
+      for (const test of projectSuite.allTests()) {
         let entriesByFile = entriesByWorkerHashAndFile.get(test._workerHash);
         if (!entriesByFile) {
           entriesByFile = new Map();
           entriesByWorkerHashAndFile.set(test._workerHash, entriesByFile);
         }
+        const file = test._requireFile;
         let entry = entriesByFile.get(file);
         if (!entry) {
           entry = {
@@ -94,8 +94,8 @@ export class Dispatcher {
               entries: [],
               file,
             },
-            repeatEachIndex: fileSuite._repeatEachIndex,
-            projectIndex: fileSuite._projectIndex,
+            repeatEachIndex: test._repeatEachIndex,
+            projectIndex: test._projectIndex,
             hash: test._workerHash,
           };
           entriesByFile.set(file, entry);
@@ -265,18 +265,22 @@ export class Dispatcher {
     worker.on('testBegin', (params: TestBeginPayload) => {
       const { test, result: testRun  } = this._testById.get(params.testId)!;
       testRun.workerIndex = params.workerIndex;
+      testRun.startTime = new Date(params.startWallTime);
       this._reportTestBegin(test);
     });
     worker.on('testEnd', (params: TestEndPayload) => {
       const { test, result } = this._testById.get(params.testId)!;
       result.duration = params.duration;
       result.error = params.error;
-      result.data = params.data;
+      result.attachments = params.attachments.map(a => ({
+        name: a.name,
+        path: a.path,
+        contentType: a.contentType,
+        body: a.body ? Buffer.from(a.body, 'base64') : undefined
+      }));
       test.expectedStatus = params.expectedStatus;
       test.annotations = params.annotations;
       test.timeout = params.timeout;
-      if (params.expectedStatus === 'skipped' && params.status === 'skipped')
-        test.skipped = true;
       this._reportTestEnd(test, result, params.status);
     });
     worker.on('stdOut', (params: TestOutputPayload) => {
@@ -284,18 +288,18 @@ export class Dispatcher {
       const pair = params.testId ? this._testById.get(params.testId) : undefined;
       if (pair)
         pair.result.stdout.push(chunk);
-      this._reporter.onStdOut(chunk, pair ? pair.test : undefined);
+      this._reporter.onStdOut?.(chunk, pair ? pair.test : undefined);
     });
     worker.on('stdErr', (params: TestOutputPayload) => {
       const chunk = chunkFromParams(params);
       const pair = params.testId ? this._testById.get(params.testId) : undefined;
       if (pair)
         pair.result.stderr.push(chunk);
-      this._reporter.onStdErr(chunk, pair ? pair.test : undefined);
+      this._reporter.onStdErr?.(chunk, pair ? pair.test : undefined);
     });
     worker.on('teardownError', ({error}) => {
       this._hasWorkerErrors = true;
-      this._reporter.onError(error);
+      this._reporter.onError?.(error);
     });
     worker.on('exit', () => {
       this._workers.delete(worker);
@@ -317,15 +321,15 @@ export class Dispatcher {
     }
   }
 
-  private _reportTestBegin(test: Test) {
+  private _reportTestBegin(test: TestCase) {
     if (this._isStopped)
       return;
     const maxFailures = this._loader.fullConfig().maxFailures;
     if (!maxFailures || this._failureCount < maxFailures)
-      this._reporter.onTestBegin(test);
+      this._reporter.onTestBegin?.(test);
   }
 
-  private _reportTestEnd(test: Test, result: TestResult, status: TestStatus) {
+  private _reportTestEnd(test: TestCase, result: TestResult, status: TestStatus) {
     if (this._isStopped)
       return;
     result.status = status;
@@ -333,7 +337,7 @@ export class Dispatcher {
       ++this._failureCount;
     const maxFailures = this._loader.fullConfig().maxFailures;
     if (!maxFailures || this._failureCount <= maxFailures)
-      this._reporter.onTestEnd(test, result);
+      this._reporter.onTestEnd?.(test, result);
     if (maxFailures && this._failureCount === maxFailures)
       this.stop().catch(e => {});
   }
