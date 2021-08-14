@@ -20,7 +20,7 @@ import rimraf from 'rimraf';
 import * as fs from 'fs';
 import * as path from 'path';
 import { promisify } from 'util';
-import { Dispatcher } from './dispatcher';
+import { Dispatcher, TestGroup } from './dispatcher';
 import { createMatcher, FilePatternFilter, monotonicTime, raceAgainstDeadline } from './util';
 import { TestCase, Suite } from './test';
 import { Loader } from './loader';
@@ -35,7 +35,7 @@ import EmptyReporter from './reporters/empty';
 import { ProjectImpl } from './project';
 import { Minimatch } from 'minimatch';
 import { Config, FullConfig } from './types';
-import { LaunchServers } from './launchServer';
+import { WebServer } from './webServer';
 
 const removeFolderAsync = promisify(rimraf);
 const readDirAsync = promisify(fs.readdir);
@@ -167,7 +167,7 @@ export class Runner {
       testFiles.forEach(file => allTestFiles.add(file));
     }
 
-    const launchServers = await LaunchServers.create(config._launch);
+    const webServer = config.webServer && await WebServer.create(config.webServer);
     let globalSetupResult: any;
     if (config.globalSetup)
       globalSetupResult = await (await this._loader.loadGlobalHook(config.globalSetup, 'globalSetup'))(this._loader.fullConfig());
@@ -224,43 +224,80 @@ export class Runner {
         outputDirs.add(project.config.outputDir);
       }
 
-      const total = rootSuite.allTests().length;
+      let total = rootSuite.allTests().length;
       if (!total)
         return { status: 'no-tests' };
 
       await Promise.all(Array.from(outputDirs).map(outputDir => removeFolderAsync(outputDir).catch(e => {})));
 
+      let testGroups = createTestGroups(rootSuite);
+
+      const shard = config.shard;
+      if (shard) {
+        const shardGroups: TestGroup[] = [];
+        const shardTests = new Set<TestCase>();
+
+        // Each shard gets some tests.
+        const shardSize = Math.floor(total / shard.total);
+        // First few shards get one more test each.
+        const extraOne = total - shardSize * shard.total;
+
+        const currentShard = shard.current - 1; // Make it zero-based for calculations.
+        const from = shardSize * currentShard + Math.min(extraOne, currentShard);
+        const to = from + shardSize + (currentShard < extraOne ? 1 : 0);
+        let current = 0;
+        for (const group of testGroups) {
+          // Any test group goes to the shard that contains the first test of this group.
+          // So, this shard gets any group that starts at [from; to)
+          if (current >= from && current < to) {
+            shardGroups.push(group);
+            for (const test of group.tests)
+              shardTests.add(test);
+          }
+          current += group.tests.length;
+        }
+
+        testGroups = shardGroups;
+        filterSuite(rootSuite, () => false, test => shardTests.has(test));
+        total = rootSuite.allTests().length;
+      }
+
+      if (process.stdout.isTTY) {
+        console.log();
+        const jobs = Math.min(config.workers, testGroups.length);
+        const shardDetails = shard ? `, shard ${shard.current} of ${shard.total}` : '';
+        console.log(`Running ${total} test${total > 1 ? 's' : ''} using ${jobs} worker${jobs > 1 ? 's' : ''}${shardDetails}`);
+      }
+
       let sigint = false;
       let sigintCallback: () => void;
       const sigIntPromise = new Promise<void>(f => sigintCallback = f);
       const sigintHandler = () => {
-        // We remove handler so that double Ctrl+C immediately kills the runner,
-        // for the case where our shutdown takes a lot of time or is buggy.
-        // Removing the handler synchronously sometimes triggers the default handler
-        // that exits the process, so we remove asynchronously.
-        setTimeout(() => process.off('SIGINT', sigintHandler), 0);
+        // We remove the handler so that second Ctrl+C immediately kills the runner
+        // via the default sigint handler. This is handy in the case where our shutdown
+        // takes a lot of time or is buggy.
+        //
+        // When running through NPM we might get multiple SIGINT signals
+        // for a single Ctrl+C - this is an NPM bug present since at least NPM v6.
+        // https://github.com/npm/cli/issues/1591
+        // https://github.com/npm/cli/issues/2124
+        //
+        // Therefore, removing the handler too soon will just kill the process
+        // with default handler without printing the results.
+        // We work around this by giving NPM 1000ms to send us duplicate signals.
+        // The side effect is that slow shutdown or bug in our runner will force
+        // the user to hit Ctrl+C again after at least a second.
+        setTimeout(() => process.off('SIGINT', sigintHandler), 1000);
         sigint = true;
         sigintCallback();
       };
       process.on('SIGINT', sigintHandler);
 
-      if (process.stdout.isTTY) {
-        const workers = new Set();
-        rootSuite.allTests().forEach(test => {
-          workers.add(test._requireFile + test._workerHash);
-        });
-        console.log();
-        const jobs = Math.min(config.workers, workers.size);
-        const shard = config.shard;
-        const shardDetails = shard ? `, shard ${shard.current + 1} of ${shard.total}` : '';
-        console.log(`Running ${total} test${total > 1 ? 's' : ''} using ${jobs} worker${jobs > 1 ? 's' : ''}${shardDetails}`);
-      }
-
       this._reporter.onBegin?.(config, rootSuite);
       this._didBegin = true;
       let hasWorkerErrors = false;
       if (!list) {
-        const dispatcher = new Dispatcher(this._loader, rootSuite, this._reporter);
+        const dispatcher = new Dispatcher(this._loader, testGroups, this._reporter);
         await Promise.race([dispatcher.run(), sigIntPromise]);
         await dispatcher.stop();
         hasWorkerErrors = dispatcher.hasWorkerErrors();
@@ -279,7 +316,7 @@ export class Runner {
         await globalSetupResult(this._loader.fullConfig());
       if (config.globalTeardown)
         await (await this._loader.loadGlobalHook(config.globalTeardown, 'globalTeardown'))(this._loader.fullConfig());
-      await launchServers.killAll();
+      await webServer?.kill();
     }
   }
 }
@@ -409,6 +446,56 @@ function buildItemLocation(rootDir: string, testOrSuite: Suite | TestCase) {
   if (!testOrSuite.location)
     return '';
   return `${path.relative(rootDir, testOrSuite.location.file)}:${testOrSuite.location.line}`;
+}
+
+function createTestGroups(rootSuite: Suite): TestGroup[] {
+  // This function groups tests that can be run together.
+  // Tests cannot be run together when:
+  // - They belong to different projects - requires different workers.
+  // - They have a different repeatEachIndex - requires different workers.
+  // - They have a different set of worker fixtures in the pool - requires different workers.
+  // - They have a different requireFile - reuses the worker, but runs each requireFile separately.
+
+  // We try to preserve the order of tests when they require different workers
+  // by ordering different worker hashes sequentially.
+  const workerHashToOrdinal = new Map<string, number>();
+  const requireFileToOrdinal = new Map<string, number>();
+
+  const groupById = new Map<number, TestGroup>();
+  for (const projectSuite of rootSuite.suites) {
+    for (const test of projectSuite.allTests()) {
+      let workerHashOrdinal = workerHashToOrdinal.get(test._workerHash);
+      if (!workerHashOrdinal) {
+        workerHashOrdinal = workerHashToOrdinal.size + 1;
+        workerHashToOrdinal.set(test._workerHash, workerHashOrdinal);
+      }
+
+      let requireFileOrdinal = requireFileToOrdinal.get(test._requireFile);
+      if (!requireFileOrdinal) {
+        requireFileOrdinal = requireFileToOrdinal.size + 1;
+        requireFileToOrdinal.set(test._requireFile, requireFileOrdinal);
+      }
+
+      const id = workerHashOrdinal * 10000 + requireFileOrdinal;
+      let group = groupById.get(id);
+      if (!group) {
+        group = {
+          workerHash: test._workerHash,
+          requireFile: test._requireFile,
+          repeatEachIndex: test._repeatEachIndex,
+          projectIndex: test._projectIndex,
+          tests: [],
+        };
+        groupById.set(id, group);
+      }
+      group.tests.push(test);
+    }
+  }
+
+  // Sorting ids will preserve the natural order, because we
+  // replaced hashes with ordinals according to the natural ordering.
+  const ids = Array.from(groupById.keys()).sort();
+  return ids.map(id => groupById.get(id)!);
 }
 
 class ListModeReporter implements Reporter {

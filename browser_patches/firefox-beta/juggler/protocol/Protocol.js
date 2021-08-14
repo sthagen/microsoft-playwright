@@ -205,6 +205,12 @@ networkTypes.ResourceTiming = {
   responseStart: t.Number,
 };
 
+networkTypes.InterceptedResponse = {
+  status: t.Number,
+  statusText: t.String,
+  headers: t.Array(networkTypes.HTTPHeader),
+};
+
 const Browser = {
   targets: ['browser'],
 
@@ -336,7 +342,7 @@ const Browser = {
     'setJavaScriptDisabled': {
       params: {
         browserContextId: t.Optional(t.String),
-        javaScriptDisabled: t.Nullable(t.Boolean),
+        javaScriptDisabled: t.Boolean,
       }
     },
     'setLocaleOverride': {
@@ -447,9 +453,11 @@ const Browser = {
     'setVideoRecordingOptions': {
       params: {
         browserContextId: t.Optional(t.String),
-        dir: t.String,
-        width: t.Number,
-        height: t.Number,
+        options: t.Optional({
+          dir: t.String,
+          width: t.Number,
+          height: t.Number,
+        }),
       },
     },
     'cancelDownload': {
@@ -524,6 +532,10 @@ const Network = {
         method: t.Optional(t.String),
         headers: t.Optional(t.Array(networkTypes.HTTPHeader)),
         postData: t.Optional(t.String),
+        interceptResponse: t.Optional(t.Boolean),
+      },
+      returns: {
+        response: t.Optional(networkTypes.InterceptedResponse),
       },
     },
     'fulfillInterceptedRequest': {

@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { test, expect } from './playwright-test-fixtures';
+import { test, expect, stripAscii } from './playwright-test-fixtures';
 
 test('max-failures should work', async ({ runInlineTest }) => {
   const result = await runInlineTest({
@@ -85,7 +85,7 @@ test('max-failures should stop workers', async ({ runInlineTest }) => {
     'a.spec.js': `
       const { test } = pwt;
       test('passed', async () => {
-        await new Promise(f => setTimeout(f, 500));
+        await new Promise(f => setTimeout(f, 2000));
       });
       test('failed', async () => {
         test.expect(1).toBe(2);
@@ -98,7 +98,7 @@ test('max-failures should stop workers', async ({ runInlineTest }) => {
       });
       test('interrupted counts as skipped', async () => {
         console.log('\\n%%interrupted');
-        await new Promise(f => setTimeout(f, 2000));
+        await new Promise(f => setTimeout(f, 5000));
       });
       test('skipped', async () => {
         console.log('\\n%%skipped');
@@ -111,4 +111,35 @@ test('max-failures should stop workers', async ({ runInlineTest }) => {
   expect(result.skipped).toBe(2);
   expect(result.output).toContain('%%interrupted');
   expect(result.output).not.toContain('%%skipped');
+});
+
+test('max-failures should properly shutdown', async ({ runInlineTest }) => {
+  const result = await runInlineTest({
+    'playwright.config.ts': `
+      const config = {
+        testDir: './',
+        maxFailures: 1,
+      };
+      export default config;
+    `,
+    'test1.spec.ts': `
+      const { test } = pwt;
+      test.describe('spec 1', () => {
+        test('test 1', async () => {
+          expect(false).toBeTruthy()
+        })
+      });
+    `,
+    'test2.spec.ts': `
+      const { test } = pwt;
+      test.describe('spec 2', () => {
+        test('test 2', () => {
+          expect(true).toBeTruthy()
+        })
+      });
+    `,
+  }, { workers: 1 });
+  expect(result.exitCode).toBe(1);
+  expect(result.failed).toBe(1);
+  expect(stripAscii(result.output)).toContain('expect(false).toBeTruthy()');
 });

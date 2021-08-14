@@ -161,7 +161,7 @@ export module Protocol {
     export type setIgnoreHTTPSErrorsReturnValue = void;
     export type setJavaScriptDisabledParameters = {
       browserContextId?: string;
-      javaScriptDisabled: boolean|null;
+      javaScriptDisabled: boolean;
     };
     export type setJavaScriptDisabledReturnValue = void;
     export type setLocaleOverrideParameters = {
@@ -283,9 +283,11 @@ export module Protocol {
     export type setForcedColorsReturnValue = void;
     export type setVideoRecordingOptionsParameters = {
       browserContextId?: string;
-      dir: string;
-      width: number;
-      height: number;
+      options?: {
+        dir: string;
+        width: number;
+        height: number;
+      };
     };
     export type setVideoRecordingOptionsReturnValue = void;
     export type cancelDownloadParameters = {

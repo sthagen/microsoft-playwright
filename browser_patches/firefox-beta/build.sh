@@ -2,7 +2,7 @@
 set -e
 set +x
 
-RUST_VERSION="1.49.0"
+RUST_VERSION="1.51.0"
 CBINDGEN_VERSION="0.19.0"
 # Certain minimal SDK Version is required by firefox
 MACOS_SDK_VERSION="10.12"
@@ -11,7 +11,7 @@ XCODE_VERSION_WITH_REQUIRED_SDK_VERSION="8.3.3"
 
 trap "cd $(pwd -P)" EXIT
 
-cd "$(dirname $0)"
+cd "$(dirname "$0")"
 SCRIPT_FOLDER="$(pwd -P)"
 source "${SCRIPT_FOLDER}/../utils.sh"
 
@@ -82,23 +82,7 @@ OBJ_FOLDER="obj-build-playwright"
 echo "mk_add_options MOZ_OBJDIR=@TOPSRCDIR@/${OBJ_FOLDER}" >> .mozconfig
 echo "ac_add_options --disable-crashreporter" >> .mozconfig
 
-if [[ $1 == "--full" || $2 == "--full" ]]; then
-  if [[ "$(uname)" == "Darwin" || "$(uname)" == "Linux" ]]; then
-    SHELL=/bin/sh ./mach --no-interactive bootstrap --application-choice=browser
-  fi
-  if [[ ! -z "${WIN32_REDIST_DIR}" ]]; then
-    # Having this option in .mozconfig kills incremental compilation.
-    echo "export WIN32_REDIST_DIR=\"$WIN32_REDIST_DIR\"" >> .mozconfig
-  fi
-fi
-
-if ! [[ -f "$HOME/.mozbuild/_virtualenvs/mach/bin/python" ]]; then
-  ./mach create-mach-environment
-fi
-
-if [[ $1 == "--juggler" ]]; then
-  ./mach build faster
-else
+if [[ $1 != "--juggler" ]]; then
   # TODO: rustup is not in the PATH on Windows
   if command -v rustup >/dev/null; then
     # We manage Rust version ourselves.
@@ -115,9 +99,27 @@ else
   ./mach build
 fi
 
+if [[ $1 == "--full" || $2 == "--full" ]]; then
+  if [[ "$(uname)" == "Darwin" || "$(uname)" == "Linux" ]]; then
+    SHELL=/bin/sh ./mach --no-interactive bootstrap --application-choice=browser
+  fi
+  if [[ ! -z "${WIN32_REDIST_DIR}" ]]; then
+    # Having this option in .mozconfig kills incremental compilation.
+    echo "export WIN32_REDIST_DIR=\"$WIN32_REDIST_DIR\"" >> .mozconfig
+  fi
+fi
+
+if ! [[ -f "$HOME/.mozbuild/_virtualenvs/mach/bin/python" ]]; then
+  ./mach create-mach-environment
+fi
+
+if [[ $1 == "--juggler" ]]; then
+  ./mach build faster
+fi
+
 if [[ "$(uname)" == "Darwin" ]]; then
-  node "${SCRIPT_FOLDER}"/install-preferences.js $PWD/${OBJ_FOLDER}/dist
+  node "${SCRIPT_FOLDER}"/install-preferences.js "$PWD"/${OBJ_FOLDER}/dist
 else
-  node "${SCRIPT_FOLDER}"/install-preferences.js $PWD/${OBJ_FOLDER}/dist/bin
+  node "${SCRIPT_FOLDER}"/install-preferences.js "$PWD"/${OBJ_FOLDER}/dist/bin
 fi
 

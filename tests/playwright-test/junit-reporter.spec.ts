@@ -15,6 +15,7 @@
  */
 
 import xml2js from 'xml2js';
+import path from 'path';
 import { test, expect } from './playwright-test-fixtures';
 
 test('should render expected', async ({ runInlineTest }) => {
@@ -179,13 +180,10 @@ test('should report skipped due to sharding', async ({ runInlineTest }) => {
     `,
   }, { shard: '1/3', reporter: 'junit' });
   const xml = parseXML(result.output);
+  expect(xml['testsuites']['testsuite'].length).toBe(1);
   expect(xml['testsuites']['testsuite'][0]['$']['tests']).toBe('2');
   expect(xml['testsuites']['testsuite'][0]['$']['failures']).toBe('0');
   expect(xml['testsuites']['testsuite'][0]['$']['skipped']).toBe('1');
-
-  expect(xml['testsuites']['testsuite'][1]['$']['tests']).toBe('3');
-  expect(xml['testsuites']['testsuite'][1]['$']['failures']).toBe('0');
-  expect(xml['testsuites']['testsuite'][1]['$']['skipped']).toBe('3');
   expect(result.exitCode).toBe(0);
 });
 
@@ -220,6 +218,23 @@ test('should render projects', async ({ runInlineTest }) => {
   expect(xml['testsuites']['testsuite'][1]['$']['skipped']).toBe('0');
   expect(xml['testsuites']['testsuite'][1]['testcase'][0]['$']['name']).toBe('one');
   expect(xml['testsuites']['testsuite'][1]['testcase'][0]['$']['classname']).toContain('[project2] › a.test.js:6:7 › one');
+  expect(result.exitCode).toBe(0);
+});
+
+test('should render attachments', async ({ runInlineTest }) => {
+  const result = await runInlineTest({
+    'a.test.js': `
+      const { test } = pwt;
+      test.use({ screenshot: 'on' });
+      test('one', async ({ page }) => {
+        await page.setContent('hello');
+      });
+    `,
+  }, { reporter: 'junit' });
+  const xml = parseXML(result.output);
+  const suite = xml['testsuites']['testsuite'][0];
+  expect(suite['system-out'].length).toBe(1);
+  expect(suite['system-out'][0].trim()).toBe(`[[ATTACHMENT|test-results${path.sep}a-one${path.sep}test-finished-1.png]]`);
   expect(result.exitCode).toBe(0);
 });
 

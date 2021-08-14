@@ -32,17 +32,26 @@ export class Tracing implements api.Tracing {
     });
   }
 
+  async _export(options: { path: string }) {
+    await this._context._wrapApiCall(async (channel: channels.BrowserContextChannel) => {
+      await this._doExport(channel, options.path);
+    });
+  }
+
   async stop(options: { path?: string } = {}) {
     await this._context._wrapApiCall(async (channel: channels.BrowserContextChannel) => {
+      if (options.path)
+        await this._doExport(channel, options.path);
       await channel.tracingStop();
-      if (options.path) {
-        const result = await channel.tracingExport();
-        const artifact = Artifact.from(result.artifact);
-        if (this._context.browser()?._remoteType)
-          artifact._isRemote = true;
-        await artifact.saveAs(options.path);
-        await artifact.delete();
-      }
     });
+  }
+
+  private async _doExport(channel: channels.BrowserContextChannel, path: string) {
+    const result = await channel.tracingExport();
+    const artifact = Artifact.from(result.artifact);
+    if (this._context.browser()?._remoteType)
+      artifact._isRemote = true;
+    await artifact.saveAs(path);
+    await artifact.delete();
   }
 }

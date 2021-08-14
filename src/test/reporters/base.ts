@@ -21,9 +21,12 @@ import fs from 'fs';
 import milliseconds from 'ms';
 import path from 'path';
 import StackUtils from 'stack-utils';
-import { FullConfig, TestStatus, TestCase, Suite, TestResult, TestError, Reporter, FullResult } from '../../../types/testReporter';
+import { FullConfig, TestCase, Suite, TestResult, TestError, Reporter, FullResult } from '../../../types/testReporter';
 
 const stackUtils = new StackUtils();
+
+type TestResultOutput = { chunk: string | Buffer, type: 'stdout' | 'stderr' };
+const kOutputSymbol = Symbol('output');
 
 export class BaseReporter implements Reporter  {
   duration = 0;
@@ -32,6 +35,7 @@ export class BaseReporter implements Reporter  {
   result!: FullResult;
   fileDurations = new Map<string, number>();
   monotonicStartTime: number = 0;
+  private printTestOutput = !process.env.PWTEST_SKIP_TEST_OUTPUT;
 
   onBegin(config: FullConfig, suite: Suite) {
     this.monotonicStartTime = monotonicTime();
@@ -39,14 +43,19 @@ export class BaseReporter implements Reporter  {
     this.suite = suite;
   }
 
-  onStdOut(chunk: string | Buffer) {
-    if (!this.config.quiet)
-      process.stdout.write(chunk);
+  onStdOut(chunk: string | Buffer, test?: TestCase, result?: TestResult) {
+    this._appendOutput({ chunk, type: 'stdout' }, result);
   }
 
-  onStdErr(chunk: string | Buffer) {
-    if (!this.config.quiet)
-      process.stderr.write(chunk);
+  onStdErr(chunk: string | Buffer, test?: TestCase, result?: TestResult) {
+    this._appendOutput({ chunk, type: 'stderr' }, result);
+  }
+
+  private _appendOutput(output: TestResultOutput, result: TestResult | undefined) {
+    if (!result)
+      return;
+    (result as any)[kOutputSymbol] = (result as any)[kOutputSymbol] || [];
+    (result as any)[kOutputSymbol].push(output);
   }
 
   onTestEnd(test: TestCase, result: TestResult) {
@@ -83,21 +92,27 @@ export class BaseReporter implements Reporter  {
   epilogue(full: boolean) {
     let skipped = 0;
     let expected = 0;
+    const skippedWithError: TestCase[] = [];
     const unexpected: TestCase[] = [];
     const flaky: TestCase[] = [];
 
     this.suite.allTests().forEach(test => {
       switch (test.outcome()) {
-        case 'skipped': ++skipped; break;
+        case 'skipped': {
+          ++skipped;
+          if (test.results.some(result => !!result.error))
+            skippedWithError.push(test);
+          break;
+        }
         case 'expected': ++expected; break;
         case 'unexpected': unexpected.push(test); break;
         case 'flaky': flaky.push(test); break;
       }
     });
 
-    if (full && unexpected.length) {
+    if (full && (unexpected.length || skippedWithError.length)) {
       console.log('');
-      this._printFailures(unexpected);
+      this._printFailures([...unexpected, ...skippedWithError]);
     }
 
     this._printSlowTests();
@@ -127,12 +142,8 @@ export class BaseReporter implements Reporter  {
 
   private _printFailures(failures: TestCase[]) {
     failures.forEach((test, index) => {
-      console.log(formatFailure(this.config, test, index + 1));
+      console.log(formatFailure(this.config, test, index + 1, this.printTestOutput));
     });
-  }
-
-  hasResultWithStatus(test: TestCase, status: TestStatus): boolean {
-    return !!test.results.find(r => r.status === status);
   }
 
   willRetry(test: TestCase, result: TestResult): boolean {
@@ -140,16 +151,44 @@ export class BaseReporter implements Reporter  {
   }
 }
 
-export function formatFailure(config: FullConfig, test: TestCase, index?: number): string {
+export function formatFailure(config: FullConfig, test: TestCase, index?: number, stdio?: boolean): string {
   const tokens: string[] = [];
   tokens.push(formatTestHeader(config, test, '  ', index));
   for (const result of test.results) {
-    if (result.status === 'passed')
+    const resultTokens = formatResultFailure(test, result, '    ');
+    if (!resultTokens.length)
       continue;
-    tokens.push(formatFailedResult(test, result));
+    const statusSuffix = (result.status === 'passed' && test.expectedStatus === 'failed') ? ' -- passed unexpectedly' : '';
+    if (result.retry) {
+      tokens.push('');
+      tokens.push(colors.gray(pad(`    Retry #${result.retry}${statusSuffix}`, '-')));
+    }
+    tokens.push(...resultTokens);
+    const output = ((result as any)[kOutputSymbol] || []) as TestResultOutput[];
+    if (stdio && output.length) {
+      const outputText = output.map(({ chunk, type }) => {
+        const text = chunk.toString('utf8');
+        if (type === 'stderr')
+          return colors.red(stripAnsiEscapes(text));
+        return text;
+      }).join('');
+      tokens.push('');
+      tokens.push(colors.gray(pad('--- Test output', '-')) + '\n\n' + outputText + '\n' + pad('', '-'));
+    }
   }
   tokens.push('');
   return tokens.join('\n');
+}
+
+export function formatResultFailure(test: TestCase, result: TestResult, initialIndent: string): string[] {
+  const resultTokens: string[] = [];
+  if (result.status === 'timedOut') {
+    resultTokens.push('');
+    resultTokens.push(indent(colors.red(`Timeout of ${test.timeout}ms exceeded.`), initialIndent));
+  }
+  if (result.error !== undefined)
+    resultTokens.push(indent(formatError(result.error, test.location.file), initialIndent));
+  return resultTokens;
 }
 
 function relativeTestPath(config: FullConfig, test: TestCase): string {
@@ -166,24 +205,9 @@ export function formatTestTitle(config: FullConfig, test: TestCase): string {
 
 function formatTestHeader(config: FullConfig, test: TestCase, indent: string, index?: number): string {
   const title = formatTestTitle(config, test);
-  const passedUnexpectedlySuffix = test.results[0].status === 'passed' ? ' -- passed unexpectedly' : '';
+  const passedUnexpectedlySuffix = (test.results[0].status === 'passed' && test.expectedStatus === 'failed') ? ' -- passed unexpectedly' : '';
   const header = `${indent}${index ? index + ') ' : ''}${title}${passedUnexpectedlySuffix}`;
   return colors.red(pad(header, '='));
-}
-
-function formatFailedResult(test: TestCase, result: TestResult): string {
-  const tokens: string[] = [];
-  if (result.retry)
-    tokens.push(colors.gray(pad(`\n    Retry #${result.retry}`, '-')));
-  if (result.status === 'timedOut') {
-    tokens.push('');
-    tokens.push(indent(colors.red(`Timeout of ${test.timeout}ms exceeded.`), '    '));
-    if (result.error !== undefined)
-      tokens.push(indent(formatError(result.error, test.location.file), '    '));
-  } else {
-    tokens.push(indent(formatError(result.error!, test.location.file), '    '));
-  }
-  return tokens.join('\n');
 }
 
 function formatError(error: TestError, file?: string) {
@@ -215,7 +239,9 @@ function formatError(error: TestError, file?: string) {
 }
 
 function pad(line: string, char: string): string {
-  return line + ' ' + colors.gray(char.repeat(Math.max(0, 100 - line.length - 1)));
+  if (line)
+    line += ' ';
+  return line + colors.gray(char.repeat(Math.max(0, 100 - line.length)));
 }
 
 function indent(lines: string, tab: string) {
@@ -240,6 +266,6 @@ function monotonicTime(): number {
 }
 
 const asciiRegex = new RegExp('[\\u001B\\u009B][[\\]()#;?]*(?:(?:(?:[a-zA-Z\\d]*(?:;[-a-zA-Z\\d\\/#&.:=?%@~_]*)*)?\\u0007)|(?:(?:\\d{1,4}(?:;\\d{0,4})*)?[\\dA-PR-TZcf-ntqry=><~]))', 'g');
-export function stripAscii(str: string): string {
+export function stripAnsiEscapes(str: string): string {
   return str.replace(asciiRegex, '');
 }

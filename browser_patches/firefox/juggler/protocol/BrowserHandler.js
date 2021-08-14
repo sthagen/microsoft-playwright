@@ -213,8 +213,8 @@ class BrowserHandler {
     await this._targetRegistry.browserContextForId(browserContextId).setForcedColors(nullToUndefined(forcedColors));
   }
 
-  async ['Browser.setVideoRecordingOptions']({browserContextId, dir, width, height, scale}) {
-    await this._targetRegistry.browserContextForId(browserContextId).setVideoRecordingOptions({dir, width, height, scale});
+  async ['Browser.setVideoRecordingOptions']({browserContextId, options}) {
+    await this._targetRegistry.browserContextForId(browserContextId).setVideoRecordingOptions(options);
   }
 
   async ['Browser.setUserAgentOverride']({browserContextId, userAgent}) {
@@ -226,7 +226,7 @@ class BrowserHandler {
   }
 
   async ['Browser.setJavaScriptDisabled']({browserContextId, javaScriptDisabled}) {
-    await this._targetRegistry.browserContextForId(browserContextId).applySetting('javaScriptDisabled', nullToUndefined(javaScriptDisabled));
+    await this._targetRegistry.browserContextForId(browserContextId).setJavaScriptDisabled(javaScriptDisabled);
   }
 
   async ['Browser.setLocaleOverride']({browserContextId, locale}) {

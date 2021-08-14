@@ -17,7 +17,7 @@
 import fs from 'fs';
 import path from 'path';
 import * as trace from '../common/traceEvents';
-import { ContextResources, ResourceSnapshot } from '../../snapshot/snapshotTypes';
+import { ResourceSnapshot } from '../../snapshot/snapshotTypes';
 import { BaseSnapshotStorage } from '../../snapshot/snapshotStorage';
 import { BrowserContextOptions } from '../../types';
 import { shouldCaptureSnapshot, VERSION } from '../recorder/tracing';
@@ -26,7 +26,6 @@ export * as trace from '../common/traceEvents';
 export class TraceModel {
   contextEntry: ContextEntry;
   pageEntries = new Map<string, PageEntry>();
-  contextResources = new Map<string, ContextResources>();
   private _snapshotStorage: PersistentSnapshotStorage;
   private _version: number | undefined;
 
@@ -38,7 +37,7 @@ export class TraceModel {
       browserName: '',
       options: { sdkLanguage: '' },
       pages: [],
-      resources: []
+      resources: [],
     };
   }
 
@@ -123,6 +122,14 @@ export class TraceModel {
     }
     return event;
   }
+
+  _modernize_1_to_2(event: any): any {
+    if (event.type === 'frame-snapshot' && event.snapshot.isMainFrame) {
+      // Old versions had completely wrong viewport.
+      event.snapshot.viewport = this.contextEntry.options.viewport || { width: 1280, height: 720 };
+    }
+    return event;
+  }
 }
 
 export type ContextEntry = {
@@ -137,13 +144,13 @@ export type ContextEntry = {
 export type PageEntry = {
   actions: trace.ActionTraceEvent[];
   events: trace.ActionTraceEvent[];
-  objects: { [ket: string]: any };
+  objects: { [key: string]: any };
   screencastFrames: {
     sha1: string,
     timestamp: number,
     width: number,
     height: number,
-  }[]
+  }[];
 };
 
 export class PersistentSnapshotStorage extends BaseSnapshotStorage {

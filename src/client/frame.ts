@@ -18,6 +18,7 @@
 import { assert } from '../utils/utils';
 import * as channels from '../protocol/channels';
 import { ChannelOwner } from './channelOwner';
+import { Locator } from './locator';
 import { ElementHandle, convertSelectOptionValues, convertInputFiles } from './elementHandle';
 import { assertMaxArguments, JSHandle, serializeArgument, parseResult } from './jsHandle';
 import fs from 'fs';
@@ -26,7 +27,7 @@ import { Page } from './page';
 import { EventEmitter } from 'events';
 import { Waiter } from './waiter';
 import { Events } from './events';
-import { LifecycleEvent, URLMatch, SelectOption, SelectOptionOptions, FilePayload, WaitForFunctionOptions, kLifecycleEvents } from './types';
+import { LifecycleEvent, URLMatch, SelectOption, SelectOptionOptions, FilePayload, WaitForFunctionOptions, kLifecycleEvents, StrictOptions } from './types';
 import { urlMatches } from './clientHelper';
 import * as api from '../../types/types';
 import * as structs from '../../types/structs';
@@ -182,9 +183,9 @@ export class Frame extends ChannelOwner<channels.FrameChannel, channels.FrameIni
     });
   }
 
-  async $(selector: string): Promise<ElementHandle<SVGElement | HTMLElement> | null> {
+  async $(selector: string, options?: { strict?: boolean }): Promise<ElementHandle<SVGElement | HTMLElement> | null> {
     return this._wrapApiCall(async (channel: channels.FrameChannel) => {
-      const result = await channel.querySelector({ selector });
+      const result = await channel.querySelector({ selector, ...options });
       return ElementHandle.fromNullable(result.element) as ElementHandle<SVGElement | HTMLElement> | null;
     });
   }
@@ -316,6 +317,10 @@ export class Frame extends ChannelOwner<channels.FrameChannel, channels.FrameIni
     });
   }
 
+  locator(selector: string): Locator {
+    return new Locator(this, selector);
+  }
+
   async focus(selector: string, options: channels.FrameFocusOptions = {}) {
     return this._wrapApiCall(async (channel: channels.FrameChannel) => {
       await channel.focus({ selector, ...options });
@@ -396,7 +401,7 @@ export class Frame extends ChannelOwner<channels.FrameChannel, channels.FrameIni
     });
   }
 
-  async selectOption(selector: string, values: string | api.ElementHandle | SelectOption | string[] | api.ElementHandle[] | SelectOption[] | null, options: SelectOptionOptions = {}): Promise<string[]> {
+  async selectOption(selector: string, values: string | api.ElementHandle | SelectOption | string[] | api.ElementHandle[] | SelectOption[] | null, options: SelectOptionOptions & StrictOptions = {}): Promise<string[]> {
     return this._wrapApiCall(async (channel: channels.FrameChannel) => {
       return (await channel.selectOption({ selector, ...convertSelectOptionValues(values), ...options })).values;
     });

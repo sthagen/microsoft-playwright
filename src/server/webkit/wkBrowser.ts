@@ -28,8 +28,8 @@ import { kPageProxyMessageReceived, PageProxyMessageReceivedPayload, WKConnectio
 import { WKPage } from './wkPage';
 import { kBrowserClosedError } from '../../utils/errors';
 
-const DEFAULT_USER_AGENT = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.2 Safari/605.1.15';
-const BROWSER_VERSION = '14.2';
+const DEFAULT_USER_AGENT = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.0 Safari/605.1.15';
+const BROWSER_VERSION = '15.0';
 
 export class WKBrowser extends Browser {
   private readonly _connection: WKConnection;
@@ -198,12 +198,11 @@ export class WKBrowser extends Browser {
 }
 
 export class WKBrowserContext extends BrowserContext {
-  readonly _browser: WKBrowser;
+  declare readonly _browser: WKBrowser;
   readonly _evaluateOnNewDocumentSources: string[];
 
   constructor(browser: WKBrowser, browserContextId: string | undefined, options: types.BrowserContextOptions) {
     super(browser, options, browserContextId);
-    this._browser = browser;
     this._evaluateOnNewDocumentSources = [];
     this._authenticateProxyViaHeader();
   }

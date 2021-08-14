@@ -23,6 +23,7 @@ export type SnapshotData = {
     url: string,
     // String is the content. Number is "x snapshots ago", same url.
     content: string | number,
+    contentType: 'text/css'
   }[],
   viewport: { width: number, height: number },
   url: string,
@@ -177,6 +178,7 @@ export function frameSnapshotStreamer(snapshotStreamer: string) {
           visitNode(child);
       };
       visitNode(document.documentElement);
+      visitNode(this._fakeBase);
     }
 
     private _sanitizeUrl(url: string): string {
@@ -442,8 +444,8 @@ export function frameSnapshotStreamer(snapshotStreamer: string) {
         doctype: document.doctype ? document.doctype.name : undefined,
         resourceOverrides: [],
         viewport: {
-          width: Math.max(document.body ? document.body.offsetWidth : 0, document.documentElement ? document.documentElement.offsetWidth : 0),
-          height: Math.max(document.body ? document.body.offsetHeight : 0, document.documentElement ? document.documentElement.offsetHeight : 0),
+          width: window.innerWidth,
+          height: window.innerHeight,
         },
         url: location.href,
         timestamp,
@@ -460,7 +462,7 @@ export function frameSnapshotStreamer(snapshotStreamer: string) {
         }
         const base = this._getSheetBase(sheet);
         const url = removeHash(this._resolveUrl(base, sheet.href!));
-        result.resourceOverrides.push({ url, content });
+        result.resourceOverrides.push({ url, content, contentType: 'text/css' },);
       }
 
       result.collectionTime = performance.now() - result.timestamp;

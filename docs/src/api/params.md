@@ -22,6 +22,12 @@ The default value can be changed by using the
 maximum time to wait for in milliseconds. Defaults to `30000` (30 seconds). Pass `0` to disable timeout. The default
 value can be changed by using the [`method: BrowserContext.setDefaultTimeout`].
 
+## input-strict
+- `strict` <[boolean]>
+
+When true, the call requires selector to resolve to a single element. If given selector resolves to more
+then one element, the call throws an exception.
+
 ## input-timeout
 - `timeout` <[float]>
 
@@ -97,10 +103,29 @@ defaults to 1. See [UIEvent.detail].
 
 When set, this method only performs the [actionability](./actionability.md) checks and skips the action. Defaults to `false`. Useful to wait until the element is ready for the action without performing it.
 
+## input-source-position
+- `sourcePosition` <[Object]>
+  - `x` <[float]>
+  - `y` <[float]>
+
+Clicks on the source element at this point relative to the top-left corner of the element's padding box. If not specified, some visible point of the element is used.
+
+## input-target-position
+- `targetPosition` <[Object]>
+  - `x` <[float]>
+  - `y` <[float]>
+
+Drops on the target element at this point relative to the top-left corner of the element's padding box. If not specified, some visible point of the element is used.
+
 ## query-selector
 - `selector` <[string]>
 
 A selector to query for. See [working with selectors](./selectors.md) for more details.
+
+## find-selector
+- `selector` <[string]>
+
+A selector to use when resolving DOM element. See [working with selectors](./selectors.md) for more details.
 
 ## wait-for-selector-state
 - `state` <[WaitForSelectorState]<"attached"|"detached"|"visible"|"hidden">>

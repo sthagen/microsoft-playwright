@@ -44,6 +44,17 @@ it.describe('snapshots', () => {
     expect(distillSnapshot(snapshot)).toBe('<BUTTON>Hello</BUTTON>');
   });
 
+  it('should preserve BASE and other content on reset', async ({ page, toImpl, snapshotter, server }) => {
+    await page.goto(server.EMPTY_PAGE);
+    const snapshot1 = await snapshotter.captureSnapshot(toImpl(page), 'snapshot1');
+    const html1 = snapshot1.render().html;
+    expect(html1).toContain(`<BASE href="${server.EMPTY_PAGE}"`);
+    await snapshotter.reset();
+    const snapshot2 = await snapshotter.captureSnapshot(toImpl(page), 'snapshot2');
+    const html2 = snapshot2.render().html;
+    expect(html2.replace(`"snapshot2"`, `"snapshot1"`)).toEqual(html1);
+  });
+
   it('should capture resources', async ({ page, toImpl, server, snapshotter }) => {
     await page.goto(server.EMPTY_PAGE);
     await page.route('**/style.css', route => {
@@ -51,9 +62,8 @@ it.describe('snapshots', () => {
     });
     await page.setContent('<link rel="stylesheet" href="style.css"><button>Hello</button>');
     const snapshot = await snapshotter.captureSnapshot(toImpl(page), 'snapshot');
-    const { resources } = snapshot.render();
-    const cssHref = `http://localhost:${server.PORT}/style.css`;
-    expect(resources[cssHref]).toBeTruthy();
+    const resource = snapshot.resourceByUrl(`http://localhost:${server.PORT}/style.css`);
+    expect(resource).toBeTruthy();
   });
 
   it('should collect multiple', async ({ page, toImpl, snapshotter }) => {
@@ -115,10 +125,8 @@ it.describe('snapshots', () => {
 
     await page.evaluate(() => { (document.styleSheets[0].cssRules[0] as any).style.color = 'blue'; });
     const snapshot2 = await snapshotter.captureSnapshot(toImpl(page), 'snapshot1');
-    const { resources } = snapshot2.render();
-    const cssHref = `http://localhost:${server.PORT}/style.css`;
-    const { sha1 } = resources[cssHref];
-    expect(snapshotter.resourceContent(sha1).toString()).toBe('button { color: blue; }');
+    const resource = snapshot2.resourceByUrl(`http://localhost:${server.PORT}/style.css`);
+    expect(snapshotter.resourceContent(resource.responseSha1).toString()).toBe('button { color: blue; }');
   });
 
   it('should capture iframe', async ({ page, contextFactory, server, toImpl, browserName, snapshotter, snapshotPort }) => {

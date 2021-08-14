@@ -27,6 +27,7 @@ import { ConsoleMessage } from './consoleMessage';
 import { Dialog } from './dialog';
 import { Download } from './download';
 import { ElementHandle, determineScreenshotType } from './elementHandle';
+import { Locator } from './locator';
 import { Worker } from './worker';
 import { Frame, verifyLoadState, WaitForNavigationOptions } from './frame';
 import { Keyboard, Mouse, Touchscreen } from './input';
@@ -249,8 +250,8 @@ export class Page extends ChannelOwner<channels.PageChannel, channels.PageInitia
     return this._forceVideo();
   }
 
-  async $(selector: string): Promise<ElementHandle<SVGElement | HTMLElement> | null> {
-    return this._mainFrame.$(selector);
+  async $(selector: string, options?: { strict?: boolean }): Promise<ElementHandle<SVGElement | HTMLElement> | null> {
+    return this._mainFrame.$(selector, options);
   }
 
   waitForSelector(selector: string, options: channels.FrameWaitForSelectorOptions & { state: 'attached' | 'visible' }): Promise<ElementHandle<SVGElement | HTMLElement>>;
@@ -486,9 +487,10 @@ export class Page extends ChannelOwner<channels.PageChannel, channels.PageInitia
   async close(options: { runBeforeUnload?: boolean } = {runBeforeUnload: undefined}) {
     try {
       await this._wrapApiCall(async (channel: channels.PageChannel) => {
-        await channel.close(options);
         if (this._ownedContext)
           await this._ownedContext.close();
+        else
+          await channel.close(options);
       });
     } catch (e) {
       if (isSafeCloseError(e))
@@ -519,6 +521,10 @@ export class Page extends ChannelOwner<channels.PageChannel, channels.PageInitia
 
   async fill(selector: string, value: string, options?: channels.FrameFillOptions) {
     return this._mainFrame.fill(selector, value, options);
+  }
+
+  locator(selector: string): Locator {
+    return this.mainFrame().locator(selector);
   }
 
   async focus(selector: string, options?: channels.FrameFocusOptions) {
