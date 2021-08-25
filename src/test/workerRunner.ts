@@ -162,7 +162,8 @@ export class WorkerRunner extends EventEmitter {
       // TODO: separate timeout for beforeAll modifiers?
       const result = await raceAgainstDeadline(this._fixtureRunner.resolveParametersAndRunHookOrTest(beforeAllModifier.fn, this._workerInfo, undefined), this._deadline());
       if (result.timedOut) {
-        this._fatalError = serializeError(new Error(`Timeout of ${this._project.config.timeout}ms exceeded while running ${beforeAllModifier.type} modifier`));
+        if (!this._fatalError)
+          this._fatalError = serializeError(new Error(`Timeout of ${this._project.config.timeout}ms exceeded while running ${beforeAllModifier.type} modifier`));
         this.stop();
       }
       if (!!result.result)
@@ -201,7 +202,8 @@ export class WorkerRunner extends EventEmitter {
     const baseOutputDir = (() => {
       const relativeTestFilePath = path.relative(this._project.config.testDir, test._requireFile.replace(/\.(spec|test)\.(js|ts|mjs)$/, ''));
       const sanitizedRelativePath = relativeTestFilePath.replace(process.platform === 'win32' ? new RegExp('\\\\', 'g') : new RegExp('/', 'g'), '-');
-      let testOutputDir = sanitizedRelativePath + '-' + sanitizeForFilePath(test.title);
+      const fullTitleWithoutSpec = test.titlePath().slice(1).join(' ');
+      let testOutputDir = sanitizedRelativePath + '-' + sanitizeForFilePath(fullTitleWithoutSpec);
       if (this._uniqueProjectNamePathSegment)
         testOutputDir += '-' + this._uniqueProjectNamePathSegment;
       if (retry)
@@ -375,7 +377,7 @@ export class WorkerRunner extends EventEmitter {
     if (testInfo.status !== 'passed' && testInfo.status !== 'skipped') {
       if (test._type === 'test')
         this._failedTestId = testId;
-      else
+      else if (!this._fatalError)
         this._fatalError = testInfo.error;
       this.stop();
     }
