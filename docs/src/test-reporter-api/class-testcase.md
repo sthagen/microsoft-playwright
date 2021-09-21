@@ -18,7 +18,7 @@ Learn more about [test annotations](./test-annotations.md).
 - type: <[TestStatus]<"passed"|"failed"|"timedOut"|"skipped">>
 
 Expected test status.
-* Tests marked as [`method: Test.skip`] or [`method: Test.fixme`] are expected to be `'skipped'`.
+* Tests marked as [`method: Test.skip#1`] or [`method: Test.fixme`] are expected to be `'skipped'`.
 * Tests marked as [`method: Test.fail`] are expected to be `'failed'`.
 * Other tests are expected to be `'passed'`.
 
@@ -51,7 +51,7 @@ Results for each run of this test.
 
 The maximum number of retries given to this test in the configuration.
 
-Learn more about [test retries](./test-retries.md).
+Learn more about [test retries](./test-retries.md#retries).
 
 ## property: TestCase.timeout
 - type: <[float]>

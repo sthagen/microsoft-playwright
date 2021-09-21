@@ -21,7 +21,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { promisify } from 'util';
 import { Dispatcher, TestGroup } from './dispatcher';
-import { createMatcher, FilePatternFilter, monotonicTime, raceAgainstDeadline } from './util';
+import { createFileMatcher, createTitleMatcher, FilePatternFilter, monotonicTime } from './util';
 import { TestCase, Suite } from './test';
 import { Loader } from './loader';
 import { Reporter } from '../../types/testReporter';
@@ -34,8 +34,9 @@ import JUnitReporter from './reporters/junit';
 import EmptyReporter from './reporters/empty';
 import { ProjectImpl } from './project';
 import { Minimatch } from 'minimatch';
-import { Config, FullConfig } from './types';
+import { FullConfig } from './types';
 import { WebServer } from './webServer';
+import { raceAgainstDeadline } from '../utils/async';
 
 const removeFolderAsync = promisify(rimraf);
 const readDirAsync = promisify(fs.readdir);
@@ -58,12 +59,11 @@ export class Runner {
   private _reporter!: Reporter;
   private _didBegin = false;
 
-  constructor(defaultConfig: Config, configOverrides: Config) {
-    this._loader = new Loader(defaultConfig, configOverrides);
+  constructor(loader: Loader) {
+    this._loader = loader;
   }
 
   private async _createReporter(list: boolean) {
-    const reporters: Reporter[] = [];
     const defaultReporters: {[key in BuiltInReporter]: new(arg: any) => Reporter} = {
       dot: list ? ListModeReporter : DotReporter,
       line: list ? ListModeReporter : LineReporter,
@@ -72,6 +72,7 @@ export class Runner {
       junit: JUnitReporter,
       null: EmptyReporter,
     };
+    const reporters: Reporter[] = [];
     for (const r of this._loader.fullConfig().reporter) {
       const [name, arg] = r;
       if (name in defaultReporters) {
@@ -84,19 +85,11 @@ export class Runner {
     return new Multiplexer(reporters);
   }
 
-  loadConfigFile(file: string): Promise<Config> {
-    return this._loader.loadConfigFile(file);
-  }
-
-  loadEmptyConfig(rootDir: string) {
-    this._loader.loadEmptyConfig(rootDir);
-  }
-
-  async run(list: boolean, filePatternFilters: FilePatternFilter[], projectName?: string): Promise<RunResultStatus> {
+  async run(list: boolean, filePatternFilters: FilePatternFilter[], projectNames?: string[]): Promise<RunResultStatus> {
     this._reporter = await this._createReporter(list);
     const config = this._loader.fullConfig();
-    const globalDeadline = config.globalTimeout ? config.globalTimeout + monotonicTime() : undefined;
-    const { result, timedOut } = await raceAgainstDeadline(this._run(list, filePatternFilters, projectName), globalDeadline);
+    const globalDeadline = config.globalTimeout ? config.globalTimeout + monotonicTime() : 0;
+    const { result, timedOut } = await raceAgainstDeadline(this._run(list, filePatternFilters, projectNames), globalDeadline);
     if (timedOut) {
       if (!this._didBegin)
         this._reporter.onBegin?.(config, new Suite(''));
@@ -136,18 +129,34 @@ export class Runner {
     await new Promise<void>(resolve => process.stderr.write('', () => resolve()));
   }
 
-  async _run(list: boolean, testFileReFilters: FilePatternFilter[], projectName?: string): Promise<RunResult> {
-    const testFileFilter = testFileReFilters.length ? createMatcher(testFileReFilters.map(e => e.re)) : () => true;
+  async _run(list: boolean, testFileReFilters: FilePatternFilter[], projectNames?: string[]): Promise<RunResult> {
+    const testFileFilter = testFileReFilters.length ? createFileMatcher(testFileReFilters.map(e => e.re)) : () => true;
     const config = this._loader.fullConfig();
 
+    let projectsToFind: Set<string> | undefined;
+    let unknownProjects: Map<string, string> | undefined;
+    if (projectNames) {
+      projectsToFind = new Set();
+      unknownProjects = new Map();
+      projectNames.forEach(n => {
+        const name = n.toLocaleLowerCase();
+        projectsToFind!.add(name);
+        unknownProjects!.set(name, n);
+      });
+    }
     const projects = this._loader.projects().filter(project => {
-      return !projectName || project.config.name.toLocaleLowerCase() === projectName.toLocaleLowerCase();
+      if (!projectsToFind)
+        return true;
+      const name = project.config.name.toLocaleLowerCase();
+      unknownProjects!.delete(name);
+      return projectsToFind.has(name);
     });
-    if (projectName && !projects.length) {
+    if (unknownProjects && unknownProjects.size) {
       const names = this._loader.projects().map(p => p.config.name).filter(name => !!name);
       if (!names.length)
         throw new Error(`No named projects are specified in the configuration file`);
-      throw new Error(`Project "${projectName}" not found. Available named projects: ${names.map(name => `"${name}"`).join(', ')}`);
+      const unknownProjectNames = Array.from(unknownProjects.values()).map(n => `"${n}"`).join(', ');
+      throw new Error(`Project(s) ${unknownProjectNames} not found. Available named projects: ${names.map(name => `"${name}"`).join(', ')}`);
     }
 
     const files = new Map<ProjectImpl, string[]>();
@@ -159,8 +168,8 @@ export class Runner {
       if (!fs.statSync(testDir).isDirectory())
         throw new Error(`${testDir} is not a directory`);
       const allFiles = await collectFiles(project.config.testDir);
-      const testMatch = createMatcher(project.config.testMatch);
-      const testIgnore = createMatcher(project.config.testIgnore);
+      const testMatch = createFileMatcher(project.config.testMatch);
+      const testIgnore = createFileMatcher(project.config.testIgnore);
       const testFileExtension = (file: string) => ['.js', '.ts', '.mjs'].includes(path.extname(file));
       const testFiles = allFiles.filter(file => !testIgnore(file) && testMatch(file) && testFileFilter(file) && testFileExtension(file));
       files.set(project, testFiles);
@@ -200,11 +209,12 @@ export class Runner {
         fileSuites.set(fileSuite._requireFile, fileSuite);
 
       const outputDirs = new Set<string>();
-      const grepMatcher = createMatcher(config.grep);
-      const grepInvertMatcher = config.grepInvert ? createMatcher(config.grepInvert) : null;
+      const grepMatcher = createTitleMatcher(config.grep);
+      const grepInvertMatcher = config.grepInvert ? createTitleMatcher(config.grepInvert) : null;
       const rootSuite = new Suite('');
       for (const project of projects) {
         const projectSuite = new Suite(project.config.name);
+        projectSuite._projectConfig = project.config;
         rootSuite._addSuite(projectSuite);
         for (const file of files.get(project)!) {
           const fileSuite = fileSuites.get(file);
@@ -455,47 +465,61 @@ function createTestGroups(rootSuite: Suite): TestGroup[] {
   // - They have a different repeatEachIndex - requires different workers.
   // - They have a different set of worker fixtures in the pool - requires different workers.
   // - They have a different requireFile - reuses the worker, but runs each requireFile separately.
+  // - They belong to a parallel suite.
 
-  // We try to preserve the order of tests when they require different workers
-  // by ordering different worker hashes sequentially.
-  const workerHashToOrdinal = new Map<string, number>();
-  const requireFileToOrdinal = new Map<string, number>();
+  // Using the map "workerHash -> requireFile -> group" makes us preserve the natural order
+  // of worker hashes and require files for the simple cases.
+  const groups = new Map<string, Map<string, { general: TestGroup, parallel: TestGroup[] }>>();
 
-  const groupById = new Map<number, TestGroup>();
+  const createGroup = (test: TestCase): TestGroup => {
+    return {
+      workerHash: test._workerHash,
+      requireFile: test._requireFile,
+      repeatEachIndex: test._repeatEachIndex,
+      projectIndex: test._projectIndex,
+      tests: [],
+    };
+  };
+
   for (const projectSuite of rootSuite.suites) {
     for (const test of projectSuite.allTests()) {
-      let workerHashOrdinal = workerHashToOrdinal.get(test._workerHash);
-      if (!workerHashOrdinal) {
-        workerHashOrdinal = workerHashToOrdinal.size + 1;
-        workerHashToOrdinal.set(test._workerHash, workerHashOrdinal);
+      let withWorkerHash = groups.get(test._workerHash);
+      if (!withWorkerHash) {
+        withWorkerHash = new Map();
+        groups.set(test._workerHash, withWorkerHash);
       }
-
-      let requireFileOrdinal = requireFileToOrdinal.get(test._requireFile);
-      if (!requireFileOrdinal) {
-        requireFileOrdinal = requireFileToOrdinal.size + 1;
-        requireFileToOrdinal.set(test._requireFile, requireFileOrdinal);
-      }
-
-      const id = workerHashOrdinal * 10000 + requireFileOrdinal;
-      let group = groupById.get(id);
-      if (!group) {
-        group = {
-          workerHash: test._workerHash,
-          requireFile: test._requireFile,
-          repeatEachIndex: test._repeatEachIndex,
-          projectIndex: test._projectIndex,
-          tests: [],
+      let withRequireFile = withWorkerHash.get(test._requireFile);
+      if (!withRequireFile) {
+        withRequireFile = {
+          general: createGroup(test),
+          parallel: [],
         };
-        groupById.set(id, group);
+        withWorkerHash.set(test._requireFile, withRequireFile);
       }
-      group.tests.push(test);
+
+      let insideParallel = false;
+      for (let parent = test.parent; parent; parent = parent.parent)
+        insideParallel = insideParallel || parent._parallelMode === 'parallel';
+
+      if (insideParallel) {
+        const group = createGroup(test);
+        group.tests.push(test);
+        withRequireFile.parallel.push(group);
+      } else {
+        withRequireFile.general.tests.push(test);
+      }
     }
   }
 
-  // Sorting ids will preserve the natural order, because we
-  // replaced hashes with ordinals according to the natural ordering.
-  const ids = Array.from(groupById.keys()).sort();
-  return ids.map(id => groupById.get(id)!);
+  const result: TestGroup[] = [];
+  for (const withWorkerHash of groups.values()) {
+    for (const withRequireFile of withWorkerHash.values()) {
+      if (withRequireFile.general.tests.length)
+        result.push(withRequireFile.general);
+      result.push(...withRequireFile.parallel);
+    }
+  }
+  return result;
 }
 
 class ListModeReporter implements Reporter {

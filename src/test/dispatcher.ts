@@ -161,7 +161,7 @@ export class Dispatcher {
 
         let outermostSerialSuite: Suite | undefined;
         for (let parent = this._testById.get(params.failedTestId)!.test.parent; parent; parent = parent.parent) {
-          if (parent._serial)
+          if (parent._parallelMode ===  'serial')
             outermostSerialSuite = parent;
         }
 
@@ -192,10 +192,9 @@ export class Dispatcher {
         }
       }
 
-      // Only retry expected failures, not passes and only if the test failed.
       for (const testId of retryCandidates) {
         const pair = this._testById.get(testId)!;
-        if (!this._isStopped && pair.test.expectedStatus === 'passed' && pair.test.results.length < pair.test.retries + 1) {
+        if (!this._isStopped && pair.test.results.length < pair.test.retries + 1) {
           pair.result = pair.test._appendTestResult();
           pair.steps = new Map();
           pair.stepStack = new Set();
@@ -298,7 +297,7 @@ export class Dispatcher {
         return;
       }
       const { test, result, steps, stepStack } = this._testById.get(params.testId)!;
-      const parentStep = [...stepStack].pop();
+      const parentStep = params.forceNoParent ? undefined : [...stepStack].pop();
       const step: TestStep = {
         title: params.title,
         titlePath: () => {
@@ -310,10 +309,12 @@ export class Dispatcher {
         startTime: new Date(params.wallTime),
         duration: 0,
         steps: [],
+        data: {},
       };
       steps.set(params.stepId, step);
       (parentStep || result).steps.push(step);
-      stepStack.add(step);
+      if (params.canHaveChildren)
+        stepStack.add(step);
       this._reporter.onStepBegin?.(test, result, step);
     });
     worker.on('stepEnd', (params: StepEndPayload) => {

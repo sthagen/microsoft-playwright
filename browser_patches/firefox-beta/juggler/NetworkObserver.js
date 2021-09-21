@@ -729,6 +729,8 @@ class NetworkRequest {
         requestId: this.requestId,
         responseEndTime: httpChannel.responseEndTime,
         transferSize: httpChannel.transferSize,
+        encodedBodySize: httpChannel.encodedBodySize,
+        protocolVersion: httpChannel.protocolVersion,
       }, this._frameId);
     }
     this._networkObserver._channelToRequest.delete(httpChannel);
@@ -765,7 +767,7 @@ class NetworkObserver {
             proxy.port,
             '', /* aProxyAuthorizationHeader */
             '', /* aConnectionIsolationKey */
-            0, /* aFlags */
+            Ci.nsIProxyInfo.TRANSPARENT_PROXY_RESOLVES_HOST, /* aFlags */
             UINT32_MAX, /* aFailoverTimeout */
             null, /* failover proxy */
         ));

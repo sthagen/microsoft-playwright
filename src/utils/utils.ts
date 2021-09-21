@@ -20,10 +20,13 @@ import stream from 'stream';
 import removeFolder from 'rimraf';
 import * as crypto from 'crypto';
 import os from 'os';
-import { spawn } from 'child_process';
+import http from 'http';
+import https from 'https';
+import { spawn, SpawnOptions } from 'child_process';
 import { getProxyForUrl } from 'proxy-from-env';
 import * as URL from 'url';
 import { getUbuntuVersionSync } from './ubuntuVersion';
+import { NameValue } from '../protocol/channels';
 
 // `https-proxy-agent` v5 is written in TypeScript and exposes generated types.
 // However, as of June 2020, its types are generated with tsconfig that enables
@@ -36,53 +39,63 @@ const ProxyAgent = require('https-proxy-agent');
 
 export const existsAsync = (path: string): Promise<boolean> => new Promise(resolve => fs.stat(path, err => resolve(!err)));
 
-function httpRequest(url: string, method: string, response: (r: any) => void) {
-  let options: any = URL.parse(url);
-  options.method = method;
+type HTTPRequestParams = {
+  url: string,
+  method?: string,
+  headers?: http.OutgoingHttpHeaders,
+  data?: string | Buffer,
+};
 
-  const proxyURL = getProxyForUrl(url);
+function httpRequest(params: HTTPRequestParams, onResponse: (r: http.IncomingMessage) => void, onError: (error: Error) => void) {
+  const parsedUrl = URL.parse(params.url);
+  let options: https.RequestOptions = { ...parsedUrl };
+  options.method = params.method || 'GET';
+  options.headers = params.headers;
+
+  const proxyURL = getProxyForUrl(params.url);
   if (proxyURL) {
-    if (url.startsWith('http:')) {
+    if (params.url.startsWith('http:')) {
       const proxy = URL.parse(proxyURL);
       options = {
-        path: options.href,
+        path: parsedUrl.href,
         host: proxy.hostname,
         port: proxy.port,
       };
     } else {
-      const parsedProxyURL: any = URL.parse(proxyURL);
-      parsedProxyURL.secureProxy = parsedProxyURL.protocol === 'https:';
+      const parsedProxyURL = URL.parse(proxyURL);
+      (parsedProxyURL as any).secureProxy = parsedProxyURL.protocol === 'https:';
 
       options.agent = new ProxyAgent(parsedProxyURL);
       options.rejectUnauthorized = false;
     }
   }
 
-  const requestCallback = (res: any) => {
-    if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location)
-      httpRequest(res.headers.location, method, response);
+  const requestCallback = (res: http.IncomingMessage) => {
+    const statusCode = res.statusCode || 0;
+    if (statusCode >= 300 && statusCode < 400 && res.headers.location)
+      httpRequest({ ...params, url: res.headers.location }, onResponse, onError);
     else
-      response(res);
+      onResponse(res);
   };
   const request = options.protocol === 'https:' ?
-    require('https').request(options, requestCallback) :
-    require('http').request(options, requestCallback);
-  request.end();
-  return request;
+    https.request(options, requestCallback) :
+    http.request(options, requestCallback);
+  request.on('error', onError);
+  request.end(params.data);
 }
 
-export function fetchData(url: string): Promise<string> {
+export function fetchData(params: HTTPRequestParams): Promise<string> {
   return new Promise((resolve, reject) => {
-    httpRequest(url, 'GET', function(response){
+    httpRequest(params, response => {
       if (response.statusCode !== 200) {
-        reject(new Error(`fetch failed: server returned code ${response.statusCode}. URL: ${url}`));
+        reject(new Error(`fetch failed: server returned code ${response.statusCode}. URL: ${params.url}`));
         return;
       }
       let body = '';
       response.on('data', (chunk: string) => body += chunk);
       response.on('error', (error: any) => reject(error));
       response.on('end', () => resolve(body));
-    }).on('error', (error: any) => reject(error));
+    }, reject);
   });
 }
 
@@ -103,7 +116,7 @@ export function downloadFile(url: string, destinationPath: string, options: {pro
 
   const promise: Promise<{error: any}> = new Promise(x => { fulfill = x; });
 
-  const request = httpRequest(url, 'GET', response => {
+  httpRequest({ url }, response => {
     log(`-- response status code: ${response.statusCode}`);
     if (response.statusCode !== 200) {
       const error = new Error(`Download failed: server returned code ${response.statusCode}. URL: ${url}`);
@@ -116,12 +129,11 @@ export function downloadFile(url: string, destinationPath: string, options: {pro
     file.on('finish', () => fulfill({error: null}));
     file.on('error', error => fulfill({error}));
     response.pipe(file);
-    totalBytes = parseInt(response.headers['content-length'], 10);
+    totalBytes = parseInt(response.headers['content-length'] || '0', 10);
     log(`-- total bytes: ${totalBytes}`);
     if (progressCallback)
       response.on('data', onData);
-  });
-  request.on('error', (error: any) => fulfill({error}));
+  }, (error: any) => fulfill({error}));
   return promise;
 
   function onData(chunk: string) {
@@ -130,7 +142,7 @@ export function downloadFile(url: string, destinationPath: string, options: {pro
   }
 }
 
-export function spawnAsync(cmd: string, args: string[], options: any): Promise<{stdout: string, stderr: string, code: number, error?: Error}> {
+export function spawnAsync(cmd: string, args: string[], options?: SpawnOptions): Promise<{stdout: string, stderr: string, code: number, error?: Error}> {
   const process = spawn(cmd, args, options);
 
   return new Promise(resolve => {
@@ -246,11 +258,19 @@ export async function mkdirIfNeeded(filePath: string) {
 type HeadersArray = { name: string, value: string }[];
 type HeadersObject = { [key: string]: string };
 
-export function headersObjectToArray(headers: HeadersObject): HeadersArray {
+export function headersObjectToArray(headers: HeadersObject, separator?: string, setCookieSeparator?: string): HeadersArray {
+  if (!setCookieSeparator)
+    setCookieSeparator = separator;
   const result: HeadersArray = [];
   for (const name in headers) {
-    if (!Object.is(headers[name], undefined))
-      result.push({ name, value: headers[name] });
+    const values = headers[name];
+    if (separator) {
+      const sep = name.toLowerCase() === 'set-cookie' ? setCookieSeparator : separator;
+      for (const value of values.split(sep!))
+        result.push({ name, value: value.trim() });
+    } else {
+      result.push({ name, value: values });
+    }
   }
   return result;
 }
@@ -278,6 +298,24 @@ class HashStream extends stream.Writable {
   digest(): string {
     return this._hash.digest('hex');
   }
+}
+
+export function objectToArray(map?:  { [key: string]: string }): NameValue[] | undefined {
+  if (!map)
+    return undefined;
+  const result = [];
+  for (const [name, value] of Object.entries(map))
+    result.push({ name, value });
+  return result;
+}
+
+export function arrayToObject(array?: NameValue[]): { [key: string]: string } | undefined {
+  if (!array)
+    return undefined;
+  const result: { [key: string]: string } = {};
+  for (const {name, value} of array)
+    result[name] = value;
+  return result;
 }
 
 export async function calculateFileSha1(filename: string): Promise<string> {
@@ -323,21 +361,13 @@ export function canAccessFile(file: string) {
   }
 }
 
-const localIpAddresses = [
-  'localhost',
-  '127.0.0.1',
-  '::ffff:127.0.0.1',
-  '::1',
-  '0000:0000:0000:0000:0000:0000:0000:0001', // WebKit (Windows)
-];
-
-export function isLocalIpAddress(ipAdress: string): boolean {
-  return localIpAddresses.includes(ipAdress);
+export function getUserAgent() {
+  return `Playwright/${getPlaywrightVersion()} (${os.arch()}/${os.platform()}/${os.release()})`;
 }
 
-export function getUserAgent() {
+export function getPlaywrightVersion(majorMinorOnly = false) {
   const packageJson = require('./../../package.json');
-  return `Playwright/${packageJson.version} (${os.arch()}/${os.platform()}/${os.release()})`;
+  return majorMinorOnly ? packageJson.version.split('.').slice(0, 2).join('.') : packageJson.version;
 }
 
 export function constructURLBasedOnBaseURL(baseURL: string | undefined, givenURL: string): string {
@@ -391,4 +421,8 @@ export function wrapInASCIIBox(text: string, padding = 0): string {
     ...lines.map(line => '║' + ' '.repeat(padding) + line + ' '.repeat(maxLength - line.length + padding) + '║'),
     '╚' + '═'.repeat(maxLength + padding * 2) + '╝',
   ].join('\n');
+}
+
+export function isFilePayload(value: any): boolean {
+  return typeof value === 'object' && value['name'] && value['mimeType'] && value['buffer'];
 }

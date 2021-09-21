@@ -14,16 +14,15 @@
  * limitations under the License.
  */
 
-import { URL } from 'url';
 import { BrowserContext } from '../../browserContext';
 import { helper } from '../../helper';
 import * as network from '../../network';
 import { Page } from '../../page';
 import * as har from './har';
-import * as types from '../../types';
 import { calculateSha1, monotonicTime } from '../../../utils/utils';
 import { eventsHelper, RegisteredListener } from '../../../utils/eventsHelper';
 import * as mime from 'mime';
+import { ManualPromise } from '../../../utils/async';
 
 const FALLBACK_HTTP_VERSION = 'HTTP/1.1';
 
@@ -63,7 +62,7 @@ export class HarTracer {
     this._eventListeners = [
       eventsHelper.addEventListener(this._context, BrowserContext.Events.Page, (page: Page) => this._ensurePageEntry(page)),
       eventsHelper.addEventListener(this._context, BrowserContext.Events.Request, (request: network.Request) => this._onRequest(request)),
-      eventsHelper.addEventListener(this._context, BrowserContext.Events.RequestFinished, (request: network.Request) => this._onRequestFinished(request).catch(() => {})),
+      eventsHelper.addEventListener(this._context, BrowserContext.Events.RequestFinished, ({ request, response }) => this._onRequestFinished(request, response).catch(() => {})),
       eventsHelper.addEventListener(this._context, BrowserContext.Events.Response, (response: network.Response) => this._onResponse(response)),
     ];
   }
@@ -134,9 +133,6 @@ export class HarTracer {
   }
 
   private _onRequest(request: network.Request) {
-    if (this._options.skipScripts && request.resourceType() === 'script')
-      return;
-
     const page = request.frame()._page;
     const url = network.parsedURL(request.url());
     if (!url)
@@ -145,6 +141,7 @@ export class HarTracer {
     const pageEntry = this._ensurePageEntry(page);
     const harEntry: har.Entry = {
       pageref: pageEntry.id,
+      _requestref: request.guid,
       _frameref: request.frame().guid,
       _monotonicTime: monotonicTime(),
       startedDateTime: new Date(),
@@ -158,7 +155,7 @@ export class HarTracer {
         queryString: [...url.searchParams].map(e => ({ name: e[0], value: e[1] })),
         postData: postDataForHar(request, this._options.content),
         headersSize: -1,
-        bodySize: calculateRequestBodySize(request) || 0,
+        bodySize: request.bodySize(),
       },
       response: {
         status: -1,
@@ -195,30 +192,48 @@ export class HarTracer {
       this._delegate.onEntryStarted(harEntry);
   }
 
-  private async _onRequestFinished(request: network.Request) {
+  private async _onRequestFinished(request: network.Request, response: network.Response | null) {
+    if (!response)
+      return;
     const page = request.frame()._page;
     const harEntry = this._entryForRequest(request);
     if (!harEntry)
       return;
-    const response = await request.response();
-    if (!response)
-      return;
 
-    const httpVersion = normaliseHttpVersion(response._httpVersion);
-    const transferSize = response._transferSize || -1;
-    const headersSize = calculateResponseHeadersSize(httpVersion, response.status(), response.statusText(), response.headers());
-    const bodySize = transferSize !== -1 ? transferSize - headersSize : -1;
-
+    const httpVersion = response.httpVersion();
     harEntry.request.httpVersion = httpVersion;
-    harEntry.response.bodySize = bodySize;
-    harEntry.response.headersSize = headersSize;
-    harEntry.response._transferSize = transferSize;
-    harEntry.request.headersSize = calculateRequestHeadersSize(request.method(), request.url(), httpVersion, request.headers());
+    harEntry.response.httpVersion = httpVersion;
+
+    const compressionCalculationBarrier = {
+      _encodedBodySize: -1,
+      _decodedBodySize: -1,
+      barrier: new ManualPromise<void>(),
+      _check: function() {
+        if (this._encodedBodySize !== -1 && this._decodedBodySize !== -1) {
+          harEntry.response.content.compression = Math.max(0, this._decodedBodySize - this._encodedBodySize);
+          this.barrier.resolve();
+        }
+      },
+      setEncodedBodySize: function(encodedBodySize: number){
+        this._encodedBodySize = encodedBodySize;
+        this._check();
+      },
+      setDecodedBodySize: function(decodedBodySize: number) {
+        this._decodedBodySize = decodedBodySize;
+        this._check();
+      }
+    };
+    this._addBarrier(page, compressionCalculationBarrier.barrier);
 
     const promise = response.body().then(buffer => {
+      if (this._options.skipScripts && request.resourceType() === 'script') {
+        compressionCalculationBarrier.setDecodedBodySize(0);
+        return;
+      }
+
       const content = harEntry.response.content;
       content.size = buffer.length;
-      content.compression = harEntry.response.bodySize !== -1 ? buffer.length - harEntry.response.bodySize : 0;
+      compressionCalculationBarrier.setDecodedBodySize(buffer.length);
       if (buffer && buffer.length > 0) {
         if (this._options.content === 'embedded') {
           content.text = buffer.toString('base64');
@@ -229,7 +244,9 @@ export class HarTracer {
             this._delegate.onContentBlob(content._sha1, buffer);
         }
       }
-    }).catch(() => {}).then(() => {
+    }).catch(() => {
+      compressionCalculationBarrier.setDecodedBodySize(0);
+    }).then(() => {
       const postData = response.request().postDataBuffer();
       if (postData && harEntry.request.postData && this._options.content === 'sha1') {
         harEntry.request.postData._sha1 = calculateSha1(postData) + '.' + (mime.getExtension(harEntry.request.postData.mimeType) || 'dat');
@@ -240,6 +257,14 @@ export class HarTracer {
         this._delegate.onEntryFinished(harEntry);
     });
     this._addBarrier(page, promise);
+    this._addBarrier(page, response.sizes().then(sizes => {
+      harEntry.response.bodySize = sizes.responseBodySize;
+      harEntry.response.headersSize = sizes.responseHeadersSize;
+      // Fallback for WebKit by calculating it manually
+      harEntry.response._transferSize = response.request().responseSize.transferSize || (sizes.responseHeadersSize + sizes.responseBodySize);
+      harEntry.request.headersSize = sizes.requestHeadersSize;
+      compressionCalculationBarrier.setEncodedBodySize(sizes.responseBodySize);
+    }));
   }
 
   private _onResponse(response: network.Response) {
@@ -250,20 +275,18 @@ export class HarTracer {
       return;
     const request = response.request();
 
-    // Rewrite provisional headers with actual
-    harEntry.request.headers = request.headers().map(header => ({ name: header.name, value: header.value }));
-    harEntry.request.cookies = cookiesForHar(request.headerValue('cookie'), ';');
     harEntry.request.postData = postDataForHar(request, this._options.content);
 
     harEntry.response = {
       status: response.status(),
       statusText: response.statusText(),
-      httpVersion: normaliseHttpVersion(response._httpVersion),
-      cookies: cookiesForHar(response.headerValue('set-cookie'), '\n'),
-      headers: response.headers().map(header => ({ name: header.name, value: header.value })),
+      httpVersion: response.httpVersion(),
+      // These are bad values that will be overwritten bellow.
+      cookies: [],
+      headers: [],
       content: {
         size: -1,
-        mimeType: response.headerValue('content-type') || 'x-unknown',
+        mimeType: 'x-unknown',
       },
       headersSize: -1,
       bodySize: -1,
@@ -297,13 +320,28 @@ export class HarTracer {
       if (details)
         harEntry._securityDetails = details;
     }));
+    this._addBarrier(page, response.rawRequestHeaders().then(headers => {
+      for (const header of headers.filter(header => header.name.toLowerCase() === 'cookie'))
+        harEntry.request.cookies.push(...header.value.split(';').map(parseCookie));
+      harEntry.request.headers = headers;
+    }));
+    this._addBarrier(page, response.rawResponseHeaders().then(headers => {
+      for (const header of headers.filter(header => header.name.toLowerCase() === 'set-cookie'))
+        harEntry.response.cookies.push(parseCookie(header.value));
+      harEntry.response.headers = headers;
+      const contentType = headers.find(header => header.name.toLowerCase() === 'content-type');
+      if (contentType)
+        harEntry.response.content.mimeType = contentType.value;
+    }));
   }
 
-  async stop() {
+  async flush() {
+    await Promise.all(this._barrierPromises);
+  }
+
+  stop() {
     this._started = false;
     eventsHelper.removeEventListeners(this._eventListeners);
-
-    await Promise.all(this._barrierPromises);
     this._barrierPromises.clear();
 
     const log: har.Log = {
@@ -357,12 +395,6 @@ function postDataForHar(request: network.Request, content: 'omit' | 'sha1' | 'em
   return result;
 }
 
-function cookiesForHar(header: string | undefined, separator: string): har.Cookie[] {
-  if (!header)
-    return [];
-  return header.split(separator).map(c => parseCookie(c));
-}
-
 function parseCookie(c: string): har.Cookie {
   const cookie: har.Cookie = {
     name: '',
@@ -396,34 +428,4 @@ function parseCookie(c: string): har.Cookie {
       cookie.secure = true;
   }
   return cookie;
-}
-
-function calculateResponseHeadersSize(protocol: string, status: number, statusText: string , headers: types.HeadersArray) {
-  let rawHeaders = `${protocol} ${status} ${statusText}\r\n`;
-  for (const header of headers)
-    rawHeaders += `${header.name}: ${header.value}\r\n`;
-  rawHeaders += '\r\n';
-  return rawHeaders.length;
-}
-
-function calculateRequestHeadersSize(method: string, url: string, httpVersion: string, headers: types.HeadersArray) {
-  let rawHeaders = `${method} ${(new URL(url)).pathname} ${httpVersion}\r\n`;
-  for (const header of headers)
-    rawHeaders += `${header.name}: ${header.value}\r\n`;
-  return rawHeaders.length;
-}
-
-function normaliseHttpVersion(httpVersion?: string) {
-  if (!httpVersion)
-    return FALLBACK_HTTP_VERSION;
-  if (httpVersion === 'http/1.1')
-    return 'HTTP/1.1';
-  return httpVersion;
-}
-
-function calculateRequestBodySize(request: network.Request): number|undefined {
-  const postData = request.postDataBuffer();
-  if (!postData)
-    return;
-  return new TextEncoder().encode(postData.toString('utf8')).length;
 }

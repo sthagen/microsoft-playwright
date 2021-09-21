@@ -19,6 +19,7 @@ import { contextTest as test, expect } from '../config/browserTest';
 import { playwrightTest } from '../config/browserTest';
 import http from 'http';
 import { getUserAgent } from '../../lib/utils/utils';
+import { suppressCertificateWarning } from '../config/utils';
 
 test('should create a worker from a service worker', async ({page, server}) => {
   const [worker] = await Promise.all([
@@ -141,6 +142,28 @@ playwrightTest('should connect to an existing cdp session twice', async ({ brows
 
     await cdpBrowser1.close();
     await cdpBrowser2.close();
+  } finally {
+    await browserServer.close();
+  }
+});
+
+playwrightTest('should connect to existing page with iframe and navigate', async ({ browserType, browserOptions, server }, testInfo) => {
+  const port = 9339 + testInfo.workerIndex;
+  const browserServer = await browserType.launch({
+    ...browserOptions,
+    args: ['--remote-debugging-port=' + port]
+  });
+  try {
+    {
+      const context1 = await browserServer.newContext();
+      const page = await context1.newPage();
+      await page.goto(server.PREFIX + '/frames/one-frame.html');
+    }
+    const cdpBrowser = await browserType.connectOverCDP(`http://localhost:${port}/`);
+    const contexts = cdpBrowser.contexts();
+    expect(contexts.length).toBe(1);
+    await contexts[0].pages()[0].goto(server.EMPTY_PAGE);
+    await cdpBrowser.close();
   } finally {
     await browserServer.close();
   }
@@ -282,6 +305,41 @@ playwrightTest('should report all pages in an existing browser', async ({ browse
 
     await cdpBrowser2.close();
   } finally {
+    await browserServer.close();
+  }
+});
+
+playwrightTest('should connect via https', async ({ browserType, browserOptions, httpsServer, mode }, testInfo) => {
+  test.skip(mode !== 'default'); // Out of process transport does not allow us to set env vars dynamically.
+  const port = 9339 + testInfo.workerIndex;
+  const browserServer = await browserType.launch({
+    ...browserOptions,
+    args: ['--remote-debugging-port=' + port]
+  });
+  const json = await new Promise<string>((resolve, reject) => {
+    http.get(`http://localhost:${port}/json/version/`, resp => {
+      let data = '';
+      resp.on('data', chunk => data += chunk);
+      resp.on('end', () => resolve(data));
+    }).on('error', reject);
+  });
+  httpsServer.setRoute('/json/version/', (req, res) => {
+    res.writeHead(200);
+    res.end(json);
+  });
+  const oldValue = process.env['NODE_TLS_REJECT_UNAUTHORIZED'];
+  // https://stackoverflow.com/a/21961005/552185
+  process.env['NODE_TLS_REJECT_UNAUTHORIZED'] = '0';
+  suppressCertificateWarning();
+  try {
+    const cdpBrowser = await browserType.connectOverCDP(`https://localhost:${httpsServer.PORT}/`);
+    const contexts = cdpBrowser.contexts();
+    expect(contexts.length).toBe(1);
+    for (let i = 0; i < 3; i++)
+      await contexts[0].newPage();
+    await cdpBrowser.close();
+  } finally {
+    process.env['NODE_TLS_REJECT_UNAUTHORIZED'] = oldValue;
     await browserServer.close();
   }
 });

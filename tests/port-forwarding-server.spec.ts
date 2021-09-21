@@ -122,7 +122,6 @@ it('should proxy localhost requests', async ({ pageFactory, server, browserName,
 });
 
 it('should proxy local.playwright requests', async ({ pageFactory, server, browserName }, workerInfo) => {
-  it.fixme(browserName === 'firefox', 'Firefox performs DNS on browser side');
   const { testServerPort, stopTestServer } = await startTestServer();
   let reachedOriginalTarget = false;
   server.setRoute('/foo.html', async (req, res) => {
@@ -146,5 +145,5 @@ it('should lead to the error page for forwarded requests when the connection is 
   else if (browserName === 'webkit')
     expect(error.message).toBeTruthy();
   else if (browserName === 'firefox')
-    expect(error.message).toContain('NS_ERROR_CONNECTION_REFUSED');
+    expect(error.message.includes('NS_ERROR_NET_RESET') || error.message.includes('NS_ERROR_CONNECTION_REFUSED')).toBe(true);
 });

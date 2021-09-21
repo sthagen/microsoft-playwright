@@ -121,11 +121,13 @@ export class BaseReporter implements Reporter  {
     console.log('');
     if (unexpected.length) {
       console.log(colors.red(`  ${unexpected.length} failed`));
-      this._printTestHeaders(unexpected);
+      for (const test of unexpected)
+        console.log(colors.red(formatTestHeader(this.config, test, '    ')));
     }
     if (flaky.length) {
-      console.log(colors.red(`  ${flaky.length} flaky`));
-      this._printTestHeaders(flaky);
+      console.log(colors.yellow(`  ${flaky.length} flaky`));
+      for (const test of flaky)
+        console.log(colors.yellow(formatTestHeader(this.config, test, '    ')));
     }
     if (skipped)
       console.log(colors.yellow(`  ${skipped} skipped`));
@@ -135,36 +137,53 @@ export class BaseReporter implements Reporter  {
       console.log(colors.red(`  Timed out waiting ${this.config.globalTimeout / 1000}s for the entire test run`));
   }
 
-  private _printTestHeaders(tests: TestCase[]) {
-    tests.forEach(test => {
-      console.log(formatTestHeader(this.config, test, '    '));
-    });
-  }
-
   private _printFailures(failures: TestCase[]) {
     failures.forEach((test, index) => {
       console.log(formatFailure(this.config, test, index + 1, this.printTestOutput));
     });
   }
 
-  willRetry(test: TestCase, result: TestResult): boolean {
-    return test.outcome() === 'unexpected' && result.status !== 'passed' && test.results.length <= test.retries;
+  willRetry(test: TestCase): boolean {
+    return test.outcome() === 'unexpected' && test.results.length <= test.retries;
   }
 }
 
 export function formatFailure(config: FullConfig, test: TestCase, index?: number, stdio?: boolean): string {
-  const tokens: string[] = [];
-  tokens.push(formatTestHeader(config, test, '  ', index));
+  const lines: string[] = [];
+  lines.push(colors.red(formatTestHeader(config, test, '  ', index)));
   for (const result of test.results) {
     const resultTokens = formatResultFailure(test, result, '    ');
     if (!resultTokens.length)
       continue;
-    const statusSuffix = (result.status === 'passed' && test.expectedStatus === 'failed') ? ' -- passed unexpectedly' : '';
     if (result.retry) {
-      tokens.push('');
-      tokens.push(colors.gray(pad(`    Retry #${result.retry}${statusSuffix}`, '-')));
+      lines.push('');
+      lines.push(colors.gray(pad(`    Retry #${result.retry}`, '-')));
     }
-    tokens.push(...resultTokens);
+    lines.push(...resultTokens);
+    for (let i = 0; i < result.attachments.length; ++i) {
+      const attachment = result.attachments[i];
+      lines.push('');
+      lines.push(colors.cyan(pad(`    attachment #${i + 1}: ${attachment.name} (${attachment.contentType})`, '-')));
+      if (attachment.path) {
+        const relativePath = path.relative(process.cwd(), attachment.path);
+        lines.push(colors.cyan(`    ${relativePath}`));
+        // Make this extensible
+        if (attachment.name === 'trace') {
+          lines.push(colors.cyan(`    Usage:`));
+          lines.push('');
+          lines.push(colors.cyan(`        npx playwright show-trace ${relativePath}`));
+          lines.push('');
+        }
+      } else {
+        if (attachment.contentType.startsWith('text/')) {
+          let text = attachment.body!.toString();
+          if (text.length > 300)
+            text = text.slice(0, 300) + '...';
+          lines.push(colors.cyan(`    ${text}`));
+        }
+      }
+      lines.push(colors.cyan(pad('   ', '-')));
+    }
     const output = ((result as any)[kOutputSymbol] || []) as TestResultOutput[];
     if (stdio && output.length) {
       const outputText = output.map(({ chunk, type }) => {
@@ -173,12 +192,12 @@ export function formatFailure(config: FullConfig, test: TestCase, index?: number
           return colors.red(stripAnsiEscapes(text));
         return text;
       }).join('');
-      tokens.push('');
-      tokens.push(colors.gray(pad('--- Test output', '-')) + '\n\n' + outputText + '\n' + pad('', '-'));
+      lines.push('');
+      lines.push(colors.gray(pad('--- Test output', '-')) + '\n\n' + outputText + '\n' + pad('', '-'));
     }
   }
-  tokens.push('');
-  return tokens.join('\n');
+  lines.push('');
+  return lines.join('\n');
 }
 
 export function formatResultFailure(test: TestCase, result: TestResult, initialIndent: string): string[] {
@@ -186,6 +205,10 @@ export function formatResultFailure(test: TestCase, result: TestResult, initialI
   if (result.status === 'timedOut') {
     resultTokens.push('');
     resultTokens.push(indent(colors.red(`Timeout of ${test.timeout}ms exceeded.`), initialIndent));
+  }
+  if (result.status === 'passed' && test.expectedStatus === 'failed') {
+    resultTokens.push('');
+    resultTokens.push(indent(colors.red(`Expected to fail, but passed.`), initialIndent));
   }
   if (result.error !== undefined)
     resultTokens.push(indent(formatError(result.error, test.location.file), initialIndent));
@@ -211,32 +234,32 @@ export function formatTestTitle(config: FullConfig, test: TestCase, step?: TestS
 
 function formatTestHeader(config: FullConfig, test: TestCase, indent: string, index?: number): string {
   const title = formatTestTitle(config, test);
-  const passedUnexpectedlySuffix = (test.results[0].status === 'passed' && test.expectedStatus === 'failed') ? ' -- passed unexpectedly' : '';
-  const header = `${indent}${index ? index + ') ' : ''}${title}${passedUnexpectedlySuffix}`;
-  return colors.red(pad(header, '='));
+  const header = `${indent}${index ? index + ') ' : ''}${title}`;
+  return pad(header, '=');
 }
 
-function formatError(error: TestError, file?: string) {
+export function formatError(error: TestError, file?: string) {
   const stack = error.stack;
   const tokens = [];
   if (stack) {
     tokens.push('');
-    const message = error.message || '';
-    const messageLocation = stack.indexOf(message);
-    const preamble = stack.substring(0, messageLocation + message.length);
-    tokens.push(preamble);
-    const position = file ? positionInFile(stack, file) : null;
+    const lines = stack.split('\n');
+    let firstStackLine = lines.findIndex(line => line.startsWith('    at '));
+    if (firstStackLine === -1)
+      firstStackLine = lines.length;
+    tokens.push(lines.slice(0, firstStackLine).join('\n'));
+    const stackLines = lines.slice(firstStackLine);
+    const position = file ? positionInFile(stackLines, file) : null;
     if (position) {
       const source = fs.readFileSync(file!, 'utf8');
       tokens.push('');
-      tokens.push(codeFrameColumns(source, {
-        start: position,
-      },
-      { highlightCode: colors.enabled }
-      ));
+      tokens.push(codeFrameColumns(source, { start: position }, { highlightCode: colors.enabled }));
     }
     tokens.push('');
-    tokens.push(colors.dim(preamble.length > 0 ? stack.substring(preamble.length + 1) : stack));
+    tokens.push(colors.dim(stackLines.join('\n')));
+  } else if (error.message) {
+    tokens.push('');
+    tokens.push(error.message);
   } else {
     tokens.push('');
     tokens.push(error.value);
@@ -254,10 +277,10 @@ function indent(lines: string, tab: string) {
   return lines.replace(/^(?=.+$)/gm, tab);
 }
 
-function positionInFile(stack: string, file: string): { column: number; line: number; } | undefined {
+function positionInFile(stackLines: string[], file: string): { column: number; line: number; } | undefined {
   // Stack will have /private/var/folders instead of /var/folders on Mac.
   file = fs.realpathSync(file);
-  for (const line of stack.split('\n')) {
+  for (const line of stackLines) {
     const parsed = stackUtils.parseLine(line);
     if (!parsed || !parsed.file)
       continue;

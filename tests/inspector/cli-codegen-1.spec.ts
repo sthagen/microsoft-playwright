@@ -539,7 +539,7 @@ test.describe('cli codegen', () => {
     expect(sources.get('Playwright Test').text).toContain(`
   // Click text=link
   await page.click('text=link');
-  expect(page.url()).toBe('about:blank#foo');`);
+  await expect(page).toHaveURL('about:blank#foo');`);
 
     expect(sources.get('Java').text).toContain(`
       // Click text=link
@@ -559,7 +559,7 @@ test.describe('cli codegen', () => {
     expect(sources.get('C#').text).toContain(`
         // Click text=link
         await page.ClickAsync(\"text=link\");
-        // Assert.Equal(\"about:blank#foo\", page.Url);`);
+        // Assert.AreEqual(\"about:blank#foo\", page.Url);`);
 
     expect(page.url()).toContain('about:blank#foo');
   });

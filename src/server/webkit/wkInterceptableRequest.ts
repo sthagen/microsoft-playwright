@@ -23,6 +23,7 @@ import { WKSession } from './wkConnection';
 import { assert, headersObjectToArray, headersArrayToObject } from '../../utils/utils';
 import { InterceptedResponse } from '../network';
 import { WKPage } from './wkPage';
+import { ManualPromise } from '../../utils/async';
 
 const errorReasons: { [reason: string]: Protocol.Network.ResourceErrorType } = {
   'aborted': 'Cancellation',
@@ -88,24 +89,22 @@ export class WKInterceptableRequest {
       requestStart: timingPayload ? wkMillisToRoundishMillis(timingPayload.requestStart) : -1,
       responseStart: timingPayload ? wkMillisToRoundishMillis(timingPayload.responseStart) : -1,
     };
-    return new network.Response(this.request, responsePayload.status, responsePayload.statusText, headersObjectToArray(responsePayload.headers), timing, getResponseBody);
+    const setCookieSeparator = process.platform === 'darwin' ? ',' : '\n';
+    return new network.Response(this.request, responsePayload.status, responsePayload.statusText, headersObjectToArray(responsePayload.headers, ',', setCookieSeparator), timing, getResponseBody);
   }
 }
 
 export class WKRouteImpl implements network.RouteDelegate {
   private readonly _session: WKSession;
   private readonly _requestId: string;
-  _requestInterceptedCallback: () => void = () => {};
-  private readonly _requestInterceptedPromise: Promise<unknown>;
-  _responseInterceptedCallback: ((payload: { response?: Protocol.Network.Response, error?: Protocol.Network.loadingFailedPayload }) => void) | undefined;
-  private _responseInterceptedPromise: Promise<{ response?: Protocol.Network.Response, error?: Protocol.Network.loadingFailedPayload }> | undefined;
+  readonly _requestInterceptedPromise = new ManualPromise<void>();
+  _responseInterceptedPromise: ManualPromise<{ response?: Protocol.Network.Response, error?: Protocol.Network.loadingFailedPayload }> | undefined;
   private readonly _page: WKPage;
 
   constructor(session: WKSession, page: WKPage, requestId: string) {
     this._session = session;
     this._page = page;
     this._requestId = requestId;
-    this._requestInterceptedPromise = new Promise<void>(f => this._requestInterceptedCallback = f);
   }
 
   async responseBody(): Promise<Buffer> {
@@ -151,7 +150,7 @@ export class WKRouteImpl implements network.RouteDelegate {
   async continue(request: network.Request, overrides: types.NormalizedContinueOverrides): Promise<network.InterceptedResponse|null> {
     if (overrides.interceptResponse) {
       await this._page._ensureResponseInterceptionEnabled();
-      this._responseInterceptedPromise = new Promise(f => this._responseInterceptedCallback = f);
+      this._responseInterceptedPromise = new ManualPromise();
     }
     await this._requestInterceptedPromise;
     // In certain cases, protocol will return error if the request was already canceled

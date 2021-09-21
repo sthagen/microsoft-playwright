@@ -68,26 +68,33 @@ const customMatchers = {
 };
 
 function wrap(matcherName: string, matcher: any) {
-  return function(this: any, ...args: any[]) {
+  const result = function(this: any, ...args: any[]) {
     const testInfo = currentTestInfo();
     if (!testInfo)
       return matcher.call(this, ...args);
 
-    const infix = this.isNot ? '.not' : '';
-    const completeStep = testInfo._addStep('expect', `expect${infix}.${matcherName}`);
-    const stack = new Error().stack;
+    const INTERNAL_STACK_LENGTH = 3;
+    const stackLines = new Error().stack!.split('\n').slice(INTERNAL_STACK_LENGTH + 1);
+    const step = testInfo._addStep({
+      category: 'expect',
+      title: `expect${this.isNot ? '.not' : ''}.${matcherName}`,
+      canHaveChildren: true,
+      forceNoParent: false
+    });
 
     const reportStepEnd = (result: any) => {
       const success = result.pass !== this.isNot;
       let error: TestError | undefined;
-      if (!success)
-        error = { message: result.message(), stack };
-      completeStep?.(error);
+      if (!success) {
+        const message = result.message();
+        error = { message, stack: message + '\n' + stackLines.join('\n') };
+      }
+      step.complete(error);
       return result;
     };
 
     const reportStepError = (error: Error) => {
-      completeStep?.(serializeError(error));
+      step.complete(serializeError(error));
       throw error;
     };
 
@@ -100,6 +107,8 @@ function wrap(matcherName: string, matcher: any) {
       reportStepError(e);
     }
   };
+  result.displayName = 'expect.' + matcherName;
+  return result;
 }
 
 const wrappedMatchers: any = {};

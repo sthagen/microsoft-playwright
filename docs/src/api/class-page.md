@@ -449,6 +449,12 @@ Emitted when [WebSocket] request is sent.
 Emitted when a dedicated [WebWorker](https://developer.mozilla.org/en-US/docs/Web/API/Web_Workers_API) is spawned by the
 page.
 
+## property: Page._request
+* langs: js
+- type: <[FetchRequest]>
+
+API testing helper associated with this page. Requests made with this API will use page cookies.
+
 ## property: Page.accessibility
 * langs: csharp, js, python
 - type: <[Accessibility]>
@@ -998,6 +1004,15 @@ Emulates `'prefers-reduced-motion'` media feature, supported values are `'reduce
 - `reducedMotion` <[ReducedMotion]<"reduce"|"no-preference"|"null">>
 
 Emulates `'prefers-reduced-motion'` media feature, supported values are `'reduce'`, `'no-preference'`. Passing `null` disables reduced motion emulation.
+
+### option: Page.emulateMedia.forcedColors
+- `forcedColors` <null|[ForcedColors]<"active"|"none">>
+
+Emulates `'forced-colors'` media feature, supported values are `'active'` and `'none'`. Passing `null` disables forced colors emulation.
+
+:::note
+It's not supported in WebKit, see [here](https://bugs.webkit.org/show_bug.cgi?id=225281) in their issue tracker.
+:::
 
 ## async method: Page.evalOnSelector
 * langs:
@@ -2675,6 +2690,34 @@ Shortcut for main frame's [`method: Frame.selectOption`].
 ### option: Page.selectOption.noWaitAfter = %%-input-no-wait-after-%%
 ### option: Page.selectOption.strict = %%-input-strict-%%
 ### option: Page.selectOption.timeout = %%-input-timeout-%%
+
+## async method: Page.setChecked
+
+This method checks or unchecks an element matching [`param: selector`] by performing the following steps:
+1. Find an element matching [`param: selector`]. If there is none, wait until a matching element is attached to
+   the DOM.
+1. Ensure that matched element is a checkbox or a radio input. If not, this method throws.
+1. If the element already has the right checked state, this method returns immediately.
+1. Wait for [actionability](./actionability.md) checks on the matched element, unless [`option: force`] option is
+   set. If the element is detached during the checks, the whole action is retried.
+1. Scroll the element into view if needed.
+1. Use [`property: Page.mouse`] to click in the center of the element.
+1. Wait for initiated navigations to either succeed or fail, unless [`option: noWaitAfter`] option is set.
+1. Ensure that the element is now checked or unchecked. If not, this method throws.
+
+When all steps combined have not finished during the specified [`option: timeout`], this method throws a
+[TimeoutError]. Passing zero timeout disables this.
+
+Shortcut for main frame's [`method: Frame.setChecked`].
+
+### param: Page.setChecked.selector = %%-input-selector-%%
+### param: Page.setChecked.checked = %%-input-checked-%%
+### option: Page.setChecked.force = %%-input-force-%%
+### option: Page.setChecked.noWaitAfter = %%-input-no-wait-after-%%
+### option: Page.setChecked.position = %%-input-position-%%
+### option: Page.setChecked.strict = %%-input-strict-%%
+### option: Page.setChecked.timeout = %%-input-timeout-%%
+### option: Page.setChecked.trial = %%-input-trial-%%
 
 ## async method: Page.setContent
 

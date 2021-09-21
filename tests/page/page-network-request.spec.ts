@@ -83,18 +83,17 @@ it('should return headers', async ({page, server, browserName}) => {
 
 it('should get the same headers as the server', async ({ page, server, browserName, platform }) => {
   it.fail(browserName === 'webkit' && platform === 'win32', 'Curl does not show accept-encoding and accept-language');
-  it.fixme(browserName === 'chromium', 'Flaky, see https://github.com/microsoft/playwright/issues/6690');
-
   let serverRequest;
   server.setRoute('/empty.html', (request, response) => {
     serverRequest = request;
     response.end('done');
   });
   const response = await page.goto(server.PREFIX + '/empty.html');
-  expect(response.request().headers()).toEqual(serverRequest.headers);
+  const headers = await response.request().allHeaders();
+  expect(headers).toEqual(serverRequest.headers);
 });
 
-it('should get the same headers as the server CORP', async ({page, server, browserName, platform}) => {
+it('should get the same headers as the server CORS', async ({page, server, browserName, platform}) => {
   it.fail(browserName === 'webkit' && platform === 'win32', 'Curl does not show accept-encoding and accept-language');
 
   await page.goto(server.PREFIX + '/empty.html');
@@ -109,9 +108,10 @@ it('should get the same headers as the server CORP', async ({page, server, brows
     const data = await fetch(url);
     return data.text();
   }, server.CROSS_PROCESS_PREFIX + '/something');
-  const response = await responsePromise;
   expect(text).toBe('done');
-  expect(response.request().headers()).toEqual(serverRequest.headers);
+  const response = await responsePromise;
+  const headers = await response.request().allHeaders();
+  expect(headers).toEqual(serverRequest.headers);
 });
 
 it('should return postData', async ({page, server, isAndroid}) => {
@@ -264,4 +264,75 @@ it('should return navigation bit when navigating to image', async ({page, server
   page.on('request', request => requests.push(request));
   await page.goto(server.PREFIX + '/pptr.png');
   expect(requests[0].isNavigationRequest()).toBe(true);
+});
+
+it('should report raw headers', async ({ page, server, browserName, platform }) => {
+  let expectedHeaders: { name: string, value: string }[];
+  server.setRoute('/headers', (req, res) => {
+    expectedHeaders = [];
+    for (let i = 0; i < req.rawHeaders.length; i += 2)
+      expectedHeaders.push({ name: req.rawHeaders[i], value: req.rawHeaders[i + 1] });
+    if (browserName === 'webkit' && platform === 'win32')
+      expectedHeaders = expectedHeaders.filter(({ name }) => name.toLowerCase() !== 'accept-encoding' && name.toLowerCase() !== 'accept-language');
+    res.end();
+  });
+  await page.goto(server.EMPTY_PAGE);
+  const [request] = await Promise.all([
+    page.waitForRequest('**/*'),
+    page.evaluate(() => fetch('/headers', {
+      headers: [
+        ['header-a', 'value-a'],
+        ['header-b', 'value-b'],
+        ['header-a', 'value-a-1'],
+        ['header-a', 'value-a-2'],
+      ]
+    }))
+  ]);
+  const headers = await request.headersArray();
+  expect(headers.sort((a, b) => a.name.localeCompare(b.name))).toEqual(expectedHeaders.sort((a, b) => a.name.localeCompare(b.name)));
+  expect(await request.headerValue('header-a')).toEqual('value-a, value-a-1, value-a-2');
+  expect(await request.headerValue('not-there')).toEqual(null);
+});
+
+it('should report raw response headers in redirects', async ({ page, server, browserName }) => {
+  it.skip(browserName === 'webkit', `WebKit won't give us raw headers for redirects`);
+  server.setExtraHeaders('/redirect/1.html', { 'sec-test-header': '1.html' });
+  server.setExtraHeaders('/redirect/2.html', { 'sec-test-header': '2.html' });
+  server.setExtraHeaders('/empty.html', { 'sec-test-header': 'empty.html' });
+  server.setRedirect('/redirect/1.html', '/redirect/2.html');
+  server.setRedirect('/redirect/2.html', '/empty.html');
+
+  const expectedUrls = ['/redirect/1.html', '/redirect/2.html', '/empty.html'].map(s => server.PREFIX + s);
+  const expectedHeaders = ['1.html', '2.html', 'empty.html'];
+
+  const response = await page.goto(server.PREFIX + '/redirect/1.html');
+  const redirectChain = [];
+  const headersChain = [];
+  for (let req = response.request(); req; req = req.redirectedFrom()) {
+    redirectChain.unshift(req.url());
+    const res = await req.response();
+    const headers = await res.allHeaders();
+    headersChain.unshift(headers['sec-test-header']);
+  }
+
+  expect(redirectChain).toEqual(expectedUrls);
+  expect(headersChain).toEqual(expectedHeaders);
+});
+
+it('should report all cookies in one header', async ({ page, server }) => {
+  const expectedHeaders = {};
+  server.setRoute('/headers', (req, res) => {
+    for (let i = 0; i < req.rawHeaders.length; i += 2)
+      expectedHeaders[req.rawHeaders[i]] = req.rawHeaders[i + 1];
+    res.end();
+  });
+
+  await page.goto(server.EMPTY_PAGE);
+  await page.evaluate(() => {
+    document.cookie = 'myCookie=myValue';
+    document.cookie = 'myOtherCookie=myOtherValue';
+  });
+  const response = await page.goto(server.EMPTY_PAGE);
+  const cookie = (await response.request().allHeaders())['cookie'];
+  expect(cookie).toBe('myCookie=myValue; myOtherCookie=myOtherValue');
 });

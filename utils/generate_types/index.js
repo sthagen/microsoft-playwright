@@ -87,9 +87,14 @@ class TypesGenerator {
         return '';
       handledClasses.add(className);
       return this.writeComment(docClass.comment) + '\n';
-    }, (className, methodName) => {
+    }, (className, methodName, overloadIndex) => {
       const docClass = this.docClassForName(className, docsOnlyClassMapping);
-      const method = docClass ? docClass.membersArray.find(m => m.alias === methodName) : undefined;
+      let method;
+      if (docClass) {
+        const methods = docClass.membersArray.filter(m => m.alias === methodName && m.kind !== 'event').sort((a, b) => a.overloadIndex - b.overloadIndex);
+        // Use the last overload when not enough overloads are defined in docs.
+        method = methods.find(m => m.overloadIndex === overloadIndex) || methods[methods.length - 1];
+      }
       if (docsOnlyClassMapping && !method)
         return '';
       this.handledMethods.add(`${className}.${methodName}`);
@@ -288,10 +293,15 @@ class TypesGenerator {
     };
     let skipExample = false;
     for (let line of comment.split('\n')) {
-      const match = line.match(/```(\w+)/);
+      const match = line.match(/```(\w+)(\s+js-flavor=(\w+))?/);
       if (match) {
         const lang = match[1];
-        skipExample = !["html", "yml", "bash", "js"].includes(lang);
+        let flavor = 'ts';
+        if (match[3]) {
+          flavor = match[3];
+          line = line.replace(/js-flavor=\w+/, '').replace(/```\w+/, '```ts');
+        }
+        skipExample = !["html", "yml", "bash", "js"].includes(lang) || flavor !== 'ts';
       } else if (skipExample && line.trim().startsWith('```')) {
         skipExample = false;
         continue;
@@ -381,7 +391,7 @@ class TypesGenerator {
   argsFromMember(member, indent, ...namespace) {
     if (member.kind === 'property')
       return '';
-    return '(' + member.argsArray.map(arg => `${this.nameForProperty(arg)}: ${this.stringifyComplexType(arg.type, indent, ...namespace, member.name, arg.name)}`).join(', ') + ')';
+    return '(' + member.argsArray.map(arg => `${this.nameForProperty(arg)}: ${this.stringifyComplexType(arg.type, indent, ...namespace, member.alias, arg.alias)}`).join(', ') + ')';
   }
 
   /**
@@ -484,8 +494,8 @@ class TypesGenerator {
     ['Config', 'TestConfig'],
     ['FullConfig', 'TestConfig'],
     ['Project', 'TestProject'],
-    ['PlaywrightWorkerOptions', 'Fixtures'],
-    ['PlaywrightTestOptions', 'Fixtures'],
+    ['PlaywrightWorkerOptions', 'TestOptions'],
+    ['PlaywrightTestOptions', 'TestOptions'],
     ['PlaywrightWorkerArgs', 'Fixtures'],
     ['PlaywrightTestArgs', 'Fixtures'],
   ]);

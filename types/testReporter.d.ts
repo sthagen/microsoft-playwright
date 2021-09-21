@@ -113,8 +113,7 @@ export interface TestCase {
   titlePath(): string[];
   /**
    * Expected test status.
-   * - Tests marked as
-   *   [test.skip(titleOrCondition, testFunctionOrDescription)](https://playwright.dev/docs/api/class-test#test-skip) or
+   * - Tests marked as [test.skip(title, testFunction)](https://playwright.dev/docs/api/class-test#test-skip-1) or
    *   [test.fixme([condition, description])](https://playwright.dev/docs/api/class-test#test-fixme) are expected to be
    *   `'skipped'`.
    * - Tests marked as [test.fail([condition, description])](https://playwright.dev/docs/api/class-test#test-fail) are
@@ -147,7 +146,7 @@ export interface TestCase {
   /**
    * The maximum number of retries given to this test in the configuration.
    *
-   * Learn more about [test retries](https://playwright.dev/docs/test-retries).
+   * Learn more about [test retries](https://playwright.dev/docs/test-retries#retries).
    */
   retries: number;
   /**
@@ -174,7 +173,7 @@ export interface TestResult {
   /**
    * When test is retries multiple times, each retry attempt is given a sequential number.
    *
-   * Learn more about [test retries](https://playwright.dev/docs/test-retries).
+   * Learn more about [test retries](https://playwright.dev/docs/test-retries#retries).
    */
   retry: number;
   /**
@@ -259,6 +258,7 @@ export interface TestStep {
    * List of steps inside this step.
    */
   steps: TestStep[];
+  data: { [key: string]: any };
 }
 
 /**
@@ -281,34 +281,8 @@ export interface FullResult {
  * You can create a custom reporter by implementing a class with some of the reporter methods. Make sure to export this
  * class as default.
  *
- * ```js js-flavor=js
- * // my-awesome-reporter.js
- * // @ts-check
- *
- * /** @implements {import('@playwright/test/reporter').Reporter} *\/
- * class MyReporter {
- *   onBegin(config, suite) {
- *     console.log(`Starting the run with ${suite.allTests().length} tests`);
- *   }
- *
- *   onTestBegin(test) {
- *     console.log(`Starting test ${test.title}`);
- *   }
- *
- *   onTestEnd(test, result) {
- *     console.log(`Finished test ${test.title}: ${result.status}`);
- *   }
- *
- *   onEnd(result) {
- *     console.log(`Finished the run: ${result.status}`);
- *   }
- * }
- *
- * module.exports = MyReporter;
- * ```
- *
- * ```js js-flavor=ts
- * // playwright.config.ts
+ * ```ts
+ * // my-awesome-reporter.ts
  * import { Reporter } from '@playwright/test/reporter';
  *
  * class MyReporter implements Reporter {
@@ -332,20 +306,9 @@ export interface FullResult {
  * ```
  *
  * Now use this reporter with [testConfig.reporter](https://playwright.dev/docs/api/class-testconfig#test-config-reporter).
+ * Learn more about [using reporters](https://playwright.dev/docs/test-reporters).
  *
- * ```js js-flavor=js
- * // playwright.config.js
- * // @ts-check
- *
- * /** @type {import('@playwright/test').PlaywrightTestConfig} *\/
- * const config = {
- *   reporter: './my-awesome-reporter.js',
- * };
- *
- * module.exports = config;
- * ```
- *
- * ```js js-flavor=ts
+ * ```ts
  * // playwright.config.ts
  * import { PlaywrightTestConfig } from '@playwright/test';
  *
@@ -355,7 +318,29 @@ export interface FullResult {
  * export default config;
  * ```
  *
- * Learn more about [reporters](https://playwright.dev/docs/test-reporters).
+ * Here is a typical order of reporter calls:
+ * - [reporter.onBegin(config, suite)](https://playwright.dev/docs/api/class-reporter#reporter-on-begin) is called once
+ *   with a root suite that contains all other suites and tests. Learn more about [suites hierarchy][Suite].
+ * - [reporter.onTestBegin(test, result)](https://playwright.dev/docs/api/class-reporter#reporter-on-test-begin) is
+ *   called for each test run. It is given a [TestCase] that is executed, and a [TestResult] that is almost empty. Test
+ *   result will be populated while the test runs (for example, with steps and stdio) and will get final `status` once
+ *   the test finishes.
+ * - [reporter.onStepBegin(test, result, step)](https://playwright.dev/docs/api/class-reporter#reporter-on-step-begin)
+ *   and [reporter.onStepEnd(test, result, step)](https://playwright.dev/docs/api/class-reporter#reporter-on-step-end)
+ *   are called for each executed step inside the test. When steps are executed, test run has not finished yet.
+ * - [reporter.onTestEnd(test, result)](https://playwright.dev/docs/api/class-reporter#reporter-on-test-end) is called
+ *   when test run has finished. By this time, [TestResult] is complete and you can use
+ *   [testResult.status](https://playwright.dev/docs/api/class-testresult#test-result-status),
+ *   [testResult.error](https://playwright.dev/docs/api/class-testresult#test-result-error) and more.
+ * - [reporter.onEnd(result)](https://playwright.dev/docs/api/class-reporter#reporter-on-end) is called once after all
+ *   tests that should run had finished.
+ *
+ * Additionally,
+ * [reporter.onStdOut(chunk, test, result)](https://playwright.dev/docs/api/class-reporter#reporter-on-std-out) and
+ * [reporter.onStdErr(chunk, test, result)](https://playwright.dev/docs/api/class-reporter#reporter-on-std-err) are called
+ * when standard output is produced in the worker process, possibly during a test execution, and
+ * [reporter.onError(error)](https://playwright.dev/docs/api/class-reporter#reporter-on-error) is called when something
+ * went wrong outside of the test execution.
  */
 export interface Reporter {
   /**

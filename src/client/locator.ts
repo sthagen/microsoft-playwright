@@ -41,7 +41,7 @@ export class Locator implements api.Locator {
     try {
       return await task(handle, deadline ? deadline - monotonicTime() : 0);
     } finally {
-      handle.dispose();
+      await handle.dispose();
     }
   }
 
@@ -175,6 +175,13 @@ export class Locator implements api.Locator {
 
   async selectText(options: channels.ElementHandleSelectTextOptions = {}): Promise<void> {
     return this._withElement((h, timeout) => h.selectText({ ...options, timeout }), options.timeout);
+  }
+
+  async setChecked(checked: boolean, options?: channels.ElementHandleCheckOptions) {
+    if (checked)
+      await this.check(options);
+    else
+      await this.uncheck(options);
   }
 
   async setInputFiles(files: string | FilePayload | string[] | FilePayload[], options: channels.ElementHandleSetInputFilesOptions = {}) {

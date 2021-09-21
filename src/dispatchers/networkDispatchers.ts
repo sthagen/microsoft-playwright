@@ -18,8 +18,11 @@ import { Request, Response, Route, WebSocket } from '../server/network';
 import * as channels from '../protocol/channels';
 import { Dispatcher, DispatcherScope, lookupNullableDispatcher, existingDispatcher } from './dispatcher';
 import { FrameDispatcher } from './frameDispatcher';
+import { CallMetadata } from '../server/instrumentation';
+import { FetchRequest } from '../server/fetch';
+import { arrayToObject, headersArrayToObject } from '../utils/utils';
 
-export class RequestDispatcher extends Dispatcher<Request, channels.RequestInitializer> implements channels.RequestChannel {
+export class RequestDispatcher extends Dispatcher<Request, channels.RequestInitializer, channels.RequestEvents> implements channels.RequestChannel {
 
   static from(scope: DispatcherScope, request: Request): RequestDispatcher {
     const result = existingDispatcher<RequestDispatcher>(request);
@@ -49,7 +52,7 @@ export class RequestDispatcher extends Dispatcher<Request, channels.RequestIniti
   }
 }
 
-export class ResponseDispatcher extends Dispatcher<Response, channels.ResponseInitializer> implements channels.ResponseChannel {
+export class ResponseDispatcher extends Dispatcher<Response, channels.ResponseInitializer, channels.ResponseEvents> implements channels.ResponseChannel {
 
   static from(scope: DispatcherScope, response: Response): ResponseDispatcher {
     const result = existingDispatcher<ResponseDispatcher>(response);
@@ -67,14 +70,9 @@ export class ResponseDispatcher extends Dispatcher<Response, channels.ResponseIn
       url: response.url(),
       status: response.status(),
       statusText: response.statusText(),
-      requestHeaders: response.request().headers(),
       headers: response.headers(),
       timing: response.timing()
     });
-  }
-
-  async finished(): Promise<channels.ResponseFinishedResult> {
-    return await this._object._finishedPromise;
   }
 
   async body(): Promise<channels.ResponseBodyResult> {
@@ -88,9 +86,21 @@ export class ResponseDispatcher extends Dispatcher<Response, channels.ResponseIn
   async serverAddr(): Promise<channels.ResponseServerAddrResult> {
     return { value: await this._object.serverAddr() || undefined };
   }
+
+  async rawRequestHeaders(params?: channels.ResponseRawRequestHeadersParams): Promise<channels.ResponseRawRequestHeadersResult> {
+    return { headers: await this._object.rawRequestHeaders() };
+  }
+
+  async rawResponseHeaders(params?: channels.ResponseRawResponseHeadersParams): Promise<channels.ResponseRawResponseHeadersResult> {
+    return { headers: await this._object.rawResponseHeaders() };
+  }
+
+  async sizes(params?: channels.ResponseSizesParams): Promise<channels.ResponseSizesResult> {
+    return { sizes: await this._object.sizes() };
+  }
 }
 
-export class RouteDispatcher extends Dispatcher<Route, channels.RouteInitializer> implements channels.RouteChannel {
+export class RouteDispatcher extends Dispatcher<Route, channels.RouteInitializer, channels.RouteEvents> implements channels.RouteChannel {
 
   static from(scope: DispatcherScope, route: Route): RouteDispatcher {
     const result = existingDispatcher<RouteDispatcher>(route);
@@ -104,11 +114,11 @@ export class RouteDispatcher extends Dispatcher<Route, channels.RouteInitializer
     });
   }
 
-  async responseBody(params?: channels.RouteResponseBodyParams, metadata?: channels.Metadata): Promise<channels.RouteResponseBodyResult> {
+  async responseBody(params?: channels.RouteResponseBodyParams): Promise<channels.RouteResponseBodyResult> {
     return { binary: (await this._object.responseBody()).toString('base64') };
   }
 
-  async continue(params: channels.RouteContinueParams, metadata?: channels.Metadata): Promise<channels.RouteContinueResult> {
+  async continue(params: channels.RouteContinueParams, metadata: CallMetadata): Promise<channels.RouteContinueResult> {
     const response = await this._object.continue({
       url: params.url,
       method: params.method,
@@ -137,7 +147,7 @@ export class RouteDispatcher extends Dispatcher<Route, channels.RouteInitializer
   }
 }
 
-export class WebSocketDispatcher extends Dispatcher<WebSocket, channels.WebSocketInitializer> implements channels.WebSocketChannel {
+export class WebSocketDispatcher extends Dispatcher<WebSocket, channels.WebSocketInitializer, channels.WebSocketEvents> implements channels.WebSocketChannel {
   constructor(scope: DispatcherScope, webSocket: WebSocket) {
     super(scope, webSocket, 'WebSocket', {
       url: webSocket.url(),
@@ -146,5 +156,61 @@ export class WebSocketDispatcher extends Dispatcher<WebSocket, channels.WebSocke
     webSocket.on(WebSocket.Events.FrameReceived, (event: { opcode: number, data: string }) => this._dispatchEvent('frameReceived', event));
     webSocket.on(WebSocket.Events.SocketError, (error: string) => this._dispatchEvent('socketError', { error }));
     webSocket.on(WebSocket.Events.Close, () => this._dispatchEvent('close', {}));
+  }
+}
+
+export class FetchRequestDispatcher extends Dispatcher<FetchRequest, channels.FetchRequestInitializer, channels.FetchRequestEvents> implements channels.FetchRequestChannel {
+  static from(scope: DispatcherScope, request: FetchRequest): FetchRequestDispatcher {
+    const result = existingDispatcher<FetchRequestDispatcher>(request);
+    return result || new FetchRequestDispatcher(scope, request);
+  }
+
+  static fromNullable(scope: DispatcherScope, request: FetchRequest | null): FetchRequestDispatcher | undefined {
+    return request ? FetchRequestDispatcher.from(scope, request) : undefined;
+  }
+
+  private constructor(scope: DispatcherScope, request: FetchRequest) {
+    super(scope, request, 'FetchRequest', {}, true);
+    request.once(FetchRequest.Events.Dispose, () => {
+      if (!this._disposed)
+        super._dispose();
+    });
+  }
+
+  async dispose(params?: channels.FetchRequestDisposeParams): Promise<void> {
+    this._object.dispose();
+  }
+
+  async fetch(params: channels.FetchRequestFetchParams, metadata?: channels.Metadata): Promise<channels.FetchRequestFetchResult> {
+    const { fetchResponse, error } = await this._object.fetch({
+      url: params.url,
+      params: arrayToObject(params.params),
+      method: params.method,
+      headers: params.headers ? headersArrayToObject(params.headers, false) : undefined,
+      postData: params.postData ? Buffer.from(params.postData, 'base64') : undefined,
+      formData: params.formData,
+      timeout: params.timeout,
+      failOnStatusCode: params.failOnStatusCode,
+    });
+    let response;
+    if (fetchResponse) {
+      response = {
+        url: fetchResponse.url,
+        status: fetchResponse.status,
+        statusText: fetchResponse.statusText,
+        headers: fetchResponse.headers,
+        fetchUid: fetchResponse.fetchUid
+      };
+    }
+    return { response, error };
+  }
+
+  async fetchResponseBody(params: channels.FetchRequestFetchResponseBodyParams, metadata?: channels.Metadata): Promise<channels.FetchRequestFetchResponseBodyResult> {
+    const buffer = this._object.fetchResponses.get(params.fetchUid);
+    return { binary: buffer ? buffer.toString('base64') : undefined };
+  }
+
+  async disposeFetchResponse(params: channels.FetchRequestDisposeFetchResponseParams, metadata?: channels.Metadata): Promise<void> {
+    this._object.fetchResponses.delete(params.fetchUid);
   }
 }

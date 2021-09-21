@@ -185,6 +185,16 @@ function isBrowserDirectory(browserDirectory: string): boolean {
   return false;
 }
 
+type BrowsersJSON = {
+  comment: string
+  browsers: {
+    name: string,
+    revision: string,
+    installByDefault: boolean,
+    revisionOverrides?: {[os: string]: string},
+  }[]
+};
+
 type BrowsersJSONDescriptor = {
   name: string,
   revision: string,
@@ -192,9 +202,8 @@ type BrowsersJSONDescriptor = {
   dir: string,
 };
 
-function readDescriptors(packagePath: string) {
-  const browsersJSON = require(path.join(packagePath, 'browsers.json'));
-  return (browsersJSON['browsers'] as any[]).map(obj => {
+function readDescriptors(browsersJSON: BrowsersJSON) {
+  return (browsersJSON['browsers']).map(obj => {
     const name = obj.name;
     const revisionOverride = (obj.revisionOverrides || {})[hostPlatform];
     const revision = revisionOverride || obj.revision;
@@ -238,8 +247,8 @@ interface ExecutableImpl extends Executable {
 export class Registry {
   private _executables: ExecutableImpl[];
 
-  constructor(packagePath: string) {
-    const descriptors = readDescriptors(packagePath);
+  constructor(browsersJSON: BrowsersJSON) {
+    const descriptors = readDescriptors(browsersJSON);
     const findExecutablePath = (dir: string, name: keyof typeof EXECUTABLE_PATHS) => {
       const tokens = EXECUTABLE_PATHS[name][hostPlatform];
       return tokens ? path.join(dir, ...tokens) : undefined;
@@ -553,6 +562,25 @@ export class Registry {
         else
           throw new Error(`ERROR: Playwright does not support installing ${executable.name}`);
       }
+    } catch (e) {
+      if (e.code === 'ELOCKED') {
+        const rmCommand = process.platform === 'win32' ? 'rm -R' : 'rm -rf';
+        throw new Error('\n' + wrapInASCIIBox([
+          `An active lockfile is found at:`,
+          ``,
+          `  ${lockfilePath}`,
+          ``,
+          `Either:`,
+          `- wait a few minutes if other Playwright is installing browsers in parallel`,
+          `- remove lock manually with:`,
+          ``,
+          `    ${rmCommand} ${lockfilePath}`,
+          ``,
+          `<3 Playwright Team`,
+        ].join('\n'), 1));
+      } else {
+        throw e;
+      }
     } finally {
       await releaseLock();
     }
@@ -577,7 +605,7 @@ export class Registry {
   private async _installMSEdgeChannel(channel: 'msedge'|'msedge-beta'|'msedge-dev', scripts: Record<'linux' | 'darwin' | 'win32', string>) {
     const scriptArgs: string[] = [];
     if (process.platform !== 'linux') {
-      const products = JSON.parse(await fetchData('https://edgeupdates.microsoft.com/api/products'));
+      const products = JSON.parse(await fetchData({ url: 'https://edgeupdates.microsoft.com/api/products' }));
       const productName = {
         'msedge': 'Stable',
         'msedge-beta': 'Beta',
@@ -616,7 +644,8 @@ export class Registry {
       let linkTarget = '';
       try {
         linkTarget = (await fs.promises.readFile(linkPath)).toString();
-        const descriptors = readDescriptors(linkTarget);
+        const browsersJSON = require(path.join(linkTarget, 'browsers.json'));
+        const descriptors = readDescriptors(browsersJSON);
         for (const browserName of allDownloadable) {
           // We retain browsers if they are found in the descriptor.
           // Note, however, that there are older versions out in the wild that rely on
@@ -682,4 +711,4 @@ export async function installDefaultBrowsersForNpmInstall() {
   await registry.install();
 }
 
-export const registry = new Registry(PACKAGE_PATH);
+export const registry = new Registry(require('../../browsers.json'));

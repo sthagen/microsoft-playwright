@@ -83,7 +83,8 @@ export class TraceViewer {
         const networkFile = path.join(tracesDir, (match ? match[1] : debugName) + '.network');
         const model = new TraceModel(snapshotStorage);
         await appendTraceEvents(model, traceFile);
-        await appendTraceEvents(model, networkFile);
+        if (fs.existsSync(networkFile))
+          await appendTraceEvents(model, networkFile);
         model.build();
         response.end(JSON.stringify(model.contextEntry));
       })().catch(e => console.error(e));
@@ -168,7 +169,7 @@ Please run 'npx playwright install' to install Playwright browsers
     await controller.run(async progress => {
       await context._browser._defaultContext!._loadDefaultContextAsIs(progress);
     });
-    await context.extendInjectedScript('main', consoleApiSource.source);
+    await context.extendInjectedScript(consoleApiSource.source);
     const [page] = context.pages();
 
     if (traceViewerBrowser === 'chromium')

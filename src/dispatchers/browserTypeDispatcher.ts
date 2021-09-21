@@ -20,8 +20,12 @@ import * as channels from '../protocol/channels';
 import { Dispatcher, DispatcherScope } from './dispatcher';
 import { BrowserContextDispatcher } from './browserContextDispatcher';
 import { CallMetadata } from '../server/instrumentation';
+import WebSocket from 'ws';
+import { JsonPipeDispatcher } from '../dispatchers/jsonPipeDispatcher';
+import { getUserAgent, makeWaitForNextTask } from '../utils/utils';
+import { ManualPromise } from '../utils/async';
 
-export class BrowserTypeDispatcher extends Dispatcher<BrowserType, channels.BrowserTypeInitializer> implements channels.BrowserTypeChannel {
+export class BrowserTypeDispatcher extends Dispatcher<BrowserType, channels.BrowserTypeInitializer, channels.BrowserTypeEvents> implements channels.BrowserTypeChannel {
   constructor(scope: DispatcherScope, browserType: BrowserType) {
     super(scope, browserType, 'BrowserType', {
       executablePath: browserType.executablePath(),
@@ -46,5 +50,42 @@ export class BrowserTypeDispatcher extends Dispatcher<BrowserType, channels.Brow
       browser: browserDispatcher,
       defaultContext: browser._defaultContext ? new BrowserContextDispatcher(browserDispatcher._scope, browser._defaultContext) : undefined,
     };
+  }
+
+  async connect(params: channels.BrowserTypeConnectParams): Promise<channels.BrowserTypeConnectResult> {
+    const waitForNextTask = params.slowMo
+      ? (cb: () => any) => setTimeout(cb, params.slowMo)
+      : makeWaitForNextTask();
+    const paramsHeaders = Object.assign({'User-Agent': getUserAgent()}, params.headers || {});
+    const ws = new WebSocket(params.wsEndpoint, [], {
+      perMessageDeflate: false,
+      maxPayload: 256 * 1024 * 1024, // 256Mb,
+      handshakeTimeout: params.timeout,
+      headers: paramsHeaders,
+    });
+    const pipe = new JsonPipeDispatcher(this._scope);
+    const openPromise = new ManualPromise<{ pipe: JsonPipeDispatcher }>();
+    ws.on('open', () => openPromise.resolve({ pipe }));
+    ws.on('close', () => pipe.wasClosed());
+    ws.on('error', error => {
+      if (openPromise.isDone()) {
+        pipe.wasClosed(error);
+      } else {
+        pipe.dispose();
+        openPromise.reject(error);
+      }
+    });
+    pipe.on('close', () => ws.close());
+    pipe.on('message', message => ws.send(JSON.stringify(message)));
+    ws.addEventListener('message', event => {
+      waitForNextTask(() => {
+        try {
+          pipe.dispatch(JSON.parse(event.data));
+        } catch (e) {
+          ws.close();
+        }
+      });
+    });
+    return openPromise;
   }
 }

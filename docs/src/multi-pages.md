@@ -118,7 +118,7 @@ Each browser context can host multiple pages (tabs).
 const pageOne = await context.newPage();
 const pageTwo = await context.newPage();
 
-// Get pages of a brower context
+// Get pages of a browser context
 const allPages = context.pages();
 ```
 
@@ -127,7 +127,7 @@ const allPages = context.pages();
 Page pageOne = context.newPage();
 Page pageTwo = context.newPage();
 
-// Get pages of a brower context
+// Get pages of a browser context
 List<Page> allPages = context.pages();
 ```
 
@@ -136,7 +136,7 @@ List<Page> allPages = context.pages();
 page_one = await context.new_page()
 page_two = await context.new_page()
 
-# get pages of a brower context
+# get pages of a browser context
 all_pages = context.pages()
 ```
 
@@ -145,7 +145,7 @@ all_pages = context.pages()
 page_one = context.new_page()
 page_two = context.new_page()
 
-# get pages of a brower context
+# get pages of a browser context
 all_pages = context.pages()
 ```
 
@@ -154,7 +154,7 @@ all_pages = context.pages()
 var pageOne = await context.NewPageAsync();
 var pageTwo = await context.NewPageAsync();
 
-// Get pages of a brower context
+// Get pages of a browser context
 var allPages = context.Pages;
 ```
 
@@ -266,7 +266,7 @@ context.Page += async  (_, page) => {
 
 ## Handling popups
 
-If the page opens a pop-up, you can get a reference to it by listening to the `popup` event on the page.
+If the page opens a pop-up (e.g. pages opened by `target="_blank"` links), you can get a reference to it by listening to the `popup` event on the page.
 
 This event is emitted in addition to the `browserContext.on('page')` event, but only for popups relevant to this page.
 

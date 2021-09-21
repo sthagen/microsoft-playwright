@@ -19,15 +19,14 @@ import { Browser } from './browser';
 import { BrowserContext, prepareBrowserContextParams } from './browserContext';
 import { ChannelOwner } from './channelOwner';
 import { LaunchOptions, LaunchServerOptions, ConnectOptions, LaunchPersistentContextOptions, BrowserContextOptions } from './types';
-import WebSocket from 'ws';
 import { Connection } from './connection';
 import { Events } from './events';
-import { TimeoutSettings } from '../utils/timeoutSettings';
 import { ChildProcess } from 'child_process';
 import { envObjectToArray } from './clientHelper';
-import { assert, headersObjectToArray, makeWaitForNextTask, getUserAgent } from '../utils/utils';
-import { kBrowserClosedError } from '../utils/errors';
+import { assert, headersObjectToArray, getUserAgent, monotonicTime } from '../utils/utils';
 import * as api from '../../types/types';
+import { kBrowserClosedError } from '../utils/errors';
+import { raceAgainstDeadline } from '../utils/async';
 
 export interface BrowserServerLauncher {
   launchServer(options?: LaunchServerOptions): Promise<api.BrowserServer>;
@@ -42,7 +41,6 @@ export interface BrowserServer extends api.BrowserServer {
 }
 
 export class BrowserType extends ChannelOwner<channels.BrowserTypeChannel, channels.BrowserTypeInitializer> implements api.BrowserType {
-  private _timeoutSettings = new TimeoutSettings();
   _serverLauncher?: BrowserServerLauncher;
   _contexts = new Set<BrowserContext>();
 
@@ -71,7 +69,7 @@ export class BrowserType extends ChannelOwner<channels.BrowserTypeChannel, chann
   }
 
   async launch(options: LaunchOptions = {}): Promise<Browser> {
-    const logger = options.logger;
+    const logger = options.logger || this._defaultLaunchOptions.logger;
     return this._wrapApiCall(async (channel: channels.BrowserTypeChannel) => {
       assert(!(options as any).userDataDir, 'userDataDir option is not supported in `browserType.launch`. Use `browserType.launchPersistentContext` instead');
       assert(!(options as any).port, 'Cannot specify a port without launching as a server.');
@@ -96,6 +94,7 @@ export class BrowserType extends ChannelOwner<channels.BrowserTypeChannel, chann
   }
 
   async launchPersistentContext(userDataDir: string, options: LaunchPersistentContextOptions = {}): Promise<BrowserContext> {
+    const logger = options.logger || this._defaultLaunchOptions.logger;
     return this._wrapApiCall(async (channel: channels.BrowserTypeChannel) => {
       assert(!(options as any).port, 'Cannot specify a port without launching as a server.');
       options = { ...this._defaultLaunchOptions, ...this._defaultContextOptions, ...options };
@@ -111,11 +110,11 @@ export class BrowserType extends ChannelOwner<channels.BrowserTypeChannel, chann
       const result = await channel.launchPersistentContext(persistentParams);
       const context = BrowserContext.from(result.context);
       context._options = contextParams;
-      context._logger = options.logger;
+      context._logger = logger;
       context._setBrowserType(this);
       await this._onDidCreateContext?.(context);
       return context;
-    }, options.logger);
+    }, logger);
   }
 
   connect(options: api.ConnectOptions & { wsEndpoint?: string }): Promise<api.Browser>;
@@ -126,103 +125,72 @@ export class BrowserType extends ChannelOwner<channels.BrowserTypeChannel, chann
     assert(optionsOrWsEndpoint.wsEndpoint, 'options.wsEndpoint is required');
     return this._connect(optionsOrWsEndpoint.wsEndpoint, optionsOrWsEndpoint);
   }
+
   async _connect(wsEndpoint: string, params: Partial<ConnectOptions> = {}): Promise<Browser> {
     const logger = params.logger;
-    const paramsHeaders = Object.assign({'User-Agent': getUserAgent()}, params.headers);
-    return this._wrapApiCall(async () => {
-      const ws = new WebSocket(wsEndpoint, [], {
-        perMessageDeflate: false,
-        maxPayload: 256 * 1024 * 1024, // 256Mb,
-        handshakeTimeout: this._timeoutSettings.timeout(params),
-        headers: paramsHeaders,
-      });
-      const connection = new Connection(() => ws.close());
+    return await this._wrapApiCall(async (channel: channels.BrowserTypeChannel) => {
+      const deadline = params.timeout ? monotonicTime() + params.timeout : 0;
+      let browser: Browser;
+      const { pipe } = await channel.connect({ wsEndpoint, headers: params.headers, timeout: params.timeout });
+      const closePipe = () => pipe.close().catch(() => {});
+      const connection = new Connection(closePipe);
 
-      // The 'ws' module in node sometimes sends us multiple messages in a single task.
-      const waitForNextTask = params.slowMo
-        ? (cb: () => any) => setTimeout(cb, params.slowMo)
-        : makeWaitForNextTask();
-      connection.onmessage = message => {
-        // Connection should handle all outgoing message in disconnected().
-        if (ws.readyState !== WebSocket.OPEN)
-          return;
-        ws.send(JSON.stringify(message));
-      };
-      ws.addEventListener('message', event => {
-        waitForNextTask(() => {
-          try {
-            // Since we may slow down the messages, but disconnect
-            // synchronously, we might come here with a message
-            // after disconnect.
-            if (!connection.isDisconnected())
-              connection.dispatch(JSON.parse(event.data));
-          } catch (e) {
-            console.error(`Playwright: Connection dispatch error`);
-            console.error(e);
-            ws.close();
-          }
-        });
-      });
-
-      let timeoutCallback = (e: Error) => {};
-      const timeoutPromise = new Promise<Browser>((f, r) => timeoutCallback = r);
-      const timer = params.timeout ? setTimeout(() => timeoutCallback(new Error(`Timeout ${params.timeout}ms exceeded.`)), params.timeout) : undefined;
-
-      const successPromise = new Promise<Browser>(async (fulfill, reject) => {
-        if ((params as any).__testHookBeforeCreateBrowser) {
-          try {
-            await (params as any).__testHookBeforeCreateBrowser();
-          } catch (e) {
-            reject(e);
-          }
+      const onPipeClosed = () => {
+        // Emulate all pages, contexts and the browser closing upon disconnect.
+        for (const context of browser?.contexts() || []) {
+          for (const page of context.pages())
+            page._onClose();
+          context._onClose();
         }
-        ws.addEventListener('open', async () => {
-          const prematureCloseListener = (event: { code: number, reason: string }) => {
-            reject(new Error(`WebSocket server disconnected (${event.code}) ${event.reason}`));
-          };
-          ws.addEventListener('close', prematureCloseListener);
-          const playwright = await connection.initializePlaywright();
+        browser?._didClose();
+        connection.didDisconnect(kBrowserClosedError);
+      };
+      pipe.on('closed', onPipeClosed);
+      connection.onmessage = message => pipe.send({ message }).catch(onPipeClosed);
 
+      pipe.on('message', ({ message }) => {
+        try {
+          if (!connection!.isDisconnected())
+            connection!.dispatch(message);
+        } catch (e) {
+          console.error(`Playwright: Connection dispatch error`);
+          console.error(e);
+          closePipe();
+        }
+      });
+
+      const createBrowserPromise = new Promise<Browser>(async (fulfill, reject) => {
+        try {
+          // For tests.
+          if ((params as any).__testHookBeforeCreateBrowser)
+            await (params as any).__testHookBeforeCreateBrowser();
+
+          const playwright = await connection!.initializePlaywright();
           if (!playwright._initializer.preLaunchedBrowser) {
             reject(new Error('Malformed endpoint. Did you use launchServer method?'));
-            ws.close();
+            closePipe();
             return;
           }
-
-          const browser = Browser.from(playwright._initializer.preLaunchedBrowser!);
+          browser = Browser.from(playwright._initializer.preLaunchedBrowser!);
           browser._logger = logger;
           browser._remoteType = 'owns-connection';
           browser._setBrowserType((playwright as any)[browser._name]);
-          const closeListener = () => {
-            // Emulate all pages, contexts and the browser closing upon disconnect.
-            for (const context of browser.contexts()) {
-              for (const page of context.pages())
-                page._onClose();
-              context._onClose();
-            }
-            browser._didClose();
-            connection.didDisconnect(kBrowserClosedError);
-          };
-          ws.removeEventListener('close', prematureCloseListener);
-          ws.addEventListener('close', closeListener);
           browser.on(Events.Browser.Disconnected, () => {
             playwright._cleanup();
-            ws.removeEventListener('close', closeListener);
-            ws.close();
+            closePipe();
           });
           fulfill(browser);
-        });
-        ws.addEventListener('error', event => {
-          ws.close();
-          reject(new Error(event.message + '. Most likely ws endpoint is incorrect'));
-        });
+        } catch (e) {
+          reject(e);
+        }
       });
 
-      try {
-        return await Promise.race([successPromise, timeoutPromise]);
-      } finally {
-        if (timer)
-          clearTimeout(timer);
+      const result = await raceAgainstDeadline(createBrowserPromise, deadline);
+      if (result.result) {
+        return result.result;
+      } else {
+        closePipe();
+        throw new Error(`Timeout ${params.timeout}ms exceeded`);
       }
     }, logger);
   }

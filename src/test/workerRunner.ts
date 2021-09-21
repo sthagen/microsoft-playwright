@@ -18,15 +18,17 @@ import fs from 'fs';
 import path from 'path';
 import rimraf from 'rimraf';
 import util from 'util';
+import colors from 'colors/safe';
 import { EventEmitter } from 'events';
-import { monotonicTime, DeadlineRunner, raceAgainstDeadline, serializeError, sanitizeForFilePath } from './util';
+import { monotonicTime, serializeError, sanitizeForFilePath } from './util';
 import { TestBeginPayload, TestEndPayload, RunPayload, TestEntry, DonePayload, WorkerInitParams, StepBeginPayload, StepEndPayload } from './ipc';
 import { setCurrentTestInfo } from './globals';
 import { Loader } from './loader';
 import { Modifier, Suite, TestCase } from './test';
-import { Annotations, CompleteStepCallback, TestError, TestInfo, TestInfoImpl, WorkerInfo } from './types';
+import { Annotations, TestError, TestInfo, TestInfoImpl, TestStepInternal, WorkerInfo } from './types';
 import { ProjectImpl } from './project';
 import { FixturePool, FixtureRunner } from './fixtures';
+import { DeadlineRunner, raceAgainstDeadline } from '../utils/async';
 
 const removeFolderAsync = util.promisify(rimraf);
 
@@ -58,7 +60,7 @@ export class WorkerRunner extends EventEmitter {
       this._isStopped = true;
 
       // Interrupt current action.
-      this._currentDeadlineRunner?.setDeadline(0);
+      this._currentDeadlineRunner?.interrupt();
 
       // TODO: mark test as 'interrupted' instead.
       if (this._currentTest && this._currentTest.testInfo.status === 'passed')
@@ -75,8 +77,10 @@ export class WorkerRunner extends EventEmitter {
       await this._fixtureRunner.teardownScope('test');
       await this._fixtureRunner.teardownScope('worker');
     })(), this._deadline());
-    if (result.timedOut)
-      throw new Error(`Timeout of ${this._project.config.timeout}ms exceeded while shutting down environment`);
+    if (result.timedOut && !this._fatalError)
+      this._fatalError = { message: colors.red(`Timeout of ${this._project.config.timeout}ms exceeded while shutting down environment`) };
+    if (this._fatalError)
+      this.emit('teardownError', { error: this._fatalError });
   }
 
   unhandledError(error: Error | any) {
@@ -94,7 +98,7 @@ export class WorkerRunner extends EventEmitter {
   }
 
   private _deadline() {
-    return this._project.config.timeout ? monotonicTime() + this._project.config.timeout : undefined;
+    return this._project.config.timeout ? monotonicTime() + this._project.config.timeout : 0;
   }
 
   private async _loadIfNeeded() {
@@ -121,8 +125,8 @@ export class WorkerRunner extends EventEmitter {
   }
 
   async run(runPayload: RunPayload) {
-    let runFinishedCalback = () => {};
-    this._runFinished = new Promise(f => runFinishedCalback = f);
+    let runFinishedCallback = () => {};
+    this._runFinished = new Promise(f => runFinishedCallback = f);
     try {
       this._entries = new Map(runPayload.entries.map(e => [ e.testId, e ]));
       await this._loadIfNeeded();
@@ -145,7 +149,7 @@ export class WorkerRunner extends EventEmitter {
       this.unhandledError(e);
     } finally {
       this._reportDone();
-      runFinishedCalback();
+      runFinishedCallback();
     }
   }
 
@@ -202,7 +206,7 @@ export class WorkerRunner extends EventEmitter {
     const baseOutputDir = (() => {
       const relativeTestFilePath = path.relative(this._project.config.testDir, test._requireFile.replace(/\.(spec|test)\.(js|ts|mjs)$/, ''));
       const sanitizedRelativePath = relativeTestFilePath.replace(process.platform === 'win32' ? new RegExp('\\\\', 'g') : new RegExp('/', 'g'), '-');
-      const fullTitleWithoutSpec = test.titlePath().slice(1).join(' ');
+      const fullTitleWithoutSpec = test.titlePath().slice(1).join(' ') + (test._type === 'test' ? '' : '-worker' + this._params.workerIndex);
       let testOutputDir = sanitizedRelativePath + '-' + sanitizeForFilePath(fullTitleWithoutSpec);
       if (this._uniqueProjectNamePathSegment)
         testOutputDir += '-' + this._uniqueProjectNamePathSegment;
@@ -260,36 +264,39 @@ export class WorkerRunner extends EventEmitter {
       setTimeout: (timeout: number) => {
         testInfo.timeout = timeout;
         if (deadlineRunner)
-          deadlineRunner.setDeadline(deadline());
+          deadlineRunner.updateDeadline(deadline());
       },
       _testFinished: new Promise(f => testFinishedCallback = f),
-      _addStep: (category: string, title: string) => {
-        const stepId = `${category}@${title}@${++lastStepId}`;
+      _addStep: data => {
+        const stepId = `${data.category}@${data.title}@${++lastStepId}`;
+        let callbackHandled = false;
+        const step: TestStepInternal = {
+          ...data,
+          complete: (error?: Error | TestError) => {
+            if (callbackHandled)
+              return;
+            callbackHandled = true;
+            if (error instanceof Error)
+              error = serializeError(error);
+            const payload: StepEndPayload = {
+              testId,
+              stepId,
+              wallTime: Date.now(),
+              error,
+            };
+            if (reportEvents)
+              this.emit('stepEnd', payload);
+          }
+        };
         const payload: StepBeginPayload = {
           testId,
           stepId,
-          category,
-          title,
-          wallTime: Date.now()
+          ...data,
+          wallTime: Date.now(),
         };
         if (reportEvents)
           this.emit('stepBegin', payload);
-        let callbackHandled = false;
-        return (error?: Error | TestError) => {
-          if (callbackHandled)
-            return;
-          callbackHandled = true;
-          if (error instanceof Error)
-            error = serializeError(error);
-          const payload: StepEndPayload = {
-            testId,
-            stepId,
-            wallTime: Date.now(),
-            error
-          };
-          if (reportEvents)
-            this.emit('stepEnd', payload);
-        };
+        return step;
       },
     };
 
@@ -323,7 +330,7 @@ export class WorkerRunner extends EventEmitter {
     setCurrentTestInfo(testInfo);
 
     const deadline = () => {
-      return testInfo.timeout ? startTime + testInfo.timeout : undefined;
+      return testInfo.timeout ? startTime + testInfo.timeout : 0;
     };
 
     if (reportEvents)
@@ -348,7 +355,7 @@ export class WorkerRunner extends EventEmitter {
 
     if (!result.timedOut) {
       this._currentDeadlineRunner = deadlineRunner = new DeadlineRunner(this._runAfterHooks(test, testInfo), deadline());
-      deadlineRunner.setDeadline(deadline());
+      deadlineRunner.updateDeadline(deadline());
       const hooksResult = await deadlineRunner.result;
       // Do not overwrite test failure upon hook timeout.
       if (hooksResult.timedOut && testInfo.status === 'passed')
@@ -365,7 +372,7 @@ export class WorkerRunner extends EventEmitter {
     if (reportEvents)
       this.emit('testEnd', buildTestEndPayload(testId, testInfo));
 
-    const isFailure = testInfo.status === 'timedOut' || (testInfo.status === 'failed' && testInfo.expectedStatus !== 'failed');
+    const isFailure = testInfo.status !== 'skipped' && testInfo.status !== testInfo.expectedStatus;
     const preserveOutput = this._loader.fullConfig().preserveOutput === 'always' ||
       (this._loader.fullConfig().preserveOutput === 'failures-only' && isFailure);
     if (!preserveOutput)
@@ -374,11 +381,15 @@ export class WorkerRunner extends EventEmitter {
     this._currentTest = null;
     setCurrentTestInfo(null);
 
-    if (testInfo.status !== 'passed' && testInfo.status !== 'skipped') {
-      if (test._type === 'test')
+    if (isFailure) {
+      if (test._type === 'test') {
         this._failedTestId = testId;
-      else if (!this._fatalError)
-        this._fatalError = testInfo.error;
+      } else if (!this._fatalError) {
+        if (testInfo.status === 'timedOut')
+          this._fatalError = { message: colors.red(`Timeout of ${testInfo.timeout}ms exceeded in ${test._type} hook.`) };
+        else
+          this._fatalError = testInfo.error;
+      }
       this.stop();
     }
   }
@@ -409,18 +420,23 @@ export class WorkerRunner extends EventEmitter {
   }
 
   private async _runTestWithBeforeHooks(test: TestCase, testInfo: TestInfoImpl) {
-    const completeStep = testInfo._addStep('hook', 'Before Hooks');
+    const step = testInfo._addStep({
+      category: 'hook',
+      title: 'Before Hooks',
+      canHaveChildren: true,
+      forceNoParent: true
+    });
     if (test._type === 'test')
       await this._runBeforeHooks(test, testInfo);
 
     // Do not run the test when beforeEach hook fails.
     if (testInfo.status === 'failed' || testInfo.status === 'skipped') {
-      completeStep?.(testInfo.error);
+      step.complete(testInfo.error);
       return;
     }
 
     try {
-      await this._fixtureRunner.resolveParametersAndRunHookOrTest(test.fn, this._workerInfo, testInfo, completeStep);
+      await this._fixtureRunner.resolveParametersAndRunHookOrTest(test.fn, this._workerInfo, testInfo, step);
     } catch (error) {
       if (error instanceof SkipError) {
         if (testInfo.status === 'passed')
@@ -435,15 +451,20 @@ export class WorkerRunner extends EventEmitter {
           testInfo.error = serializeError(error);
       }
     } finally {
-      completeStep?.(testInfo.error);
+      step.complete(testInfo.error);
     }
   }
 
   private async _runAfterHooks(test: TestCase, testInfo: TestInfoImpl) {
-    let completeStep: CompleteStepCallback | undefined;
+    let step: TestStepInternal | undefined;
     let teardownError: TestError | undefined;
     try {
-      completeStep = testInfo._addStep('hook', 'After Hooks');
+      step = testInfo._addStep({
+        category: 'hook',
+        title: 'After Hooks',
+        canHaveChildren: true,
+        forceNoParent: true
+      });
       if (test._type === 'test')
         await this._runHooks(test.parent!, 'afterEach', testInfo);
     } catch (error) {
@@ -467,7 +488,7 @@ export class WorkerRunner extends EventEmitter {
         teardownError = testInfo.error;
       }
     }
-    completeStep?.(teardownError);
+    step?.complete(teardownError);
   }
 
   private async _runHooks(suite: Suite, type: 'beforeEach' | 'afterEach', testInfo: TestInfo) {
@@ -497,6 +518,7 @@ export class WorkerRunner extends EventEmitter {
       fatalError: this._fatalError,
     };
     this.emit('done', donePayload);
+    this._fatalError = undefined;
   }
 }
 

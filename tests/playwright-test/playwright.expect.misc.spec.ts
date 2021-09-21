@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+import http from 'http';
 import { test, expect, stripAscii } from './playwright-test-fixtures';
 
 test('should support toHaveCount', async ({ runInlineTest }) => {
@@ -22,9 +23,15 @@ test('should support toHaveCount', async ({ runInlineTest }) => {
       const { test } = pwt;
 
       test('pass', async ({ page }) => {
-        await page.setContent('<select><option>One</option><option>Two</option></select>');
+        await page.setContent('<select><option>One</option></select>');
         const locator = page.locator('option');
-        await expect(locator).toHaveCount(2);
+        let done = false;
+        const promise = expect(locator).toHaveCount(2).then(() => { done = true; });
+        await page.waitForTimeout(1000);
+        expect(done).toBe(false);
+        await page.setContent('<select><option>One</option><option>Two</option></select>');
+        await promise;
+        expect(done).toBe(true);
       });
       `,
   }, { workers: 1 });
@@ -93,19 +100,19 @@ test('should support toHaveClass w/ array', async ({ runInlineTest }) => {
       test('pass', async ({ page }) => {
         await page.setContent('<div class="foo"></div><div class="bar"></div><div class="baz"></div>');
         const locator = page.locator('div');
-        await expect(locator).toHaveClass(['foo', 'bar', 'baz']);
+        await expect(locator).toHaveClass(['foo', 'bar', /[a-z]az/]);
       });
 
       test('fail', async ({ page }) => {
         await page.setContent('<div class="foo"></div><div class="bar"></div><div class="bar"></div>');
         const locator = page.locator('div');
-        await expect(locator).toHaveClass(['foo', 'bar', 'baz'], { timeout: 1000 });
+        await expect(locator).toHaveClass(['foo', 'bar', /[a-z]az/], { timeout: 1000 });
       });
       `,
   }, { workers: 1 });
   const output = stripAscii(result.output);
   expect(output).toContain('expect(received).toHaveClass(expected)');
-  expect(output).toContain('-   \"baz\",');
+  expect(output).toContain('-   /[a-z]az/,');
   expect(result.passed).toBe(1);
   expect(result.failed).toBe(1);
   expect(result.exitCode).toBe(1);
@@ -117,8 +124,8 @@ test('should support toHaveTitle', async ({ runInlineTest }) => {
       const { test } = pwt;
 
       test('pass', async ({ page }) => {
-        await page.setContent('<title>Hello</title>');
-        await expect(page).toHaveTitle('Hello');
+        await page.setContent('<title>  Hello     world</title>');
+        await expect(page).toHaveTitle('Hello  world');
       });
 
       test('fail', async ({ page }) => {
@@ -157,6 +164,44 @@ test('should support toHaveURL', async ({ runInlineTest }) => {
   expect(result.passed).toBe(1);
   expect(result.failed).toBe(1);
   expect(result.exitCode).toBe(1);
+});
+
+test('should support toHaveURL with baseURL', async ({ runInlineTest }, testInfo) => {
+  const port = testInfo.workerIndex + 10500;
+  const server = http.createServer((req: http.IncomingMessage, res: http.ServerResponse) => {
+    res.end('<html><body>hello</body></html>');
+  });
+  await new Promise(resolve => server.listen(port, resolve));
+  const result = await runInlineTest({
+    'a.test.ts': `
+      const { test } = pwt;
+
+      test('pass', async ({ page }) => {
+        await page.goto('/foobar');
+        await expect(page).toHaveURL('/foobar');
+        await expect(page).toHaveURL('http://localhost:${port}/foobar');
+      });
+
+      test('fail', async ({ page }) => {
+        await page.goto('/foobar');
+        await expect(page).toHaveURL('/kek', { timeout: 100 });
+      });
+      `,
+    'playwright.config.ts': `
+      module.exports = {
+        use: {
+          baseURL: 'http://localhost:${port}',
+        }
+      };
+  `,
+  }, { workers: 1 });
+  const output = stripAscii(result.output);
+  expect(output).toContain('expect(page).toHaveURL');
+  expect(output).toContain(`Expected string: \"http://localhost:${port}/kek\"`);
+  expect(result.passed).toBe(1);
+  expect(result.failed).toBe(1);
+  expect(result.exitCode).toBe(1);
+  await new Promise(resolve => server.close(resolve));
 });
 
 test('should support respect expect.timeout', async ({ runInlineTest }) => {

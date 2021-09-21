@@ -16,7 +16,7 @@
 
 import type * as actions from '../recorder/recorderActions';
 import type InjectedScript from '../../injected/injectedScript';
-import { generateSelector, querySelector } from './selectorGenerator';
+import { generateSelector, querySelector } from '../../injected/selectorGenerator';
 import type { Point } from '../../../common/types';
 import type { UIState } from '../recorder/recorderTypes';
 
@@ -28,8 +28,6 @@ declare module globalThis {
   let _playwrightRecorderSetSelector: (selector: string) => Promise<void>;
   let _playwrightRefreshOverlay: () => void;
 }
-
-const scriptSymbol = Symbol('scriptSymbol');
 
 export class Recorder {
   private _injectedScript: InjectedScript;
@@ -132,9 +130,9 @@ export class Recorder {
   }
 
   private _refreshListenersIfNeeded() {
-    if ((document.documentElement as any)[scriptSymbol])
+    // Ensure we are attached to the current document, and we are on top (last element);
+    if (this._outerGlassPaneElement.parentElement === document.documentElement && !this._outerGlassPaneElement.nextElementSibling)
       return;
-    (document.documentElement as any)[scriptSymbol] = true;
     removeEventListeners(this._listeners);
     this._listeners = [
       addEventListener(document, 'click', event => this._onClick(event as MouseEvent), true),

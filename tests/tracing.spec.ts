@@ -25,6 +25,9 @@ test('should collect trace with resources, but no js', async ({ context, page, s
   await page.goto(server.PREFIX + '/frames/frame.html');
   await page.setContent('<button>Click</button>');
   await page.click('"Click"');
+  await page.mouse.move(20, 20);
+  await page.mouse.dblclick(30, 30);
+  await page.keyboard.insertText('abc');
   await page.waitForTimeout(2000);  // Give it some time to produce screenshots.
   await page.close();
   await context.tracing.stop({ path: testInfo.outputPath('trace.zip') });
@@ -34,12 +37,19 @@ test('should collect trace with resources, but no js', async ({ context, page, s
   expect(events.find(e => e.metadata?.apiName === 'page.goto')).toBeTruthy();
   expect(events.find(e => e.metadata?.apiName === 'page.setContent')).toBeTruthy();
   expect(events.find(e => e.metadata?.apiName === 'page.click')).toBeTruthy();
+  expect(events.find(e => e.metadata?.apiName === 'mouse.move')).toBeTruthy();
+  expect(events.find(e => e.metadata?.apiName === 'mouse.dblclick')).toBeTruthy();
+  expect(events.find(e => e.metadata?.apiName === 'keyboard.insertText')).toBeTruthy();
   expect(events.find(e => e.metadata?.apiName === 'page.close')).toBeTruthy();
 
   expect(events.some(e => e.type === 'frame-snapshot')).toBeTruthy();
-  expect(events.some(e => e.type === 'resource-snapshot' && e.snapshot.request.url.endsWith('style.css'))).toBeTruthy();
-  expect(events.some(e => e.type === 'resource-snapshot' && e.snapshot.request.url.endsWith('script.js'))).toBeFalsy();
   expect(events.some(e => e.type === 'screencast-frame')).toBeTruthy();
+  const style = events.find(e => e.type === 'resource-snapshot' && e.snapshot.request.url.endsWith('style.css'));
+  expect(style).toBeTruthy();
+  expect(style.snapshot.response.content._sha1).toBeTruthy();
+  const script = events.find(e => e.type === 'resource-snapshot' && e.snapshot.request.url.endsWith('script.js'));
+  expect(script).toBeTruthy();
+  expect(script.snapshot.response.content._sha1).toBe(undefined);
 });
 
 test('should not collect snapshots by default', async ({ context, page, server }, testInfo) => {
@@ -198,38 +208,34 @@ test('should include interrupted actions', async ({ context, page, server }, tes
   expect(clickEvent.metadata.error.error.message).toBe('Action was interrupted');
 });
 
-test('should reset to different options', async ({ context, page, server }, testInfo) => {
+test('should throw when starting with different options', async ({ context }) => {
   await context.tracing.start({ screenshots: true, snapshots: true });
-  await page.goto(server.PREFIX + '/frames/frame.html');
-  await context.tracing.start({ screenshots: false, snapshots: false });
-  await page.setContent('<button>Click</button>');
-  await page.click('"Click"');
-  await context.tracing.stop({ path: testInfo.outputPath('trace.zip') });
-
-  const { events } = await parseTrace(testInfo.outputPath('trace.zip'));
-  expect(events[0].type).toBe('context-options');
-  expect(events.find(e => e.metadata?.apiName === 'page.goto')).toBeFalsy();
-  expect(events.find(e => e.metadata?.apiName === 'page.setContent')).toBeTruthy();
-  expect(events.find(e => e.metadata?.apiName === 'page.click')).toBeTruthy();
-
-  expect(events.some(e => e.type === 'frame-snapshot')).toBeFalsy();
-  expect(events.some(e => e.type === 'resource-snapshot')).toBeTruthy();
+  const error = await context.tracing.start({ screenshots: false, snapshots: false }).catch(e => e);
+  expect(error.message).toContain('Tracing has been already started with different options');
 });
 
-test('should reset and export', async ({ context, page, server }, testInfo) => {
+test('should throw when stopping without start', async ({ context }, testInfo) => {
+  const error = await context.tracing.stop({ path: testInfo.outputPath('trace.zip') }).catch(e => e);
+  expect(error.message).toContain('Must start tracing before stopping');
+});
+
+test('should not throw when stopping without start but not exporting', async ({ context }, testInfo) => {
+  await context.tracing.stop();
+});
+
+test('should work with multiple chunks', async ({ context, page, server }, testInfo) => {
   await context.tracing.start({ screenshots: true, snapshots: true });
   await page.goto(server.PREFIX + '/frames/frame.html');
 
-  await context.tracing.start({ screenshots: true, snapshots: true });
+  await context.tracing.startChunk();
   await page.setContent('<button>Click</button>');
   await page.click('"Click"');
   page.click('"ClickNoButton"').catch(() =>  {});
-  // @ts-expect-error
-  await context.tracing._export({ path: testInfo.outputPath('trace.zip') });
+  await context.tracing.stopChunk({ path: testInfo.outputPath('trace.zip') });
 
-  await context.tracing.start({ screenshots: true, snapshots: true });
+  await context.tracing.startChunk();
   await page.hover('"Click"');
-  await context.tracing.stop({ path: testInfo.outputPath('trace2.zip') });
+  await context.tracing.stopChunk({ path: testInfo.outputPath('trace2.zip') });
 
   const trace1 = await parseTrace(testInfo.outputPath('trace.zip'));
   expect(trace1.events[0].type).toBe('context-options');
@@ -248,6 +254,7 @@ test('should reset and export', async ({ context, page, server }, testInfo) => {
   expect(trace2.events.find(e => e.metadata?.apiName === 'page.click')).toBeFalsy();
   expect(trace2.events.find(e => e.metadata?.apiName === 'page.hover')).toBeTruthy();
   expect(trace2.events.some(e => e.type === 'frame-snapshot')).toBeTruthy();
+  expect(trace2.events.some(e => e.type === 'resource-snapshot' && e.snapshot.request.url.endsWith('style.css'))).toBeTruthy();
 });
 
 test('should export trace concurrently to second navigation', async ({ context, page, server }, testInfo) => {

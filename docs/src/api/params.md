@@ -117,6 +117,13 @@ Clicks on the source element at this point relative to the top-left corner of th
 
 Drops on the target element at this point relative to the top-left corner of the element's padding box. If not specified, some visible point of the element is used.
 
+## input-checked
+* langs:
+  - alias-csharp: checkedState
+- `checked` <[boolean]>
+
+Whether to check or uncheck the checkbox.
+
 ## query-selector
 - `selector` <[string]>
 
@@ -414,6 +421,16 @@ Emulates `'prefers-colors-scheme'` media feature, supported values are `'light'`
 Emulates `'prefers-reduced-motion'` media feature, supported values are `'reduce'`, `'no-preference'`. See [`method: Page.emulateMedia`] for more details. Defaults
 to `'no-preference'`.
 
+## context-option-forcedColors
+- `forcedColors` <[ForcedColors]<"active"|"none">>
+
+Emulates `'forced-colors'` media feature, supported values are `'active'`, `'none'`. See [`method: Page.emulateMedia`] for more details. Defaults
+to `'none'`.
+
+:::note
+It's not supported in WebKit, see [here](https://bugs.webkit.org/show_bug.cgi?id=225281) in their issue tracker.
+:::
+
 ## context-option-logger
 * langs: js
 - `logger` <[Logger]>
@@ -532,7 +549,9 @@ is considered matching if all specified properties match.
 ## wait-for-navigation-url
 - `url` <[string]|[RegExp]|[function]\([URL]\):[boolean]>
 
-A glob pattern, regex pattern or predicate receiving [URL] to match while waiting for the navigation.
+A glob pattern, regex pattern or predicate receiving [URL] to match while waiting for the navigation. Note that if
+the parameter is a string without wilcard characters, the method will wait for navigation to URL that is exactly
+equal to the string.
 
 ## wait-for-event-event
 * langs: js, python, java
@@ -635,6 +654,7 @@ using the [`method: AndroidDevice.setDefaultTimeout`] method.
 - %%-context-option-httpcredentials-%%
 - %%-context-option-colorscheme-%%
 - %%-context-option-reducedMotion-%%
+- %%-context-option-forcedColors-%%
 - %%-context-option-logger-%%
 - %%-context-option-videospath-%%
 - %%-context-option-videosize-%%

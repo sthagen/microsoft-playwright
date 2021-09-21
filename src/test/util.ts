@@ -17,59 +17,10 @@
 import type { TestInfoImpl } from './types';
 import util from 'util';
 import path from 'path';
+import url from 'url';
 import type { TestError, Location } from './types';
 import { default as minimatch } from 'minimatch';
 import { errors } from '../..';
-
-export class DeadlineRunner<T> {
-  private _timer: NodeJS.Timer | undefined;
-  private _done = false;
-  private _fulfill!: (t: { result?: T, timedOut?: boolean }) => void;
-  private _reject!: (error: any) => void;
-
-  readonly result: Promise<{ result?: T, timedOut?: boolean }>;
-
-  constructor(promise: Promise<T>, deadline: number | undefined) {
-    this.result = new Promise((f, r) => {
-      this._fulfill = f;
-      this._reject = r;
-    });
-    promise.then(result => {
-      this._finish({ result });
-    }).catch(e => {
-      this._finish(undefined, e);
-    });
-    this.setDeadline(deadline);
-  }
-
-  private _finish(success?: { result?: T, timedOut?: boolean }, error?: any) {
-    if (this._done)
-      return;
-    this.setDeadline(undefined);
-    if (success)
-      this._fulfill(success);
-    else
-      this._reject(error);
-  }
-
-  setDeadline(deadline: number | undefined) {
-    if (this._timer) {
-      clearTimeout(this._timer);
-      this._timer = undefined;
-    }
-    if (deadline === undefined)
-      return;
-    const timeout = deadline - monotonicTime();
-    if (timeout <= 0)
-      this._finish({ timedOut: true });
-    else
-      this._timer = setTimeout(() => this._finish({ timedOut: true }), timeout);
-  }
-}
-
-export async function raceAgainstDeadline<T>(promise: Promise<T>, deadline: number | undefined): Promise<{ result?: T, timedOut?: boolean }> {
-  return (new DeadlineRunner(promise, deadline)).result;
-}
 
 export async function pollUntilDeadline(testInfo: TestInfoImpl, func: (remainingTime: number) => Promise<boolean>, pollTime: number | undefined, deadlinePromise: Promise<void>): Promise<void> {
   let defaultExpectTimeout = testInfo.project.expect?.timeout;
@@ -141,7 +92,7 @@ export type FilePatternFilter = {
   line: number | null;
 };
 
-export function createMatcher(patterns: string | RegExp | (string | RegExp)[]): Matcher {
+export function createFileMatcher(patterns: string | RegExp | (string | RegExp)[]): Matcher {
   const reList: RegExp[] = [];
   const filePatterns: string[] = [];
   for (const pattern of Array.isArray(patterns) ? patterns : [patterns]) {
@@ -154,17 +105,36 @@ export function createMatcher(patterns: string | RegExp | (string | RegExp)[]): 
         filePatterns.push(pattern);
     }
   }
+  return (filePath: string) => {
+    for (const re of reList) {
+      re.lastIndex = 0;
+      if (re.test(filePath))
+        return true;
+    }
+    // Windows might still recieve unix style paths from Cygwin or Git Bash.
+    // Check against the file url as well.
+    if (path.sep === '\\') {
+      const fileURL = url.pathToFileURL(filePath).href;
+      for (const re of reList) {
+        re.lastIndex = 0;
+        if (re.test(fileURL))
+          return true;
+      }
+    }
+    for (const pattern of filePatterns) {
+      if (minimatch(filePath, pattern, { nocase: true, dot: true }))
+        return true;
+    }
+    return false;
+  };
+}
 
+export function createTitleMatcher(patterns:  RegExp | RegExp[]): Matcher {
+  const reList = Array.isArray(patterns) ? patterns : [patterns];
   return (value: string) => {
     for (const re of reList) {
       re.lastIndex = 0;
       if (re.test(value))
-        return true;
-    }
-    for (const pattern of filePatterns) {
-      if (minimatch(value, pattern, {
-        nocase: true,
-      }))
         return true;
     }
     return false;

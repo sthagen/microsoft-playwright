@@ -16,6 +16,8 @@
  */
 
 import * as channels from '../protocol/channels';
+import type { Size } from '../common/types';
+export { Size, Point, Rect, Quad, URLMatch, TimeoutOptions, HeadersArray } from '../common/types';
 
 type LoggerSeverity = 'verbose' | 'info' | 'warning' | 'error';
 export interface Logger {
@@ -24,11 +26,10 @@ export interface Logger {
 }
 
 export interface ClientSideInstrumentation {
-  onApiCall(name: string): (error?: Error) => void;
+  onApiCallBegin(apiCall: string): { userObject: any };
+  onApiCallEnd(userData: { userObject: any }, error?: Error): any;
 }
 
-import { Size } from '../common/types';
-export { Size, Point, Rect, Quad, URLMatch, TimeoutOptions } from '../common/types';
 export type StrictOptions = { strict?: boolean };
 export type Headers = { [key: string]: string };
 export type Env = { [key: string]: string | number | boolean | undefined };

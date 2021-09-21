@@ -97,6 +97,8 @@ class TestServer {
     this._auths = new Map();
     /** @type {!Map<string, string>} */
     this._csp = new Map();
+    /** @type {!Map<string, Object>} */
+    this._extraHeaders = new Map();
     /** @type {!Set<string>} */
     this._gzipRoutes = new Set();
     /** @type {!Map<string, !Promise>} */
@@ -153,6 +155,14 @@ class TestServer {
     this._csp.set(path, csp);
   }
 
+  /**
+   * @param {string} path
+   * @param {Object<string, string>} object
+   */
+  setExtraHeaders(path, object) {
+    this._extraHeaders.set(path, object);
+  }
+
   async stop() {
     this.reset();
     for (const socket of this._sockets)
@@ -175,7 +185,8 @@ class TestServer {
    */
   setRedirect(from, to) {
     this.setRoute(from, (req, res) => {
-      res.writeHead(302, { location: to });
+      let headers = this._extraHeaders.get(req.url) || {};
+      res.writeHead(302, { ...headers, location: to });
       res.end();
     });
   }
@@ -203,6 +214,7 @@ class TestServer {
     this._routes.clear();
     this._auths.clear();
     this._csp.clear();
+    this._extraHeaders.clear();
     this._gzipRoutes.clear();
     const error = new Error('Static Server has been reset');
     for (const subscriber of this._requestSubscribers.values())
@@ -226,10 +238,10 @@ class TestServer {
       request.on('data', chunk => body = Buffer.concat([body, chunk]));
       request.on('end', () => resolve(body));
     });
-    const pathName = url.parse(request.url).path;
-    this.debugServer(`request ${request.method} ${pathName}`);
-    if (this._auths.has(pathName)) {
-      const auth = this._auths.get(pathName);
+    const path = url.parse(request.url).path;
+    this.debugServer(`request ${request.method} ${path}`);
+    if (this._auths.has(path)) {
+      const auth = this._auths.get(path);
       const credentials = Buffer.from((request.headers.authorization || '').split(' ')[1] || '', 'base64').toString();
       this.debugServer(`request credentials ${credentials}`);
       this.debugServer(`actual credentials ${auth.username}:${auth.password}`);
@@ -241,11 +253,11 @@ class TestServer {
       }
     }
     // Notify request subscriber.
-    if (this._requestSubscribers.has(pathName)) {
-      this._requestSubscribers.get(pathName)[fulfillSymbol].call(null, request);
-      this._requestSubscribers.delete(pathName);
+    if (this._requestSubscribers.has(path)) {
+      this._requestSubscribers.get(path)[fulfillSymbol].call(null, request);
+      this._requestSubscribers.delete(path);
     }
-    const handler = this._routes.get(pathName);
+    const handler = this._routes.get(path);
     if (handler) {
       handler.call(null, request, response);
     } else {
@@ -280,6 +292,12 @@ class TestServer {
     if (this._csp.has(pathName))
       response.setHeader('Content-Security-Policy', this._csp.get(pathName));
 
+    if (this._extraHeaders.has(pathName)) {
+      const object = this._extraHeaders.get(pathName);
+      for (const key in object)
+        response.setHeader(key, object[key]);
+    }
+
     const {err, data} = await fs.promises.readFile(filePath).then(data => ({data})).catch(err => ({err}));
     // The HTTP transaction might be already terminated after async hop here - do nothing in this case.
     if (response.writableEnded)
@@ -303,6 +321,10 @@ class TestServer {
     } else {
       response.end(data);
     }
+  }
+
+  onceWebSocketConnection(handler) {
+    this._wsServer.once('connection', handler);
   }
 
   waitForWebSocketConnectionRequest() {

@@ -29,6 +29,7 @@ Metadata:
       type: array?
       items: StackFrame
     apiName: string?
+    collectLogs: boolean?
 
 
 Point:
@@ -213,23 +214,55 @@ InterceptedResponse:
     statusText: string
     headers:
       type: array
-      items:
-        type: object
-        properties:
-          name: string
-          value: string
+      items: NameValue
+
+
+FetchRequest:
+  type: interface
+
+  commands:
+
+    fetch:
+      parameters:
+        url: string
+        params:
+          type: array?
+          items: NameValue
+        method: string?
+        headers:
+          type: array?
+          items: NameValue
+        postData: binary?
+        formData: json?
+        timeout: number?
+        failOnStatusCode: boolean?
+      returns:
+        response: FetchResponse?
+        error: string?
+
+    fetchResponseBody:
+      parameters:
+        fetchUid: string
+      returns:
+        binary?: binary
+
+    disposeFetchResponse:
+      parameters:
+        fetchUid: string
+
+    dispose:
 
 
 FetchResponse:
   type: object
   properties:
+    fetchUid: string
     url: string
     status: number
     statusText: string
     headers:
       type: array
       items: NameValue
-    body: binary
 
 LaunchOptions:
   type: mixin
@@ -316,6 +349,11 @@ ContextOptions:
       literals:
       - reduce
       - no-preference
+    forcedColors:
+      type: enum?
+      literals:
+      - active
+      - none
     acceptDownloads: boolean?
     baseURL: string?
     _debugName: string?
@@ -415,6 +453,12 @@ Playwright:
       parameters:
         uid: string
 
+    newRequest:
+      parameters:
+        ignoreHTTPSErrors: boolean?
+      returns:
+        request: FetchRequest
+
   events:
     socksRequested:
       parameters:
@@ -452,6 +496,15 @@ BrowserType:
     name: string
 
   commands:
+
+    connect:
+      parameters:
+        wsEndpoint: string
+        headers: json?
+        slowMo: number?
+        timeout: number?
+      returns:
+        pipe: JsonPipe
 
     launch:
       parameters:
@@ -568,6 +621,7 @@ BrowserContext:
 
   initializer:
     isChromium: boolean
+    fetchRequest: FetchRequest
 
   commands:
 
@@ -601,18 +655,6 @@ BrowserContext:
       parameters:
         name: string
         needsHandle: boolean?
-
-    fetch:
-      parameters:
-        url: string
-        method: string?
-        headers:
-          type: array?
-          items: NameValue
-        postData: binary?
-      returns:
-        response: FetchResponse?
-        error: string?
 
     grantPermissions:
       parameters:
@@ -701,9 +743,17 @@ BrowserContext:
         snapshots: boolean?
         screenshots: boolean?
 
+    tracingStartChunk:
+
+    tracingStopChunk:
+      parameters:
+        save: boolean
+      returns:
+        artifact: Artifact?
+
     tracingStop:
 
-    tracingExport:
+    harExport:
       returns:
         artifact: Artifact
 
@@ -751,6 +801,7 @@ BrowserContext:
     requestFinished:
       parameters:
         request: Request
+        response: Response?
         responseEndTiming: number
         page: Page?
 
@@ -818,6 +869,13 @@ Page:
           literals:
           - reduce
           - no-preference
+          # Reset emulated value to the system default.
+          - null
+        forcedColors:
+          type: enum?
+          literals:
+          - active
+          - none
           # Reset emulated value to the system default.
           - null
 
@@ -979,6 +1037,13 @@ Page:
           - right
           - middle
         clickCount: number?
+      tracing:
+        snapshot: true
+
+    mouseWheel:
+      parameters:
+        deltaX: number
+        deltaY: number
       tracing:
         snapshot: true
 
@@ -1208,6 +1273,7 @@ Frame:
         trial: boolean?
       tracing:
         snapshot: true
+        pausesBeforeInput: true
 
     click:
       parameters:
@@ -1237,6 +1303,7 @@ Frame:
         trial: boolean?
       tracing:
         snapshot: true
+        pausesBeforeInput: true
 
     content:
       returns:
@@ -1252,6 +1319,9 @@ Frame:
         trial: boolean?
         sourcePosition: Point?
         targetPosition: Point?
+      tracing:
+        snapshot: true
+        pausesBeforeInput: true
 
     dblclick:
       parameters:
@@ -1280,6 +1350,7 @@ Frame:
         trial: boolean?
       tracing:
         snapshot: true
+        pausesBeforeInput: true
 
     dispatchEvent:
       parameters:
@@ -1321,6 +1392,7 @@ Frame:
         noWaitAfter: boolean?
       tracing:
         snapshot: true
+        pausesBeforeInput: true
 
     focus:
       parameters:
@@ -1380,6 +1452,7 @@ Frame:
         trial: boolean?
       tracing:
         snapshot: true
+        pausesBeforeInput: true
 
     innerHTML:
       parameters:
@@ -1447,6 +1520,8 @@ Frame:
         strict: boolean?
       returns:
         value: boolean
+      tracing:
+        snapshot: true
 
     isVisible:
       parameters:
@@ -1454,6 +1529,8 @@ Frame:
         strict: boolean?
       returns:
         value: boolean
+      tracing:
+        snapshot: true
 
     isEditable:
       parameters:
@@ -1475,6 +1552,7 @@ Frame:
         timeout: number?
       tracing:
         snapshot: true
+        pausesBeforeInput: true
 
     querySelector:
       parameters:
@@ -1515,6 +1593,7 @@ Frame:
           items: string
       tracing:
         snapshot: true
+        pausesBeforeInput: true
 
     setContent:
       parameters:
@@ -1545,6 +1624,7 @@ Frame:
         noWaitAfter: boolean?
       tracing:
         snapshot: true
+        pausesBeforeInput: true
 
     tap:
       parameters:
@@ -1566,6 +1646,7 @@ Frame:
         trial: boolean?
       tracing:
         snapshot: true
+        pausesBeforeInput: true
 
     textContent:
       parameters:
@@ -1591,6 +1672,7 @@ Frame:
         timeout: number?
       tracing:
         snapshot: true
+        pausesBeforeInput: true
 
     uncheck:
       parameters:
@@ -1603,6 +1685,7 @@ Frame:
         trial: boolean?
       tracing:
         snapshot: true
+        pausesBeforeInput: true
 
     waitForFunction:
       parameters:
@@ -1793,6 +1876,7 @@ ElementHandle:
         trial: boolean?
       tracing:
         snapshot: true
+        pausesBeforeInput: true
 
     click:
       parameters:
@@ -1820,6 +1904,7 @@ ElementHandle:
         trial: boolean?
       tracing:
         snapshot: true
+        pausesBeforeInput: true
 
     contentFrame:
       returns:
@@ -1850,6 +1935,7 @@ ElementHandle:
         trial: boolean?
       tracing:
         snapshot: true
+        pausesBeforeInput: true
 
     dispatchEvent:
       parameters:
@@ -1866,6 +1952,7 @@ ElementHandle:
         noWaitAfter: boolean?
       tracing:
         snapshot: true
+        pausesBeforeInput: true
 
     focus:
 
@@ -1892,42 +1979,61 @@ ElementHandle:
         trial: boolean?
       tracing:
         snapshot: true
+        pausesBeforeInput: true
 
     innerHTML:
       returns:
         value: string
+      tracing:
+        snapshot: true
 
     innerText:
       returns:
         value: string
+      tracing:
+        snapshot: true
 
     inputValue:
       returns:
         value: string
+      tracing:
+        snapshot: true
 
     isChecked:
       returns:
         value: boolean
+      tracing:
+        snapshot: true
 
     isDisabled:
       returns:
         value: boolean
+      tracing:
+        snapshot: true
 
     isEditable:
       returns:
         value: boolean
+      tracing:
+        snapshot: true
 
     isEnabled:
       returns:
         value: boolean
+      tracing:
+        snapshot: true
 
     isHidden:
       returns:
         value: boolean
+      tracing:
+        snapshot: true
 
     isVisible:
       returns:
         value: boolean
+      tracing:
+        snapshot: true
 
     ownerFrame:
       returns:
@@ -1941,6 +2047,7 @@ ElementHandle:
         noWaitAfter: boolean?
       tracing:
         snapshot: true
+        pausesBeforeInput: true
 
     querySelector:
       parameters:
@@ -1998,6 +2105,7 @@ ElementHandle:
           items: string
       tracing:
         snapshot: true
+        pausesBeforeInput: true
 
     selectText:
       parameters:
@@ -2020,6 +2128,7 @@ ElementHandle:
         noWaitAfter: boolean?
       tracing:
         snapshot: true
+        pausesBeforeInput: true
 
     tap:
       parameters:
@@ -2039,10 +2148,13 @@ ElementHandle:
         trial: boolean?
       tracing:
         snapshot: true
+        pausesBeforeInput: true
 
     textContent:
       returns:
         value: string?
+      tracing:
+        snapshot: true
 
     type:
       parameters:
@@ -2052,6 +2164,7 @@ ElementHandle:
         timeout: number?
       tracing:
         snapshot: true
+        pausesBeforeInput: true
 
     uncheck:
       parameters:
@@ -2062,6 +2175,7 @@ ElementHandle:
         trial: boolean?
       tracing:
         snapshot: true
+        pausesBeforeInput: true
 
     waitForElementState:
       parameters:
@@ -2107,11 +2221,7 @@ Request:
     postData: binary?
     headers:
       type: array
-      items:
-        type: object
-        properties:
-          name: string
-          value: string
+      items: NameValue
     isNavigationRequest: boolean
     redirectedFrom: Request?
 
@@ -2157,6 +2267,7 @@ Route:
         body: string?
         isBase64: boolean?
         useInterceptedResponseBody: boolean?
+        fetchResponseUid: string?
 
     responseBody:
       returns:
@@ -2183,20 +2294,9 @@ Response:
     url: string
     status: number
     statusText: string
-    requestHeaders:
-      type: array
-      items:
-        type: object
-        properties:
-          name: string
-          value: string
     headers:
       type: array
-      items:
-        type: object
-        properties:
-          name: string
-          value: string
+      items: NameValue
     timing: ResourceTiming
 
 
@@ -2206,10 +2306,6 @@ Response:
       returns:
         binary: binary
 
-    finished:
-      returns:
-        error: string?
-
     securityDetails:
       returns:
         value: SecurityDetails?
@@ -2217,6 +2313,22 @@ Response:
     serverAddr:
       returns:
         value: RemoteAddr?
+
+    rawRequestHeaders:
+      returns:
+        headers:
+          type: array
+          items: NameValue
+
+    rawResponseHeaders:
+      returns:
+        headers:
+          type: array
+          items: NameValue
+
+    sizes:
+      returns:
+        sizes: RequestSizes
 
 
 SecurityDetails:
@@ -2227,6 +2339,14 @@ SecurityDetails:
     subjectName: string?
     validFrom: number?
     validTo: number?
+
+RequestSizes:
+  type: object
+  properties:
+    requestBodySize: number
+    requestHeadersSize: number
+    responseBodySize: number
+    responseHeadersSize: number
 
 
 RemoteAddr:
@@ -2699,6 +2819,11 @@ AndroidDevice:
           literals:
           - reduce
           - no-preference
+        forcedColors:
+          type: enum?
+          literals:
+          - active
+          - none
         acceptDownloads: boolean?
         _debugName: string?
         recordVideo:
@@ -2831,3 +2956,23 @@ AndroidElementInfo:
     longClickable: boolean
     scrollable: boolean
     selected: boolean
+
+
+JsonPipe:
+  type: interface
+
+  commands:
+    send:
+      parameters:
+        message: json
+
+    close:
+
+  events:
+
+    message:
+      parameters:
+        message: json
+
+    closed:
+        error: SerializedError?

@@ -14,17 +14,9 @@
  * limitations under the License.
  */
 
-import { equals } from 'expect/build/jasmineUtils';
 import {
   iterableEquality
 } from 'expect/build/utils';
-import {
-  matcherHint, MatcherHintOptions,
-  printDiffOrStringify,
-  printExpected,
-  printReceived,
-  stringify
-} from 'jest-matcher-utils';
 import { currentTestInfo } from '../globals';
 import type { Expect } from '../types';
 import { expectType, pollUntilDeadline } from '../util';
@@ -35,6 +27,13 @@ const RECEIVED_LABEL = 'Received';
 
 // The optional property of matcher context is true if undefined.
 const isExpand = (expand?: boolean): boolean => expand !== false;
+
+function regExpTester(a: any, b: any): boolean | undefined {
+  if (typeof a === 'string' && b instanceof RegExp) {
+    b.lastIndex = 0;
+    return b.test(a);
+  }
+}
 
 export async function toEqual<T>(
   this: ReturnType<Expect['getState']>,
@@ -50,7 +49,7 @@ export async function toEqual<T>(
     throw new Error(`${matcherName} must be called during the test`);
   expectType(receiver, receiverType, matcherName);
 
-  const matcherOptions: MatcherHintOptions = {
+  const matcherOptions = {
     comment: 'deep equality',
     isNot: this.isNot,
     promise: this.promise,
@@ -59,25 +58,24 @@ export async function toEqual<T>(
   let received: T | undefined = undefined;
   let pass = false;
 
-  // TODO: interrupt on timeout for nice message.
   await pollUntilDeadline(testInfo, async remainingTime => {
     received = await query(remainingTime);
-    pass = equals(received, expected, [iterableEquality]);
+    pass = this.equals(received, expected, [iterableEquality, regExpTester]);
     return pass === !matcherOptions.isNot;
   }, options.timeout, testInfo._testFinished);
 
   const message = pass
     ? () =>
-      matcherHint(matcherName, undefined, undefined, matcherOptions) +
+      this.utils.matcherHint(matcherName, undefined, undefined, matcherOptions) +
       '\n\n' +
-      `Expected: not ${printExpected(expected)}\n` +
-      (stringify(expected) !== stringify(received)
-        ? `Received:     ${printReceived(received)}`
+      `Expected: not ${this.utils.printExpected(expected)}\n` +
+      (this.utils.stringify(expected) !== this.utils.stringify(received)
+        ? `Received:     ${this.utils.printReceived(received)}`
         : '')
     : () =>
-      matcherHint(matcherName, undefined, undefined, matcherOptions) +
+      this.utils.matcherHint(matcherName, undefined, undefined, matcherOptions) +
       '\n\n' +
-      printDiffOrStringify(
+      this.utils.printDiffOrStringify(
           expected,
           received,
           EXPECTED_LABEL,

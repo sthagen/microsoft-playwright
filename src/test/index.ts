@@ -17,9 +17,10 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import type { LaunchOptions, BrowserContextOptions, Page, BrowserContext, BrowserType } from '../../types/types';
-import type { TestType, PlaywrightTestArgs, PlaywrightTestOptions, PlaywrightWorkerArgs, PlaywrightWorkerOptions } from '../../types/test';
+import type { TestType, PlaywrightTestArgs, PlaywrightTestOptions, PlaywrightWorkerArgs, PlaywrightWorkerOptions, TestInfo } from '../../types/test';
 import { rootTestType } from './testType';
 import { createGuid, removeFolders } from '../utils/utils';
+import { GridClient } from '../grid/gridClient';
 export { expect } from './expect';
 export const _baseTest: TestType<{}, {}> = rootTestType.test;
 
@@ -35,7 +36,15 @@ type WorkerAndFileFixtures = PlaywrightWorkerArgs & PlaywrightWorkerOptions & {
 export const test = _baseTest.extend<TestFixtures, WorkerAndFileFixtures>({
   defaultBrowserType: [ 'chromium', { scope: 'worker' } ],
   browserName: [ ({ defaultBrowserType }, use) => use(defaultBrowserType), { scope: 'worker' } ],
-  playwright: [ require('../inprocess'), { scope: 'worker' } ],
+  playwright: [async ({}, use, workerInfo) => {
+    if (process.env.PW_GRID) {
+      const gridClient = await GridClient.connect(process.env.PW_GRID);
+      await use(gridClient.playwright() as any);
+      await gridClient.close();
+    } else {
+      await use(require('../inprocess'));
+    }
+  }, { scope: 'worker' } ],
   headless: [ undefined, { scope: 'worker' } ],
   channel: [ undefined, { scope: 'worker' } ],
   launchOptions: [ {}, { scope: 'worker' } ],
@@ -192,13 +201,28 @@ export const test = _baseTest.extend<TestFixtures, WorkerAndFileFixtures>({
     const onDidCreateContext = async (context: BrowserContext) => {
       context.setDefaultTimeout(actionTimeout || 0);
       context.setDefaultNavigationTimeout(navigationTimeout || actionTimeout || 0);
-      if (captureTrace)
-        await context.tracing.start({ screenshots: true, snapshots: true });
-      else
+      if (captureTrace) {
+        if (!(context.tracing as any)[kTracingStarted]) {
+          await context.tracing.start({ screenshots: true, snapshots: true });
+          (context.tracing as any)[kTracingStarted] = true;
+        }
+        await context.tracing.startChunk();
+      } else {
         await context.tracing.stop();
+      }
       (context as any)._csi = {
-        onApiCall: (name: string) => {
-          return (testInfo as any)._addStep('pw:api', name);
+        onApiCallBegin: (apiCall: string) => {
+          const step = (testInfo as any)._addStep({
+            category: 'pw:api',
+            title: apiCall,
+            canHaveChildren: false,
+            forceNoParent: false,
+          });
+          return { userObject: step };
+        },
+        onApiCallEnd: (data: { userObject: any }, error?: Error) => {
+          const step = data.userObject;
+          step?.complete(error);
         },
       };
     };
@@ -209,7 +233,7 @@ export const test = _baseTest.extend<TestFixtures, WorkerAndFileFixtures>({
         // after the test finishes.
         const tracePath = path.join(_artifactsDir(), createGuid() + '.zip');
         temporaryTraceFiles.push(tracePath);
-        await (context.tracing as any)._export({ path: tracePath });
+        await context.tracing.stopChunk({ path: tracePath });
       }
       if (screenshot === 'on' || screenshot === 'only-on-failure') {
         // Capture screenshot for now. We'll know whether we have to preserve them
@@ -223,7 +247,6 @@ export const test = _baseTest.extend<TestFixtures, WorkerAndFileFixtures>({
     };
 
     // 1. Setup instrumentation and process existing contexts.
-    const oldOnDidCreateContext = (_browserType as any)._onDidCreateContext;
     (_browserType as any)._onDidCreateContext = onDidCreateContext;
     (_browserType as any)._onWillCloseContext = onWillCloseContext;
     (_browserType as any)._defaultContextOptions = _combinedContextOptions;
@@ -235,7 +258,7 @@ export const test = _baseTest.extend<TestFixtures, WorkerAndFileFixtures>({
 
     // 3. Determine whether we need the artifacts.
     const testFailed = testInfo.status !== testInfo.expectedStatus;
-    const isHook = testInfo.title === 'beforeAll' || testInfo.title === 'afterAll';
+    const isHook = !!hookType(testInfo);
     const preserveTrace = captureTrace && !isHook && (trace === 'on' || (testFailed && trace === 'retain-on-failure') || (trace === 'on-first-retry' && testInfo.retry === 1));
     const captureScreenshots = !isHook && (screenshot === 'on' || (screenshot === 'only-on-failure' && testFailed));
 
@@ -257,7 +280,7 @@ export const test = _baseTest.extend<TestFixtures, WorkerAndFileFixtures>({
 
     // 4. Cleanup instrumentation.
     const leftoverContexts = Array.from((_browserType as any)._contexts) as BrowserContext[];
-    (_browserType as any)._onDidCreateContext = oldOnDidCreateContext;
+    (_browserType as any)._onDidCreateContext = undefined;
     (_browserType as any)._onWillCloseContext = undefined;
     (_browserType as any)._defaultContextOptions = undefined;
     leftoverContexts.forEach(context => (context as any)._csi = undefined);
@@ -265,7 +288,7 @@ export const test = _baseTest.extend<TestFixtures, WorkerAndFileFixtures>({
     // 5. Collect artifacts from any non-closed contexts.
     await Promise.all(leftoverContexts.map(async context => {
       if (preserveTrace)
-        await (context.tracing as any)._export({ path: addTraceAttachment() });
+        await context.tracing.stopChunk({ path: addTraceAttachment() });
       if (captureScreenshots)
         await Promise.all(context.pages().map(page => page.screenshot({ timeout: 5000, path: addScreenshotAttachment() }).catch(() => {})));
     }));
@@ -287,8 +310,9 @@ export const test = _baseTest.extend<TestFixtures, WorkerAndFileFixtures>({
   }, { auto: true }],
 
   context: async ({ browser, video, _artifactsDir }, use, testInfo) => {
-    if (testInfo.title === 'beforeAll' || testInfo.title === 'afterAll')
-      throw new Error(`"context" and "page" fixtures are not suppoted in ${testInfo.title}. Use browser.newContext() instead.`);
+    const hook = hookType(testInfo);
+    if (hook)
+      throw new Error(`"context" and "page" fixtures are not supported in ${hook}. Use browser.newContext() instead.`);
 
     let videoMode = typeof video === 'string' ? video : video.mode;
     if (videoMode === 'retry-with-video')
@@ -346,11 +370,11 @@ export const test = _baseTest.extend<TestFixtures, WorkerAndFileFixtures>({
 });
 export default test;
 
-function formatPendingCalls(calls: ProtocolCall[]) {
+function formatPendingCalls(calls: ParsedStackTrace[]) {
   if (!calls.length)
     return '';
   return 'Pending operations:\n' + calls.map(call => {
-    const frame = call.stack && call.stack[0] ? formatStackFrame(call.stack[0]) : '<unknown>';
+    const frame = call.frames && call.frames[0] ? formatStackFrame(call.frames[0]) : '<unknown>';
     return `  - ${call.apiName} at ${frame}\n`;
   }).join('') + '\n';
 }
@@ -360,6 +384,13 @@ function formatStackFrame(frame: StackFrame) {
   return `${file}:${frame.line || 1}:${frame.column || 1}`;
 }
 
+function hookType(testInfo: TestInfo): 'beforeAll' | 'afterAll' | undefined {
+  if (testInfo.title.startsWith('beforeAll'))
+    return 'beforeAll';
+  if (testInfo.title.startsWith('afterAll'))
+    return 'afterAll';
+}
+
 type StackFrame = {
   file: string,
   line?: number,
@@ -367,7 +398,10 @@ type StackFrame = {
   function?: string,
 };
 
-type ProtocolCall = {
-  stack?: StackFrame[],
-  apiName?: string,
+type ParsedStackTrace = {
+  frames: StackFrame[];
+  frameTexts: string[];
+  apiName: string;
 };
+
+const kTracingStarted = Symbol('kTracingStarted');

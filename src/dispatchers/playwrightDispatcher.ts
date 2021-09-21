@@ -26,8 +26,10 @@ import * as types from '../server/types';
 import { SocksConnection, SocksConnectionClient } from '../utils/socksProxy';
 import { createGuid } from '../utils/utils';
 import { debugLogger } from '../utils/debugLogger';
+import { GlobalFetchRequest } from '../server/fetch';
+import { FetchRequestDispatcher } from './networkDispatchers';
 
-export class PlaywrightDispatcher extends Dispatcher<Playwright, channels.PlaywrightInitializer> implements channels.PlaywrightChannel {
+export class PlaywrightDispatcher extends Dispatcher<Playwright, channels.PlaywrightInitializer, channels.PlaywrightEvents> implements channels.PlaywrightChannel {
   private _socksProxy: SocksProxy | undefined;
 
   constructor(scope: DispatcherScope, playwright: Playwright, customSelectors?: channels.SelectorsChannel, preLaunchedBrowser?: channels.BrowserChannel) {
@@ -52,24 +54,29 @@ export class PlaywrightDispatcher extends Dispatcher<Playwright, channels.Playwr
     debugLogger.log('proxy', `Starting socks proxy server on port ${this._object.options.socksProxyPort}`);
   }
 
-  async socksConnected(params: channels.PlaywrightSocksConnectedParams, metadata?: channels.Metadata): Promise<void> {
+  async socksConnected(params: channels.PlaywrightSocksConnectedParams): Promise<void> {
     this._socksProxy?.socketConnected(params);
   }
 
-  async socksFailed(params: channels.PlaywrightSocksFailedParams, metadata?: channels.Metadata): Promise<void> {
+  async socksFailed(params: channels.PlaywrightSocksFailedParams): Promise<void> {
     this._socksProxy?.socketFailed(params);
   }
 
-  async socksData(params: channels.PlaywrightSocksDataParams, metadata?: channels.Metadata): Promise<void> {
+  async socksData(params: channels.PlaywrightSocksDataParams): Promise<void> {
     this._socksProxy?.sendSocketData(params);
   }
 
-  async socksError(params: channels.PlaywrightSocksErrorParams, metadata?: channels.Metadata): Promise<void> {
+  async socksError(params: channels.PlaywrightSocksErrorParams): Promise<void> {
     this._socksProxy?.sendSocketError(params);
   }
 
-  async socksEnd(params: channels.PlaywrightSocksEndParams, metadata?: channels.Metadata): Promise<void> {
+  async socksEnd(params: channels.PlaywrightSocksEndParams): Promise<void> {
     this._socksProxy?.sendSocketEnd(params);
+  }
+
+  async newRequest(params: channels.PlaywrightNewRequestParams, metadata?: channels.Metadata): Promise<channels.PlaywrightNewRequestResult> {
+    const request = new GlobalFetchRequest(this._object);
+    return { request: FetchRequestDispatcher.from(this._scope, request) };
   }
 }
 

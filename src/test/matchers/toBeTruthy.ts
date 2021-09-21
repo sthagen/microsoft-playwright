@@ -14,10 +14,6 @@
  * limitations under the License.
  */
 
-import {
-  matcherHint,
-  MatcherHintOptions
-} from 'jest-matcher-utils';
 import { currentTestInfo } from '../globals';
 import type { Expect } from '../types';
 import { expectType, pollUntilDeadline } from '../util';
@@ -35,7 +31,7 @@ export async function toBeTruthy<T>(
     throw new Error(`${matcherName} must be called during the test`);
   expectType(receiver, receiverType, matcherName);
 
-  const matcherOptions: MatcherHintOptions = {
+  const matcherOptions = {
     isNot: this.isNot,
     promise: this.promise,
   };
@@ -43,7 +39,6 @@ export async function toBeTruthy<T>(
   let received: T;
   let pass = false;
 
-  // TODO: interrupt on timeout for nice message.
   await pollUntilDeadline(testInfo, async remainingTime => {
     received = await query(remainingTime);
     pass = !!received;
@@ -51,7 +46,7 @@ export async function toBeTruthy<T>(
   }, options.timeout, testInfo._testFinished);
 
   const message = () => {
-    return matcherHint(matcherName, undefined, '', matcherOptions);
+    return this.utils.matcherHint(matcherName, undefined, '', matcherOptions);
   };
 
   return { message, pass };

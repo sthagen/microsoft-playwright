@@ -98,10 +98,9 @@ it('should work when header manipulation headers with redirect', async ({page, s
 // @see https://github.com/GoogleChrome/puppeteer/issues/4743
 it('should be able to remove headers', async ({page, server}) => {
   await page.goto(server.EMPTY_PAGE);
-  await page.route('**/*', route => {
-    const headers = Object.assign({}, route.request().headers(), {
-      foo: undefined, // remove "foo" header
-    });
+  await page.route('**/*', async route => {
+    const headers = { ...route.request().headers() };
+    delete headers['foo'];
     route.continue({ headers });
   });
 
@@ -214,10 +213,14 @@ it('should pause intercepted fetch request until continue', async ({page, server
   expect(status).toBe(200);
 });
 
-it('should work with custom referer headers', async ({page, server}) => {
+it('should work with custom referer headers', async ({page, server, browserName}) => {
   await page.setExtraHTTPHeaders({ 'referer': server.EMPTY_PAGE });
   await page.route('**/*', route => {
-    expect(route.request().headers()['referer']).toBe(server.EMPTY_PAGE);
+    // See https://github.com/microsoft/playwright/issues/8999
+    if (browserName === 'chromium')
+      expect(route.request().headers()['referer']).toBe(server.EMPTY_PAGE + ', ' + server.EMPTY_PAGE);
+    else
+      expect(route.request().headers()['referer']).toBe(server.EMPTY_PAGE);
     route.continue();
   });
   const response = await page.goto(server.EMPTY_PAGE);
@@ -506,7 +509,7 @@ it('should not fulfill with redirect status', async ({page, server, browserName}
   }
 });
 
-it('should support cors with GET', async ({page, server}) => {
+it('should support cors with GET', async ({page, server, browserName}) => {
   await page.goto(server.EMPTY_PAGE);
   await page.route('**/cars*', async (route, request) => {
     const headers = request.url().endsWith('allow') ? { 'access-control-allow-origin': '*' } : {};
@@ -531,7 +534,12 @@ it('should support cors with GET', async ({page, server}) => {
       const response = await fetch('https://example.com/cars?reject', { mode: 'cors' });
       return response.json();
     }).catch(e => e);
-    expect(error.message).toContain('failed');
+    if (browserName === 'chromium')
+      expect(error.message).toContain('Failed');
+    if (browserName === 'webkit')
+      expect(error.message).toContain('TypeError');
+    if (browserName === 'firefox')
+      expect(error.message).toContain('NetworkError');
   }
 });
 

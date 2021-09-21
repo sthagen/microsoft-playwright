@@ -96,6 +96,9 @@ export const colorSchemes: Set<ColorScheme> = new Set(['dark', 'light', 'no-pref
 export type ReducedMotion = 'no-preference' | 'reduce';
 export const reducedMotions: Set<ReducedMotion> = new Set(['no-preference', 'reduce']);
 
+export type ForcedColors = 'active' | 'none';
+export const forcedColors: Set<ForcedColors> = new Set(['active', 'none']);
+
 export type DeviceDescriptor = {
   userAgent: string,
   viewport: Size,
@@ -256,6 +259,7 @@ export type BrowserContextOptions = {
   hasTouch?: boolean,
   colorScheme?: ColorScheme,
   reducedMotion?: ReducedMotion,
+  forcedColors?: ForcedColors,
   acceptDownloads?: boolean,
   recordVideo?: {
     dir: string,
@@ -368,20 +372,33 @@ export type SetStorageState = {
   origins?: OriginStorage[]
 };
 
+export type FileInfo = {
+  name: string,
+  mimeType?: string,
+  buffer: Buffer,
+};
+
+export type FormField = {
+  name: string,
+  value?: string,
+  file?: FileInfo,
+};
+
 export type FetchOptions = {
   url: string,
+  params?: { [name: string]: string },
   method?: string,
-  headers?:  { [name: string]: string },
+  headers?: { [name: string]: string },
   postData?: Buffer,
+  formData?: FormField[],
+  timeout?: number,
+  failOnStatusCode?: boolean,
 };
 
 export type FetchResponse = {
   url: string,
   status: number,
   statusText: string,
-  headers: {
-    name: string,
-    value: string,
-  }[],
+  headers: HeadersArray,
   body: Buffer,
 };

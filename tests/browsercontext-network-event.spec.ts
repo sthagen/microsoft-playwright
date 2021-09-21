@@ -17,8 +17,7 @@
 
 import { browserTest as it, expect } from './config/browserTest';
 
-it('BrowserContext.Events.Request', async ({browser, server}) => {
-  const context = await browser.newContext();
+it('BrowserContext.Events.Request', async ({context, server}) => {
   const page = await context.newPage();
   const requests = [];
   context.on('request', request => requests.push(request));
@@ -37,8 +36,7 @@ it('BrowserContext.Events.Request', async ({browser, server}) => {
   ]);
 });
 
-it('BrowserContext.Events.Response', async ({browser, server}) => {
-  const context = await browser.newContext();
+it('BrowserContext.Events.Response', async ({context, server}) => {
   const page = await context.newPage();
   const responses = [];
   context.on('response', response => responses.push(response));
@@ -57,12 +55,11 @@ it('BrowserContext.Events.Response', async ({browser, server}) => {
   ]);
 });
 
-it('BrowserContext.Events.RequestFailed', async ({browser, server}) => {
+it('BrowserContext.Events.RequestFailed', async ({context, server}) => {
   server.setRoute('/one-style.css', (_, res) => {
     res.setHeader('Content-Type', 'text/css');
     res.connection.destroy();
   });
-  const context = await browser.newContext();
   const page = await context.newPage();
   const failedRequests = [];
   context.on('requestfailed', request => failedRequests.push(request));
@@ -75,8 +72,7 @@ it('BrowserContext.Events.RequestFailed', async ({browser, server}) => {
 });
 
 
-it('BrowserContext.Events.RequestFinished', async ({browser, server}) => {
-  const context = await browser.newContext();
+it('BrowserContext.Events.RequestFinished', async ({context, server}) => {
   const page = await context.newPage();
   const [response] = await Promise.all([
     page.goto(server.EMPTY_PAGE),
@@ -90,8 +86,7 @@ it('BrowserContext.Events.RequestFinished', async ({browser, server}) => {
   expect(request.failure()).toBe(null);
 });
 
-it('should fire events in proper order', async ({browser, server}) => {
-  const context = await browser.newContext();
+it('should fire events in proper order', async ({context, server}) => {
   const page = await context.newPage();
   const events = [];
   context.on('request', () => events.push('request'));
@@ -106,4 +101,45 @@ it('should fire events in proper order', async ({browser, server}) => {
     'response',
     'requestfinished',
   ]);
+});
+
+it('should not fire events for favicon or favicon redirects', async ({context, page, server, browserName, channel, headless}) => {
+  it.skip(headless && browserName !== 'firefox', 'headless browsers, except firefox, do not request favicons');
+  it.skip(!headless && browserName === 'webkit' && !channel, 'headed webkit does not have a favicon feature');
+  const favicon = `/no-cache/favicon.ico`;
+  const hashedFaviconUrl = `/favicon-hashed.ico`;
+  const imagePath = `/fakeimage.png`;
+  const pagePath = `/page.html`;
+  server.setRedirect(favicon, hashedFaviconUrl);
+  server.setRoute(pagePath, (_, res) => {
+    res.end(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="utf-8">
+          <link rel="icon" type="image/svg+xml" href="${favicon}">
+          <title>SVG Favicon Test</title>
+        </head>
+        <body>
+          <img src="${imagePath}" alt="my fake image">
+        </body>
+      </html>
+`);
+  });
+
+  const events = [];
+  context.on('request', req => events.push(req.url()));
+  context.on('response', res => events.push(res.url()));
+  context.on('requestfinished', req => events.push(req.url()));
+
+  await Promise.all([
+    server.waitForRequest(favicon),
+    server.waitForRequest(hashedFaviconUrl),
+    page.goto(server.PREFIX + '/page.html'),
+  ]);
+
+  expect(events).toEqual(expect.arrayContaining([expect.stringContaining(pagePath)]));
+  expect(events).toEqual(expect.arrayContaining([expect.stringContaining(imagePath)]));
+  expect(events).not.toEqual(expect.arrayContaining([expect.stringContaining(favicon)]));
+  expect(events).not.toEqual(expect.arrayContaining([expect.stringContaining(hashedFaviconUrl)]));
 });

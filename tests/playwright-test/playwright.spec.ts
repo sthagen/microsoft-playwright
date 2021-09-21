@@ -220,6 +220,34 @@ test('should respect context options in various contexts', async ({ runInlineTes
   expect(result.passed).toBe(4);
 });
 
+test('should call logger from launchOptions config', async ({ runInlineTest }, testInfo) => {
+  const result = await runInlineTest({
+    'a.test.ts': `
+      const { test } = pwt;
+      const log = [];
+      test.use({
+        launchOptions: {
+          logger: {
+            log: (name, severity, message) => log.push({name, severity, message}),
+            isEnabled: (name, severity) => severity !== 'verbose'
+          }
+        }
+      });
+
+      test('should support config logger', async ({browser}) => {
+        expect(browser.version()).toBeTruthy();
+        expect(log.length > 0).toBeTruthy();
+        expect(log.filter(item => item.severity === 'info').length > 0).toBeTruthy();
+        expect(log.filter(item => item.message.includes('browserType.launch started')).length > 0).toBeTruthy();
+        expect(log.filter(item => item.message.includes('browserType.launch succeeded')).length > 0).toBeTruthy();
+      });
+      `,
+  }, { workers: 1 });
+
+  expect(result.exitCode).toBe(0);
+  expect(result.passed).toBe(1);
+});
+
 test('should report error and pending operations on timeout', async ({ runInlineTest }, testInfo) => {
   const result = await runInlineTest({
     'a.test.ts': `
@@ -240,14 +268,35 @@ test('should report error and pending operations on timeout', async ({ runInline
   expect(result.output).toContain('Pending operations:');
   expect(result.output).toContain('- page.click at a.test.ts:9:16');
   expect(result.output).toContain('- page.textContent at a.test.ts:10:16');
-  expect(result.output).toContain('retrieving textContent from "text=More missing"');
+  expect(result.output).toContain('waiting for selector');
   expect(stripAscii(result.output)).toContain(`10 |           page.textContent('text=More missing'),`);
+});
+
+test('should not report waitForEventInfo as pending', async ({ runInlineTest }, testInfo) => {
+  const result = await runInlineTest({
+    'a.test.ts': `
+      const { test } = pwt;
+      test('timedout', async ({ page }) => {
+        await page.setContent('<div>Click me</div>');
+        await page.waitForLoadState('networkidle');
+        await page.click('text=Missing');
+      });
+    `,
+  }, { workers: 1, timeout: 2000 });
+
+  expect(result.exitCode).toBe(1);
+  expect(result.passed).toBe(0);
+  expect(result.failed).toBe(1);
+  expect(result.output).toContain('Pending operations:');
+  expect(result.output).toContain('- page.click at a.test.ts:9:20');
+  expect(result.output).not.toContain('- page.waitForLoadState');
 });
 
 test('should throw when using page in beforeAll', async ({ runInlineTest }, testInfo) => {
   const result = await runInlineTest({
     'a.test.ts': `
       const { test } = pwt;
+      test.beforeAll(() => {});
       test.beforeAll(async ({ page }) => {
       });
       test('ok', async ({ page }) => {
@@ -257,7 +306,7 @@ test('should throw when using page in beforeAll', async ({ runInlineTest }, test
 
   expect(result.exitCode).toBe(1);
   expect(result.passed).toBe(0);
-  expect(result.output).toContain(`Error: "context" and "page" fixtures are not suppoted in beforeAll. Use browser.newContext() instead.`);
+  expect(result.output).toContain(`Error: "context" and "page" fixtures are not supported in beforeAll. Use browser.newContext() instead.`);
 });
 
 test('should report click error on sigint', async ({ runInlineTest }) => {
