@@ -487,10 +487,12 @@ export class Registry {
     return this._executables.find(b => b.name === name);
   }
 
-  private _addRequirementsAndDedupe(executables: Executable[] | undefined): ExecutableImpl[] {
+  defaultExecutables(): Executable[] {
+    return this._executables.filter(e => e.installType === 'download-by-default');
+  }
+
+  private _addRequirementsAndDedupe(executables: Executable[]): ExecutableImpl[] {
     const set = new Set<ExecutableImpl>();
-    if (!executables)
-      executables = this._executables.filter(executable => executable.installType === 'download-by-default');
     for (const executable of executables as ExecutableImpl[]) {
       set.add(executable);
       if (executable.browserName === 'chromium')
@@ -514,7 +516,7 @@ export class Registry {
       return await validateDependenciesWindows(windowsExeAndDllDirectories.map(d => path.join(browserDirectory, d)));
   }
 
-  async installDeps(executablesToInstallDeps?: Executable[]) {
+  async installDeps(executablesToInstallDeps: Executable[]) {
     const executables = this._addRequirementsAndDedupe(executablesToInstallDeps);
     const targets = new Set<DependencyGroup>();
     for (const executable of executables) {
@@ -528,7 +530,7 @@ export class Registry {
       return await installDependenciesLinux(targets);
   }
 
-  async install(executablesToInstall?: Executable[]) {
+  async install(executablesToInstall: Executable[]) {
     const executables = this._addRequirementsAndDedupe(executablesToInstall);
     await fs.promises.mkdir(registryDirectory, { recursive: true });
     const lockfilePath = path.join(registryDirectory, '__dirlock');
@@ -613,8 +615,8 @@ export class Registry {
       }[channel];
       const product = products.find((product: any) => product.Product === productName);
       const searchConfig = ({
-        darwin: {platform: 'MacOS', arch: 'universal', artifact: 'pkg'},
-        win32: {platform: 'Windows', arch: os.arch() === 'x64' ? 'x64' : 'x86', artifact: 'msi'},
+        darwin: { platform: 'MacOS', arch: 'universal', artifact: 'pkg' },
+        win32: { platform: 'Windows', arch: os.arch() === 'x64' ? 'x64' : 'x86', artifact: 'msi' },
       } as any)[process.platform];
       const release = searchConfig ? product.Releases.find((release: any) => release.Platform === searchConfig.platform && release.Architecture === searchConfig.arch) : null;
       const artifact = release ? release.Artifacts.find((artifact: any) => artifact.ArtifactName === searchConfig.artifact) : null;
@@ -703,12 +705,53 @@ function buildPlaywrightCLICommand(sdkLanguage: string, parameters: string): str
 }
 
 export async function installDefaultBrowsersForNpmInstall() {
+  const defaultBrowserNames = registry.defaultExecutables().map(e => e.name);
+  return installBrowsersForNpmInstall(defaultBrowserNames);
+}
+
+export async function installBrowsersForNpmInstall(browsers: string[]) {
   // PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD should have a value of 0 or 1
   if (getAsBooleanFromENV('PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD')) {
     logPolitely('Skipping browsers download because `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD` env variable is set');
     return false;
   }
-  await registry.install();
+  const executables: Executable[] = [];
+  for (const browserName of browsers) {
+    const executable = registry.findExecutable(browserName);
+    if (!executable || executable.installType === 'none')
+      throw new Error(`Cannot install ${browserName}`);
+    executables.push(executable);
+  }
+
+  await registry.install(executables);
+}
+
+export function findChromiumChannel(sdkLanguage: string): string | undefined {
+  // Fall back to the stable channels of popular vendors to work out of the box.
+  // Null means no installation and no channels found.
+  let channel = null;
+  for (const name of ['chromium', 'chrome', 'msedge']) {
+    try {
+      registry.findExecutable(name)!.executablePathOrDie(sdkLanguage);
+      channel = name === 'chromium' ? undefined : name;
+      break;
+    } catch (e) {
+    }
+  }
+
+  if (channel === null) {
+    const installCommand = buildPlaywrightCLICommand(sdkLanguage, `install chromium`);
+    const prettyMessage = [
+      `No chromium-based browser found on the system.`,
+      `Please run the following command to download one:`,
+      ``,
+      `    ${installCommand}`,
+      ``,
+      `<3 Playwright Team`,
+    ].join('\n');
+    throw new Error('\n' + wrapInASCIIBox(prettyMessage, 1));
+  }
+  return channel;
 }
 
 export const registry = new Registry(require('../../browsers.json'));

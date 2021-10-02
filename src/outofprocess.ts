@@ -20,8 +20,8 @@ import { Playwright } from './client/playwright';
 import * as childProcess from 'child_process';
 import * as path from 'path';
 
-export async function start() {
-  const client = new PlaywrightClient();
+export async function start(env: any = {}) {
+  const client = new PlaywrightClient(env);
   const playwright = await client._playwright;
   (playwright as any).stop = () => client.stop();
   (playwright as any).driverProcess = client._driverProcess;
@@ -34,7 +34,7 @@ class PlaywrightClient {
   private _closePromise: Promise<void>;
   private _onExit: (exitCode: number | null, signal: string | null) => {};
 
-  constructor() {
+  constructor(env: any) {
     this._onExit = (exitCode: number | null, signal: string | null) => {
       throw new Error(`Server closed with exitCode=${exitCode} signal=${signal}`);
     };
@@ -42,12 +42,16 @@ class PlaywrightClient {
     this._driverProcess = childProcess.fork(path.join(__dirname, 'cli', 'cli.js'), ['run-driver'], {
       stdio: 'pipe',
       detached: true,
+      env: {
+        ...process.env,
+        ...env
+      },
     });
     this._driverProcess.unref();
     this._driverProcess.on('exit', this._onExit);
 
     const connection = new Connection();
-    const transport = new Transport(this._driverProcess.stdin, this._driverProcess.stdout);
+    const transport = new Transport(this._driverProcess.stdin!, this._driverProcess.stdout!);
     connection.onmessage = message => transport.send(JSON.stringify(message));
     transport.onmessage = message => connection.dispatch(JSON.parse(message));
     this._closePromise = new Promise(f => transport.onclose = f);
@@ -57,9 +61,9 @@ class PlaywrightClient {
 
   async stop() {
     this._driverProcess.removeListener('exit', this._onExit);
-    this._driverProcess.stdin.destroy();
-    this._driverProcess.stdout.destroy();
-    this._driverProcess.stderr.destroy();
+    this._driverProcess.stdin!.destroy();
+    this._driverProcess.stdout!.destroy();
+    this._driverProcess.stderr!.destroy();
     await this._closePromise;
   }
 }

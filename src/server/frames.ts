@@ -30,7 +30,8 @@ import { assert, constructURLBasedOnBaseURL, makeWaitForNextTask } from '../util
 import { ManualPromise } from '../utils/async';
 import { debugLogger } from '../utils/debugLogger';
 import { CallMetadata, internalCallMetadata, SdkObject } from './instrumentation';
-import { ElementStateWithoutStable } from './injected/injectedScript';
+import type InjectedScript from './injected/injectedScript';
+import type { ElementStateWithoutStable, FrameExpectParams, InjectedScriptPoll, InjectedScriptProgress } from './injected/injectedScript';
 import { isSessionClosedError } from './common/protocolError';
 
 type ContextData = {
@@ -67,6 +68,9 @@ export type NavigationEvent = {
   // the navigation did not commit.
   error?: Error,
 };
+
+export type SchedulableTask<T> = (injectedScript: js.JSHandle<InjectedScript>) => Promise<js.JSHandle<InjectedScriptPoll<T>>>;
+export type DomTaskBody<T, R, E> = (progress: InjectedScriptProgress, element: E, data: T, elements: Element[], continuePolling: any) => R;
 
 export class FrameManager {
   private _page: Page;
@@ -700,7 +704,7 @@ export class Frame extends SdkObject {
     return this._page.selectors.query(this, selector, options);
   }
 
-  async waitForSelector(metadata: CallMetadata, selector: string, options: types.WaitForElementOptions = {}): Promise<dom.ElementHandle<Element> | null> {
+  async waitForSelector(metadata: CallMetadata, selector: string, options: types.WaitForElementOptions & { omitReturnValue?: boolean } = {}): Promise<dom.ElementHandle<Element> | null> {
     const controller = new ProgressController(metadata, this);
     if ((options as any).visibility)
       throw new Error('options.visibility is not supported, did you mean options.state?');
@@ -710,7 +714,7 @@ export class Frame extends SdkObject {
     if (!['attached', 'detached', 'visible', 'hidden'].includes(state))
       throw new Error(`state: expected one of (attached|detached|visible|hidden)`);
     const info = this._page.parseSelector(selector, options);
-    const task = dom.waitForSelectorTask(info, state);
+    const task = dom.waitForSelectorTask(info, state, options.omitReturnValue);
     return controller.run(async progress => {
       progress.log(`waiting for selector "${selector}"${state === 'attached' ? '' : ' to be ' + state}`);
       while (progress.isRunning()) {
@@ -736,15 +740,10 @@ export class Frame extends SdkObject {
     }, this._page._timeoutSettings.timeout(options));
   }
 
-  async dispatchEvent(metadata: CallMetadata, selector: string, type: string, eventInit?: Object, options: types.QueryOnSelectorOptions = {}): Promise<void> {
-    const controller = new ProgressController(metadata, this);
-    const info = this._page.parseSelector(selector, options);
-    const task = dom.dispatchEventTask(info, type, eventInit || {});
-    await controller.run(async progress => {
-      progress.log(`Dispatching "${type}" event on selector "${selector}"...`);
-      // Note: we always dispatch events in the main world.
-      await this._scheduleRerunnableTask(progress, 'main', task);
-    }, this._page._timeoutSettings.timeout(options));
+  async dispatchEvent(metadata: CallMetadata, selector: string, type: string, eventInit: Object = {}, options: types.QueryOnSelectorOptions = {}): Promise<void> {
+    await this._scheduleRerunnableTask(metadata, selector, (progress, element, data) => {
+      progress.injectedScript.dispatchEvent(element, data.type, data.eventInit);
+    }, { type, eventInit }, { mainWorld: true, ...options });
     await this._page._doSlowMo();
   }
 
@@ -769,15 +768,21 @@ export class Frame extends SdkObject {
   }
 
   async content(): Promise<string> {
-    const context = await this._utilityContext();
-    return context.evaluate(() => {
-      let retVal = '';
-      if (document.doctype)
-        retVal = new XMLSerializer().serializeToString(document.doctype);
-      if (document.documentElement)
-        retVal += document.documentElement.outerHTML;
-      return retVal;
-    });
+    try {
+      const context = await this._utilityContext();
+      return await context.evaluate(() => {
+        let retVal = '';
+        if (document.doctype)
+          retVal = new XMLSerializer().serializeToString(document.doctype);
+        if (document.documentElement)
+          retVal += document.documentElement.outerHTML;
+        return retVal;
+      });
+    } catch (e) {
+      if (js.isJavaScriptErrorInEvaluate(e) || isSessionClosedError(e))
+        throw e;
+      throw new Error(`Unable to retrieve content because the page is navigating and changing the content.`);
+    }
   }
 
   async setContent(metadata: CallMetadata, html: string, options: types.NavigateOptions = {}): Promise<void> {
@@ -1036,65 +1041,39 @@ export class Frame extends SdkObject {
   }
 
   async textContent(metadata: CallMetadata, selector: string, options: types.QueryOnSelectorOptions = {}): Promise<string | null> {
-    const controller = new ProgressController(metadata, this);
-    const info = this._page.parseSelector(selector, options);
-    const task = dom.textContentTask(info);
-    return controller.run(async progress => {
-      progress.log(`  waiting for selector "${selector}"\u2026`);
-      return this._scheduleRerunnableTask(progress, info.world, task);
-    }, this._page._timeoutSettings.timeout(options));
+    return this._scheduleRerunnableTask(metadata, selector, (progress, element) => element.textContent, undefined, options);
   }
 
   async innerText(metadata: CallMetadata, selector: string, options: types.QueryOnSelectorOptions = {}): Promise<string> {
-    const controller = new ProgressController(metadata, this);
-    const info = this._page.parseSelector(selector, options);
-    const task = dom.innerTextTask(info);
-    return controller.run(async progress => {
-      progress.log(`  retrieving innerText from "${selector}"`);
-      const result = dom.throwFatalDOMError(await this._scheduleRerunnableTask(progress, info.world, task));
-      return result.innerText;
-    }, this._page._timeoutSettings.timeout(options));
+    return this._scheduleRerunnableTask(metadata, selector, (progress, element) => {
+      if (element.namespaceURI !== 'http://www.w3.org/1999/xhtml')
+        throw progress.injectedScript.createStacklessError('Node is not an HTMLElement');
+      return (element as HTMLElement).innerText;
+    }, undefined, options);
   }
 
   async innerHTML(metadata: CallMetadata, selector: string, options: types.QueryOnSelectorOptions = {}): Promise<string> {
-    const controller = new ProgressController(metadata, this);
-    const info = this._page.parseSelector(selector, options);
-    const task = dom.innerHTMLTask(info);
-    return controller.run(async progress => {
-      progress.log(`  retrieving innerHTML from "${selector}"`);
-      return this._scheduleRerunnableTask(progress, info.world, task);
-    }, this._page._timeoutSettings.timeout(options));
+    return this._scheduleRerunnableTask(metadata, selector, (progress, element) => element.innerHTML, undefined, options);
   }
 
   async getAttribute(metadata: CallMetadata, selector: string, name: string, options: types.QueryOnSelectorOptions = {}): Promise<string | null> {
-    const controller = new ProgressController(metadata, this);
-    const info = this._page.parseSelector(selector, options);
-    const task = dom.getAttributeTask(info, name);
-    return controller.run(async progress => {
-      progress.log(`  retrieving attribute "${name}" from "${selector}"`);
-      return this._scheduleRerunnableTask(progress, info.world, task);
-    }, this._page._timeoutSettings.timeout(options));
+    return this._scheduleRerunnableTask(metadata, selector, (progress, element, data) => element.getAttribute(data.name), { name }, options);
   }
 
   async inputValue(metadata: CallMetadata, selector: string, options: types.TimeoutOptions & types.StrictOptions = {}): Promise<string> {
-    const controller = new ProgressController(metadata, this);
-    const info = this._page.parseSelector(selector, options);
-    const task = dom.inputValueTask(info);
-    return controller.run(async progress => {
-      progress.log(`  retrieving value from "${selector}"`);
-      return dom.throwFatalDOMError(await this._scheduleRerunnableTask(progress, info.world, task));
-    }, this._page._timeoutSettings.timeout(options));
+    return this._scheduleRerunnableTask(metadata, selector, (progress, element) => {
+      if (element.nodeName !== 'INPUT' && element.nodeName !== 'TEXTAREA' && element.nodeName !== 'SELECT')
+        throw progress.injectedScript.createStacklessError('Node is not an <input>, <textarea> or <select> element');
+      return (element as any).value;
+    }, undefined, options);
   }
 
-  private async _checkElementState(metadata: CallMetadata, selector: string, state: ElementStateWithoutStable, options: types.QueryOnSelectorOptions = {}): Promise<boolean> {
-    const controller = new ProgressController(metadata, this);
-    const info = this._page.parseSelector(selector, options);
-    const task = dom.elementStateTask(info, state);
-    const result = await controller.run(async progress => {
-      progress.log(`  checking "${state}" state of "${selector}"`);
-      return this._scheduleRerunnableTask(progress, info.world, task);
-    }, this._page._timeoutSettings.timeout(options));
-    return dom.throwFatalDOMError(dom.throwRetargetableDOMError(result));
+  private async _elementState(metadata: CallMetadata, selector: string, state: ElementStateWithoutStable, options: types.QueryOnSelectorOptions = {}): Promise<boolean> {
+    const result = await this._scheduleRerunnableTask(metadata, selector, (progress, element, data) => {
+      const injected = progress.injectedScript;
+      return injected.elementState(element, data.state);
+    }, { state }, options);
+    return dom.throwRetargetableDOMError(result);
   }
 
   async isVisible(metadata: CallMetadata, selector: string, options: types.StrictOptions = {}): Promise<boolean> {
@@ -1111,19 +1090,19 @@ export class Frame extends SdkObject {
   }
 
   async isDisabled(metadata: CallMetadata, selector: string, options: types.QueryOnSelectorOptions = {}): Promise<boolean> {
-    return this._checkElementState(metadata, selector, 'disabled', options);
+    return this._elementState(metadata, selector, 'disabled', options);
   }
 
   async isEnabled(metadata: CallMetadata, selector: string, options: types.QueryOnSelectorOptions = {}): Promise<boolean> {
-    return this._checkElementState(metadata, selector, 'enabled', options);
+    return this._elementState(metadata, selector, 'enabled', options);
   }
 
   async isEditable(metadata: CallMetadata, selector: string, options: types.QueryOnSelectorOptions = {}): Promise<boolean> {
-    return this._checkElementState(metadata, selector, 'editable', options);
+    return this._elementState(metadata, selector, 'editable', options);
   }
 
   async isChecked(metadata: CallMetadata, selector: string, options: types.QueryOnSelectorOptions = {}): Promise<boolean> {
-    return this._checkElementState(metadata, selector, 'checked', options);
+    return this._elementState(metadata, selector, 'checked', options);
   }
 
   async hover(metadata: CallMetadata, selector: string, options: types.PointerActionOptions & types.PointerActionWaitOptions = {}) {
@@ -1173,6 +1152,35 @@ export class Frame extends SdkObject {
     return controller.run(async progress => {
       return dom.assertDone(await this._retryWithProgressIfNotConnected(progress, selector, options.strict, handle => handle._setChecked(progress, false, options)));
     }, this._page._timeoutSettings.timeout(options));
+  }
+
+  async waitForTimeout(metadata: CallMetadata, timeout: number) {
+    const controller = new ProgressController(metadata, this);
+    return controller.run(async () => {
+      await new Promise(resolve => setTimeout(resolve, timeout));
+    });
+  }
+
+  async expect(metadata: CallMetadata, selector: string, options: FrameExpectParams): Promise<{ pass: boolean, received?: any, log?: string[] }> {
+    const controller = new ProgressController(metadata, this);
+    const querySelectorAll = options.expression === 'to.have.count' || options.expression.endsWith('.array');
+    const mainWorld = options.expression === 'to.have.property';
+    const omitAttached = (!options.isNot && options.expression === 'to.be.hidden') || (options.isNot && options.expression === 'to.be.visible');
+
+    return await this._scheduleRerunnableTaskWithController(controller, selector, (progress, element, options, elements, continuePolling) => {
+      // We don't have an element and we don't need an element => pass.
+      if (!element && options.omitAttached)
+        return { pass: !options.isNot };
+      // We don't have an element and we DO need an element => fail.
+      if (!element)
+        return { pass: !!options.isNot };
+      // We have an element.
+      return progress.injectedScript.expect(progress, element!, options, elements, continuePolling);
+    }, { omitAttached, ...options }, { strict: true, querySelectorAll, mainWorld, omitAttached, logScale: true, ...options }).catch(e => {
+      if (js.isJavaScriptErrorInEvaluate(e))
+        throw e;
+      return { received: controller.lastIntermediateResult(), pass: !!options.isNot, log: metadata.log };
+    });
   }
 
   async _waitForFunctionExpression<R>(metadata: CallMetadata, expression: string, isFunction: boolean | undefined, arg: any, options: types.WaitForFunctionOptions, world: types.World = 'main'): Promise<js.SmartHandle<R>> {
@@ -1232,14 +1240,51 @@ export class Frame extends SdkObject {
     this._parentFrame = null;
   }
 
-  private _scheduleRerunnableTask<T>(progress: Progress, world: types.World, task: dom.SchedulableTask<T>): Promise<T> {
-    const data = this._contextData.get(world)!;
-    const rerunnableTask = new RerunnableTask(data, progress, task, true /* returnByValue */);
-    if (this._detached)
-      rerunnableTask.terminate(new Error('waitForFunction failed: frame got detached.'));
-    if (data.context)
-      rerunnableTask.rerun(data.context);
-    return rerunnableTask.promise;
+  private async _scheduleRerunnableTask<T, R>(metadata: CallMetadata, selector: string, body: DomTaskBody<T, R, Element>, taskData: T, options: types.TimeoutOptions & types.StrictOptions & { mainWorld?: boolean } = {}): Promise<R> {
+    const controller = new ProgressController(metadata, this);
+    return this._scheduleRerunnableTaskWithController(controller, selector, body as DomTaskBody<T, R, Element | undefined>, taskData, options);
+  }
+
+  private async _scheduleRerunnableTaskWithController<T, R>(
+    controller: ProgressController,
+    selector: string,
+    body: DomTaskBody<T, R, Element | undefined>,
+    taskData: T,
+    options: types.TimeoutOptions & types.StrictOptions & { mainWorld?: boolean, querySelectorAll?: boolean, logScale?: boolean, omitAttached?: boolean } = {}): Promise<R> {
+
+    const info = this._page.parseSelector(selector, options);
+    const callbackText = body.toString();
+    const data = this._contextData.get(options.mainWorld ? 'main' : info.world)!;
+
+    return controller.run(async progress => {
+      progress.log(`waiting for selector "${selector}"`);
+      const rerunnableTask = new RerunnableTask(data, progress, injectedScript => {
+        return injectedScript.evaluateHandle((injected, { info, taskData, callbackText, querySelectorAll, logScale, omitAttached }) => {
+          const callback = injected.eval(callbackText) as DomTaskBody<T, R, Element | undefined>;
+          const poller = logScale ? injected.pollLogScale.bind(injected) : injected.pollRaf.bind(injected);
+          return poller((progress, continuePolling) => {
+            if (querySelectorAll) {
+              const elements = injected.querySelectorAll(info.parsed, document);
+              progress.logRepeating(`  selector resolved to ${elements.length} element${elements.length === 1 ? '' : 's'}`);
+              return callback(progress, elements[0], taskData as T, elements, continuePolling);
+            }
+
+            const element = injected.querySelector(info.parsed, document, info.strict);
+            if (!element && !omitAttached)
+              return continuePolling;
+            if (element)
+              progress.logRepeating(`  selector resolved to ${injected.previewNode(element)}`);
+            return callback(progress, element, taskData as T, [], continuePolling);
+          });
+        }, { info, taskData, callbackText, querySelectorAll: options.querySelectorAll, logScale: options.logScale, omitAttached: options.omitAttached });
+      }, true);
+
+      if (this._detached)
+        rerunnableTask.terminate(new Error('Frame got detached.'));
+      if (data.context)
+        rerunnableTask.rerun(data.context);
+      return await rerunnableTask.promise;
+    }, this._page._timeoutSettings.timeout(options));
   }
 
   private _scheduleRerunnableHandleTask<T>(progress: Progress, world: types.World, task: dom.SchedulableTask<T>): Promise<js.SmartHandle<T>> {
@@ -1302,7 +1347,7 @@ export class Frame extends SdkObject {
   async extendInjectedScript(source: string, arg?: any): Promise<js.JSHandle> {
     const context = await this._context('main');
     const injectedScriptHandle = await context.injectedScript();
-    return injectedScriptHandle.evaluateHandle((injectedScript, {source, arg}) => {
+    return injectedScriptHandle.evaluateHandle((injectedScript, { source, arg }) => {
       return injectedScript.extend(source, arg);
     }, { source, arg });
   }

@@ -22,6 +22,7 @@ import { monotonicTime } from '../utils/utils';
 import { ElementHandle } from './elementHandle';
 import { Frame } from './frame';
 import { FilePayload, Rect, SelectOption, SelectOptionOptions, TimeoutOptions } from './types';
+import { parseResult, serializeArgument } from './jsHandle';
 
 export class Locator implements api.Locator {
   private _frame: Frame;
@@ -210,6 +211,26 @@ export class Locator implements api.Locator {
 
   async allTextContents(): Promise<string[]> {
     return this._frame.$$eval(this._selector, ee => ee.map(e => e.textContent || ''));
+  }
+
+  waitFor(options: channels.FrameWaitForSelectorOptions & { state: 'attached' | 'visible' }): Promise<void>;
+  waitFor(options?: channels.FrameWaitForSelectorOptions): Promise<void>;
+  async waitFor(options?: channels.FrameWaitForSelectorOptions): Promise<void> {
+    return this._frame._wrapApiCall(async (channel: channels.FrameChannel) => {
+      await channel.waitForSelector({ selector: this._selector, strict: true, omitReturnValue: true, ...options });
+    });
+  }
+
+  async _expect(expression: string, options: channels.FrameExpectOptions): Promise<{ pass: boolean, received?: any, log?: string[] }> {
+    return this._frame._wrapApiCall(async (channel: channels.FrameChannel) => {
+      const params: any = { selector: this._selector, expression, ...options };
+      if (options.expectedValue)
+        params.expectedValue = serializeArgument(options.expectedValue);
+      const result = (await channel.expect(params));
+      if (result.received !== undefined)
+        result.received = parseResult(result.received);
+      return result;
+    });
   }
 
   [(util.inspect as any).custom]() {

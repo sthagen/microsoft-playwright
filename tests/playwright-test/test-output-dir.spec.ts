@@ -67,7 +67,7 @@ test('should work and remove non-failures', async ({ runInlineTest }, testInfo) 
   expect(fs.existsSync(testInfo.outputPath('test-results', 'my-test-test-1-chromium-retry2'))).toBe(false);
 });
 
-test('should include repeat token', async ({runInlineTest}) => {
+test('should include repeat token', async ({ runInlineTest }) => {
   const result = await runInlineTest({
     'a.spec.js': `
       const { test } = pwt;
@@ -83,7 +83,7 @@ test('should include repeat token', async ({runInlineTest}) => {
   expect(result.passed).toBe(3);
 });
 
-test('should be unique for beforeAll and afterAll hooks', async ({runInlineTest}, testInfo) => {
+test('should be unique for beforeAll and afterAll hooks', async ({ runInlineTest }, testInfo) => {
   const result = await runInlineTest({
     'a.spec.js': `
       const { test } = pwt;
@@ -216,7 +216,95 @@ test('should include the project name', async ({ runInlineTest }) => {
   expect(result.output).toContain('my-test.spec.js-snapshots/bar-Bar-space--suffix.txt');
 });
 
-test('should remove output dirs for projects run', async ({runInlineTest}, testInfo) => {
+test('should include path option in snapshot', async ({ runInlineTest }) => {
+  const result = await runInlineTest({
+    'helper.ts': `
+      export const test = pwt.test.extend({
+        auto: [ async ({}, run, testInfo) => {
+          testInfo.snapshotSuffix = 'suffix';
+          await run();
+        }, { auto: true } ]
+      });
+    `,
+    'playwright.config.ts': `
+    module.exports = { projects: [
+      { name: 'foo' },
+    ] };
+    `,
+    'my-test.spec.js': `
+      const { test } = require('./helper');
+      test('test with path', async ({}, testInfo) => {
+        console.log(testInfo.snapshotPath('test', 'path', 'bar.txt').replace(/\\\\/g, '/'));
+      });
+    `,
+  });
+
+  expect(result.exitCode).toBe(0);
+  expect(result.results[0].status).toBe('passed');
+  expect(result.output).toContain('my-test.spec.js-snapshots/test/path/bar-foo-suffix.txt');
+});
+
+test('should error if snapshotPath is resolved to outside of parent', async ({ runInlineTest }) => {
+  const result = await runInlineTest({
+    'helper.ts': `
+      export const test = pwt.test.extend({
+        auto: [ async ({}, run, testInfo) => {
+          testInfo.snapshotSuffix = 'suffix';
+          await run();
+        }, { auto: true } ]
+      });
+    `,
+    'playwright.config.ts': `
+      module.exports = { projects: [
+        { name: 'foo' },
+      ] };
+    `,
+    'my-test.spec.js': `
+      const { test } = require('./helper');
+      test('test with parent path', async ({}, testInfo) => {
+        console.log(testInfo.snapshotPath('..', 'test', 'path', 'bar.txt').replace(/\\\\/g, '/'));
+      });
+    `,
+  });
+
+  expect(result.exitCode).toBe(1);
+  expect(result.results[0].status).toBe('failed');
+  expect(result.output).toContain('The snapshotPath is not allowed outside of the parent directory. Please fix the defined path.');
+  const badPath = path.join('..', 'test', 'path', 'bar-foo-suffix.txt');
+  expect(result.output).toContain(`snapshotPath: ${badPath}`);
+});
+
+test('should error if outputPath is resolved to outside of parent', async ({ runInlineTest }) => {
+  const result = await runInlineTest({
+    'helper.ts': `
+      export const test = pwt.test.extend({
+        auto: [ async ({}, run, testInfo) => {
+          testInfo.snapshotSuffix = 'suffix';
+          await run();
+        }, { auto: true } ]
+      });
+    `,
+    'playwright.config.ts': `
+      module.exports = { projects: [
+        { name: 'foo' },
+      ] };
+    `,
+    'my-test.spec.js': `
+      const { test } = require('./helper');
+      test('test with parent path', async ({}, testInfo) => {
+        console.log(testInfo.outputPath('..', 'test', 'path', 'bar-test').replace(/\\\\/g, '/'));
+      });
+    `,
+  });
+
+  expect(result.exitCode).toBe(1);
+  expect(result.results[0].status).toBe('failed');
+  expect(result.output).toContain('The outputPath is not allowed outside of the parent directory. Please fix the defined path.');
+  const badPath = path.join('..', 'test', 'path', 'bar-test');
+  expect(result.output).toContain(`outputPath: ${badPath}`);
+});
+
+test('should remove output dirs for projects run', async ({ runInlineTest }, testInfo) => {
   const paths: string[] = [];
   const files: string[] = [];
 

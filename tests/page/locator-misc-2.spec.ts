@@ -64,7 +64,7 @@ it('should type', async ({ page }) => {
 it('should take screenshot', async ({ page, server, browserName, headless, isAndroid }) => {
   it.skip(browserName === 'firefox' && !headless);
   it.skip(isAndroid, 'Different dpr. Remove after using 1x scale for screenshots.');
-  await page.setViewportSize({width: 500, height: 500});
+  await page.setViewportSize({ width: 500, height: 500 });
   await page.goto(server.PREFIX + '/grid.html');
   await page.evaluate(() => window.scrollBy(50, 100));
   const element = page.locator('.box:nth-of-type(3)');
@@ -81,4 +81,21 @@ it('should return bounding box', async ({ page, server, browserName, headless, i
   const element = page.locator('.box:nth-of-type(13)');
   const box = await element.boundingBox();
   expect(box).toEqual({ x: 100, y: 50, width: 50, height: 50 });
+});
+
+it('should waitFor', async ({ page }) => {
+  await page.setContent(`<div></div>`);
+  const locator = page.locator('span');
+  const promise = locator.waitFor();
+  await page.$eval('div', div => div.innerHTML = '<span>target</span>');
+  await promise;
+  await expect(locator).toHaveText('target');
+});
+
+it('should waitFor hidden', async ({ page }) => {
+  await page.setContent(`<div><span>target</span></div>`);
+  const locator = page.locator('span');
+  const promise = locator.waitFor({ state: 'hidden' });
+  await page.$eval('div', div => div.innerHTML = '');
+  await promise;
 });

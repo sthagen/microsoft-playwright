@@ -25,6 +25,7 @@ import { start } from '../../lib/outofprocess';
 import { PlaywrightClient } from '../../lib/remote/playwrightClient';
 import type { LaunchOptions } from '../../index';
 import { TestProxy } from './proxy';
+import { commonFixtures, CommonFixtures } from './commonFixtures';
 
 export type BrowserName = 'chromium' | 'firefox' | 'webkit';
 type Mode = 'default' | 'driver' | 'service';
@@ -75,7 +76,7 @@ class ServiceMode {
       });
     });
     this._serviceProcess.on('exit', this._onExit);
-    this._client = await PlaywrightClient.connect({wsEndpoint: `ws://localhost:${port}/ws`});
+    this._client = await PlaywrightClient.connect({ wsEndpoint: `ws://localhost:${port}/ws` });
     return this._client.playwright();
   }
 
@@ -242,4 +243,4 @@ const coverageFixtures: Fixtures<{}, CoverageOptions & { __collectCoverage: void
 export type CommonOptions = BaseOptions & ServerOptions & CoverageOptions;
 export type CommonWorkerFixtures = CommonOptions & BaseFixtures;
 
-export const baseTest = _baseTest.extend<{}, CoverageOptions>(coverageFixtures).extend<ServerFixtures>(serverFixtures).extend<{}, BaseOptions & BaseFixtures>(baseFixtures);
+export const baseTest = _baseTest.extend<CommonFixtures>(commonFixtures).extend<{}, CoverageOptions>(coverageFixtures).extend<ServerFixtures>(serverFixtures as any).extend<{}, BaseOptions & BaseFixtures>(baseFixtures);

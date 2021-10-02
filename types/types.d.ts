@@ -18,6 +18,7 @@ import { Protocol } from './protocol';
 import { ChildProcess } from 'child_process';
 import { EventEmitter } from 'events';
 import { Readable } from 'stream';
+import { ReadStream } from 'fs';
 import { Serializable, EvaluationArgument, PageFunction, PageFunctionOn, SmartHandle, ElementHandleForTag, BindingSource } from './structs';
 
 type PageWaitForSelectorOptionsNotHidden = PageWaitForSelectorOptions & {
@@ -9551,6 +9552,40 @@ export interface Locator {
      * `false`. Useful to wait until the element is ready for the action without performing it.
      */
     trial?: boolean;
+  }): Promise<void>;
+
+  /**
+   * Returns when element specified by locator satisfies the `state` option.
+   *
+   * If target element already satisfies the condition, the method returns immediately. Otherwise, waits for up to `timeout`
+   * milliseconds until the condition is met.
+   *
+   * ```js
+   * const orderSent = page.locator('#order-sent');
+   * await orderSent.waitFor();
+   * ```
+   *
+   * @param options
+   */
+  waitFor(options?: {
+    /**
+     * Defaults to `'visible'`. Can be either:
+     * - `'attached'` - wait for element to be present in DOM.
+     * - `'detached'` - wait for element to not be present in DOM.
+     * - `'visible'` - wait for element to have non-empty bounding box and no `visibility:hidden`. Note that element without
+     *   any content or with `display:none` has an empty bounding box and is not considered visible.
+     * - `'hidden'` - wait for element to be either detached from DOM, or have an empty bounding box or `visibility:hidden`.
+     *   This is opposite to the `'visible'` option.
+     */
+    state?: "attached"|"detached"|"visible"|"hidden";
+
+    /**
+     * Maximum time in milliseconds, defaults to 30 seconds, pass `0` to disable timeout. The default value can be changed by
+     * using the
+     * [browserContext.setDefaultTimeout(timeout)](https://playwright.dev/docs/api/class-browsercontext#browser-context-set-default-timeout)
+     * or [page.setDefaultTimeout(timeout)](https://playwright.dev/docs/api/class-page#page-set-default-timeout) methods.
+     */
+    timeout?: number;
   }): Promise<void>;}
 
 /**
@@ -9656,7 +9691,8 @@ export interface BrowserType<Unused = {}> {
    * context will automatically close the browser.
    * @param userDataDir Path to a User Data Directory, which stores browser session data like cookies and local storage. More details for [Chromium](https://chromium.googlesource.com/chromium/src/+/master/docs/user_data_dir.md#introduction) and
    * [Firefox](https://developer.mozilla.org/en-US/docs/Mozilla/Command_Line_Options#User_Profile). Note that Chromium's user
-   * data directory is the **parent** directory of the "Profile Path" seen at `chrome://version`.
+   * data directory is the **parent** directory of the "Profile Path" seen at `chrome://version`. Pass an empty string to use
+   * a temporary directory instead.
    * @param options
    */
   launchPersistentContext(userDataDir: string, options?: {
@@ -9739,7 +9775,7 @@ export interface BrowserType<Unused = {}> {
     executablePath?: string;
 
     /**
-     * An object containing additional HTTP headers to be sent with every request. All header values must be strings.
+     * An object containing additional HTTP headers to be sent with every request.
      */
     extraHTTPHeaders?: { [key: string]: string; };
 
@@ -9813,7 +9849,7 @@ export interface BrowserType<Unused = {}> {
     ignoreDefaultArgs?: boolean|Array<string>;
 
     /**
-     * Whether to ignore HTTPS errors during navigation. Defaults to `false`.
+     * Whether to ignore HTTPS errors when sending network requests. Defaults to `false`.
      */
     ignoreHTTPSErrors?: boolean;
 
@@ -10360,7 +10396,6 @@ type AccessibilityNode = {
   children?: AccessibilityNode[];
 }
 
-export const selectors: Selectors;
 export const devices: Devices & DeviceDescriptor[];
 
 //@ts-ignore this will be any if electron is not installed
@@ -10669,12 +10704,8 @@ export type AndroidKey =
   'Copy' |
   'Paste';
 
-export const chromium: BrowserType;
-export const firefox: BrowserType;
-export const webkit: BrowserType;
 export const _electron: Electron;
 export const _android: Android;
-export const _newRequest: () => Promise<FetchRequest>;
 
 // This is required to not export everything by default. See https://github.com/Microsoft/TypeScript/issues/19545#issuecomment-340490459
 export {};
@@ -10934,7 +10965,7 @@ export interface AndroidDevice {
     deviceScaleFactor?: number;
 
     /**
-     * An object containing additional HTTP headers to be sent with every request. All header values must be strings.
+     * An object containing additional HTTP headers to be sent with every request.
      */
     extraHTTPHeaders?: { [key: string]: string; };
 
@@ -10979,7 +11010,7 @@ export interface AndroidDevice {
     };
 
     /**
-     * Whether to ignore HTTPS errors during navigation. Defaults to `false`.
+     * Whether to ignore HTTPS errors when sending network requests. Defaults to `false`.
      */
     ignoreHTTPSErrors?: boolean;
 
@@ -11710,7 +11741,7 @@ export interface Browser extends EventEmitter {
     deviceScaleFactor?: number;
 
     /**
-     * An object containing additional HTTP headers to be sent with every request. All header values must be strings.
+     * An object containing additional HTTP headers to be sent with every request.
      */
     extraHTTPHeaders?: { [key: string]: string; };
 
@@ -11755,7 +11786,7 @@ export interface Browser extends EventEmitter {
     };
 
     /**
-     * Whether to ignore HTTPS errors during navigation. Defaults to `false`.
+     * Whether to ignore HTTPS errors when sending network requests. Defaults to `false`.
      */
     ignoreHTTPSErrors?: boolean;
 
@@ -12516,7 +12547,7 @@ export interface Electron {
     executablePath?: string;
 
     /**
-     * An object containing additional HTTP headers to be sent with every request. All header values must be strings.
+     * An object containing additional HTTP headers to be sent with every request.
      */
     extraHTTPHeaders?: { [key: string]: string; };
 
@@ -12547,7 +12578,7 @@ export interface Electron {
     };
 
     /**
-     * Whether to ignore HTTPS errors during navigation. Defaults to `false`.
+     * Whether to ignore HTTPS errors when sending network requests. Defaults to `false`.
      */
     ignoreHTTPSErrors?: boolean;
 
@@ -12652,12 +12683,9 @@ export interface FetchRequest {
    */
   fetch(urlOrRequest: string|Request, options?: {
     /**
-     * Allows to set post data of the fetch. If the data parameter is an object, it will be serialized the following way:
-     * - If `content-type` header is set to `application/x-www-form-urlencoded` the object will be serialized as html form
-     *   using `application/x-www-form-urlencoded` encoding.
-     * - If `content-type` header is set to `multipart/form-data` the object will be serialized as html form using
-     *   `multipart/form-data` encoding.
-     * - Otherwise the object will be serialized to json string and `content-type` header will be set to `application/json`.
+     * Allows to set post data of the request. If the data parameter is an object, it will be serialized to json string and
+     * `content-type` header will be set to `application/json` if not explicitly set. Otherwise the `content-type` header will
+     * be set to `application/octet-stream` if not explicitly set.
      */
     data?: string|Buffer|Serializable;
 
@@ -12667,14 +12695,49 @@ export interface FetchRequest {
     failOnStatusCode?: boolean;
 
     /**
+     * Provides an object that will be serialized as html form using `application/x-www-form-urlencoded` encoding and sent as
+     * this request body. If this parameter is specified `content-type` header will be set to
+     * `application/x-www-form-urlencoded` unless explicitly provided.
+     */
+    form?: { [key: string]: string|number|boolean; };
+
+    /**
      * Allows to set HTTP headers.
      */
     headers?: { [key: string]: string; };
 
     /**
+     * Whether to ignore HTTPS errors when sending network requests. Defaults to `false`.
+     */
+    ignoreHTTPSErrors?: boolean;
+
+    /**
      * If set changes the fetch method (e.g. PUT or POST). If not specified, GET method is used.
      */
     method?: string;
+
+    /**
+     * Provides an object that will be serialized as html form using `multipart/form-data` encoding and sent as this request
+     * body. If this parameter is specified `content-type` header will be set to `multipart/form-data` unless explicitly
+     * provided. File values can be passed either as [`fs.ReadStream`](https://nodejs.org/api/fs.html#fs_class_fs_readstream)
+     * or as file-like object containing file name, mime-type and its content.
+     */
+    multipart?: { [key: string]: string|number|boolean|ReadStream|{
+      /**
+       * File name
+       */
+      name: string;
+
+      /**
+       * File type
+       */
+      mimeType: string;
+
+      /**
+       * File content
+       */
+      buffer: Buffer;
+    }; };
 
     /**
      * Query parameters to be send with the URL.
@@ -12705,6 +12768,11 @@ export interface FetchRequest {
     headers?: { [key: string]: string; };
 
     /**
+     * Whether to ignore HTTPS errors when sending network requests. Defaults to `false`.
+     */
+    ignoreHTTPSErrors?: boolean;
+
+    /**
      * Query parameters to be send with the URL.
      */
     params?: { [key: string]: string; };
@@ -12723,12 +12791,9 @@ export interface FetchRequest {
    */
   post(urlOrRequest: string|Request, options?: {
     /**
-     * Allows to set post data of the fetch. If the data parameter is an object, it will be serialized the following way:
-     * - If `content-type` header is set to `application/x-www-form-urlencoded` the object will be serialized as html form
-     *   using `application/x-www-form-urlencoded` encoding.
-     * - If `content-type` header is set to `multipart/form-data` the object will be serialized as html form using
-     *   `multipart/form-data` encoding.
-     * - Otherwise the object will be serialized to json string and `content-type` header will be set to `application/json`.
+     * Allows to set post data of the request. If the data parameter is an object, it will be serialized to json string and
+     * `content-type` header will be set to `application/json` if not explicitly set. Otherwise the `content-type` header will
+     * be set to `application/octet-stream` if not explicitly set.
      */
     data?: string|Buffer|Serializable;
 
@@ -12738,9 +12803,44 @@ export interface FetchRequest {
     failOnStatusCode?: boolean;
 
     /**
+     * Provides an object that will be serialized as html form using `application/x-www-form-urlencoded` encoding and sent as
+     * this request body. If this parameter is specified `content-type` header will be set to
+     * `application/x-www-form-urlencoded` unless explicitly provided.
+     */
+    form?: { [key: string]: string|number|boolean; };
+
+    /**
      * Allows to set HTTP headers.
      */
     headers?: { [key: string]: string; };
+
+    /**
+     * Whether to ignore HTTPS errors when sending network requests. Defaults to `false`.
+     */
+    ignoreHTTPSErrors?: boolean;
+
+    /**
+     * Provides an object that will be serialized as html form using `multipart/form-data` encoding and sent as this request
+     * body. If this parameter is specified `content-type` header will be set to `multipart/form-data` unless explicitly
+     * provided. File values can be passed either as [`fs.ReadStream`](https://nodejs.org/api/fs.html#fs_class_fs_readstream)
+     * or as file-like object containing file name, mime-type and its content.
+     */
+    multipart?: { [key: string]: string|number|boolean|ReadStream|{
+      /**
+       * File name
+       */
+      name: string;
+
+      /**
+       * File type
+       */
+      mimeType: string;
+
+      /**
+       * File content
+       */
+      buffer: Buffer;
+    }; };
 
     /**
      * Query parameters to be send with the URL.
@@ -12752,6 +12852,50 @@ export interface FetchRequest {
      */
     timeout?: number;
   }): Promise<FetchResponse>;
+
+  /**
+   * Returns storage state for this request context, contains current cookies and local storage snapshot if it was passed to
+   * the constructor.
+   * @param options
+   */
+  storageState(options?: {
+    /**
+     * The file path to save the storage state to. If `path` is a relative path, then it is resolved relative to current
+     * working directory. If no path is provided, storage state is still returned, but won't be saved to the disk.
+     */
+    path?: string;
+  }): Promise<{
+    cookies: Array<{
+      name: string;
+
+      value: string;
+
+      domain: string;
+
+      path: string;
+
+      /**
+       * Unix time in seconds.
+       */
+      expires: number;
+
+      httpOnly: boolean;
+
+      secure: boolean;
+
+      sameSite: "Strict"|"Lax"|"None";
+    }>;
+
+    origins: Array<{
+      origin: string;
+
+      localStorage: Array<{
+        name: string;
+
+        value: string;
+      }>;
+    }>;
+  }>;
 }
 
 /**
@@ -13228,6 +13372,145 @@ export interface Mouse {
 }
 
 /**
+ * **experimental** Creates new instances of [FetchRequest].
+ * @param options
+ */
+export const _newRequest: (options?: {
+  /**
+   * When using
+   * [fetchRequest.get(urlOrRequest[, options])](https://playwright.dev/docs/api/class-fetchrequest#fetch-request-get),
+   * [fetchRequest.post(urlOrRequest[, options])](https://playwright.dev/docs/api/class-fetchrequest#fetch-request-post),
+   * [fetchRequest.fetch(urlOrRequest[, options])](https://playwright.dev/docs/api/class-fetchrequest#fetch-request-fetch) it
+   * takes the base URL in consideration by using the [`URL()`](https://developer.mozilla.org/en-US/docs/Web/API/URL/URL)
+   * constructor for building the corresponding URL. Examples:
+   * - baseURL: `http://localhost:3000` and sending rquest to `/bar.html` results in `http://localhost:3000/bar.html`
+   * - baseURL: `http://localhost:3000/foo/` and sending rquest to `./bar.html` results in
+   *   `http://localhost:3000/foo/bar.html`
+   */
+  baseURL?: string;
+
+  /**
+   * An object containing additional HTTP headers to be sent with every request.
+   */
+  extraHTTPHeaders?: { [key: string]: string; };
+
+  /**
+   * Credentials for [HTTP authentication](https://developer.mozilla.org/en-US/docs/Web/HTTP/Authentication).
+   */
+  httpCredentials?: {
+    username: string;
+
+    password: string;
+  };
+
+  /**
+   * Whether to ignore HTTPS errors when sending network requests. Defaults to `false`.
+   */
+  ignoreHTTPSErrors?: boolean;
+
+  /**
+   * Network proxy settings.
+   */
+  proxy?: {
+    /**
+     * Proxy to be used for all requests. HTTP and SOCKS proxies are supported, for example `http://myproxy.com:3128` or
+     * `socks5://myproxy.com:3128`. Short form `myproxy.com:3128` is considered an HTTP proxy.
+     */
+    server: string;
+
+    /**
+     * Optional coma-separated domains to bypass proxy, for example `".com, chromium.org, .domain.com"`.
+     */
+    bypass?: string;
+
+    /**
+     * Optional username to use if HTTP proxy requires authentication.
+     */
+    username?: string;
+
+    /**
+     * Optional password to use if HTTP proxy requires authentication.
+     */
+    password?: string;
+  };
+
+  /**
+   * Populates context with given storage state. This option can be used to initialize context with logged-in information
+   * obtained via
+   * [browserContext.storageState([options])](https://playwright.dev/docs/api/class-browsercontext#browser-context-storage-state)
+   * or
+   * [fetchRequest.storageState([options])](https://playwright.dev/docs/api/class-fetchrequest#fetch-request-storage-state).
+   * Either a path to the file with saved storage, or the value returned by one of
+   * [browserContext.storageState([options])](https://playwright.dev/docs/api/class-browsercontext#browser-context-storage-state)
+   * or
+   * [fetchRequest.storageState([options])](https://playwright.dev/docs/api/class-fetchrequest#fetch-request-storage-state)
+   * methods.
+   */
+  storageState?: string|{
+    cookies: Array<{
+      name: string;
+
+      value: string;
+
+      domain: string;
+
+      path: string;
+
+      /**
+       * Unix time in seconds.
+       */
+      expires: number;
+
+      httpOnly: boolean;
+
+      secure: boolean;
+
+      sameSite: "Strict"|"Lax"|"None";
+    }>;
+
+    origins: Array<{
+      origin: string;
+
+      localStorage: Array<{
+        name: string;
+
+        value: string;
+      }>;
+    }>;
+  };
+
+  /**
+   * Maximum time in milliseconds to wait for the response. Defaults to `30000` (30 seconds). Pass `0` to disable timeout.
+   */
+  timeout?: number;
+
+  /**
+   * Specific user agent to use in this context.
+   */
+  userAgent?: string;
+}) => Promise<FetchRequest>;
+
+/**
+ * This object can be used to launch or connect to Chromium, returning instances of [Browser].
+ */
+export const chromium: BrowserType;
+
+/**
+ * This object can be used to launch or connect to Firefox, returning instances of [Browser].
+ */
+export const firefox: BrowserType;
+
+/**
+ * Selectors can be used to install custom selector engines. See [Working with selectors](https://playwright.dev/docs/selectors) for more
+ * information.
+ */
+export const selectors: Selectors;
+
+/**
+ * This object can be used to launch or connect to WebKit, returning instances of [Browser].
+ */
+export const webkit: BrowserType;
+/**
  * Whenever the page sends a request for a network resource the following sequence of events are emitted by [Page]:
  * - [page.on('request')](https://playwright.dev/docs/api/class-page#page-event-request) emitted when the request is
  *   issued by the page.
@@ -13331,7 +13614,7 @@ export interface Request {
    * When the response is `application/x-www-form-urlencoded` then a key/value object of the values will be returned.
    * Otherwise it will be parsed as JSON.
    */
-  postDataJSON(): null|any;
+  postDataJSON(): null|Serializable;
 
   /**
    * Request that was redirected by the server to this one, if any.
@@ -14216,7 +14499,7 @@ export interface BrowserContextOptions {
   deviceScaleFactor?: number;
 
   /**
-   * An object containing additional HTTP headers to be sent with every request. All header values must be strings.
+   * An object containing additional HTTP headers to be sent with every request.
    */
   extraHTTPHeaders?: { [key: string]: string; };
 
@@ -14242,7 +14525,7 @@ export interface BrowserContextOptions {
   httpCredentials?: HTTPCredentials;
 
   /**
-   * Whether to ignore HTTPS errors during navigation. Defaults to `false`.
+   * Whether to ignore HTTPS errors when sending network requests. Defaults to `false`.
    */
   ignoreHTTPSErrors?: boolean;
 

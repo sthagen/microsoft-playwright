@@ -42,20 +42,7 @@ it.afterAll(() => {
   http.globalAgent = prevAgent;
 });
 
-it('global get should work', async ({playwright, context, server}) => {
-  const request = await playwright._newRequest();
-  const response = await request.get(server.PREFIX + '/simple.json');
-  expect(response.url()).toBe(server.PREFIX + '/simple.json');
-  expect(response.status()).toBe(200);
-  expect(response.statusText()).toBe('OK');
-  expect(response.ok()).toBeTruthy();
-  expect(response.url()).toBe(server.PREFIX + '/simple.json');
-  expect(response.headers()['content-type']).toBe('application/json; charset=utf-8');
-  expect(response.headersArray()).toContainEqual({ name: 'Content-Type', value: 'application/json; charset=utf-8' });
-  expect(await response.text()).toBe('{"foo": "bar"}\n');
-});
-
-it('get should work', async ({context, server}) => {
+it('get should work', async ({ context, server }) => {
   const response = await context._request.get(server.PREFIX + '/simple.json');
   expect(response.url()).toBe(server.PREFIX + '/simple.json');
   expect(response.status()).toBe(200);
@@ -67,7 +54,7 @@ it('get should work', async ({context, server}) => {
   expect(await response.text()).toBe('{"foo": "bar"}\n');
 });
 
-it('fetch should work', async ({context, server}) => {
+it('fetch should work', async ({ context, server }) => {
   const response = await context._request.fetch(server.PREFIX + '/simple.json');
   expect(response.url()).toBe(server.PREFIX + '/simple.json');
   expect(response.status()).toBe(200);
@@ -79,7 +66,7 @@ it('fetch should work', async ({context, server}) => {
   expect(await response.text()).toBe('{"foo": "bar"}\n');
 });
 
-it('should throw on network error', async ({context, server}) => {
+it('should throw on network error', async ({ context, server }) => {
   server.setRoute('/test', (req, res) => {
     req.socket.destroy();
   });
@@ -87,7 +74,7 @@ it('should throw on network error', async ({context, server}) => {
   expect(error.message).toContain('socket hang up');
 });
 
-it('should throw on network error after redirect', async ({context, server}) => {
+it('should throw on network error after redirect', async ({ context, server }) => {
   server.setRedirect('/redirect', '/test');
   server.setRoute('/test', (req, res) => {
     req.socket.destroy();
@@ -96,7 +83,7 @@ it('should throw on network error after redirect', async ({context, server}) => 
   expect(error.message).toContain('socket hang up');
 });
 
-it('should throw on network error when sending body', async ({context, server}) => {
+it('should throw on network error when sending body', async ({ context, server }) => {
   server.setRoute('/test', (req, res) => {
     res.writeHead(200, {
       'content-length': 4096,
@@ -110,7 +97,7 @@ it('should throw on network error when sending body', async ({context, server}) 
   expect(error.message).toContain('Error: aborted');
 });
 
-it('should throw on network error when sending body after redirect', async ({context, server}) => {
+it('should throw on network error when sending body after redirect', async ({ context, server }) => {
   server.setRedirect('/redirect', '/test');
   server.setRoute('/test', (req, res) => {
     res.writeHead(200, {
@@ -125,7 +112,7 @@ it('should throw on network error when sending body after redirect', async ({con
   expect(error.message).toContain('Error: aborted');
 });
 
-it('should add session cookies to request', async ({context, server}) => {
+it('should add session cookies to request', async ({ context, server }) => {
   await context.addCookies([{
     name: 'username',
     value: 'John Doe',
@@ -144,7 +131,7 @@ it('should add session cookies to request', async ({context, server}) => {
 });
 
 for (const method of ['get', 'post', 'fetch']) {
-  it(`${method} should support queryParams`, async ({context, server}) => {
+  it(`${method} should support queryParams`, async ({ context, server }) => {
     let request;
     const url = new URL(server.EMPTY_PAGE);
     url.searchParams.set('p1', 'v1');
@@ -164,15 +151,20 @@ for (const method of ['get', 'post', 'fetch']) {
     expect(params.get('парам2')).toEqual('знач2');
   });
 
-  it(`${method} should support failOnStatusCode`, async ({context, server}) => {
+  it(`${method} should support failOnStatusCode`, async ({ context, server }) => {
     const error = await context._request[method](server.PREFIX + '/does-not-exist.html', {
       failOnStatusCode: true
     }).catch(e => e);
     expect(error.message).toContain('404 Not Found');
   });
+
+  it(`${method}should support ignoreHTTPSErrors option`, async ({ context, httpsServer }) => {
+    const response = await context._request[method](httpsServer.EMPTY_PAGE, { ignoreHTTPSErrors: true });
+    expect(response.status()).toBe(200);
+  });
 }
 
-it('should not add context cookie if cookie header passed as a parameter', async ({context, server}) => {
+it('should not add context cookie if cookie header passed as a parameter', async ({ context, server }) => {
   await context.addCookies([{
     name: 'username',
     value: 'John Doe',
@@ -194,7 +186,7 @@ it('should not add context cookie if cookie header passed as a parameter', async
   expect(req.headers.cookie).toEqual('foo=bar');
 });
 
-it('should follow redirects', async ({context, server}) => {
+it('should follow redirects', async ({ context, server }) => {
   server.setRedirect('/redirect1', '/redirect2');
   server.setRedirect('/redirect2', '/simple.json');
   await context.addCookies([{
@@ -213,10 +205,10 @@ it('should follow redirects', async ({context, server}) => {
   ]);
   expect(req.headers.cookie).toEqual('username=John Doe');
   expect(response.url()).toBe(`http://www.my.playwright.dev:${server.PORT}/simple.json`);
-  expect(await response.json()).toEqual({foo: 'bar'});
+  expect(await response.json()).toEqual({ foo: 'bar' });
 });
 
-it('should add cookies from Set-Cookie header', async ({context, page, server}) => {
+it('should add cookies from Set-Cookie header', async ({ context, page, server }) => {
   server.setRoute('/setcookie.html', (req, res) => {
     res.setHeader('Set-Cookie', ['session=value', 'foo=bar; max-age=3600']);
     res.end();
@@ -237,7 +229,7 @@ it('should add cookies from Set-Cookie header', async ({context, page, server}) 
   expect((await page.evaluate(() => document.cookie)).split(';').map(s => s.trim()).sort()).toEqual(['foo=bar', 'session=value']);
 });
 
-it('should not lose body while handling Set-Cookie header', async ({context, server}) => {
+it('should not lose body while handling Set-Cookie header', async ({ context, server }) => {
   server.setRoute('/setcookie.html', (req, res) => {
     res.setHeader('Set-Cookie', ['session=value', 'foo=bar; max-age=3600']);
     res.end('text content');
@@ -246,7 +238,7 @@ it('should not lose body while handling Set-Cookie header', async ({context, ser
   expect(await response.text()).toBe('text content');
 });
 
-it('should handle cookies on redirects', async ({context, server, browserName, isWindows}) => {
+it('should handle cookies on redirects', async ({ context, server, browserName, isWindows }) => {
   server.setRoute('/redirect1', (req, res) => {
     res.setHeader('Set-Cookie', 'r1=v1;SameSite=Lax');
     res.writeHead(301, { location: '/a/b/redirect2' });
@@ -304,7 +296,7 @@ it('should handle cookies on redirects', async ({context, server, browserName, i
   ]));
 });
 
-it('should return raw headers', async ({context, page, server}) => {
+it('should return raw headers', async ({ context, page, server }) => {
   server.setRoute('/headers', (req, res) => {
     // Headers array is only supported since Node v14.14.0 so we write directly to the socket.
     // res.writeHead(200, ['name-a', 'v1','name-b', 'v4','Name-a', 'v2', 'name-A', 'v3']);
@@ -327,7 +319,7 @@ it('should return raw headers', async ({context, page, server}) => {
   expect(response.headers()['name-b']).toBe('v4');
 });
 
-it('should work with context level proxy', async ({browserOptions, browserType, contextOptions, server, proxyServer}) => {
+it('should work with context level proxy', async ({ browserOptions, browserType, contextOptions, server, proxyServer }) => {
   server.setRoute('/target.html', async (req, res) => {
     res.end('<title>Served by the proxy</title>');
   });
@@ -355,7 +347,7 @@ it('should work with context level proxy', async ({browserOptions, browserType, 
   }
 });
 
-it('should pass proxy credentials', async ({browserType, browserOptions, server, proxyServer}) => {
+it('should pass proxy credentials', async ({ browserType, browserOptions, server, proxyServer }) => {
   proxyServer.forwardTo(server.PORT);
   let auth;
   proxyServer.setAuthHandler(req => {
@@ -370,11 +362,11 @@ it('should pass proxy credentials', async ({browserType, browserOptions, server,
   const response = await context._request.get('http://non-existent.com/simple.json');
   expect(proxyServer.connectHosts).toContain('non-existent.com:80');
   expect(auth).toBe('Basic ' + Buffer.from('user:secret').toString('base64'));
-  expect(await response.json()).toEqual({foo: 'bar'});
+  expect(await response.json()).toEqual({ foo: 'bar' });
   await browser.close();
 });
 
-it('should work with http credentials', async ({context, server}) => {
+it('should work with http credentials', async ({ context, server }) => {
   server.setAuth('/empty.html', 'user', 'pass');
 
   const [request, response] = await Promise.all([
@@ -389,7 +381,7 @@ it('should work with http credentials', async ({context, server}) => {
   expect(request.url).toBe('/empty.html');
 });
 
-it('should work with setHTTPCredentials', async ({context, server}) => {
+it('should work with setHTTPCredentials', async ({ context, server }) => {
   server.setAuth('/empty.html', 'user', 'pass');
   const response1 = await context._request.get(server.EMPTY_PAGE);
   expect(response1.status()).toBe(401);
@@ -399,14 +391,14 @@ it('should work with setHTTPCredentials', async ({context, server}) => {
   expect(response2.status()).toBe(200);
 });
 
-it('should return error with wrong credentials', async ({context, server}) => {
+it('should return error with wrong credentials', async ({ context, server }) => {
   server.setAuth('/empty.html', 'user', 'pass');
   await context.setHTTPCredentials({ username: 'user', password: 'wrong' });
   const response2 = await context._request.get(server.EMPTY_PAGE);
   expect(response2.status()).toBe(401);
 });
 
-it('should support post data', async ({context, server}) => {
+it('should support post data', async ({ context, server }) => {
   const [request, response] = await Promise.all([
     server.waitForRequest('/simple.json'),
     context._request.post(`${server.PREFIX}/simple.json`, {
@@ -419,7 +411,7 @@ it('should support post data', async ({context, server}) => {
   expect(request.url).toBe('/simple.json');
 });
 
-it('should add default headers', async ({context, server, page}) => {
+it('should add default headers', async ({ context, server, page }) => {
   const [request] = await Promise.all([
     server.waitForRequest('/empty.html'),
     context._request.get(server.EMPTY_PAGE)
@@ -430,7 +422,7 @@ it('should add default headers', async ({context, server, page}) => {
   expect(request.headers['accept-encoding']).toBe('gzip,deflate,br');
 });
 
-it('should send content-length', async function({context, asset, server}) {
+it('should send content-length', async function({ context, asset, server }) {
   const bytes = [];
   for (let i = 0; i < 256; i++)
     bytes.push(i);
@@ -444,7 +436,7 @@ it('should send content-length', async function({context, asset, server}) {
   expect(request.headers['content-type']).toBe('application/octet-stream');
 });
 
-it('should add default headers to redirects', async ({context, server, page}) => {
+it('should add default headers to redirects', async ({ context, server, page }) => {
   server.setRedirect('/redirect', '/empty.html');
   const [request] = await Promise.all([
     server.waitForRequest('/empty.html'),
@@ -456,7 +448,7 @@ it('should add default headers to redirects', async ({context, server, page}) =>
   expect(request.headers['accept-encoding']).toBe('gzip,deflate,br');
 });
 
-it('should allow to override default headers', async ({context, server, page}) => {
+it('should allow to override default headers', async ({ context, server, page }) => {
   const [request] = await Promise.all([
     server.waitForRequest('/empty.html'),
     context._request.get(server.EMPTY_PAGE, {
@@ -472,21 +464,21 @@ it('should allow to override default headers', async ({context, server, page}) =
   expect(request.headers['accept-encoding']).toBe('br');
 });
 
-it('should propagate custom headers with redirects', async ({context, server}) => {
+it('should propagate custom headers with redirects', async ({ context, server }) => {
   server.setRedirect('/a/redirect1', '/b/c/redirect2');
   server.setRedirect('/b/c/redirect2', '/simple.json');
   const [req1, req2, req3] = await Promise.all([
     server.waitForRequest('/a/redirect1'),
     server.waitForRequest('/b/c/redirect2'),
     server.waitForRequest('/simple.json'),
-    context._request.get(`${server.PREFIX}/a/redirect1`, {headers: {'foo': 'bar'}}),
+    context._request.get(`${server.PREFIX}/a/redirect1`, { headers: { 'foo': 'bar' } }),
   ]);
   expect(req1.headers['foo']).toBe('bar');
   expect(req2.headers['foo']).toBe('bar');
   expect(req3.headers['foo']).toBe('bar');
 });
 
-it('should propagate extra http headers with redirects', async ({context, server}) => {
+it('should propagate extra http headers with redirects', async ({ context, server }) => {
   server.setRedirect('/a/redirect1', '/b/c/redirect2');
   server.setRedirect('/b/c/redirect2', '/simple.json');
   await context.setExtraHTTPHeaders({ 'My-Secret': 'Value' });
@@ -501,7 +493,7 @@ it('should propagate extra http headers with redirects', async ({context, server
   expect(req3.headers['my-secret']).toBe('Value');
 });
 
-it('should throw on invalid header value', async ({context, server}) => {
+it('should throw on invalid header value', async ({ context, server }) => {
   const error = await context._request.get(`${server.PREFIX}/a/redirect1`, {
     headers: {
       'foo': 'недопустимое значение',
@@ -510,14 +502,14 @@ it('should throw on invalid header value', async ({context, server}) => {
   expect(error.message).toContain('Invalid character in header content');
 });
 
-it('should throw on non-http(s) protocol', async ({context}) => {
+it('should throw on non-http(s) protocol', async ({ context }) => {
   const error1 = await context._request.get(`data:text/plain,test`).catch(e => e);
   expect(error1.message).toContain('Protocol "data:" not supported');
   const error2 = await context._request.get(`file:///tmp/foo`).catch(e => e);
   expect(error2.message).toContain('Protocol "file:" not supported');
 });
 
-it('should support https', async ({context, httpsServer}) => {
+it('should support https', async ({ context, httpsServer }) => {
   const oldValue = process.env['NODE_TLS_REJECT_UNAUTHORIZED'];
   // https://stackoverflow.com/a/21961005/552185
   process.env['NODE_TLS_REJECT_UNAUTHORIZED'] = '0';
@@ -530,13 +522,13 @@ it('should support https', async ({context, httpsServer}) => {
   }
 });
 
-it('should support ignoreHTTPSErrors', async ({contextFactory, contextOptions, httpsServer}) => {
+it('should inherit ignoreHTTPSErrors from context', async ({ contextFactory, contextOptions, httpsServer }) => {
   const context = await contextFactory({ ...contextOptions, ignoreHTTPSErrors: true });
   const response = await context._request.get(httpsServer.EMPTY_PAGE);
   expect(response.status()).toBe(200);
 });
 
-it('should resolve url relative to baseURL', async function({server, contextFactory, contextOptions}) {
+it('should resolve url relative to baseURL', async function({ server, contextFactory, contextOptions }) {
   const context = await contextFactory({
     ...contextOptions,
     baseURL: server.PREFIX,
@@ -545,7 +537,7 @@ it('should resolve url relative to baseURL', async function({server, contextFact
   expect(response.url()).toBe(server.EMPTY_PAGE);
 });
 
-it('should support gzip compression', async function({context, server}) {
+it('should support gzip compression', async function({ context, server }) {
   server.setRoute('/compressed', (req, res) => {
     res.writeHead(200, {
       'Content-Encoding': 'gzip',
@@ -565,7 +557,7 @@ it('should support gzip compression', async function({context, server}) {
   expect(await response.text()).toBe('Hello, world!');
 });
 
-it('should throw informatibe error on corrupted gzip body', async function({context, server}) {
+it('should throw informatibe error on corrupted gzip body', async function({ context, server }) {
   server.setRoute('/corrupted', (req, res) => {
     res.writeHead(200, {
       'Content-Encoding': 'gzip',
@@ -579,7 +571,7 @@ it('should throw informatibe error on corrupted gzip body', async function({cont
   expect(error.message).toContain(`failed to decompress 'gzip' encoding`);
 });
 
-it('should support brotli compression', async function({context, server}) {
+it('should support brotli compression', async function({ context, server }) {
   server.setRoute('/compressed', (req, res) => {
     res.writeHead(200, {
       'Content-Encoding': 'br',
@@ -599,7 +591,7 @@ it('should support brotli compression', async function({context, server}) {
   expect(await response.text()).toBe('Hello, world!');
 });
 
-it('should throw informatibe error on corrupted brotli body', async function({context, server}) {
+it('should throw informatibe error on corrupted brotli body', async function({ context, server }) {
   server.setRoute('/corrupted', (req, res) => {
     res.writeHead(200, {
       'Content-Encoding': 'br',
@@ -613,7 +605,7 @@ it('should throw informatibe error on corrupted brotli body', async function({co
   expect(error.message).toContain(`failed to decompress 'br' encoding`);
 });
 
-it('should support deflate compression', async function({context, server}) {
+it('should support deflate compression', async function({ context, server }) {
   server.setRoute('/compressed', (req, res) => {
     res.writeHead(200, {
       'Content-Encoding': 'deflate',
@@ -633,7 +625,7 @@ it('should support deflate compression', async function({context, server}) {
   expect(await response.text()).toBe('Hello, world!');
 });
 
-it('should throw informatibe error on corrupted deflate body', async function({context, server}) {
+it('should throw informatibe error on corrupted deflate body', async function({ context, server }) {
   server.setRoute('/corrupted', (req, res) => {
     res.writeHead(200, {
       'Content-Encoding': 'deflate',
@@ -647,7 +639,7 @@ it('should throw informatibe error on corrupted deflate body', async function({c
   expect(error.message).toContain(`failed to decompress 'deflate' encoding`);
 });
 
-it('should support timeout option', async function({context, server}) {
+it('should support timeout option', async function({ context, server }) {
   server.setRoute('/slow', (req, res) => {
     res.writeHead(200, {
       'content-length': 4096,
@@ -659,7 +651,24 @@ it('should support timeout option', async function({context, server}) {
   expect(error.message).toContain(`Request timed out after 10ms`);
 });
 
-it('should respect timeout after redirects', async function({context, server}) {
+it('should support a timeout of 0', async function({ context, server }) {
+  server.setRoute('/slow', (req, res) => {
+    res.writeHead(200, {
+      'content-length': 4,
+      'content-type': 'text/html',
+    });
+    setTimeout(() => {
+      res.end('done');
+    }, 50);
+  });
+
+  const response = await context._request.get(server.PREFIX + '/slow', {
+    timeout: 0,
+  });
+  expect(await response.text()).toBe('done');
+});
+
+it('should respect timeout after redirects', async function({ context, server }) {
   server.setRedirect('/redirect', '/slow');
   server.setRoute('/slow', (req, res) => {
     res.writeHead(200, {
@@ -673,7 +682,7 @@ it('should respect timeout after redirects', async function({context, server}) {
   expect(error.message).toContain(`Request timed out after 100ms`);
 });
 
-it('should dispose', async function({context, server}) {
+it('should dispose', async function({ context, server }) {
   const response = await context._request.get(server.PREFIX + '/simple.json');
   expect(await response.json()).toEqual({ foo: 'bar' });
   await response.dispose();
@@ -681,7 +690,7 @@ it('should dispose', async function({context, server}) {
   expect(error.message).toContain('Response has been disposed');
 });
 
-it('should dispose when context closes', async function({context, server}) {
+it('should dispose when context closes', async function({ context, server }) {
   const response = await context._request.get(server.PREFIX + '/simple.json');
   expect(await response.json()).toEqual({ foo: 'bar' });
   await context.close();
@@ -689,21 +698,12 @@ it('should dispose when context closes', async function({context, server}) {
   expect(error.message).toContain('Response has been disposed');
 });
 
-it('should dispose global request', async function({playwright, context, server}) {
-  const request = await playwright._newRequest();
-  const response = await request.get(server.PREFIX + '/simple.json');
-  expect(await response.json()).toEqual({ foo: 'bar' });
-  await request.dispose();
-  const error = await response.body().catch(e => e);
-  expect(error.message).toContain('Response has been disposed');
-});
-
-it('should throw on invalid first argument', async function({context}) {
+it('should throw on invalid first argument', async function({ context }) {
   const error = await context._request.get({} as any).catch(e => e);
   expect(error.message).toContain('First argument must be either URL string or Request');
 });
 
-it('should override request parameters', async function({context, page, server}) {
+it('should override request parameters', async function({ context, page, server }) {
   const [pageReq] = await Promise.all([
     page.waitForRequest('**/*'),
     page.goto(server.EMPTY_PAGE)
@@ -722,14 +722,11 @@ it('should override request parameters', async function({context, page, server})
   expect((await req.postBody).toString('utf8')).toBe('data');
 });
 
-it('should support application/x-www-form-urlencoded', async function({context, page, server}) {
+it('should support application/x-www-form-urlencoded', async function({ context, page, server }) {
   const [req] = await Promise.all([
     server.waitForRequest('/empty.html'),
     context._request.post(server.EMPTY_PAGE, {
-      headers: {
-        'content-type': 'application/x-www-form-urlencoded'
-      },
-      data: {
+      form: {
         firstName: 'John',
         lastName: 'Doe',
         file: 'f.js',
@@ -746,7 +743,7 @@ it('should support application/x-www-form-urlencoded', async function({context, 
   expect(params.get('file')).toBe('f.js');
 });
 
-it('should encode to application/json by default', async function({context, page, server}) {
+it('should encode to application/json by default', async function({ context, page, server }) {
   const data = {
     firstName: 'John',
     lastName: 'Doe',
@@ -765,13 +762,13 @@ it('should encode to application/json by default', async function({context, page
   expect(json).toEqual(data);
 });
 
-it('should support multipart/form-data', async function({context, page, server}) {
+it('should support multipart/form-data', async function({ context, page, server }) {
   const formReceived = new Promise<any>(resolve => {
     server.setRoute('/empty.html', async (serverRequest, res) => {
       const form = new formidable.IncomingForm();
       form.parse(serverRequest, (error, fields, files) => {
         server.serveFile(serverRequest, res);
-        resolve({error, fields, files, serverRequest });
+        resolve({ error, fields, files, serverRequest });
       });
     });
   });
@@ -781,13 +778,10 @@ it('should support multipart/form-data', async function({context, page, server})
     mimeType: 'text/javascript',
     buffer: Buffer.from('var x = 10;\r\n;console.log(x);')
   };
-  const [{error, fields, files, serverRequest}, response] = await Promise.all([
+  const [{ error, fields, files, serverRequest }, response] = await Promise.all([
     formReceived,
     context._request.post(server.EMPTY_PAGE, {
-      headers: {
-        'content-type': 'multipart/form-data'
-      },
-      data: {
+      multipart: {
         firstName: 'John',
         lastName: 'Doe',
         file
@@ -805,24 +799,21 @@ it('should support multipart/form-data', async function({context, page, server})
   expect(response.status()).toBe(200);
 });
 
-it('should support multipart/form-data with ReadSream values', async function({context, page, asset, server}) {
+it('should support multipart/form-data with ReadSream values', async function({ context, page, asset, server }) {
   const formReceived = new Promise<any>(resolve => {
     server.setRoute('/empty.html', async (serverRequest, res) => {
       const form = new formidable.IncomingForm();
       form.parse(serverRequest, (error, fields, files) => {
         server.serveFile(serverRequest, res);
-        resolve({error, fields, files, serverRequest });
+        resolve({ error, fields, files, serverRequest });
       });
     });
   });
   const readStream = fs.createReadStream(asset('simplezip.json'));
-  const [{error, fields, files, serverRequest}, response] = await Promise.all([
+  const [{ error, fields, files, serverRequest }, response] = await Promise.all([
     formReceived,
     context._request.post(server.EMPTY_PAGE, {
-      headers: {
-        'content-type': 'multipart/form-data'
-      },
-      data: {
+      multipart: {
         firstName: 'John',
         lastName: 'Doe',
         readStream
@@ -841,20 +832,27 @@ it('should support multipart/form-data with ReadSream values', async function({c
   expect(response.status()).toBe(200);
 });
 
-it('should throw nice error on unsupported encoding', async function({context, server}) {
-  const error = await context._request.post(server.EMPTY_PAGE, {
-    headers: {
-      'content-type': 'unknown'
-    },
-    data: {
-      firstName: 'John',
-      lastName: 'Doe',
-    }
-  }).catch(e => e);
-  expect(error.message).toContain('Cannot serialize data using content type: unknown');
+it('should serialize data to json regardless of content-type', async function({ context, server }) {
+  const data = {
+    firstName: 'John',
+    lastName: 'Doe',
+  };
+  const [req] = await Promise.all([
+    server.waitForRequest('/empty.html'),
+    context._request.post(server.EMPTY_PAGE, {
+      headers: {
+        'content-type': 'unknown'
+      },
+      data
+    }),
+  ]);
+  expect(req.method).toBe('POST');
+  expect(req.headers['content-type']).toBe('unknown');
+  const body = (await req.postBody).toString('utf8');
+  expect(body).toEqual(JSON.stringify(data));
 });
 
-it('should throw nice error on unsupported data type', async function({context, server}) {
+it('should throw nice error on unsupported data type', async function({ context, server }) {
   const error = await context._request.post(server.EMPTY_PAGE, {
     headers: {
       'content-type': 'application/json'
@@ -864,15 +862,26 @@ it('should throw nice error on unsupported data type', async function({context, 
   expect(error.message).toContain(`Unexpected 'data' type`);
 });
 
-it('should throw when data passed for unsupported request', async function({context, server}) {
+it('should throw when data passed for unsupported request', async function({ context, server }) {
   const error = await context._request.fetch(server.EMPTY_PAGE, {
     method: 'GET',
-    headers: {
-      'content-type': 'application/json'
-    },
     data: {
       foo: 'bar'
     }
   }).catch(e => e);
   expect(error.message).toContain(`Method GET does not accept post data`);
+});
+
+it('context request should export same storage state as context', async ({ context, page, server }) => {
+  server.setRoute('/setcookie.html', (req, res) => {
+    res.setHeader('Set-Cookie', ['a=b', 'c=d']);
+    res.end();
+  });
+  await context._request.get(server.PREFIX + '/setcookie.html');
+  const contextState = await context.storageState();
+  expect(contextState.cookies.length).toBe(2);
+  const requestState = await context._request.storageState();
+  expect(requestState).toEqual(contextState);
+  const pageState = await page._request.storageState();
+  expect(pageState).toEqual(contextState);
 });

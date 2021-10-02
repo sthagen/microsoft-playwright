@@ -17,6 +17,7 @@ import { Protocol } from './protocol';
 import { ChildProcess } from 'child_process';
 import { EventEmitter } from 'events';
 import { Readable } from 'stream';
+import { ReadStream } from 'fs';
 import { Serializable, EvaluationArgument, PageFunction, PageFunctionOn, SmartHandle, ElementHandleForTag, BindingSource } from './structs';
 
 type PageWaitForSelectorOptionsNotHidden = PageWaitForSelectorOptions & {
@@ -241,7 +242,6 @@ type AccessibilityNode = {
   children?: AccessibilityNode[];
 }
 
-export const selectors: Selectors;
 export const devices: Devices & DeviceDescriptor[];
 
 //@ts-ignore this will be any if electron is not installed
@@ -343,12 +343,8 @@ export type AndroidKey =
   'Copy' |
   'Paste';
 
-export const chromium: BrowserType;
-export const firefox: BrowserType;
-export const webkit: BrowserType;
 export const _electron: Electron;
 export const _android: Android;
-export const _newRequest: () => Promise<FetchRequest>;
 
 // This is required to not export everything by default. See https://github.com/Microsoft/TypeScript/issues/19545#issuecomment-340490459
 export {};

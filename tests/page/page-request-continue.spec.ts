@@ -17,12 +17,12 @@
 
 import { test as it, expect } from './pageTest';
 
-it('should work', async ({page, server}) => {
+it('should work', async ({ page, server }) => {
   await page.route('**/*', route => route.continue());
   await page.goto(server.EMPTY_PAGE);
 });
 
-it('should amend HTTP headers', async ({page, server}) => {
+it('should amend HTTP headers', async ({ page, server }) => {
   await page.route('**/*', route => {
     const headers = Object.assign({}, route.request().headers());
     headers['FOO'] = 'bar';
@@ -36,7 +36,7 @@ it('should amend HTTP headers', async ({page, server}) => {
   expect(request.headers['foo']).toBe('bar');
 });
 
-it('should amend method', async ({page, server}) => {
+it('should amend method', async ({ page, server }) => {
   const sRequest = server.waitForRequest('/sleep.zzz');
   await page.goto(server.EMPTY_PAGE);
   await page.route('**/*', route => route.continue({ method: 'POST' }));
@@ -48,7 +48,7 @@ it('should amend method', async ({page, server}) => {
   expect((await sRequest).method).toBe('POST');
 });
 
-it('should override request url', async ({page, server}) => {
+it('should override request url', async ({ page, server }) => {
   const request = server.waitForRequest('/global-var.html');
   await page.route('**/foo', route => {
     route.continue({ url: server.PREFIX + '/global-var.html' });
@@ -62,7 +62,7 @@ it('should override request url', async ({page, server}) => {
   expect((await request).method).toBe('GET');
 });
 
-it('should not allow changing protocol when overriding url', async ({page, server}) => {
+it('should not allow changing protocol when overriding url', async ({ page, server }) => {
   let error: Error | undefined;
   await page.route('**/*', async route => {
     try {
@@ -77,7 +77,7 @@ it('should not allow changing protocol when overriding url', async ({page, serve
   expect(error.message).toContain('New URL must have same protocol as overridden URL');
 });
 
-it('should override method along with url', async ({page, server}) => {
+it('should override method along with url', async ({ page, server }) => {
   const request = server.waitForRequest('/empty.html');
   await page.route('**/foo', route => {
     route.continue({
@@ -89,7 +89,7 @@ it('should override method along with url', async ({page, server}) => {
   expect((await request).method).toBe('POST');
 });
 
-it('should amend method on main request', async ({page, server}) => {
+it('should amend method on main request', async ({ page, server }) => {
   const request = server.waitForRequest('/empty.html');
   await page.route('**/*', route => route.continue({ method: 'POST' }));
   await page.goto(server.EMPTY_PAGE);
@@ -99,7 +99,7 @@ it('should amend method on main request', async ({page, server}) => {
 it.describe('', () => {
   it.fixme(({ isAndroid }) => isAndroid, 'Post data does not work');
 
-  it('should amend post data', async ({page, server}) => {
+  it('should amend post data', async ({ page, server }) => {
     await page.goto(server.EMPTY_PAGE);
     await page.route('**/*', route => {
       route.continue({ postData: 'doggo' });
@@ -111,7 +111,7 @@ it.describe('', () => {
     expect((await serverRequest.postBody).toString('utf8')).toBe('doggo');
   });
 
-  it('should amend method and post data', async ({page, server}) => {
+  it('should amend method and post data', async ({ page, server }) => {
     await page.goto(server.EMPTY_PAGE);
     await page.route('**/*', route => {
       route.continue({ method: 'POST', postData: 'doggo' });
@@ -124,7 +124,7 @@ it.describe('', () => {
     expect((await serverRequest.postBody).toString('utf8')).toBe('doggo');
   });
 
-  it('should amend utf8 post data', async ({page, server}) => {
+  it('should amend utf8 post data', async ({ page, server }) => {
     await page.goto(server.EMPTY_PAGE);
     await page.route('**/*', route => {
       route.continue({ postData: 'пушкин' });
@@ -137,7 +137,7 @@ it.describe('', () => {
     expect((await serverRequest.postBody).toString('utf8')).toBe('пушкин');
   });
 
-  it('should amend longer post data', async ({page, server}) => {
+  it('should amend longer post data', async ({ page, server }) => {
     await page.goto(server.EMPTY_PAGE);
     await page.route('**/*', route => {
       route.continue({ postData: 'doggo-is-longer-than-birdy' });
@@ -150,7 +150,7 @@ it.describe('', () => {
     expect((await serverRequest.postBody).toString('utf8')).toBe('doggo-is-longer-than-birdy');
   });
 
-  it('should amend binary post data', async ({page, server}) => {
+  it('should amend binary post data', async ({ page, server }) => {
     await page.goto(server.EMPTY_PAGE);
     const arr = Array.from(Array(256).keys());
     await page.route('**/*', route => {
@@ -166,4 +166,57 @@ it.describe('', () => {
     for (let i = 0; i < arr.length; ++i)
       expect(arr[i]).toBe(buffer[i]);
   });
+});
+
+it('should work with Cross-Origin-Opener-Policy', async ({ page, server, browserName }) => {
+  it.fail(browserName === 'webkit', 'https://github.com/microsoft/playwright/issues/8796');
+  let serverHeaders;
+  const serverRequests = [];
+  server.setRoute('/empty.html', (req, res) => {
+    serverRequests.push(req.url);
+    serverHeaders ??= req.headers;
+    res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
+    res.end();
+  });
+
+  const intercepted = [];
+  await page.route('**/*', (route, req) => {
+    intercepted.push(req.url());
+    route.continue({
+      headers: {
+        foo: 'bar'
+      }
+    });
+  });
+  const requests = new Set();
+  const events = [];
+  page.on('request', r => {
+    events.push('request');
+    requests.add(r);
+  });
+  page.on('requestfailed', r => {
+    events.push('requestfailed');
+    requests.add(r);
+  });
+  page.on('requestfinished', r => {
+    events.push('requestfinished');
+    requests.add(r);
+  });
+  page.on('response', r => {
+    events.push('response');
+    requests.add(r.request());
+  });
+  const response = await page.goto(server.EMPTY_PAGE);
+  expect(intercepted).toEqual([server.EMPTY_PAGE]);
+  // There should be only one request to the server.
+  if (browserName === 'webkit')
+    expect(serverRequests).toEqual(['/empty.html', '/empty.html']);
+  else
+    expect(serverRequests).toEqual(['/empty.html']);
+  expect(serverHeaders['foo']).toBe('bar');
+  expect(page.url()).toBe(server.EMPTY_PAGE);
+  await response.finished();
+  expect(events).toEqual(['request', 'response', 'requestfinished']);
+  expect(requests.size).toBe(1);
+  expect(response.request().failure()).toBeNull();
 });

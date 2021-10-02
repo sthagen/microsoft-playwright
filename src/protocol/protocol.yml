@@ -29,7 +29,6 @@ Metadata:
       type: array?
       items: StackFrame
     apiName: string?
-    collectLogs: boolean?
 
 
 Point:
@@ -95,6 +94,16 @@ SerializedArgument:
     handles:
       type: array
       items: Channel
+
+
+ExpectedTextValue:
+  type: object
+  properties:
+    string: string?
+    regexSource: string?
+    regexFlags: string?
+    matchSubstring: boolean?
+    normalizeWhiteSpace: boolean?
 
 
 AXNode:
@@ -205,6 +214,17 @@ SerializedError:
         stack: string?
     value: SerializedValue?
 
+FormField:
+  type: object
+  properties:
+    name: string
+    value: string?
+    file:
+      type: object?
+      properties:
+        name: string
+        mimeType: string
+        buffer: binary
 
 InterceptedResponse:
   type: object
@@ -233,9 +253,16 @@ FetchRequest:
           type: array?
           items: NameValue
         postData: binary?
-        formData: json?
+        jsonData: json?
+        formData:
+          type: array?
+          items: NameValue
+        multipartData:
+          type: array?
+          items: FormField
         timeout: number?
         failOnStatusCode: boolean?
+        ignoreHTTPSErrors: boolean?
       returns:
         response: FetchResponse?
         error: string?
@@ -245,6 +272,15 @@ FetchRequest:
         fetchUid: string
       returns:
         binary?: binary
+
+    storageState:
+      returns:
+        cookies:
+          type: array
+          items: NetworkCookie
+        origins:
+          type: array
+          items: OriginStorage
 
     disposeFetchResponse:
       parameters:
@@ -455,7 +491,35 @@ Playwright:
 
     newRequest:
       parameters:
+        baseURL: string?
+        userAgent: string?
         ignoreHTTPSErrors: boolean?
+        extraHTTPHeaders:
+          type: array?
+          items: NameValue
+        httpCredentials:
+          type: object?
+          properties:
+            username: string
+            password: string
+        proxy:
+          type: object?
+          properties:
+            server: string
+            bypass: string?
+            username: string?
+            password: string?
+        timeout: number?
+        storageState:
+          type: object?
+          properties:
+            cookies:
+              type: array
+              items: NetworkCookie
+            origins:
+              type: array
+              items: OriginStorage
+
       returns:
         request: FetchRequest
 
@@ -1687,6 +1751,12 @@ Frame:
         snapshot: true
         pausesBeforeInput: true
 
+    waitForTimeout:
+      parameters:
+        timeout: number
+      tracing:
+        snapshot: true
+
     waitForFunction:
       parameters:
         expression: string
@@ -1712,8 +1782,31 @@ Frame:
           - detached
           - visible
           - hidden
+        omitReturnValue: boolean?
       returns:
         element: ElementHandle?
+      tracing:
+        snapshot: true
+
+    expect:
+      parameters:
+        selector: string
+        expression: string
+        expressionArg: json?
+        expectedText:
+          type: array?
+          items: ExpectedTextValue
+        expectedNumber: number?
+        expectedValue: SerializedArgument?
+        useInnerText: boolean?
+        isNot: boolean?
+        timeout: number?
+      returns:
+        pass: boolean
+        received: SerializedValue?
+        log:
+          type: array?
+          items: string
       tracing:
         snapshot: true
 

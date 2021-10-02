@@ -240,6 +240,13 @@ obtained via [`method: BrowserContext.storageState`].
 Populates context with given storage state. This option can be used to initialize context with logged-in information
 obtained via [`method: BrowserContext.storageState`]. Path to the file with saved storage state.
 
+## storagestate-option-path
+- `path` <[path]>
+
+The file path to save the storage state to. If [`option: path`] is a relative path, then it is resolved relative to
+current working directory. If no path is provided, storage
+state is still returned, but won't be saved to the disk.
+
 ## context-option-acceptdownloads
 - `acceptDownloads` <[boolean]>
 
@@ -248,7 +255,7 @@ Whether to automatically download all the attachments. Defaults to `false` where
 ## context-option-ignorehttpserrors
 - `ignoreHTTPSErrors` <[boolean]>
 
-Whether to ignore HTTPS errors during navigation. Defaults to `false`.
+Whether to ignore HTTPS errors when sending network requests. Defaults to `false`.
 
 ## context-option-bypasscsp
 - `bypassCSP` <[boolean]>
@@ -290,6 +297,32 @@ Emulates consistent viewport for each page. Defaults to an 1280x720 viewport. Us
 
 Emulates consistent window screen size available inside web page via `window.screen`. Is only used when the
 [`option: viewport`] is set.
+
+## fetch-option-form
+- `form` <[Object]<[string], [string]|[float]|[boolean]>>
+
+Provides an object that will be serialized as html form using `application/x-www-form-urlencoded` encoding and sent as
+this request body. If this parameter is specified `content-type` header will be set to `application/x-www-form-urlencoded`
+unless explicitly provided.
+
+## fetch-option-multipart
+- `multipart` <[Object]<[string], [string]|[float]|[boolean]|[ReadStream]|[Object]>>
+  - `name` <[string]> File name
+  - `mimeType` <[string]> File type
+  - `buffer` <[Buffer]> File content
+
+Provides an object that will be serialized as html form using `multipart/form-data` encoding and sent as
+this request body. If this parameter is specified `content-type` header will be set to `multipart/form-data`
+unless explicitly provided. File values can be passed either as [`fs.ReadStream`](https://nodejs.org/api/fs.html#fs_class_fs_readstream)
+or as file-like object containing file name, mime-type and its content.
+
+## fetch-option-data
+- `data` <[string]|[Buffer]|[Serializable]>
+
+Allows to set post data of the request. If the data parameter is an object, it will be serialized to json string
+and `content-type` header will be set to `application/json` if not explicitly set. Otherwise the `content-type` header will be
+set to `application/octet-stream` if not explicitly set.
+
 
 ## evaluate-expression
 - `expression` <[string]>
@@ -395,7 +428,7 @@ A list of permissions to grant to all pages in this context. See
 ## context-option-extrahttpheaders
 - `extraHTTPHeaders` <[Object]<[string], [string]>>
 
-An object containing additional HTTP headers to be sent with every request. All header values must be strings.
+An object containing additional HTTP headers to be sent with every request.
 
 ## context-option-offline
 - `offline` <[boolean]>

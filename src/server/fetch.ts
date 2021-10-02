@@ -14,22 +14,23 @@
  * limitations under the License.
  */
 
-import { HttpsProxyAgent } from 'https-proxy-agent';
-import url from 'url';
-import zlib from 'zlib';
 import * as http from 'http';
 import * as https from 'https';
-import { BrowserContext } from './browserContext';
-import * as types from './types';
+import { HttpsProxyAgent } from 'https-proxy-agent';
 import { pipeline, Readable, Transform } from 'stream';
-import { createGuid, isFilePayload, monotonicTime } from '../utils/utils';
+import url from 'url';
+import zlib from 'zlib';
+import { HTTPCredentials } from '../../types/types';
+import * as channels from '../protocol/channels';
+import { TimeoutSettings } from '../utils/timeoutSettings';
+import { assert, createGuid, getPlaywrightVersion, monotonicTime } from '../utils/utils';
+import { BrowserContext } from './browserContext';
+import { CookieStore, domainMatches } from './cookieStore';
+import { MultipartFormData } from './formData';
 import { SdkObject } from './instrumentation';
 import { Playwright } from './playwright';
+import * as types from './types';
 import { HeadersArray, ProxySettings } from './types';
-import { HTTPCredentials } from '../../types/types';
-import { TimeoutSettings } from '../utils/timeoutSettings';
-import { MultipartFormData } from './formData';
-
 
 type FetchRequestOptions = {
   userAgent: string;
@@ -72,8 +73,9 @@ export abstract class FetchRequest extends SdkObject {
   abstract dispose(): void;
 
   abstract _defaultOptions(): FetchRequestOptions;
-  abstract _addCookies(cookies: types.SetNetworkCookieParam[]): Promise<void>;
-  abstract _cookies(url: string): Promise<types.NetworkCookie[]>;
+  abstract _addCookies(cookies: types.NetworkCookie[]): Promise<void>;
+  abstract _cookies(url: URL): Promise<types.NetworkCookie[]>;
+  abstract storageState(): Promise<channels.FetchRequestStorageStateResult>;
 
   private _storeResponseBody(body: Buffer): string {
     const uid = createGuid();
@@ -81,7 +83,7 @@ export abstract class FetchRequest extends SdkObject {
     return uid;
   }
 
-  async fetch(params: types.FetchOptions): Promise<{fetchResponse?: Omit<types.FetchResponse, 'body'> & { fetchUid: string }, error?: string}> {
+  async fetch(params: channels.FetchRequestFetchParams): Promise<{fetchResponse?: Omit<types.FetchResponse, 'body'> & { fetchUid: string }, error?: string}> {
     try {
       const headers: { [name: string]: string } = {};
       const defaults = this._defaultOptions();
@@ -90,12 +92,12 @@ export abstract class FetchRequest extends SdkObject {
       headers['accept-encoding'] = 'gzip,deflate,br';
 
       if (defaults.extraHTTPHeaders) {
-        for (const {name, value} of defaults.extraHTTPHeaders)
+        for (const { name, value } of defaults.extraHTTPHeaders)
           headers[name.toLowerCase()] = value;
       }
 
       if (params.headers) {
-        for (const [name, value] of Object.entries(params.headers))
+        for (const { name, value } of params.headers)
           headers[name.toLowerCase()] = value;
       }
 
@@ -111,7 +113,7 @@ export abstract class FetchRequest extends SdkObject {
       }
 
       const timeout = defaults.timeoutSettings.timeout(params);
-      const deadline = monotonicTime() + timeout;
+      const deadline = timeout && (monotonicTime() + timeout);
 
       const options: https.RequestOptions & { maxRedirects: number, deadline: number } = {
         method,
@@ -122,24 +124,22 @@ export abstract class FetchRequest extends SdkObject {
         deadline
       };
       // rejectUnauthorized = undefined is treated as true in node 12.
-      if (defaults.ignoreHTTPSErrors)
+      if (params.ignoreHTTPSErrors || defaults.ignoreHTTPSErrors)
         options.rejectUnauthorized = false;
 
       const requestUrl = new URL(params.url, defaults.baseURL);
       if (params.params) {
-        for (const [name, value] of Object.entries(params.params))
+        for (const { name, value } of params.params)
           requestUrl.searchParams.set(name, value);
       }
 
       let postData;
       if (['POST', 'PUSH', 'PATCH'].includes(method))
-        postData = params.formData ? serializeFormData(params.formData, headers) : params.postData;
-      else if (params.postData || params.formData)
+        postData = serializePostData(params, headers);
+      else if (params.postData || params.jsonData || params.formData || params.multipartData)
         throw new Error(`Method ${method} does not accept post data`);
-      if (postData) {
+      if (postData)
         headers['content-length'] = String(postData.byteLength);
-        headers['content-type'] ??= 'application/octet-stream';
-      }
       const fetchResponse = await this._sendRequest(requestUrl, options, postData);
       const fetchUid = this._storeResponseBody(fetchResponse.body);
       if (params.failOnStatusCode && (fetchResponse.status < 200 || fetchResponse.status >= 400))
@@ -154,15 +154,18 @@ export abstract class FetchRequest extends SdkObject {
     const url = new URL(responseUrl);
     // https://datatracker.ietf.org/doc/html/rfc6265#section-5.1.4
     const defaultPath = '/' + url.pathname.substr(1).split('/').slice(0, -1).join('/');
-    const cookies: types.SetNetworkCookieParam[] = [];
+    const cookies: types.NetworkCookie[] = [];
     for (const header of setCookie) {
       // Decode cookie value?
-      const cookie: types.SetNetworkCookieParam | null = parseCookie(header);
+      const cookie: types.NetworkCookie | null = parseCookie(header);
       if (!cookie)
         continue;
+      // https://datatracker.ietf.org/doc/html/rfc6265#section-5.2.3
       if (!cookie.domain)
         cookie.domain = url.hostname;
-      if (!canSetCookie(cookie.domain!, url.hostname))
+      else
+        assert(cookie.domain.startsWith('.'));
+      if (!domainMatches(url.hostname, cookie.domain!))
         continue;
       // https://datatracker.ietf.org/doc/html/rfc6265#section-5.2.4
       if (!cookie.path || !cookie.path.startsWith('/'))
@@ -176,7 +179,7 @@ export abstract class FetchRequest extends SdkObject {
   private async _updateRequestCookieHeader(url: URL, options: http.RequestOptions) {
     if (options.headers!['cookie'] !== undefined)
       return;
-    const cookies = await this._cookies(url.toString());
+    const cookies = await this._cookies(url);
     if (cookies.length) {
       const valueArray = cookies.map(c => `${c.name}=${c.value}`);
       options.headers!['cookie'] = valueArray.join('; ');
@@ -234,7 +237,7 @@ export abstract class FetchRequest extends SdkObject {
           const auth = response.headers['www-authenticate'];
           const credentials = this._defaultOptions().httpCredentials;
           if (auth?.trim().startsWith('Basic ') && credentials) {
-            const {username, password} = credentials;
+            const { username, password } = credentials;
             const encoded = Buffer.from(`${username || ''}:${password || ''}`).toString('base64');
             options.headers!['authorization'] = `Basic ${encoded}`;
             fulfill(this._sendRequest(url, options, postData));
@@ -279,16 +282,20 @@ export abstract class FetchRequest extends SdkObject {
         body.on('error',reject);
       });
       request.on('error', reject);
-      const rejectOnTimeout = () =>  {
-        reject(new Error(`Request timed out after ${options.timeout}ms`));
-        request.abort();
-      };
-      const remaining = options.deadline - monotonicTime();
-      if (remaining <= 0) {
-        rejectOnTimeout();
-        return;
+
+      if (options.deadline) {
+        const rejectOnTimeout = () =>  {
+          reject(new Error(`Request timed out after ${options.timeout}ms`));
+          request.abort();
+        };
+        const remaining = options.deadline - monotonicTime();
+        if (remaining <= 0) {
+          rejectOnTimeout();
+          return;
+        }
+        request.setTimeout(remaining, rejectOnTimeout);
       }
-      request.setTimeout(remaining, rejectOnTimeout);
+
       if (postData)
         request.write(postData);
       request.end();
@@ -321,19 +328,51 @@ export class BrowserContextFetchRequest extends FetchRequest {
     };
   }
 
-  async _addCookies(cookies: types.SetNetworkCookieParam[]): Promise<void> {
+  async _addCookies(cookies: types.NetworkCookie[]): Promise<void> {
     await this._context.addCookies(cookies);
   }
 
-  async _cookies(url: string): Promise<types.NetworkCookie[]> {
-    return await this._context.cookies(url);
+  async _cookies(url: URL): Promise<types.NetworkCookie[]> {
+    return await this._context.cookies(url.toString());
+  }
+
+  override async storageState(): Promise<channels.FetchRequestStorageStateResult> {
+    return this._context.storageState();
   }
 }
 
 
 export class GlobalFetchRequest extends FetchRequest {
-  constructor(playwright: Playwright) {
+  private readonly _cookieStore: CookieStore = new CookieStore();
+  private readonly _options: FetchRequestOptions;
+  private readonly _origins: channels.OriginStorage[] | undefined;
+
+  constructor(playwright: Playwright, options: channels.PlaywrightNewRequestOptions) {
     super(playwright);
+    const timeoutSettings = new TimeoutSettings();
+    if (options.timeout !== undefined)
+      timeoutSettings.setDefaultTimeout(options.timeout);
+    const proxy = options.proxy;
+    if (proxy?.server) {
+      let url = proxy?.server.trim();
+      if (!/^\w+:\/\//.test(url))
+        url = 'http://' + url;
+      proxy.server = url;
+    }
+    if (options.storageState) {
+      this._origins = options.storageState.origins;
+      this._cookieStore.addCookies(options.storageState.cookies);
+    }
+    this._options = {
+      baseURL: options.baseURL,
+      userAgent: options.userAgent || `Playwright/${getPlaywrightVersion()}`,
+      extraHTTPHeaders: options.extraHTTPHeaders,
+      ignoreHTTPSErrors: !!options.ignoreHTTPSErrors,
+      httpCredentials: options.httpCredentials,
+      proxy,
+      timeoutSettings,
+    };
+
   }
 
   override dispose() {
@@ -341,21 +380,22 @@ export class GlobalFetchRequest extends FetchRequest {
   }
 
   _defaultOptions(): FetchRequestOptions {
+    return this._options;
+  }
+
+  async _addCookies(cookies: types.NetworkCookie[]): Promise<void> {
+    this._cookieStore.addCookies(cookies);
+  }
+
+  async _cookies(url: URL): Promise<types.NetworkCookie[]> {
+    return this._cookieStore.cookies(url);
+  }
+
+  override async storageState(): Promise<channels.FetchRequestStorageStateResult> {
     return {
-      userAgent: '',
-      extraHTTPHeaders: undefined,
-      proxy: undefined,
-      timeoutSettings: new TimeoutSettings(),
-      ignoreHTTPSErrors: false,
-      baseURL: undefined,
+      cookies: this._cookieStore.allCookies(),
+      origins: this._origins || []
     };
-  }
-
-  async _addCookies(cookies: types.SetNetworkCookieParam[]): Promise<void> {
-  }
-
-  async _cookies(url: string): Promise<types.NetworkCookie[]> {
-    return [];
   }
 }
 
@@ -368,15 +408,7 @@ function toHeadersArray(rawHeaders: string[]): types.HeadersArray {
 
 const redirectStatus = [301, 302, 303, 307, 308];
 
-function canSetCookie(cookieDomain: string, hostname: string) {
-  // TODO: check public suffix list?
-  hostname = '.' + hostname;
-  if (!cookieDomain.startsWith('.'))
-    cookieDomain = '.' + cookieDomain;
-  return hostname.endsWith(cookieDomain);
-}
-
-function parseCookie(header: string) {
+function parseCookie(header: string): types.NetworkCookie | null {
   const pairs = header.split(';').filter(s => s.trim().length > 0).map(p => p.split('=').map(s => s.trim()));
   if (!pairs.length)
     return null;
@@ -405,7 +437,9 @@ function parseCookie(header: string) {
           cookie.expires = Date.now() / 1000 + maxAgeSec;
         break;
       case 'domain':
-        cookie.domain = value || '';
+        cookie.domain = value.toLocaleLowerCase() || '';
+        if (cookie.domain && !cookie.domain.startsWith('.'))
+          cookie.domain = '.' + cookie.domain;
         break;
       case 'path':
         cookie.path = value || '';
@@ -421,30 +455,31 @@ function parseCookie(header: string) {
   return cookie;
 }
 
-function serializeFormData(data: any, headers: { [name: string]: string }): Buffer {
-  const contentType = headers['content-type'] || 'application/json';
-  if (contentType === 'application/json') {
-    const json = JSON.stringify(data);
-    headers['content-type'] ??= contentType;
+function serializePostData(params: channels.FetchRequestFetchParams, headers: { [name: string]: string }): Buffer | undefined {
+  assert((params.postData ? 1 : 0) + (params.jsonData ? 1 : 0) + (params.formData ? 1 : 0) + (params.multipartData ? 1 : 0) <= 1, `Only one of 'data', 'form' or 'multipart' can be specified`);
+  if (params.jsonData) {
+    const json = JSON.stringify(params.jsonData);
+    headers['content-type'] ??= 'application/json';
     return Buffer.from(json, 'utf8');
-  } else if (contentType === 'application/x-www-form-urlencoded') {
+  } else if (params.formData) {
     const searchParams = new URLSearchParams();
-    for (const [name, value] of Object.entries(data))
-      searchParams.append(name, String(value));
+    for (const { name, value } of params.formData)
+      searchParams.append(name, value);
+    headers['content-type'] ??= 'application/x-www-form-urlencoded';
     return Buffer.from(searchParams.toString(), 'utf8');
-  } else if (contentType === 'multipart/form-data') {
+  } else if (params.multipartData) {
     const formData = new MultipartFormData();
-    for (const [name, value] of Object.entries(data)) {
-      if (isFilePayload(value)) {
-        const payload = value as types.FilePayload;
-        formData.addFileField(name, payload);
-      } else if (value !== undefined) {
-        formData.addField(name, String(value));
-      }
+    for (const field of params.multipartData) {
+      if (field.file)
+        formData.addFileField(field.name, field.file);
+      else if (field.value)
+        formData.addField(field.name, field.value);
     }
-    headers['content-type'] = formData.contentTypeHeader();
+    headers['content-type'] ??= formData.contentTypeHeader();
     return formData.finish();
-  } else {
-    throw new Error(`Cannot serialize data using content type: ${contentType}`);
+  } else if (params.postData) {
+    headers['content-type'] ??= 'application/octet-stream';
+    return Buffer.from(params.postData, 'base64');
   }
+  return undefined;
 }

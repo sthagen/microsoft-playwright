@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { ReadStream } from 'fs';
+import fs from 'fs';
 import path from 'path';
 import * as mime from 'mime';
 import { Serializable } from '../../types/structs';
@@ -22,19 +22,22 @@ import * as api from '../../types/types';
 import { HeadersArray } from '../common/types';
 import * as channels from '../protocol/channels';
 import { kBrowserOrContextClosedError } from '../utils/errors';
-import { assert, headersObjectToArray, isFilePayload, isString, objectToArray } from '../utils/utils';
+import { assert, headersObjectToArray, isFilePayload, isString, mkdirIfNeeded, objectToArray } from '../utils/utils';
 import { ChannelOwner } from './channelOwner';
 import * as network from './network';
 import { RawHeaders } from './network';
-import { FilePayload, Headers } from './types';
+import { FilePayload, Headers, StorageState } from './types';
 
 export type FetchOptions = {
   params?: { [key: string]: string; },
   method?: string,
   headers?: Headers,
   data?: string | Buffer | Serializable,
+  form?: { [key: string]: string|number|boolean; };
+  multipart?: { [key: string]: string|number|boolean|fs.ReadStream|FilePayload; };
   timeout?: number,
   failOnStatusCode?: boolean,
+  ignoreHTTPSErrors?: boolean,
 };
 
 export class FetchRequest extends ChannelOwner<channels.FetchRequestChannel, channels.FetchRequestInitializer> implements api.FetchRequest {
@@ -59,6 +62,7 @@ export class FetchRequest extends ChannelOwner<channels.FetchRequestChannel, cha
       headers?: { [key: string]: string; };
       timeout?: number;
       failOnStatusCode?: boolean;
+      ignoreHTTPSErrors?: boolean,
     }): Promise<FetchResponse> {
     return this.fetch(urlOrRequest, {
       ...options,
@@ -66,15 +70,7 @@ export class FetchRequest extends ChannelOwner<channels.FetchRequestChannel, cha
     });
   }
 
-  async post(
-    urlOrRequest: string | api.Request,
-    options?: {
-      params?: { [key: string]: string; };
-      headers?: { [key: string]: string; };
-      data?: string | Buffer | Serializable;
-      timeout?: number;
-      failOnStatusCode?: boolean;
-    }): Promise<FetchResponse> {
+  async post(urlOrRequest: string | api.Request, options?: Omit<FetchOptions, 'method'>): Promise<FetchResponse> {
     return this.fetch(urlOrRequest, {
       ...options,
       method: 'POST',
@@ -85,40 +81,46 @@ export class FetchRequest extends ChannelOwner<channels.FetchRequestChannel, cha
     return this._wrapApiCall(async (channel: channels.FetchRequestChannel) => {
       const request: network.Request | undefined = (urlOrRequest instanceof network.Request) ? urlOrRequest as network.Request : undefined;
       assert(request || typeof urlOrRequest === 'string', 'First argument must be either URL string or Request');
+      assert((options.data === undefined ? 0 : 1) + (options.form === undefined ? 0 : 1) + (options.multipart === undefined ? 0 : 1) <= 1, `Only one of 'data', 'form' or 'multipart' can be specified`);
       const url = request ? request.url() : urlOrRequest as string;
       const params = objectToArray(options.params);
       const method = options.method || request?.method();
       // Cannot call allHeaders() here as the request may be paused inside route handler.
       const headersObj = options.headers || request?.headers() ;
       const headers = headersObj ? headersObjectToArray(headersObj) : undefined;
-      let formData: any;
+      let jsonData: any;
+      let formData: channels.NameValue[] | undefined;
+      let multipartData: channels.FormField[] | undefined;
       let postDataBuffer: Buffer | undefined;
-      if (options.data) {
-        if (isString(options.data)) {
+      if (options.data !== undefined) {
+        if (isString(options.data))
           postDataBuffer = Buffer.from(options.data, 'utf8');
-        } else if (Buffer.isBuffer(options.data)) {
+        else if (Buffer.isBuffer(options.data))
           postDataBuffer = options.data;
-        } else if (typeof options.data === 'object') {
-          formData = {};
-          // Convert file-like values to ServerFilePayload structs.
-          for (const [name, value] of Object.entries(options.data)) {
-            if (isFilePayload(value)) {
-              const payload = value as FilePayload;
-              if (!Buffer.isBuffer(payload.buffer))
-                throw new Error(`Unexpected buffer type of 'data.${name}'`);
-              formData[name] = filePayloadToJson(payload);
-            } else if (value instanceof ReadStream) {
-              formData[name] = await readStreamToJson(value as ReadStream);
-            } else {
-              formData[name] = value;
-            }
-          }
-        } else {
+        else if (typeof options.data === 'object')
+          jsonData = options.data;
+        else
           throw new Error(`Unexpected 'data' type`);
+      } else if (options.form) {
+        formData = objectToArray(options.form);
+      } else if (options.multipart) {
+        multipartData = [];
+        // Convert file-like values to ServerFilePayload structs.
+        for (const [name, value] of Object.entries(options.multipart)) {
+          if (isFilePayload(value)) {
+            const payload = value as FilePayload;
+            if (!Buffer.isBuffer(payload.buffer))
+              throw new Error(`Unexpected buffer type of 'data.${name}'`);
+            multipartData.push({ name, file: filePayloadToJson(payload) });
+          } else if (value instanceof fs.ReadStream) {
+            multipartData.push({ name, file: await readStreamToJson(value as fs.ReadStream) });
+          } else {
+            multipartData.push({ name, value: String(value) });
+          }
         }
-        if (postDataBuffer === undefined && formData === undefined)
-          postDataBuffer = request?.postDataBuffer() || undefined;
       }
+      if (postDataBuffer === undefined && jsonData === undefined && formData === undefined && multipartData === undefined)
+        postDataBuffer = request?.postDataBuffer() || undefined;
       const postData = (postDataBuffer ? postDataBuffer.toString('base64') : undefined);
       const result = await channel.fetch({
         url,
@@ -126,13 +128,27 @@ export class FetchRequest extends ChannelOwner<channels.FetchRequestChannel, cha
         method,
         headers,
         postData,
+        jsonData,
         formData,
+        multipartData,
         timeout: options.timeout,
         failOnStatusCode: options.failOnStatusCode,
+        ignoreHTTPSErrors: options.ignoreHTTPSErrors,
       });
       if (result.error)
         throw new Error(result.error);
       return new FetchResponse(this, result.response!);
+    });
+  }
+
+  async storageState(options: { path?: string } = {}): Promise<StorageState> {
+    return await this._wrapApiCall(async (channel: channels.FetchRequestChannel) => {
+      const state = await channel.storageState();
+      if (options.path) {
+        await mkdirIfNeeded(options.path);
+        await fs.promises.writeFile(options.path, JSON.stringify(state, undefined, 2), 'utf8');
+      }
+      return state;
     });
   }
 }
@@ -222,10 +238,10 @@ function filePayloadToJson(payload: FilePayload): ServerFilePayload {
   };
 }
 
-async function readStreamToJson(stream: ReadStream): Promise<ServerFilePayload> {
+async function readStreamToJson(stream: fs.ReadStream): Promise<ServerFilePayload> {
   const buffer = await new Promise<Buffer>((resolve, reject) => {
     const chunks: Buffer[] = [];
-    stream.on('data', chunk => chunks.push(chunk));
+    stream.on('data', chunk => chunks.push(chunk as Buffer));
     stream.on('end', () => resolve(Buffer.concat(chunks)));
     stream.on('error', err => reject(err));
   });

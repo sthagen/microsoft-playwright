@@ -26,7 +26,7 @@ import { TimeoutSettings } from '../../utils/timeoutSettings';
 import { WebSocketTransport } from '../transport';
 import { launchProcess, envArrayToObject } from '../../utils/processLauncher';
 import { BrowserContext } from '../browserContext';
-import type {BrowserWindow} from 'electron';
+import type { BrowserWindow } from 'electron';
 import { Progress, ProgressController } from '../progress';
 import { helper } from '../helper';
 import { eventsHelper } from '../../utils/eventsHelper';
@@ -193,7 +193,7 @@ export class Electron extends SdkObject {
 
 function waitForLine(progress: Progress, process: childProcess.ChildProcess, regex: RegExp): Promise<RegExpMatchArray> {
   return new Promise((resolve, reject) => {
-    const rl = readline.createInterface({ input: process.stderr });
+    const rl = readline.createInterface({ input: process.stderr! });
     const failError = new Error('Process failed to launch!');
     const listeners = [
       eventsHelper.addEventListener(rl, 'line', onLine),

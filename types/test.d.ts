@@ -1101,10 +1101,15 @@ export interface TestInfo {
    */
   outputDir: string;
   /**
-   * Returns a path to a snapshot file with the given `snapshotName`. Learn more about [snapshots](https://playwright.dev/docs/test-snapshots).
-   * @param snapshotName
+   * Returns a path to a snapshot file with the given `pathSegments`. Learn more about [snapshots](https://playwright.dev/docs/test-snapshots).
+   *
+   * > Note that `pathSegments` accepts path segments to the snapshot file such as `testInfo.snapshotPath('relative', 'path',
+   * 'to', 'snapshot.png')`.
+   * > However, this path must stay within the snapshots directory for each test file (i.e. `a.spec.js-snapshots`), otherwise
+   * it will throw.
+   * @param pathSegments The name of the snapshot or the path segments to define the snapshot file path. Snapshots with the same name in the same test file are expected to be the same.
    */
-  snapshotPath: (snapshotName: string) => string;
+  snapshotPath: (...pathSegments: string[]) => string;
   /**
    * Returns a path inside the [testInfo.outputDir](https://playwright.dev/docs/api/class-testinfo#test-info-output-dir)
    * where the test can safely put a temporary file. Guarantees that tests running in parallel will not interfere with each
@@ -1120,6 +1125,11 @@ export interface TestInfo {
    * });
    * ```
    *
+   * > Note that `pathSegments` accepts path segments to the test output directory such as `testInfo.outputPath('relative',
+   * 'path', 'to', 'output')`.
+   * > However, this path must stay within the
+   * [testInfo.outputDir](https://playwright.dev/docs/api/class-testinfo#test-info-output-dir) directory for each test (i.e.
+   * `test-results/a-test-title`), otherwise it will throw.
    * @param pathSegments Path segments to append at the end of the resulting path.
    */
   outputPath: (...pathSegments: string[]) => string;
@@ -1267,22 +1277,9 @@ export interface TestType<TestArgs extends KeyValue, WorkerArgs extends KeyValue
    */
   parallel: SuiteFunction & {
       /**
-   * Declares a focused group of tests that could be run in parallel. By default, tests in a single test file run one after
-   * another, but using
-   * [test.describe.parallel(title, callback)](https://playwright.dev/docs/api/class-test#test-describe-parallel) allows them
-   * to run in parallel. If there are some focused tests or suites, all of them will be run but nothing else.
-   *
-   * ```ts
-   * test.describe.parallel.only('group', () => {
-   *   test('runs in parallel 1', async ({ page }) => {
-   *   });
-   *   test('runs in parallel 2', async ({ page }) => {
-   *   });
-   * });
-   * ```
-   *
-   * Note that parallel tests are executed in separate processes and cannot share any state or global variables. Each of the
-   * parallel tests executes all relevant hooks.
+   * Declares a focused group of tests that could be run in parallel. This is similar to
+   * [test.describe.parallel(title, callback)](https://playwright.dev/docs/api/class-test#test-describe-parallel), but
+   * focuses the group. If there are some focused tests or suites, all of them will be run but nothing else.
    * @param title Group title.
    * @param callback A callback that is run immediately when calling [test.describe.parallel.only(title, callback)](https://playwright.dev/docs/api/class-test#test-describe-parallel-only).
    * Any tests added in this callback will belong to the group.
@@ -2282,8 +2279,8 @@ export interface TestType<TestArgs extends KeyValue, WorkerArgs extends KeyValue
 type KeyValue = { [key: string]: any };
 export type TestFixture<R, Args extends KeyValue> = (args: Args, use: (r: R) => Promise<void>, testInfo: TestInfo) => any;
 export type WorkerFixture<R, Args extends KeyValue> = (args: Args, use: (r: R) => Promise<void>, workerInfo: WorkerInfo) => any;
-type TestFixtureValue<R, Args> = R | TestFixture<R, Args>;
-type WorkerFixtureValue<R, Args> = R | WorkerFixture<R, Args>;
+type TestFixtureValue<R, Args> = Exclude<R, Function> | TestFixture<R, Args>;
+type WorkerFixtureValue<R, Args> = Exclude<R, Function> | WorkerFixture<R, Args>;
 export type Fixtures<T extends KeyValue = {}, W extends KeyValue = {}, PT extends KeyValue = {}, PW extends KeyValue = {}> = {
   [K in keyof PW]?: WorkerFixtureValue<PW[K], W & PW> | [WorkerFixtureValue<PW[K], W & PW>, { scope: 'worker' }];
 } & {
@@ -2466,7 +2463,7 @@ export interface PlaywrightTestOptions {
    */
   deviceScaleFactor: number | undefined;
   /**
-   * An object containing additional HTTP headers to be sent with every request. All header values must be strings.
+   * An object containing additional HTTP headers to be sent with every request.
    */
   extraHTTPHeaders: ExtraHTTPHeaders | undefined;
   geolocation: Geolocation | undefined;
@@ -2479,7 +2476,7 @@ export interface PlaywrightTestOptions {
    */
   httpCredentials: HTTPCredentials | undefined;
   /**
-   * Whether to ignore HTTPS errors during navigation. Defaults to `false`.
+   * Whether to ignore HTTPS errors when sending network requests. Defaults to `false`.
    */
   ignoreHTTPSErrors: boolean | undefined;
   /**

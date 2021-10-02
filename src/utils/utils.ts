@@ -27,6 +27,7 @@ import { getProxyForUrl } from 'proxy-from-env';
 import * as URL from 'url';
 import { getUbuntuVersionSync } from './ubuntuVersion';
 import { NameValue } from '../protocol/channels';
+import ProgressBar from 'progress';
 
 // `https-proxy-agent` v5 is written in TypeScript and exposes generated types.
 // However, as of June 2020, its types are generated with tsconfig that enables
@@ -44,6 +45,7 @@ type HTTPRequestParams = {
   method?: string,
   headers?: http.OutgoingHttpHeaders,
   data?: string | Buffer,
+  timeout?: number,
 };
 
 function httpRequest(params: HTTPRequestParams, onResponse: (r: http.IncomingMessage) => void, onError: (error: Error) => void) {
@@ -81,14 +83,26 @@ function httpRequest(params: HTTPRequestParams, onResponse: (r: http.IncomingMes
     https.request(options, requestCallback) :
     http.request(options, requestCallback);
   request.on('error', onError);
+  if (params.timeout !== undefined) {
+    const rejectOnTimeout = () =>  {
+      onError(new Error(`Request to ${params.url} timed out after ${params.timeout}ms`));
+      request.abort();
+    };
+    if (params.timeout <= 0) {
+      rejectOnTimeout();
+      return;
+    }
+    request.setTimeout(params.timeout, rejectOnTimeout);
+  }
   request.end(params.data);
 }
 
-export function fetchData(params: HTTPRequestParams): Promise<string> {
+export function fetchData(params: HTTPRequestParams, onError?: (response: http.IncomingMessage) => Promise<Error>): Promise<string> {
   return new Promise((resolve, reject) => {
-    httpRequest(params, response => {
+    httpRequest(params, async response => {
       if (response.statusCode !== 200) {
-        reject(new Error(`fetch failed: server returned code ${response.statusCode}. URL: ${params.url}`));
+        const error = onError ? await onError(response) : new Error(`fetch failed: server returned code ${response.statusCode}. URL: ${params.url}`);
+        reject(error);
         return;
       }
       let body = '';
@@ -102,7 +116,7 @@ export function fetchData(params: HTTPRequestParams): Promise<string> {
 type OnProgressCallback = (downloadedBytes: number, totalBytes: number) => void;
 type DownloadFileLogger = (message: string) => void;
 
-export function downloadFile(url: string, destinationPath: string, options: {progressCallback?: OnProgressCallback, log?: DownloadFileLogger} = {}): Promise<{error: any}> {
+function downloadFile(url: string, destinationPath: string, options: {progressCallback?: OnProgressCallback, log?: DownloadFileLogger} = {}): Promise<{error: any}> {
   const {
     progressCallback,
     log = () => {},
@@ -110,7 +124,7 @@ export function downloadFile(url: string, destinationPath: string, options: {pro
   log(`running download:`);
   log(`-- from url: ${url}`);
   log(`-- to location: ${destinationPath}`);
-  let fulfill: ({error}: {error: any}) => void = ({error}) => {};
+  let fulfill: ({ error }: {error: any}) => void = ({ error }) => {};
   let downloadedBytes = 0;
   let totalBytes = 0;
 
@@ -122,18 +136,18 @@ export function downloadFile(url: string, destinationPath: string, options: {pro
       const error = new Error(`Download failed: server returned code ${response.statusCode}. URL: ${url}`);
       // consume response data to free up memory
       response.resume();
-      fulfill({error});
+      fulfill({ error });
       return;
     }
     const file = fs.createWriteStream(destinationPath);
-    file.on('finish', () => fulfill({error: null}));
-    file.on('error', error => fulfill({error}));
+    file.on('finish', () => fulfill({ error: null }));
+    file.on('error', error => fulfill({ error }));
     response.pipe(file);
     totalBytes = parseInt(response.headers['content-length'] || '0', 10);
     log(`-- total bytes: ${totalBytes}`);
     if (progressCallback)
       response.on('data', onData);
-  }, (error: any) => fulfill({error}));
+  }, (error: any) => fulfill({ error }));
   return promise;
 
   function onData(chunk: string) {
@@ -142,7 +156,77 @@ export function downloadFile(url: string, destinationPath: string, options: {pro
   }
 }
 
-export function spawnAsync(cmd: string, args: string[], options?: SpawnOptions): Promise<{stdout: string, stderr: string, code: number, error?: Error}> {
+export async function download(
+  url: string,
+  destination: string,
+  options: {
+		progressBarName?: string,
+		retryCount?: number
+    log?: DownloadFileLogger
+	} = {}
+) {
+  const { progressBarName = 'file', retryCount = 3, log = () => {} } = options;
+  for (let attempt = 1; attempt <= retryCount; ++attempt) {
+    log(
+        `downloading ${progressBarName} - attempt #${attempt}`
+    );
+    const { error } = await downloadFile(url, destination, {
+      progressCallback: getDownloadProgress(progressBarName),
+      log,
+    });
+    if (!error) {
+      log(`SUCCESS downloading ${progressBarName}`);
+      break;
+    }
+    const errorMessage = error?.message || '';
+    log(`attempt #${attempt} - ERROR: ${errorMessage}`);
+    if (
+      attempt < retryCount &&
+      (errorMessage.includes('ECONNRESET') ||
+        errorMessage.includes('ETIMEDOUT'))
+    ) {
+      // Maximum default delay is 3rd retry: 1337.5ms
+      const millis = Math.random() * 200 + 250 * Math.pow(1.5, attempt);
+      log(`sleeping ${millis}ms before retry...`);
+      await new Promise(c => setTimeout(c, millis));
+    } else {
+      throw error;
+    }
+  }
+}
+
+function getDownloadProgress(progressBarName: string): OnProgressCallback {
+  let progressBar: ProgressBar;
+  let lastDownloadedBytes = 0;
+
+  return (downloadedBytes: number, totalBytes: number) => {
+    if (!process.stderr.isTTY)
+      return;
+    if (!progressBar) {
+      progressBar = new ProgressBar(
+          `Downloading ${progressBarName} - ${toMegabytes(
+              totalBytes
+          )} [:bar] :percent :etas `,
+          {
+            complete: '=',
+            incomplete: ' ',
+            width: 20,
+            total: totalBytes,
+          }
+      );
+    }
+    const delta = downloadedBytes - lastDownloadedBytes;
+    lastDownloadedBytes = downloadedBytes;
+    progressBar.tick(delta);
+  };
+}
+
+function toMegabytes(bytes: number) {
+  const mb = bytes / 1024 / 1024;
+  return `${Math.round(mb * 10) / 10} Mb`;
+}
+
+export function spawnAsync(cmd: string, args: string[], options: SpawnOptions = {}): Promise<{stdout: string, stderr: string, code: number | null, error?: Error}> {
   const process = spawn(cmd, args, options);
 
   return new Promise(resolve => {
@@ -152,8 +236,8 @@ export function spawnAsync(cmd: string, args: string[], options?: SpawnOptions):
       process.stdout.on('data', data => stdout += data);
     if (process.stderr)
       process.stderr.on('data', data => stderr += data);
-    process.on('close', code => resolve({stdout, stderr, code}));
-    process.on('error', error => resolve({stdout, stderr, code: 0, error}));
+    process.on('close', code => resolve({ stdout, stderr, code }));
+    process.on('error', error => resolve({ stdout, stderr, code: 0, error }));
   });
 }
 
@@ -252,7 +336,7 @@ export function getAsBooleanFromENV(name: string): boolean {
 
 export async function mkdirIfNeeded(filePath: string) {
   // This will harmlessly throw on windows if the dirname is the root directory.
-  await fs.promises.mkdir(path.dirname(filePath), {recursive: true}).catch(() => {});
+  await fs.promises.mkdir(path.dirname(filePath), { recursive: true }).catch(() => {});
 }
 
 type HeadersArray = { name: string, value: string }[];
@@ -300,12 +384,12 @@ class HashStream extends stream.Writable {
   }
 }
 
-export function objectToArray(map?:  { [key: string]: string }): NameValue[] | undefined {
+export function objectToArray(map?:  { [key: string]: any }): NameValue[] | undefined {
   if (!map)
     return undefined;
   const result = [];
   for (const [name, value] of Object.entries(map))
-    result.push({ name, value });
+    result.push({ name, value: String(value) });
   return result;
 }
 
@@ -313,7 +397,7 @@ export function arrayToObject(array?: NameValue[]): { [key: string]: string } | 
   if (!array)
     return undefined;
   const result: { [key: string]: string } = {};
-  for (const {name, value} of array)
+  for (const { name, value } of array)
     result[name] = value;
   return result;
 }
@@ -343,7 +427,7 @@ export async function removeFolders(dirs: string[]): Promise<Array<Error|undefin
   return await Promise.all(dirs.map((dir: string) => {
     return new Promise<Error|undefined>(fulfill => {
       removeFolder(dir, { maxBusyTries: 10 }, error => {
-        fulfill(error);
+        fulfill(error ?? undefined);
       });
     });
   }));
@@ -425,4 +509,13 @@ export function wrapInASCIIBox(text: string, padding = 0): string {
 
 export function isFilePayload(value: any): boolean {
   return typeof value === 'object' && value['name'] && value['mimeType'] && value['buffer'];
+}
+
+export function streamToString(stream: stream.Readable): Promise<string> {
+  return new Promise<string>((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    stream.on('data', chunk => chunks.push(Buffer.from(chunk)));
+    stream.on('error', reject);
+    stream.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
+  });
 }

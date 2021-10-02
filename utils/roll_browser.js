@@ -74,7 +74,8 @@ Example:
     // 3. Download new browser.
     console.log('\nDownloading new browser...');
     const registry = new Registry(browsersJSON);
-    await registry.install();
+    const executables = registry.defaultExecutables();
+    await registry.install(executables);
 
     // 4. Generate types.
     console.log('\nGenerating protocol types...');
@@ -86,6 +87,15 @@ Example:
     try {
       process.stdout.write(execSync('npm run --silent doc'));
     } catch (e) {
+    }
+
+    if (browserName === 'chromium') {
+      // 5. Update chromedriver.
+      console.log('\nUpdating chromedriver...');
+      try {
+        process.stdout.write(execSync('npm install --save-dev chromedriver@latest'));
+      } catch (e) {
+      }
     }
   }
   console.log(`\nRolled ${browserName} to ${revision}`);

@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import http from 'http';
+import path from 'path';
 import { test, expect, stripAscii } from './playwright-test-fixtures';
 
 test('should support toHaveCount', async ({ runInlineTest }) => {
@@ -166,12 +166,8 @@ test('should support toHaveURL', async ({ runInlineTest }) => {
   expect(result.exitCode).toBe(1);
 });
 
-test('should support toHaveURL with baseURL', async ({ runInlineTest }, testInfo) => {
+test('should support toHaveURL with baseURL from webServer', async ({ runInlineTest }, testInfo) => {
   const port = testInfo.workerIndex + 10500;
-  const server = http.createServer((req: http.IncomingMessage, res: http.ServerResponse) => {
-    res.end('<html><body>hello</body></html>');
-  });
-  await new Promise(resolve => server.listen(port, resolve));
   const result = await runInlineTest({
     'a.test.ts': `
       const { test } = pwt;
@@ -189,9 +185,10 @@ test('should support toHaveURL with baseURL', async ({ runInlineTest }, testInfo
       `,
     'playwright.config.ts': `
       module.exports = {
-        use: {
-          baseURL: 'http://localhost:${port}',
-        }
+        webServer: {
+          command: 'node ${JSON.stringify(path.join(__dirname, 'assets', 'simple-server.js'))} ${port}',
+          port: ${port},
+        },
       };
   `,
   }, { workers: 1 });
@@ -201,7 +198,6 @@ test('should support toHaveURL with baseURL', async ({ runInlineTest }, testInfo
   expect(result.passed).toBe(1);
   expect(result.failed).toBe(1);
   expect(result.exitCode).toBe(1);
-  await new Promise(resolve => server.close(resolve));
 });
 
 test('should support respect expect.timeout', async ({ runInlineTest }) => {
@@ -222,5 +218,25 @@ test('should support respect expect.timeout', async ({ runInlineTest }) => {
   const output = stripAscii(result.output);
   expect(output).toContain('expect(received).toHaveURL(expected)');
   expect(result.failed).toBe(1);
+  expect(result.exitCode).toBe(1);
+});
+
+test('should log scale the time', async ({ runInlineTest }) => {
+  const result = await runInlineTest({
+    'a.test.ts': `
+      const { test } = pwt;
+
+      test('pass', async ({ page }) => {
+        await page.setContent('<div id=div>Wrong</div>');
+        await expect(page.locator('div')).toHaveText('Text', { timeout: 2000 });
+      });
+      `,
+  }, { workers: 1 });
+  const output = stripAscii(result.output);
+  const tokens = output.split('unexpected value');
+  // Log scale: 0, 100, 250, 500, 1000, 1000, should be less than 8.
+  expect(tokens.length).toBeGreaterThan(1);
+  expect(tokens.length).toBeLessThan(8);
+  expect(result.passed).toBe(0);
   expect(result.exitCode).toBe(1);
 });

@@ -38,13 +38,11 @@ If set changes the fetch method (e.g. PUT or POST). If not specified, GET method
 
 Allows to set HTTP headers.
 
-### option: FetchRequest.fetch.data
-- `data` <[string]|[Buffer]|[Serializable]>
+### option: FetchRequest.fetch.data = %%-fetch-option-data-%%
 
-Allows to set post data of the fetch. If the data parameter is an object, it will be serialized the following way:
-* If `content-type` header is set to `application/x-www-form-urlencoded` the object will be serialized as html form using `application/x-www-form-urlencoded` encoding.
-* If `content-type` header is set to `multipart/form-data` the object will be serialized as html form using `multipart/form-data` encoding.
-* Otherwise the object will be serialized to json string and `content-type` header will be set to `application/json`.
+### option: FetchRequest.fetch.form = %%-fetch-option-form-%%
+
+### option: FetchRequest.fetch.multipart = %%-fetch-option-multipart-%%
 
 ### option: FetchRequest.fetch.timeout
 - `timeout` <[float]>
@@ -56,6 +54,8 @@ Request timeout in milliseconds.
 
 Whether to throw on response codes other than 2xx and 3xx. By default response object is returned
 for all status codes.
+
+### option: FetchRequest.fetch.ignoreHTTPSErrors = %%-context-option-ignorehttpserrors-%%
 
 ## async method: FetchRequest.get
 - returns: <[FetchResponse]>
@@ -89,6 +89,8 @@ Request timeout in milliseconds.
 Whether to throw on response codes other than 2xx and 3xx. By default response object is returned
 for all status codes.
 
+### option: FetchRequest.get.ignoreHTTPSErrors = %%-context-option-ignorehttpserrors-%%
+
 ## async method: FetchRequest.post
 - returns: <[FetchResponse]>
 
@@ -110,13 +112,11 @@ Query parameters to be send with the URL.
 
 Allows to set HTTP headers.
 
-### option: FetchRequest.post.data
-- `data` <[string]|[Buffer]|[Serializable]>
+### option: FetchRequest.post.data = %%-fetch-option-data-%%
 
-Allows to set post data of the fetch. If the data parameter is an object, it will be serialized the following way:
-* If `content-type` header is set to `application/x-www-form-urlencoded` the object will be serialized as html form using `application/x-www-form-urlencoded` encoding.
-* If `content-type` header is set to `multipart/form-data` the object will be serialized as html form using `multipart/form-data` encoding.
-* Otherwise the object will be serialized to json string and `content-type` header will be set to `application/json`.
+### option: FetchRequest.post.form = %%-fetch-option-form-%%
+
+### option: FetchRequest.post.multipart = %%-fetch-option-multipart-%%
 
 ### option: FetchRequest.post.timeout
 - `timeout` <[float]>
@@ -128,3 +128,26 @@ Request timeout in milliseconds.
 
 Whether to throw on response codes other than 2xx and 3xx. By default response object is returned
 for all status codes.
+
+### option: FetchRequest.post.ignoreHTTPSErrors = %%-context-option-ignorehttpserrors-%%
+
+## async method: FetchRequest.storageState
+- returns: <[Object]>
+  - `cookies` <[Array]<[Object]>>
+    - `name` <[string]>
+    - `value` <[string]>
+    - `domain` <[string]>
+    - `path` <[string]>
+    - `expires` <[float]> Unix time in seconds.
+    - `httpOnly` <[boolean]>
+    - `secure` <[boolean]>
+    - `sameSite` <[SameSiteAttribute]<"Strict"|"Lax"|"None">>
+  - `origins` <[Array]<[Object]>>
+    - `origin` <[string]>
+    - `localStorage` <[Array]<[Object]>>
+      - `name` <[string]>
+      - `value` <[string]>
+
+Returns storage state for this request context, contains current cookies and local storage snapshot if it was passed to the constructor.
+
+### option: FetchRequest.storageState.path = %%-storagestate-option-path-%%

@@ -18,19 +18,21 @@ import {
   printReceivedStringContainExpectedResult,
   printReceivedStringContainExpectedSubstring
 } from 'expect/build/print';
-import { isString } from '../../utils/utils';
+import colors from 'colors/safe';
+import { ExpectedTextValue } from '../../protocol/channels';
+import { isRegExp, isString } from '../../utils/utils';
 import { currentTestInfo } from '../globals';
 import type { Expect } from '../types';
-import { expectType, pollUntilDeadline } from '../util';
+import { expectType } from '../util';
 
 export async function toMatchText(
   this: ReturnType<Expect['getState']>,
   matcherName: string,
   receiver: any,
   receiverType: string,
-  query: (timeout: number) => Promise<string>,
+  query: (isNot: boolean, timeout: number) => Promise<{ pass: boolean, received?: string, log?: string[] }>,
   expected: string | RegExp,
-  options: { timeout?: number, matchSubstring?: boolean, normalizeWhiteSpace?: boolean } = {},
+  options: { timeout?: number, matchSubstring?: boolean } = {},
 ) {
   const testInfo = currentTestInfo();
   if (!testInfo)
@@ -57,46 +59,34 @@ export async function toMatchText(
     );
   }
 
-  let received: string;
-  let pass = false;
-  if (options.normalizeWhiteSpace && isString(expected))
-    expected = normalizeWhiteSpace(expected);
+  let defaultExpectTimeout = testInfo.project.expect?.timeout;
+  if (typeof defaultExpectTimeout === 'undefined')
+    defaultExpectTimeout = 5000;
+  const timeout = options.timeout === 0 ? 0 : options.timeout || defaultExpectTimeout;
 
-  await pollUntilDeadline(testInfo, async remainingTime => {
-    received = await query(remainingTime);
-    if (options.normalizeWhiteSpace && isString(expected))
-      received = normalizeWhiteSpace(received);
-    if (options.matchSubstring)
-      pass = received.includes(expected as string);
-    else if (typeof expected === 'string')
-      pass = received === expected;
-    else
-      pass = expected.test(received);
-
-    return pass === !matcherOptions.isNot;
-  }, options.timeout, testInfo._testFinished);
-
+  const { pass, received, log } = await query(this.isNot, timeout);
   const stringSubstring = options.matchSubstring ? 'substring' : 'string';
+  const receivedString = received || '';
   const message = pass
     ? () =>
       typeof expected === 'string'
         ? this.utils.matcherHint(matcherName, undefined, undefined, matcherOptions) +
         '\n\n' +
         `Expected ${stringSubstring}: not ${this.utils.printExpected(expected)}\n` +
-        `Received string:        ${printReceivedStringContainExpectedSubstring(
-            received,
-            received.indexOf(expected),
+        `Received string: ${printReceivedStringContainExpectedSubstring(
+            receivedString,
+            receivedString.indexOf(expected),
             expected.length,
-        )}`
+        )}` + callLogText(log)
         : this.utils.matcherHint(matcherName, undefined, undefined, matcherOptions) +
         '\n\n' +
         `Expected pattern: not ${this.utils.printExpected(expected)}\n` +
-        `Received string:      ${printReceivedStringContainExpectedResult(
-            received,
+        `Received string: ${printReceivedStringContainExpectedResult(
+            receivedString,
             typeof expected.exec === 'function'
-              ? expected.exec(received)
+              ? expected.exec(receivedString)
               : null,
-        )}`
+        )}` + callLogText(log)
     : () => {
       const labelExpected = `Expected ${typeof expected === 'string' ? stringSubstring : 'pattern'
       }`;
@@ -107,16 +97,32 @@ export async function toMatchText(
         '\n\n' +
         this.utils.printDiffOrStringify(
             expected,
-            received,
+            receivedString,
             labelExpected,
             labelReceived,
             this.expand !== false,
-        ));
+        )) + callLogText(log);
     };
 
   return { message, pass };
 }
 
-export function normalizeWhiteSpace(s: string) {
-  return s.trim().replace(/\s+/g, ' ');
+export function toExpectedTextValues(items: (string | RegExp)[], options: { matchSubstring?: boolean, normalizeWhiteSpace?: boolean } = {}): ExpectedTextValue[] {
+  return items.map(i => ({
+    string: isString(i) ? i : undefined,
+    regexSource: isRegExp(i) ? i.source : undefined,
+    regexFlags: isRegExp(i) ? i.flags : undefined,
+    matchSubstring: options.matchSubstring,
+    normalizeWhiteSpace: options.normalizeWhiteSpace,
+  }));
+}
+
+export function callLogText(log: string[] | undefined): string {
+  if (!log)
+    return '';
+  return `
+
+Call log:
+  - ${colors.dim((log || []).join('\n  - '))}
+`;
 }

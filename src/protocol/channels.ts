@@ -33,7 +33,6 @@ export type StackFrame = {
 export type Metadata = {
   stack?: StackFrame[],
   apiName?: string,
-  collectLogs?: boolean,
 };
 
 export type Point = {
@@ -69,6 +68,14 @@ export type SerializedValue = {
 export type SerializedArgument = {
   value: SerializedValue,
   handles: Channel[],
+};
+
+export type ExpectedTextValue = {
+  string?: string,
+  regexSource?: string,
+  regexFlags?: string,
+  matchSubstring?: boolean,
+  normalizeWhiteSpace?: boolean,
 };
 
 export type AXNode = {
@@ -143,6 +150,16 @@ export type SerializedError = {
   value?: SerializedValue,
 };
 
+export type FormField = {
+  name: string,
+  value?: string,
+  file?: {
+    name: string,
+    mimeType: string,
+    buffer: Binary,
+  },
+};
+
 export type InterceptedResponse = {
   request: RequestChannel,
   status: number,
@@ -155,6 +172,7 @@ export type FetchRequestInitializer = {};
 export interface FetchRequestChannel extends Channel {
   fetch(params: FetchRequestFetchParams, metadata?: Metadata): Promise<FetchRequestFetchResult>;
   fetchResponseBody(params: FetchRequestFetchResponseBodyParams, metadata?: Metadata): Promise<FetchRequestFetchResponseBodyResult>;
+  storageState(params?: FetchRequestStorageStateParams, metadata?: Metadata): Promise<FetchRequestStorageStateResult>;
   disposeFetchResponse(params: FetchRequestDisposeFetchResponseParams, metadata?: Metadata): Promise<FetchRequestDisposeFetchResponseResult>;
   dispose(params?: FetchRequestDisposeParams, metadata?: Metadata): Promise<FetchRequestDisposeResult>;
 }
@@ -164,18 +182,24 @@ export type FetchRequestFetchParams = {
   method?: string,
   headers?: NameValue[],
   postData?: Binary,
-  formData?: any,
+  jsonData?: any,
+  formData?: NameValue[],
+  multipartData?: FormField[],
   timeout?: number,
   failOnStatusCode?: boolean,
+  ignoreHTTPSErrors?: boolean,
 };
 export type FetchRequestFetchOptions = {
   params?: NameValue[],
   method?: string,
   headers?: NameValue[],
   postData?: Binary,
-  formData?: any,
+  jsonData?: any,
+  formData?: NameValue[],
+  multipartData?: FormField[],
   timeout?: number,
   failOnStatusCode?: boolean,
+  ignoreHTTPSErrors?: boolean,
 };
 export type FetchRequestFetchResult = {
   response?: FetchResponse,
@@ -189,6 +213,12 @@ export type FetchRequestFetchResponseBodyOptions = {
 };
 export type FetchRequestFetchResponseBodyResult = {
   binary?: Binary,
+};
+export type FetchRequestStorageStateParams = {};
+export type FetchRequestStorageStateOptions = {};
+export type FetchRequestStorageStateResult = {
+  cookies: NetworkCookie[],
+  origins: OriginStorage[],
 };
 export type FetchRequestDisposeFetchResponseParams = {
   fetchUid: string,
@@ -322,10 +352,46 @@ export type PlaywrightSocksEndOptions = {
 };
 export type PlaywrightSocksEndResult = void;
 export type PlaywrightNewRequestParams = {
+  baseURL?: string,
+  userAgent?: string,
   ignoreHTTPSErrors?: boolean,
+  extraHTTPHeaders?: NameValue[],
+  httpCredentials?: {
+    username: string,
+    password: string,
+  },
+  proxy?: {
+    server: string,
+    bypass?: string,
+    username?: string,
+    password?: string,
+  },
+  timeout?: number,
+  storageState?: {
+    cookies: NetworkCookie[],
+    origins: OriginStorage[],
+  },
 };
 export type PlaywrightNewRequestOptions = {
+  baseURL?: string,
+  userAgent?: string,
   ignoreHTTPSErrors?: boolean,
+  extraHTTPHeaders?: NameValue[],
+  httpCredentials?: {
+    username: string,
+    password: string,
+  },
+  proxy?: {
+    server: string,
+    bypass?: string,
+    username?: string,
+    password?: string,
+  },
+  timeout?: number,
+  storageState?: {
+    cookies: NetworkCookie[],
+    origins: OriginStorage[],
+  },
 };
 export type PlaywrightNewRequestResult = {
   request: FetchRequestChannel,
@@ -1578,8 +1644,10 @@ export interface FrameChannel extends Channel {
   title(params?: FrameTitleParams, metadata?: Metadata): Promise<FrameTitleResult>;
   type(params: FrameTypeParams, metadata?: Metadata): Promise<FrameTypeResult>;
   uncheck(params: FrameUncheckParams, metadata?: Metadata): Promise<FrameUncheckResult>;
+  waitForTimeout(params: FrameWaitForTimeoutParams, metadata?: Metadata): Promise<FrameWaitForTimeoutResult>;
   waitForFunction(params: FrameWaitForFunctionParams, metadata?: Metadata): Promise<FrameWaitForFunctionResult>;
   waitForSelector(params: FrameWaitForSelectorParams, metadata?: Metadata): Promise<FrameWaitForSelectorResult>;
+  expect(params: FrameExpectParams, metadata?: Metadata): Promise<FrameExpectResult>;
 }
 export type FrameLoadstateEvent = {
   add?: 'load' | 'domcontentloaded' | 'networkidle',
@@ -2107,6 +2175,13 @@ export type FrameUncheckOptions = {
   trial?: boolean,
 };
 export type FrameUncheckResult = void;
+export type FrameWaitForTimeoutParams = {
+  timeout: number,
+};
+export type FrameWaitForTimeoutOptions = {
+
+};
+export type FrameWaitForTimeoutResult = void;
 export type FrameWaitForFunctionParams = {
   expression: string,
   isFunction?: boolean,
@@ -2127,14 +2202,41 @@ export type FrameWaitForSelectorParams = {
   strict?: boolean,
   timeout?: number,
   state?: 'attached' | 'detached' | 'visible' | 'hidden',
+  omitReturnValue?: boolean,
 };
 export type FrameWaitForSelectorOptions = {
   strict?: boolean,
   timeout?: number,
   state?: 'attached' | 'detached' | 'visible' | 'hidden',
+  omitReturnValue?: boolean,
 };
 export type FrameWaitForSelectorResult = {
   element?: ElementHandleChannel,
+};
+export type FrameExpectParams = {
+  selector: string,
+  expression: string,
+  expressionArg?: any,
+  expectedText?: ExpectedTextValue[],
+  expectedNumber?: number,
+  expectedValue?: SerializedArgument,
+  useInnerText?: boolean,
+  isNot?: boolean,
+  timeout?: number,
+};
+export type FrameExpectOptions = {
+  expressionArg?: any,
+  expectedText?: ExpectedTextValue[],
+  expectedNumber?: number,
+  expectedValue?: SerializedArgument,
+  useInnerText?: boolean,
+  isNot?: boolean,
+  timeout?: number,
+};
+export type FrameExpectResult = {
+  pass: boolean,
+  received?: SerializedValue,
+  log?: string[],
 };
 
 export interface FrameEvents {
@@ -3695,8 +3797,10 @@ export const commandsWithTracingSnapshots = new Set([
   'Frame.textContent',
   'Frame.type',
   'Frame.uncheck',
+  'Frame.waitForTimeout',
   'Frame.waitForFunction',
   'Frame.waitForSelector',
+  'Frame.expect',
   'JSHandle.evaluateExpression',
   'ElementHandle.evaluateExpression',
   'JSHandle.evaluateExpressionHandle',

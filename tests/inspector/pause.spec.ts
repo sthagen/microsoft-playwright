@@ -18,7 +18,7 @@ import { Page } from '../../index';
 import { test as it, expect } from './inspectorTest';
 
 
-it('should resume when closing inspector', async ({page, recorderPageGetter, closeRecorder, mode}) => {
+it('should resume when closing inspector', async ({ page, recorderPageGetter, closeRecorder, mode }) => {
   it.skip(mode !== 'default');
 
   const scriptPromise = (async () => {
@@ -50,7 +50,7 @@ it.describe('pause', () => {
     await scriptPromise;
   });
 
-  it('should resume from console', async ({page}) => {
+  it('should resume from console', async ({ page }) => {
     const scriptPromise = (async () => {
       await page.pause();
     })();
@@ -62,7 +62,7 @@ it.describe('pause', () => {
     await scriptPromise;
   });
 
-  it('should pause after a navigation', async ({page, server, recorderPageGetter}) => {
+  it('should pause after a navigation', async ({ page, server, recorderPageGetter }) => {
     const scriptPromise = (async () => {
       await page.goto(server.EMPTY_PAGE);
       await page.pause();
@@ -72,7 +72,7 @@ it.describe('pause', () => {
     await scriptPromise;
   });
 
-  it('should show source', async ({page, recorderPageGetter}) => {
+  it('should show source', async ({ page, recorderPageGetter }) => {
     const scriptPromise = (async () => {
       await page.pause();
     })();
@@ -83,7 +83,7 @@ it.describe('pause', () => {
     await scriptPromise;
   });
 
-  it('should pause on next pause', async ({page, recorderPageGetter}) => {
+  it('should pause on next pause', async ({ page, recorderPageGetter }) => {
     const scriptPromise = (async () => {
       await page.pause();  // 1
       await page.pause();  // 2
@@ -97,7 +97,7 @@ it.describe('pause', () => {
     await scriptPromise;
   });
 
-  it('should step', async ({page, recorderPageGetter}) => {
+  it('should step', async ({ page, recorderPageGetter }) => {
     await page.setContent('<button>Submit</button>');
     const scriptPromise = (async () => {
       await page.pause();
@@ -114,7 +114,7 @@ it.describe('pause', () => {
     await scriptPromise;
   });
 
-  it('should highlight pointer', async ({page, recorderPageGetter}) => {
+  it('should highlight pointer', async ({ page, recorderPageGetter }) => {
     await page.setContent('<button>Submit</button>');
     const scriptPromise = (async () => {
       await page.pause();
@@ -140,7 +140,7 @@ it.describe('pause', () => {
     await scriptPromise;
   });
 
-  it('should skip input when resuming', async ({page, recorderPageGetter}) => {
+  it('should skip input when resuming', async ({ page, recorderPageGetter }) => {
     await page.setContent('<button>Submit</button>');
     const scriptPromise = (async () => {
       await page.pause();
@@ -154,7 +154,7 @@ it.describe('pause', () => {
     await scriptPromise;
   });
 
-  it('should populate log', async ({page, recorderPageGetter}) => {
+  it('should populate log', async ({ page, recorderPageGetter }) => {
     await page.setContent('<button>Submit</button>');
     const scriptPromise = (async () => {
       await page.pause();
@@ -173,7 +173,26 @@ it.describe('pause', () => {
     await scriptPromise;
   });
 
-  it('should highlight waitForEvent', async ({page, recorderPageGetter}) => {
+  it('should show expect.toHaveText', async ({ page, recorderPageGetter }) => {
+    await page.setContent('<button>Submit</button>');
+    const scriptPromise = (async () => {
+      await page.pause();
+      await expect(page.locator('button')).toHaveText('Submit');
+      await page.pause();  // 2
+    })();
+    const recorderPage = await recorderPageGetter();
+    await recorderPage.click('[title="Resume"]');
+    await recorderPage.waitForSelector('.source-line-paused:has-text("page.pause();  // 2")');
+    expect(await sanitizeLog(recorderPage)).toEqual([
+      'page.pause- XXms',
+      'expect.toHaveText(button)- XXms',
+      'page.pause',
+    ]);
+    await recorderPage.click('[title="Resume"]');
+    await scriptPromise;
+  });
+
+  it('should highlight waitForEvent', async ({ page, recorderPageGetter }) => {
     await page.setContent('<button onclick="console.log(1)">Submit</button>');
     const scriptPromise = (async () => {
       await page.pause();
@@ -190,7 +209,7 @@ it.describe('pause', () => {
     await scriptPromise;
   });
 
-  it('should populate log with waitForEvent', async ({page, recorderPageGetter}) => {
+  it('should populate log with waitForEvent', async ({ page, recorderPageGetter }) => {
     await page.setContent('<button onclick="console.log(1)">Submit</button>');
     const scriptPromise = (async () => {
       await page.pause();
@@ -213,7 +232,7 @@ it.describe('pause', () => {
     await scriptPromise;
   });
 
-  it('should populate log with error', async ({page, recorderPageGetter}) => {
+  it('should populate log with error', async ({ page, recorderPageGetter }) => {
     await page.setContent('<button onclick="console.log(1)">Submit</button>');
     const scriptPromise = (async () => {
       await page.pause();
@@ -225,35 +244,35 @@ it.describe('pause', () => {
     expect(await sanitizeLog(recorderPage)).toEqual([
       'page.pause- XXms',
       'page.isChecked(button)- XXms',
-      'checking \"checked\" state of \"button\"',
+      'waiting for selector "button"',
       'selector resolved to <button onclick=\"console.log(1)\">Submit</button>',
-      'error: Not a checkbox or radio button',
+      'error: Error: Not a checkbox or radio button',
     ]);
     const error = await scriptPromise;
     expect(error.message).toContain('Not a checkbox or radio button');
   });
 
-  it('should populate log with error in waitForEvent', async ({page, recorderPageGetter}) => {
+  it('should populate log with error in waitForEvent', async ({ page, recorderPageGetter }) => {
     await page.setContent('<button>Submit</button>');
     const scriptPromise = (async () => {
       await page.pause();
       await Promise.all([
-        page.waitForEvent('console', { timeout: 1 }),
-        page.click('button'),
+        page.waitForEvent('console', { timeout: 1 }).catch(() => {}),
+        page.pause(),
       ]);
-    })().catch(() => {});
+    })();
     const recorderPage = await recorderPageGetter();
     await recorderPage.click('[title="Step over"]');
-    await recorderPage.waitForSelector('.source-line-paused:has-text("page.click")');
+    await recorderPage.waitForSelector('.source-line-paused:has-text("page.pause")');
     await recorderPage.waitForSelector('.source-line-error:has-text("page.waitForEvent")');
-    await recorderPage.click('[title="Resume"]');
     expect(await sanitizeLog(recorderPage)).toEqual([
       'page.pause- XXms',
       'page.waitForEvent(console)',
       'waiting for event \"console\"',
       'error: Timeout while waiting for event \"console\"',
-      'page.click(button)- XXms',
+      'page.pause',
     ]);
+    await recorderPage.click('[title="Resume"]');
     await scriptPromise;
   });
 
@@ -277,7 +296,8 @@ it.describe('pause', () => {
     const recorderPage = await recorderPageGetter();
     await recorderPage.click('[title="Step over"]');
     await recorderPage.waitForSelector('.source-line-paused:has-text("page.context().close();")');
-    await recorderPage.click('[title=Resume]');
+    // Next line can throw because closing context also closes the inspector page.
+    await recorderPage.click('[title=Resume]').catch(e => {});
     await scriptPromise;
   });
 
