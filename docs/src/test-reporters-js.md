@@ -72,7 +72,7 @@ export default config;
 
 ### Reporters on CI
 
-You can use different reporters locally and on CI. For example, using concise `'dot'` reporter avoids too much output.
+You can use different reporters locally and on CI. For example, using concise `'dot'` reporter avoids too much output. This is the default on CI.
 
 ```js js-flavor=js
 // playwright.config.js
@@ -104,7 +104,7 @@ All built-in reporters show detailed information about failures, and mostly diff
 
 ### List reporter
 
-List reporter is default. It prints a line for each test being run.
+List reporter is default (except on CI where the `dot` reporter is default). It prints a line for each test being run.
 
 ```bash
 npx playwright test --reporter=list
@@ -195,7 +195,7 @@ Running 124 tests using 6 workers
 
 ### Dot reporter
 
-Dot reporter is very concise - it only produces a single character per successful test run. It is useful on CI where you don't want a lot of output.
+Dot reporter is very concise - it only produces a single character per successful test run. It is the default on CI and useful where you don't want a lot of output.
 
 ```bash
 npx playwright test --reporter=dot
@@ -230,20 +230,69 @@ Running 124 tests using 6 workers
 ······F·············································
 ```
 
+### HTML reporter
+
+HTML reporter produces a self-contained folder that contains report for the test run that can be served as a web page.
+
+```bash
+npx playwright test --reporter=html
+```
+
+By default, report is written into the `playwright-report` folder in the current working directory. One can override
+that location using the `PLAYWRIGHT_HTML_REPORT` environment variable or a reporter configuration.
+
+In configuration file, pass options directly:
+```js js-flavor=js
+// playwright.config.js
+// @ts-check
+
+/** @type {import('@playwright/test').PlaywrightTestConfig} */
+const config = {
+  reporter: [ ['html', { outputFolder: 'my-report' }] ],
+};
+
+module.exports = config;
+```
+
+```js js-flavor=ts
+// playwright.config.ts
+import { PlaywrightTestConfig } from '@playwright/test';
+
+const config: PlaywrightTestConfig = {
+  reporter: [ ['html', { outputFolder: 'my-report' }] ],
+};
+export default config;
+```
+
+A quick way of opening the last test run report is:
+
+```bash
+npx playwright show-report
+```
+
+Or if there is a custom folder name:
+
+```bash
+npx playwright show-report my-report
+```
+
+
 ### JSON reporter
 
 JSON reporter produces an object with all information about the test run. It is usually used together with some terminal reporter like `dot` or `line`.
 
 Most likely you want to write the JSON to a file. When running with `--reporter=json`, use `PLAYWRIGHT_JSON_OUTPUT_NAME` environment variable:
-```bash
-# Linux/macOS
-PLAYWRIGHT_JSON_OUTPUT_NAME=results.json npx playwright test --reporter=json,dot
 
-# Windows with cmd.exe
+```bash bash-flavor=bash
+PLAYWRIGHT_JSON_OUTPUT_NAME=results.json npx playwright test --reporter=json,dot
+```
+
+```bash bash-flavor=batch
 set PLAYWRIGHT_JSON_OUTPUT_NAME=results.json
 npx playwright test --reporter=json,dot
+```
 
-# Windows with PowerShell
+```bash bash-flavor=powershell
 $env:PLAYWRIGHT_JSON_OUTPUT_NAME="results.json"
 npx playwright test --reporter=json,dot
 ```
@@ -276,15 +325,17 @@ export default config;
 JUnit reporter produces a JUnit-style xml report. It is usually used together with some terminal reporter like `dot` or `line`.
 
 Most likely you want to write the report to an xml file. When running with `--reporter=junit`, use `PLAYWRIGHT_JUNIT_OUTPUT_NAME` environment variable:
-```bash
-# Linux/macOS
-PLAYWRIGHT_JUNIT_OUTPUT_NAME=results.xml npx playwright test --reporter=junit,line
 
-# Windows with cmd.exe
+```bash bash-flavor=bash
+PLAYWRIGHT_JUNIT_OUTPUT_NAME=results.xml npx playwright test --reporter=junit,line
+```
+
+```bash bash-flavor=batch
 set PLAYWRIGHT_JUNIT_OUTPUT_NAME=results.xml
 npx playwright test --reporter=junit,line
+```
 
-# Windows with PowerShell
+```bash bash-flavor=powershell
 $env:PLAYWRIGHT_JUNIT_OUTPUT_NAME="results.xml"
 npx playwright test --reporter=junit,line
 ```
@@ -308,6 +359,38 @@ import { PlaywrightTestConfig } from '@playwright/test';
 
 const config: PlaywrightTestConfig = {
   reporter: [ ['junit', { outputFile: 'results.xml' }] ],
+};
+export default config;
+```
+
+### GitHub Actions annotations
+
+You can use the built in `github` reporter to get automatic failure annotations when running in GitHub actions. Use it with some other reporter, for example `'dot'` and/or `'json'`.
+
+Note that all other reporters work on GitHub Actions as well, but do not provide annotations.
+
+```js js-flavor=js
+// playwright.config.js
+// @ts-check
+
+/** @type {import('@playwright/test').PlaywrightTestConfig} */
+const config = {
+  // 'github' for GitHub Actions CI to generate annotations, plus a concise 'dot'
+  // default 'list' when running locally
+  reporter: process.env.CI ? [ ['github'], ['dot'] ] : 'list',
+};
+
+module.exports = config;
+```
+
+```js js-flavor=ts
+// playwright.config.ts
+import { PlaywrightTestConfig } from '@playwright/test';
+
+const config: PlaywrightTestConfig = {
+  // 'github' for GitHub Actions CI to generate annotations, plus a concise 'dot'
+  // default 'list' when running locally
+  reporter: process.env.CI ? [ ['github'], ['dot'] ] : 'list',
 };
 export default config;
 ```

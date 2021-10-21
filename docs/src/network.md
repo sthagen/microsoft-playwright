@@ -251,7 +251,7 @@ class Program
         await using var browser = await playwright.Chromium.LaunchAsync();
         var page = await browser.NewPageAsync();
         page.Request += (_, request) => Console.WriteLine(">> " + request.Method + " " + request.Url);
-        page.Response += (_, response) => Console.WriteLine("<<" + response.Status + " " + response.Url);
+        page.Response += (_, response) => Console.WriteLine("<< " + response.Status + " " + response.Url);
         await page.GotoAsync("https://example.com");
     }
 }
@@ -574,6 +574,44 @@ else
 - [`method: Page.route`]
 - [`method: BrowserContext.route`]
 - [`method: Route.abort`]
+
+<br/>
+
+## Modify responses
+* langs: js
+
+To modify a response use [APIRequestContext] to get original response and then pass the response to [`method: Route.fulfill`].
+You can override individual fields on the reponse via options:
+
+```js
+await page.route('**/title.html', async route => {
+  // Fetch original response.
+  const response = await page.request.fetch(route.request());
+  // Add a prefix to the title.
+  let body = await response.text();
+  body = body.replace('<title>', '<title>My prefix:');
+  route.fulfill({
+    // Pass all fields from the response.
+    response,
+    // Override response body.
+    body,
+    // Force content type to be html.
+    headers: {
+      ...response.headers(),
+      'content-type': 'text/html'
+    }
+  });
+});
+```
+
+### API reference
+- [APIRequestContext]
+- [`method: Page.route`]
+- [`method: BrowserContext.route`]
+- [`property: Playwright.request`]
+- [`property: BrowserContext.request`]
+- [`property: Page.request`]
+- [`method: Route.fulfill`]
 
 <br/>
 

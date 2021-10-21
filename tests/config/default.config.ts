@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import type { Config } from './test-runner';
+import type { Config } from '@playwright/test';
 import * as path from 'path';
 import { PlaywrightOptions, playwrightFixtures } from './browserTest';
 import { test as pageTest } from '../page/pageTest';
@@ -58,8 +58,13 @@ const config: Config<CommonOptions & PlaywrightOptions> = {
   reporter: process.env.CI ? [
     [ 'dot' ],
     [ 'json', { outputFile: path.join(outputDir, 'report.json') } ],
-  ] : 'line',
+  ] : 'html',
   projects: [],
+  webServer: mode === 'service' ? {
+    command: 'npx playwright experimental-grid-server',
+    port: 3333,
+    reuseExistingServer: true,
+  } : undefined,
 };
 
 const browserNames = ['chromium', 'webkit', 'firefox'] as BrowserName[];

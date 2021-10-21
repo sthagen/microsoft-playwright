@@ -86,6 +86,20 @@ it('should use proxy', async ({ contextFactory, server, proxyServer }) => {
   await context.close();
 });
 
+it('should use ipv6 proxy', async ({ contextFactory, server, proxyServer, browserName }) => {
+  it.fail(browserName === 'firefox', 'page.goto: NS_ERROR_UNKNOWN_HOST');
+  it.fail(!!process.env.INSIDE_DOCKER, 'docker does not support IPv6 by default');
+  proxyServer.forwardTo(server.PORT);
+  const context = await contextFactory({
+    proxy: { server: `[0:0:0:0:0:0:0:1]:${proxyServer.PORT}` }
+  });
+  const page = await context.newPage();
+  await page.goto('http://non-existent.com/target.html');
+  expect(proxyServer.requestUrls).toContain('http://non-existent.com/target.html');
+  expect(await page.title()).toBe('Served by the proxy');
+  await context.close();
+});
+
 it('should use proxy twice', async ({ contextFactory, server, proxyServer }) => {
   proxyServer.forwardTo(server.PORT);
   const context = await contextFactory({

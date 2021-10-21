@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import type { Browser, BrowserContext, BrowserContextOptions, Page, LaunchOptions, ViewportSize, Geolocation, HTTPCredentials } from './types';
+import type { APIRequestContext, Browser, BrowserContext, BrowserContextOptions, Page, LaunchOptions, ViewportSize, Geolocation, HTTPCredentials } from 'playwright-core';
 import type { Expect } from './testExpect';
 
 export type { Expect } from './testExpect';
@@ -23,6 +23,7 @@ export type ReporterDescription =
   ['dot'] |
   ['line'] |
   ['list'] |
+  ['github'] |
   ['junit'] | ['junit', { outputFile?: string, stripANSIControlSequences?: boolean }] |
   ['json'] | ['json', { outputFile?: string }] |
   ['null'] |
@@ -108,7 +109,7 @@ interface TestConfig {
   preserveOutput?: PreserveOutput;
   projects?: Project[];
   quiet?: boolean;
-  reporter?: LiteralUnion<'list'|'dot'|'line'|'json'|'junit'|'null', string> | ReporterDescription[];
+  reporter?: LiteralUnion<'list'|'dot'|'line'|'github'|'json'|'junit'|'null', string> | ReporterDescription[];
   reportSlowTests?: ReportSlowTests;
   shard?: Shard;
   updateSnapshots?: UpdateSnapshots;
@@ -141,6 +142,7 @@ export interface FullConfig<TestArgs = {}, WorkerArgs = {}> {
   grep: RegExp | RegExp[];
   grepInvert: RegExp | RegExp[] | null;
   maxFailures: number;
+  version: string;
   preserveOutput: PreserveOutput;
   projects: FullProject<TestArgs, WorkerArgs>[];
   reporter: ReporterDescription[];
@@ -231,7 +233,7 @@ export interface TestType<TestArgs extends KeyValue, WorkerArgs extends KeyValue
       only: SuiteFunction;
     };
   };
-  skip(title: string, testFunction: (args: TestArgs, testInfo: TestInfo) => Promise<void> | void): void;
+  skip(title: string, testFunction: (args: TestArgs & WorkerArgs, testInfo: TestInfo) => Promise<void> | void): void;
   skip(): void;
   skip(condition: boolean, description?: string): void;
   skip(callback: (args: TestArgs & WorkerArgs) => boolean, description?: string): void;
@@ -332,6 +334,7 @@ export interface PlaywrightWorkerArgs {
 export interface PlaywrightTestArgs {
   context: BrowserContext;
   page: Page;
+  request: APIRequestContext;
 }
 
 export type PlaywrightTestProject<TestArgs = {}, WorkerArgs = {}> = Project<PlaywrightTestOptions & TestArgs, PlaywrightWorkerOptions & WorkerArgs>;

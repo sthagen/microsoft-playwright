@@ -55,14 +55,6 @@ export async function createFiles(rootDir: string, files: Map<string, string>, f
   }
 }
 
-export function determineRootDir() {
-  const givenPath = process.argv[2];
-  if (givenPath)
-    return path.isAbsolute(givenPath) ? process.argv[2] : path.join(process.cwd(), process.argv[2]);
-
-  return process.cwd();
-}
-
 export function determinePackageManager(rootDir: string): 'yarn' | 'npm' {
   if (fs.existsSync(path.join(rootDir, 'yarn.lock')))
     return 'yarn';
@@ -79,4 +71,13 @@ export function executeTemplate(input: string, args: Record<string, string>): st
 
 export function languagetoFileExtension(language: 'JavaScript' | 'TypeScript'): 'js' | 'ts' {
   return language === 'JavaScript' ? 'js' : 'ts';
+}
+
+export async function readDirRecursively(dir: string): Promise<string[]> {
+  const dirents = await fs.promises.readdir(dir, { withFileTypes: true });
+  const files = await Promise.all(dirents.map(async (dirent): Promise<string[]|string> => {
+    const res = path.join(dir, dirent.name);
+    return dirent.isDirectory() ? await readDirRecursively(res) : res;
+  }));
+  return files.flat();
 }

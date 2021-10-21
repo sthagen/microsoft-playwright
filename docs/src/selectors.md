@@ -75,7 +75,7 @@ methods accept [`param: selector`] as their first argument.
 - Combine css and text selectors
   ```js
   await page.click('article:has-text("Playwright")');
-  await page.click('#nav-bar :text("Contact us")');
+  await page.click('#nav-bar >> text=Contact Us');
   ```
   ```java
   page.click("article:has-text(\"Playwright\")");
@@ -490,11 +490,11 @@ page.textContent("article:has(div.promo)");
 ```
 
 ```python async
-await page.textContent("article:has(div.promo)")
+await page.text_content("article:has(div.promo)")
 ```
 
 ```python sync
-page.textContent("article:has(div.promo)")
+page.text_content("article:has(div.promo)")
 ```
 
 ```csharp

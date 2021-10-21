@@ -16,7 +16,7 @@ These options define your test suite:
 - `name: string` - Project name, useful when defining multiple [test projects](#projects).
 - `outputDir: string` - Output directory for files created during the test run.
 - `repeatEach: number` - The number of times to repeat each test, useful for debugging flaky tests.
-- `retries: number` - The maximum number of retry attempts given to failed tests.
+- `retries: number` - The maximum number of retry attempts given to failed tests. If not specified, failing tests are not retried.
 - `testDir: string` - Directory that will be recursively scanned for test files.
 - `testIgnore: string | RegExp | (string | RegExp)[]` - Files matching one of these patterns are not considered test files.
 - `testMatch: string | RegExp | (string | RegExp)[]` - Only the files matching one of these patterns are considered test files.
@@ -38,7 +38,7 @@ These options would be typically different between local development and CI oper
   - `'failures-only'` - only preserve output for failed tests.
 - `projects: Project[]` - Multiple [projects](#projects) configuration.
 - `quiet: boolean` - Whether to suppress stdout and stderr from the tests.
-- `reporter: 'list' | 'line' | 'dot' | 'json' | 'junit'` - The reporter to use. See [reporters](./test-reporters.md) for details.
+- `reporter: 'list' | 'line' | 'dot' | 'json' | 'junit' | 'github'` - The reporter to use. See [reporters](./test-reporters.md) for details.
 - `reportSlowTests: { max: number, threshold: number } | null` - Whether to report slow tests. When `null`, slow tests are not reported. Otherwise, tests that took more than `threshold` milliseconds are reported as slow, but no more than `max` number of them. Passing zero as `max` reports all slow tests that exceed the threshold.
 - `shard: { total: number, current: number } | null` - [Shard](./test-parallel.md#shard-tests-between-multiple-machines) information.
 - `updateSnapshots: boolean` - Whether to update expected snapshots with the actual results produced by the test run.

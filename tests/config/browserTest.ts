@@ -14,15 +14,17 @@
  * limitations under the License.
  */
 
-import type { Fixtures } from './test-runner';
-import type { Browser, BrowserContext, BrowserContextOptions, BrowserType, LaunchOptions, Page } from '../../index';
-import { removeFolders } from '../../lib/utils/utils';
+import type { Fixtures } from '@playwright/test';
+import type { Browser, BrowserContext, BrowserContextOptions, BrowserType, LaunchOptions, Page } from 'playwright-core';
+import { removeFolders } from 'playwright-core/src/utils/utils';
+import { ReuseBrowserContextStorage } from '@playwright/test/src/index';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
 import { RemoteServer, RemoteServerOptions } from './remoteServer';
 import { baseTest, CommonWorkerFixtures } from './baseTest';
 import { CommonFixtures } from './commonFixtures';
+import type { ParsedStackTrace } from 'playwright-core/src/utils/stackTrace';
 
 type PlaywrightWorkerOptions = {
   executablePath: LaunchOptions['executablePath'];
@@ -34,6 +36,7 @@ export type PlaywrightWorkerFixtures = {
   browserOptions: LaunchOptions;
   browser: Browser;
   browserVersion: string;
+  _reuseBrowserContext: ReuseBrowserContextStorage,
 };
 type PlaywrightTestOptions = {
   hasTouch: BrowserContextOptions['hasTouch'];
@@ -67,6 +70,7 @@ export const playwrightFixtures: Fixtures<PlaywrightTestOptions & PlaywrightTest
       proxy,
       args,
       handleSIGINT: false,
+      devtools: process.env.DEVTOOLS === '1',
     });
   }, { scope: 'worker' } ],
 
@@ -79,6 +83,8 @@ export const playwrightFixtures: Fixtures<PlaywrightTestOptions & PlaywrightTest
   browserVersion: [async ({ browser }, run) => {
     await run(browser.version());
   }, { scope: 'worker' } ],
+
+  _reuseBrowserContext: [new ReuseBrowserContextStorage(), { scope: 'worker' }],
 
   createUserDataDir: async ({}, run) => {
     const dirs: string[] = [];
@@ -142,11 +148,12 @@ export const playwrightFixtures: Fixtures<PlaywrightTestOptions & PlaywrightTest
       if (trace)
         await context.tracing.start({ screenshots: true, snapshots: true });
       (context as any)._csi = {
-        onApiCallBegin: (apiCall: string) => {
+        onApiCallBegin: (apiCall: string, stackTrace: ParsedStackTrace | null) => {
           if (apiCall.startsWith('expect.'))
             return { userObject: null };
           const testInfoImpl = testInfo as any;
           const step = testInfoImpl._addStep({
+            location: stackTrace?.frames[0],
             category: 'pw:api',
             title: apiCall,
             canHaveChildren: false,
@@ -180,11 +187,20 @@ export const playwrightFixtures: Fixtures<PlaywrightTestOptions & PlaywrightTest
     }));
   },
 
-  context: async ({ contextFactory }, run) => {
+  context: async ({ contextFactory, browser, _reuseBrowserContext, contextOptions }, run) => {
+    if (_reuseBrowserContext.isEnabled()) {
+      const context = await _reuseBrowserContext.obtainContext(browser, contextOptions);
+      await run(context);
+      return;
+    }
     await run(await contextFactory());
   },
 
-  page: async ({ context }, run) => {
+  page: async ({ context, _reuseBrowserContext }, run) => {
+    if (_reuseBrowserContext.isEnabled()) {
+      await run(await _reuseBrowserContext.obtainPage());
+      return;
+    }
     await run(await context.newPage());
   },
 };
@@ -194,4 +210,4 @@ export const playwrightTest = test;
 export const browserTest = test;
 export const contextTest = test;
 
-export { expect } from './test-runner';
+export { expect } from '@playwright/test';

@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
-export * from './types/types';
+export * from 'playwright-core';
 export * from './types/test';
 export { default } from './types/test';
+ 
