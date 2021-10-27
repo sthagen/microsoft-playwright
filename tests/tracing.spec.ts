@@ -17,8 +17,9 @@
 import { expect, contextTest as test, browserTest } from './config/browserTest';
 import { ZipFileSystem } from '../packages/playwright-core/lib/utils/vfs';
 import jpeg from 'jpeg-js';
+import path from 'path';
 
-test.skip(({ trace }) => !!trace);
+test.skip(({ trace }) => trace === 'on');
 
 test('should collect trace with resources, but no js', async ({ context, page, server }, testInfo) => {
   await context.tracing.start({ screenshots: true, snapshots: true });
@@ -150,7 +151,7 @@ for (const params of [
   }
 ]) {
   browserTest(`should produce screencast frames ${params.id}`, async ({ video, contextFactory, browserName, platform, headless }, testInfo) => {
-    browserTest.fixme(browserName === 'chromium' && video, 'Same screencast resolution conflicts');
+    browserTest.fixme(browserName === 'chromium' && video === 'on', 'Same screencast resolution conflicts');
     browserTest.fixme(browserName === 'chromium' && !headless, 'Chromium screencast on headed has a min width issue');
     browserTest.fixme(params.id === 'fit' && browserName === 'chromium' && platform === 'darwin', 'High DPI maxes image at 600x600');
     browserTest.fixme(params.id === 'fit' && browserName === 'webkit' && platform === 'linux', 'Image size is flaky');
@@ -287,6 +288,47 @@ test('should not hang for clicks that open dialogs', async ({ context, page }) =
   await context.tracing.stop();
 });
 
+test('should hide internal stack frames', async ({ context, page }, testInfo) => {
+  await context.tracing.start({ screenshots: true, snapshots: true });
+  let evalPromise;
+  page.on('dialog', dialog => {
+    evalPromise = page.evaluate('2+2');
+    dialog.dismiss();
+  });
+  await page.setContent(`<div onclick='window.alert(123)'>Click me</div>`);
+  await page.click('div');
+  await evalPromise;
+  const tracePath = testInfo.outputPath('trace.zip');
+  await context.tracing.stop({ path: tracePath });
+
+  const trace = await parseTrace(tracePath);
+  const actions = trace.events.filter(e => e.type === 'action' && !e.metadata.apiName.startsWith('tracing.'));
+  expect(actions).toHaveLength(4);
+  for (const action of actions)
+    expect(relativeStack(action)).toEqual(['tracing.spec.ts']);
+});
+
+test('should hide internal stack frames in expect', async ({ context, page }, testInfo) => {
+  await context.tracing.start({ screenshots: true, snapshots: true });
+  let expectPromise;
+  page.on('dialog', dialog => {
+    expectPromise = expect(page).toHaveTitle('Hello');
+    dialog.dismiss();
+  });
+  await page.setContent(`<title>Hello</title><div onclick='window.alert(123)'>Click me</div>`);
+  await page.click('div');
+  await expect(page.locator('div')).toBeVisible();
+  await expectPromise;
+  const tracePath = testInfo.outputPath('trace.zip');
+  await context.tracing.stop({ path: tracePath });
+
+  const trace = await parseTrace(tracePath);
+  const actions = trace.events.filter(e => e.type === 'action' && !e.metadata.apiName.startsWith('tracing.'));
+  expect(actions).toHaveLength(5);
+  for (const action of actions)
+    expect(relativeStack(action)).toEqual(['tracing.spec.ts']);
+});
+
 async function parseTrace(file: string): Promise<{ events: any[], resources: Map<string, Buffer> }> {
   const zipFS = new ZipFileSystem(file);
   const resources = new Map<string, Buffer>();
@@ -329,4 +371,8 @@ function expectBlue(pixels: Buffer, offset: number) {
   expect(g).toBeLessThan(70);
   expect(b).toBeGreaterThan(200);
   expect(a).toBe(255);
+}
+
+function relativeStack(action: any): string[] {
+  return action.metadata.stack.map(f => f.file.replace(__dirname + path.sep, ''));
 }

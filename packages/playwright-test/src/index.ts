@@ -31,6 +31,7 @@ type TestFixtures = PlaywrightTestArgs & PlaywrightTestOptions & {
 };
 type WorkerAndFileFixtures = PlaywrightWorkerArgs & PlaywrightWorkerOptions & {
   _browserType: BrowserType;
+  _browserOptions: LaunchOptions;
   _artifactsDir: () => string,
   _reuseBrowserContext: ReuseBrowserContextStorage,
 };
@@ -150,31 +151,9 @@ export const test = _baseTest.extend<TestFixtures, WorkerAndFileFixtures>({
       await removeFolders([dir]);
   }, { scope: 'worker' }],
 
-  _browserType: [async ({ playwright, browserName, headless, channel, launchOptions }, use) => {
-    if (!['chromium', 'firefox', 'webkit'].includes(browserName))
-      throw new Error(`Unexpected browserName "${browserName}", must be one of "chromium", "firefox" or "webkit"`);
-    const browserType = playwright[browserName];
-
-    const options: LaunchOptions = {
-      handleSIGINT: false,
-      timeout: 0,
-      ...launchOptions,
-    };
-    if (headless !== undefined)
-      options.headless = headless;
-    if (channel !== undefined)
-      options.channel = channel;
-
-    (browserType as any)._defaultLaunchOptions = options;
-    await use(browserType);
-    (browserType as any)._defaultLaunchOptions = undefined;
-  }, { scope: 'worker' }],
-
-  browser: [ async ({ _browserType }, use) => {
-    const browser = await _browserType.launch();
-    await use(browser);
-    await browser.close();
-  }, { scope: 'worker' } ],
+  _browserOptions: [browserOptionsWorkerFixture, { scope: 'worker' }],
+  _browserType: [browserTypeWorkerFixture, { scope: 'worker' }],
+  browser: [browserWorkerFixture, { scope: 'worker' } ],
 
   acceptDownloads: undefined,
   bypassCSP: undefined,
@@ -288,7 +267,7 @@ export const test = _baseTest.extend<TestFixtures, WorkerAndFileFixtures>({
       context.setDefaultNavigationTimeout(navigationTimeout || actionTimeout || 0);
       if (captureTrace) {
         if (!(context.tracing as any)[kTracingStarted]) {
-          await context.tracing.start({ screenshots: true, snapshots: true });
+          await context.tracing.start({ screenshots: true, snapshots: true, sources: true } as any);
           (context.tracing as any)[kTracingStarted] = true;
         } else {
           await context.tracing.startChunk();
@@ -297,8 +276,8 @@ export const test = _baseTest.extend<TestFixtures, WorkerAndFileFixtures>({
         (context.tracing as any)[kTracingStarted] = false;
         await context.tracing.stop();
       }
-      (context as any)._csi = {
-        onApiCallBegin: (apiCall: string, stackTrace: ParsedStackTrace | null) => {
+      (context as any)._instrumentation.addListener({
+        onApiCallBegin: (apiCall: string, stackTrace: ParsedStackTrace | null, userData: any) => {
           if (apiCall.startsWith('expect.'))
             return { userObject: null };
           const testInfoImpl = testInfo as any;
@@ -309,13 +288,13 @@ export const test = _baseTest.extend<TestFixtures, WorkerAndFileFixtures>({
             canHaveChildren: false,
             forceNoParent: false
           });
-          return { userObject: step };
+          userData.userObject = step;
         },
-        onApiCallEnd: (data: { userObject: any }, error?: Error) => {
-          const step = data.userObject;
+        onApiCallEnd: (userData: any, error?: Error) => {
+          const step = userData.userObject;
           step?.complete(error);
         },
-      };
+      });
     };
 
     const onWillCloseContext = async (context: BrowserContext) => {
@@ -374,7 +353,7 @@ export const test = _baseTest.extend<TestFixtures, WorkerAndFileFixtures>({
     (_browserType as any)._onDidCreateContext = undefined;
     (_browserType as any)._onWillCloseContext = undefined;
     (_browserType as any)._defaultContextOptions = undefined;
-    leftoverContexts.forEach(context => (context as any)._csi = undefined);
+    leftoverContexts.forEach(context => (context as any)._instrumentation.removeAllListeners());
 
     // 5. Collect artifacts from any non-closed contexts.
     await Promise.all(leftoverContexts.map(async context => {
@@ -480,7 +459,54 @@ export const test = _baseTest.extend<TestFixtures, WorkerAndFileFixtures>({
 
 });
 
-export default test;
+export async function browserOptionsWorkerFixture(
+  {
+    headless,
+    channel,
+    launchOptions
+  }: {
+    headless: boolean | undefined,
+    channel: string | undefined,
+    launchOptions: LaunchOptions
+  }, use: (options: LaunchOptions) => Promise<void>) {
+  const options: LaunchOptions = {
+    handleSIGINT: false,
+    timeout: 0,
+    ...launchOptions,
+  };
+  if (headless !== undefined)
+    options.headless = headless;
+  if (channel !== undefined)
+    options.channel = channel;
+  await use(options);
+}
+
+export async function browserTypeWorkerFixture(
+  {
+    playwright,
+    browserName,
+    _browserOptions
+  }: {
+    playwright: any,
+    browserName: string,
+    _browserOptions: LaunchOptions
+  }, use: (browserType: BrowserType) => Promise<void>) {
+  if (!['chromium', 'firefox', 'webkit'].includes(browserName))
+    throw new Error(`Unexpected browserName "${browserName}", must be one of "chromium", "firefox" or "webkit"`);
+  const browserType = playwright[browserName];
+  (browserType as any)._defaultLaunchOptions = _browserOptions;
+  await use(browserType);
+  (browserType as any)._defaultLaunchOptions = undefined;
+}
+
+export async function browserWorkerFixture(
+  { _browserType }: { _browserType: BrowserType },
+  use: (browser: Browser) => Promise<void>) {
+  const browser = await _browserType.launch();
+  await use(browser);
+  await browser.close();
+}
+
 
 function formatPendingCalls(calls: ParsedStackTrace[]) {
   if (!calls.length)
@@ -517,3 +543,5 @@ type ParsedStackTrace = {
 };
 
 const kTracingStarted = Symbol('kTracingStarted');
+
+export default test;

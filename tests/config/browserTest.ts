@@ -14,33 +14,32 @@
  * limitations under the License.
  */
 
-import type { Fixtures } from '@playwright/test';
+import type { Fixtures, PlaywrightTestOptions, PlaywrightWorkerOptions } from '@playwright/test';
 import type { Browser, BrowserContext, BrowserContextOptions, BrowserType, LaunchOptions, Page } from 'playwright-core';
 import { removeFolders } from 'playwright-core/lib/utils/utils';
-import { ReuseBrowserContextStorage } from '@playwright/test/src/index';
+import { browserOptionsWorkerFixture, browserTypeWorkerFixture, browserWorkerFixture, ReuseBrowserContextStorage } from '../../packages/playwright-test/lib/index';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
 import { RemoteServer, RemoteServerOptions } from './remoteServer';
-import { baseTest, CommonWorkerFixtures } from './baseTest';
+import { baseTest } from './baseTest';
 import { CommonFixtures } from './commonFixtures';
 import type { ParsedStackTrace } from 'playwright-core/lib/utils/stackTrace';
+import { DefaultTestMode, DriverTestMode, ServiceTestMode } from './testMode';
+import { TestModeWorkerFixtures } from './testModeFixtures';
 
-type PlaywrightWorkerOptions = {
-  executablePath: LaunchOptions['executablePath'];
-  proxy: LaunchOptions['proxy'];
-  args: LaunchOptions['args'];
-};
 export type PlaywrightWorkerFixtures = {
+  playwright: typeof import('playwright-core');
+  _browserType: BrowserType;
+  _browserOptions: LaunchOptions;
   browserType: BrowserType;
   browserOptions: LaunchOptions;
   browser: Browser;
   browserVersion: string;
-  _reuseBrowserContext: ReuseBrowserContextStorage,
+  _reuseBrowserContext: ReuseBrowserContextStorage;
+  toImpl: (rpcObject: any) => any;
 };
-type PlaywrightTestOptions = {
-  hasTouch: BrowserContextOptions['hasTouch'];
-};
+
 type PlaywrightTestFixtures = {
   createUserDataDir: () => Promise<string>;
   launchPersistent: (options?: Parameters<BrowserType['launchPersistentContext']>[1]) => Promise<{ context: BrowserContext, page: Page }>;
@@ -50,35 +49,31 @@ type PlaywrightTestFixtures = {
   context: BrowserContext;
   page: Page;
 };
-export type PlaywrightOptions = PlaywrightWorkerOptions & PlaywrightTestOptions;
 
-export const playwrightFixtures: Fixtures<PlaywrightTestOptions & PlaywrightTestFixtures, PlaywrightWorkerOptions & PlaywrightWorkerFixtures, CommonFixtures, CommonWorkerFixtures> = {
-  executablePath: [ undefined, { scope: 'worker' } ],
-  proxy: [ undefined, { scope: 'worker' } ],
-  args: [ undefined, { scope: 'worker' } ],
+export const playwrightFixtures: Fixtures<PlaywrightTestOptions & PlaywrightTestFixtures, PlaywrightWorkerOptions & PlaywrightWorkerFixtures, CommonFixtures, TestModeWorkerFixtures> = {
   hasTouch: undefined,
 
-  browserType: [async ({ playwright, browserName }, run) => {
-    await run(playwright[browserName]);
+  playwright: [ async ({ mode }, run) => {
+    const testMode = {
+      default: new DefaultTestMode(),
+      service: new ServiceTestMode(),
+      driver: new DriverTestMode(),
+    }[mode];
+    require('playwright-core/lib/utils/utils').setUnderTest();
+    const playwright = await testMode.setup();
+    await run(playwright);
+    await testMode.teardown();
   }, { scope: 'worker' } ],
 
-  browserOptions: [async ({ headless, channel, executablePath, proxy, args }, run) => {
-    await run({
-      headless,
-      channel,
-      executablePath,
-      proxy,
-      args,
-      handleSIGINT: false,
-      devtools: process.env.DEVTOOLS === '1',
-    });
-  }, { scope: 'worker' } ],
+  toImpl: [ async ({ playwright }, run) => run((playwright as any)._toImpl), { scope: 'worker' } ],
 
-  browser: [async ({ browserType, browserOptions }, run) => {
-    const browser = await browserType.launch(browserOptions);
-    await run(browser);
-    await browser.close();
-  }, { scope: 'worker' } ],
+  _browserType: [browserTypeWorkerFixture, { scope: 'worker' } ],
+  _browserOptions: [browserOptionsWorkerFixture, { scope: 'worker' } ],
+
+  launchOptions: [ {}, { scope: 'worker' } ],
+  browserType: [async ({ _browserType }, use) => use(_browserType), { scope: 'worker' } ],
+  browserOptions: [async ({ _browserOptions }, use) => use(_browserOptions), { scope: 'worker' } ],
+  browser: [browserWorkerFixture, { scope: 'worker' } ],
 
   browserVersion: [async ({ browser }, run) => {
     await run(browser.version());
@@ -132,7 +127,7 @@ export const playwrightFixtures: Fixtures<PlaywrightTestOptions & PlaywrightTest
   contextOptions: async ({ video, hasTouch }, run, testInfo) => {
     const debugName = path.relative(testInfo.project.outputDir, testInfo.outputDir).replace(/[\/\\]/g, '-');
     const contextOptions = {
-      recordVideo: video ? { dir: testInfo.outputPath('') } : undefined,
+      recordVideo: video === 'on' ? { dir: testInfo.outputPath('') } : undefined,
       _debugName: debugName,
       hasTouch,
     } as BrowserContextOptions;
@@ -145,10 +140,10 @@ export const playwrightFixtures: Fixtures<PlaywrightTestOptions & PlaywrightTest
       const context = await browser.newContext({ ...contextOptions, ...options });
       contexts.set(context, { closed: false });
       context.on('close', () => contexts.get(context).closed = true);
-      if (trace)
-        await context.tracing.start({ screenshots: true, snapshots: true });
-      (context as any)._csi = {
-        onApiCallBegin: (apiCall: string, stackTrace: ParsedStackTrace | null) => {
+      if (trace === 'on')
+        await context.tracing.start({ screenshots: true, snapshots: true, sources: true } as any);
+      (context as any)._instrumentation.addListener({
+        onApiCallBegin: (apiCall: string, stackTrace: ParsedStackTrace | null, userData: any) => {
           if (apiCall.startsWith('expect.'))
             return { userObject: null };
           const testInfoImpl = testInfo as any;
@@ -159,18 +154,18 @@ export const playwrightFixtures: Fixtures<PlaywrightTestOptions & PlaywrightTest
             canHaveChildren: false,
             forceNoParent: false
           });
-          return { userObject: step };
+          userData.userObject = step;
         },
-        onApiCallEnd: (data: { userObject: any }, error?: Error) => {
-          const step = data.userObject;
+        onApiCallEnd: (userData: any, error?: Error) => {
+          const step = userData.userObject;
           step?.complete(error);
         },
-      };
+      });
       return context;
     });
     await Promise.all([...contexts.keys()].map(async context => {
       const videos = context.pages().map(p => p.video()).filter(Boolean);
-      if (trace && !contexts.get(context)!.closed) {
+      if (trace === 'on' && !contexts.get(context)!.closed) {
         const tracePath = testInfo.outputPath('trace.zip');
         await context.tracing.stop({ path: tracePath });
         testInfo.attachments.push({ name: 'trace', path: tracePath, contentType: 'application/zip' });
@@ -203,6 +198,12 @@ export const playwrightFixtures: Fixtures<PlaywrightTestOptions & PlaywrightTest
     }
     await run(await context.newPage());
   },
+
+  browserName: [ 'chromium' , { scope: 'worker' } ],
+  headless: [ undefined, { scope: 'worker' } ],
+  channel: [ undefined, { scope: 'worker' } ],
+  video: [ 'off', { scope: 'worker' } ],
+  trace: [ 'off', { scope: 'worker' } ],
 };
 
 const test = baseTest.extend<PlaywrightTestOptions & PlaywrightTestFixtures, PlaywrightWorkerOptions & PlaywrightWorkerFixtures>(playwrightFixtures);
