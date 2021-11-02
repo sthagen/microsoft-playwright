@@ -2146,8 +2146,9 @@ export interface Page {
      * - `'domcontentloaded'` - consider operation to be finished when the `DOMContentLoaded` event is fired.
      * - `'load'` - consider operation to be finished when the `load` event is fired.
      * - `'networkidle'` - consider operation to be finished when there are no network connections for at least `500` ms.
+     * - `'commit'` - consider operation to be finished when network response is received and the document started loading.
      */
-    waitUntil?: "load"|"domcontentloaded"|"networkidle";
+    waitUntil?: "load"|"domcontentloaded"|"networkidle"|"commit";
   }): Promise<null|Response>;
 
   /**
@@ -2173,8 +2174,9 @@ export interface Page {
      * - `'domcontentloaded'` - consider operation to be finished when the `DOMContentLoaded` event is fired.
      * - `'load'` - consider operation to be finished when the `load` event is fired.
      * - `'networkidle'` - consider operation to be finished when there are no network connections for at least `500` ms.
+     * - `'commit'` - consider operation to be finished when network response is received and the document started loading.
      */
-    waitUntil?: "load"|"domcontentloaded"|"networkidle";
+    waitUntil?: "load"|"domcontentloaded"|"networkidle"|"commit";
   }): Promise<null|Response>;
 
   /**
@@ -2224,8 +2226,9 @@ export interface Page {
      * - `'domcontentloaded'` - consider operation to be finished when the `DOMContentLoaded` event is fired.
      * - `'load'` - consider operation to be finished when the `load` event is fired.
      * - `'networkidle'` - consider operation to be finished when there are no network connections for at least `500` ms.
+     * - `'commit'` - consider operation to be finished when network response is received and the document started loading.
      */
-    waitUntil?: "load"|"domcontentloaded"|"networkidle";
+    waitUntil?: "load"|"domcontentloaded"|"networkidle"|"commit";
   }): Promise<null|Response>;
 
   /**
@@ -2730,8 +2733,8 @@ export interface Page {
   }): Promise<void>;
 
   /**
-   * Returns the main resource response. In case of multiple redirects, the navigation will resolve with the response of the
-   * last redirect.
+   * This method reloads the current page, in the same way as if the user had triggered a browser refresh. Returns the main
+   * resource response. In case of multiple redirects, the navigation will resolve with the response of the last redirect.
    * @param options
    */
   reload(options?: {
@@ -2750,8 +2753,9 @@ export interface Page {
      * - `'domcontentloaded'` - consider operation to be finished when the `DOMContentLoaded` event is fired.
      * - `'load'` - consider operation to be finished when the `load` event is fired.
      * - `'networkidle'` - consider operation to be finished when there are no network connections for at least `500` ms.
+     * - `'commit'` - consider operation to be finished when network response is received and the document started loading.
      */
-    waitUntil?: "load"|"domcontentloaded"|"networkidle";
+    waitUntil?: "load"|"domcontentloaded"|"networkidle"|"commit";
   }): Promise<null|Response>;
 
   /**
@@ -3000,8 +3004,9 @@ export interface Page {
      * - `'domcontentloaded'` - consider operation to be finished when the `DOMContentLoaded` event is fired.
      * - `'load'` - consider operation to be finished when the `load` event is fired.
      * - `'networkidle'` - consider operation to be finished when there are no network connections for at least `500` ms.
+     * - `'commit'` - consider operation to be finished when network response is received and the document started loading.
      */
-    waitUntil?: "load"|"domcontentloaded"|"networkidle";
+    waitUntil?: "load"|"domcontentloaded"|"networkidle"|"commit";
   }): Promise<void>;
 
   /**
@@ -3648,8 +3653,9 @@ export interface Page {
      * - `'domcontentloaded'` - consider operation to be finished when the `DOMContentLoaded` event is fired.
      * - `'load'` - consider operation to be finished when the `load` event is fired.
      * - `'networkidle'` - consider operation to be finished when there are no network connections for at least `500` ms.
+     * - `'commit'` - consider operation to be finished when network response is received and the document started loading.
      */
-    waitUntil?: "load"|"domcontentloaded"|"networkidle";
+    waitUntil?: "load"|"domcontentloaded"|"networkidle"|"commit";
   }): Promise<null|Response>;
 
   /**
@@ -3770,8 +3776,9 @@ export interface Page {
      * - `'domcontentloaded'` - consider operation to be finished when the `DOMContentLoaded` event is fired.
      * - `'load'` - consider operation to be finished when the `load` event is fired.
      * - `'networkidle'` - consider operation to be finished when there are no network connections for at least `500` ms.
+     * - `'commit'` - consider operation to be finished when network response is received and the document started loading.
      */
-    waitUntil?: "load"|"domcontentloaded"|"networkidle";
+    waitUntil?: "load"|"domcontentloaded"|"networkidle"|"commit";
   }): Promise<void>;
 
   /**
@@ -4925,8 +4932,9 @@ export interface Frame {
      * - `'domcontentloaded'` - consider operation to be finished when the `DOMContentLoaded` event is fired.
      * - `'load'` - consider operation to be finished when the `load` event is fired.
      * - `'networkidle'` - consider operation to be finished when there are no network connections for at least `500` ms.
+     * - `'commit'` - consider operation to be finished when network response is received and the document started loading.
      */
-    waitUntil?: "load"|"domcontentloaded"|"networkidle";
+    waitUntil?: "load"|"domcontentloaded"|"networkidle"|"commit";
   }): Promise<null|Response>;
 
   /**
@@ -5427,8 +5435,9 @@ export interface Frame {
      * - `'domcontentloaded'` - consider operation to be finished when the `DOMContentLoaded` event is fired.
      * - `'load'` - consider operation to be finished when the `load` event is fired.
      * - `'networkidle'` - consider operation to be finished when there are no network connections for at least `500` ms.
+     * - `'commit'` - consider operation to be finished when network response is received and the document started loading.
      */
-    waitUntil?: "load"|"domcontentloaded"|"networkidle";
+    waitUntil?: "load"|"domcontentloaded"|"networkidle"|"commit";
   }): Promise<void>;
 
   /**
@@ -5769,8 +5778,9 @@ export interface Frame {
      * - `'domcontentloaded'` - consider operation to be finished when the `DOMContentLoaded` event is fired.
      * - `'load'` - consider operation to be finished when the `load` event is fired.
      * - `'networkidle'` - consider operation to be finished when there are no network connections for at least `500` ms.
+     * - `'commit'` - consider operation to be finished when network response is received and the document started loading.
      */
-    waitUntil?: "load"|"domcontentloaded"|"networkidle";
+    waitUntil?: "load"|"domcontentloaded"|"networkidle"|"commit";
   }): Promise<null|Response>;
 
   /**
@@ -5810,8 +5820,9 @@ export interface Frame {
      * - `'domcontentloaded'` - consider operation to be finished when the `DOMContentLoaded` event is fired.
      * - `'load'` - consider operation to be finished when the `load` event is fired.
      * - `'networkidle'` - consider operation to be finished when there are no network connections for at least `500` ms.
+     * - `'commit'` - consider operation to be finished when network response is received and the document started loading.
      */
-    waitUntil?: "load"|"domcontentloaded"|"networkidle";
+    waitUntil?: "load"|"domcontentloaded"|"networkidle"|"commit";
   }): Promise<void>;}
 
 /**
@@ -14383,12 +14394,22 @@ export interface Tracing {
      * Whether to capture DOM snapshot on every action.
      */
     snapshots?: boolean;
+
+    /**
+     * Whether to include source files for trace actions.
+     */
+    sources?: boolean;
+
+    /**
+     * Trace name to be shown in the Trace Viewer.
+     */
+    title?: string;
   }): Promise<void>;
 
   /**
    * Start a new trace chunk. If you'd like to record multiple traces on the same [BrowserContext], use
    * [tracing.start([options])](https://playwright.dev/docs/api/class-tracing#tracing-start) once, and then create multiple
-   * trace chunks with [tracing.startChunk()](https://playwright.dev/docs/api/class-tracing#tracing-start-chunk) and
+   * trace chunks with [tracing.startChunk([options])](https://playwright.dev/docs/api/class-tracing#tracing-start-chunk) and
    * [tracing.stopChunk([options])](https://playwright.dev/docs/api/class-tracing#tracing-stop-chunk).
    *
    * ```js
@@ -14407,8 +14428,14 @@ export interface Tracing {
    * await context.tracing.stopChunk({ path: 'trace2.zip' });
    * ```
    *
+   * @param options
    */
-  startChunk(): Promise<void>;
+  startChunk(options?: {
+    /**
+     * Trace name to be shown in the Trace Viewer.
+     */
+    title?: string;
+  }): Promise<void>;
 
   /**
    * Stop tracing.
@@ -14422,15 +14449,16 @@ export interface Tracing {
   }): Promise<void>;
 
   /**
-   * Stop the trace chunk. See [tracing.startChunk()](https://playwright.dev/docs/api/class-tracing#tracing-start-chunk) for
-   * more details about multiple trace chunks.
+   * Stop the trace chunk. See
+   * [tracing.startChunk([options])](https://playwright.dev/docs/api/class-tracing#tracing-start-chunk) for more details
+   * about multiple trace chunks.
    * @param options
    */
   stopChunk(options?: {
     /**
      * Export trace collected since the last
-     * [tracing.startChunk()](https://playwright.dev/docs/api/class-tracing#tracing-start-chunk) call into the file with the
-     * given path.
+     * [tracing.startChunk([options])](https://playwright.dev/docs/api/class-tracing#tracing-start-chunk) call into the file
+     * with the given path.
      */
     path?: string;
   }): Promise<void>;

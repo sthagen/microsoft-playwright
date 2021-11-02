@@ -33,9 +33,7 @@ function prepare_chromium_checkout {
   source "${SCRIPT_PATH}/chromium/ensure_depot_tools.sh"
 
   if [[ -z "${CR_CHECKOUT_PATH}" ]]; then
-    echo "ERROR: chromium compilation requires CR_CHECKOUT_PATH to be set to reuse checkout."
-    echo "NOTE: we expect '\$CR_CHECKOUT_PATH/src' to exist to be a valid chromium checkout."
-    exit 1
+    CR_CHECKOUT_PATH="$HOME/chromium"
   fi
 
   # Get chromium SHA from the build revision.
@@ -47,7 +45,7 @@ function prepare_chromium_checkout {
   # Update Chromium checkout.
   #
   # This is based on https://chromium.googlesource.com/chromium/src/+/master/docs/linux/build_instructions.md#get-the-code
-  if [[ ! -d "${CR_CHECKOUT_PATH}/src" ]]; then
+  if [[ ! -d "${CR_CHECKOUT_PATH}" ]]; then
     rm -rf "${CR_CHECKOUT_PATH}"
     mkdir -p "${CR_CHECKOUT_PATH}"
     cd "${CR_CHECKOUT_PATH}"
@@ -58,6 +56,11 @@ function prepare_chromium_checkout {
     fi
     gclient runhooks
   fi
+  if [[ ! -d "${CR_CHECKOUT_PATH}/src" ]]; then
+    echo "ERROR: CR_CHECKOUT_PATH does not have src/ subfolder; is this a chromium checkout?"
+    exit 1
+  fi
+
   cd "${CR_CHECKOUT_PATH}/src"
   git checkout master
   git pull origin master
@@ -171,28 +174,34 @@ else
 fi
 
 # Check if our checkout contains BASE_REVISION.
-# If not, fetch from REMOTE_BROWSER_UPSTREAM and slowly fetch more and more commits
-# until we find $BASE_REVISION.
-# This technique allows us start with a shallow clone.
 if ! git cat-file -e "$BASE_REVISION"^{commit} 2>/dev/null; then
   # Detach git head so that we can fetch into branch.
   git checkout --detach >/dev/null 2>/dev/null
 
-  # Fetch 128 commits first, and then double the amount every iteration.
-  FETCH_DEPTH=128
-  SUCCESS="no"
-  while (( FETCH_DEPTH <= 8192 )); do
-    echo "Fetching ${FETCH_DEPTH} commits to find base revision..."
-    git fetch --depth "${FETCH_DEPTH}" $REMOTE_BROWSER_UPSTREAM "$BASE_BRANCH"
-    FETCH_DEPTH=$(( FETCH_DEPTH * 2 ));
-    if git cat-file -e "$BASE_REVISION"^{commit} >/dev/null; then
-      SUCCESS="yes"
-      break;
+  if [[ -z "$CI" ]]; then
+    # On non-CI, fetch everything.
+    git fetch "$REMOTE_BROWSER_UPSTREAM" "$BASE_BRANCH"
+  else
+    # On CI, fetch from REMOTE_BROWSER_UPSTREAM more and more commits
+    # until we find $BASE_REVISION.
+    # This technique allows us start with a shallow clone.
+
+    # Fetch 128 commits first, and then double the amount every iteration.
+    FETCH_DEPTH=128
+    SUCCESS="no"
+    while (( FETCH_DEPTH <= 8192 )); do
+      echo "Fetching ${FETCH_DEPTH} commits to find base revision..."
+      git fetch --depth "${FETCH_DEPTH}" "$REMOTE_BROWSER_UPSTREAM" "$BASE_BRANCH"
+      FETCH_DEPTH=$(( FETCH_DEPTH * 2 ));
+      if git cat-file -e "$BASE_REVISION"^{commit} >/dev/null; then
+        SUCCESS="yes"
+        break;
+      fi
+    done
+    if [[ "${SUCCESS}" == "no" ]]; then
+      echo "ERROR: $FRIENDLY_CHECKOUT_PATH/ does not include the BASE_REVISION (@$BASE_REVISION). Wrong revision number?"
+      exit 1
     fi
-  done
-  if [[ "${SUCCESS}" == "no" ]]; then
-    echo "ERROR: $FRIENDLY_CHECKOUT_PATH/ does not include the BASE_REVISION (@$BASE_REVISION). Wrong revision number?"
-    exit 1
   fi
 fi
 

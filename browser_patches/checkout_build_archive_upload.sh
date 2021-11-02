@@ -4,7 +4,7 @@ set +x
 set -o pipefail
 
 if [[ ($1 == '--help') || ($1 == '-h') ]]; then
-  echo "usage: $(basename "$0") [firefox-linux|firefox-win32|firefox-win64|webkit-gtk|webkit-wpe|webkit-gtk-wpe|webkit-win64|webkit-mac-10.15] [-f|--force]"
+  echo "usage: $(basename "$0") [firefox-linux|firefox-win64|webkit-gtk|webkit-wpe|webkit-gtk-wpe|webkit-win64|webkit-mac-10.15] [-f|--force]"
   echo
   echo "Prepares checkout under browser folder, applies patches, builds, archives, and uploads if build is missing."
   echo "Script will bail out early if the build for the browser version is already present."
@@ -66,12 +66,6 @@ elif [[ "$BUILD_FLAVOR" == "ffmpeg-linux" ]]; then
   EXPECTED_HOST_OS="Ubuntu"
   EXPECTED_HOST_OS_VERSION="20.04"
   BUILD_BLOB_NAME="ffmpeg-linux.zip"
-elif [[ "$BUILD_FLAVOR" == "ffmpeg-cross-compile-win32" ]]; then
-  BROWSER_NAME="ffmpeg"
-  EXTRA_BUILD_ARGS="--cross-compile-win32"
-  EXPECTED_HOST_OS="Ubuntu"
-  EXPECTED_HOST_OS_VERSION="20.04"
-  BUILD_BLOB_NAME="ffmpeg-win32.zip"
 elif [[ "$BUILD_FLAVOR" == "ffmpeg-cross-compile-win64" ]]; then
   BROWSER_NAME="ffmpeg"
   EXTRA_BUILD_ARGS="--cross-compile-win64"
@@ -82,55 +76,48 @@ elif [[ "$BUILD_FLAVOR" == "ffmpeg-cross-compile-win64" ]]; then
 # ===========================
 #    CHROMIUM COMPILATION
 # ===========================
-elif [[ "$BUILD_FLAVOR" == "chromium-win32" ]]; then
-  BROWSER_NAME="chromium"
-  EXTRA_BUILD_ARGS="--compile-win32"
-  EXTRA_ARCHIVE_ARGS="--compile-win32"
-  EXPECTED_HOST_OS="MINGW"
-  BUILD_BLOB_NAME="chromium-win32.zip"
 elif [[ "$BUILD_FLAVOR" == "chromium-win64" ]]; then
   BROWSER_NAME="chromium"
-  EXTRA_BUILD_ARGS="--compile-win64"
+  EXTRA_BUILD_ARGS="--compile-win64 --full"
   EXTRA_ARCHIVE_ARGS="--compile-win64"
   EXPECTED_HOST_OS="MINGW"
   BUILD_BLOB_NAME="chromium-win64.zip"
 elif [[ "$BUILD_FLAVOR" == "chromium-mac" ]]; then
   BROWSER_NAME="chromium"
-  EXTRA_BUILD_ARGS="--compile-mac"
+  EXTRA_BUILD_ARGS="--compile-mac --full"
   EXTRA_ARCHIVE_ARGS="--compile-mac"
   EXPECTED_HOST_OS="Darwin"
   EXPECTED_HOST_OS_VERSION="10.15"
   BUILD_BLOB_NAME="chromium-mac.zip"
 elif [[ "$BUILD_FLAVOR" == "chromium-mac-arm64" ]]; then
   BROWSER_NAME="chromium"
-  EXTRA_BUILD_ARGS="--compile-mac-arm64"
+  EXTRA_BUILD_ARGS="--compile-mac-arm64 --full"
   EXTRA_ARCHIVE_ARGS="--compile-mac-arm64"
   EXPECTED_HOST_OS="Darwin"
   EXPECTED_HOST_OS_VERSION="10.15"
   BUILD_BLOB_NAME="chromium-mac-arm64.zip"
 elif [[ "$BUILD_FLAVOR" == "chromium-linux" ]]; then
   BROWSER_NAME="chromium"
-  EXTRA_BUILD_ARGS="--compile-linux"
+  EXTRA_BUILD_ARGS="--compile-linux --full"
   EXTRA_ARCHIVE_ARGS="--compile-linux"
   EXPECTED_HOST_OS="Ubuntu"
   EXPECTED_HOST_OS_VERSION="18.04"
   BUILD_BLOB_NAME="chromium-linux.zip"
+elif [[ "$BUILD_FLAVOR" == "chromium-linux-arm64" ]]; then
+  BROWSER_NAME="chromium"
+  EXTRA_BUILD_ARGS="--compile-linux-arm64 --full"
+  EXTRA_ARCHIVE_ARGS="--compile-linux-arm64"
+  EXPECTED_HOST_OS="Ubuntu"
+  EXPECTED_HOST_OS_VERSION="20.04"
+  BUILD_BLOB_NAME="chromium-linux-arm64.zip"
 
 # ===========================
 #    CHROMIUM-WITH-SYMBOLS COMPILATION
 # ===========================
-elif [[ "$BUILD_FLAVOR" == "chromium-with-symbols-win32" ]]; then
-  BROWSER_NAME="chromium"
-  BROWSER_DISPLAY_NAME="chromium-with-symbols"
-  EXTRA_BUILD_ARGS="--compile-win32 --symbols"
-  EXTRA_ARCHIVE_ARGS="--compile-win32"
-  EXPECTED_HOST_OS="MINGW"
-  BUILD_BLOB_NAME="chromium-with-symbols-win32.zip"
-  BUILDS_LIST="EXPECTED_BUILDS_WITH_SYMBOLS"
 elif [[ "$BUILD_FLAVOR" == "chromium-with-symbols-win64" ]]; then
   BROWSER_NAME="chromium"
   BROWSER_DISPLAY_NAME="chromium-with-symbols"
-  EXTRA_BUILD_ARGS="--compile-win64 --symbols"
+  EXTRA_BUILD_ARGS="--compile-win64 --symbols --full"
   EXTRA_ARCHIVE_ARGS="--compile-win64"
   EXPECTED_HOST_OS="MINGW"
   BUILD_BLOB_NAME="chromium-with-symbols-win64.zip"
@@ -138,7 +125,7 @@ elif [[ "$BUILD_FLAVOR" == "chromium-with-symbols-win64" ]]; then
 elif [[ "$BUILD_FLAVOR" == "chromium-with-symbols-mac" ]]; then
   BROWSER_NAME="chromium"
   BROWSER_DISPLAY_NAME="chromium-with-symbols"
-  EXTRA_BUILD_ARGS="--compile-mac --symbols"
+  EXTRA_BUILD_ARGS="--compile-mac --symbols --full"
   EXTRA_ARCHIVE_ARGS="--compile-mac"
   EXPECTED_HOST_OS="Darwin"
   EXPECTED_HOST_OS_VERSION="10.15"
@@ -147,7 +134,7 @@ elif [[ "$BUILD_FLAVOR" == "chromium-with-symbols-mac" ]]; then
 elif [[ "$BUILD_FLAVOR" == "chromium-with-symbols-mac-arm64" ]]; then
   BROWSER_NAME="chromium"
   BROWSER_DISPLAY_NAME="chromium-with-symbols"
-  EXTRA_BUILD_ARGS="--compile-mac-arm64 --symbols"
+  EXTRA_BUILD_ARGS="--compile-mac-arm64 --symbols --full"
   EXTRA_ARCHIVE_ARGS="--compile-mac-arm64"
   EXPECTED_HOST_OS="Darwin"
   EXPECTED_HOST_OS_VERSION="10.15"
@@ -156,11 +143,20 @@ elif [[ "$BUILD_FLAVOR" == "chromium-with-symbols-mac-arm64" ]]; then
 elif [[ "$BUILD_FLAVOR" == "chromium-with-symbols-linux" ]]; then
   BROWSER_NAME="chromium"
   BROWSER_DISPLAY_NAME="chromium-with-symbols"
-  EXTRA_BUILD_ARGS="--compile-linux --symbols"
+  EXTRA_BUILD_ARGS="--compile-linux --symbols --full"
   EXTRA_ARCHIVE_ARGS="--compile-linux"
   EXPECTED_HOST_OS="Ubuntu"
   EXPECTED_HOST_OS_VERSION="18.04"
   BUILD_BLOB_NAME="chromium-with-symbols-linux.zip"
+  BUILDS_LIST="EXPECTED_BUILDS_WITH_SYMBOLS"
+elif [[ "$BUILD_FLAVOR" == "chromium-with-symbols-linux-arm64" ]]; then
+  BROWSER_NAME="chromium"
+  BROWSER_DISPLAY_NAME="chromium-with-symbols-arm64"
+  EXTRA_BUILD_ARGS="--compile-linux-arm64 --symbols --full"
+  EXTRA_ARCHIVE_ARGS="--compile-linux-arm64"
+  EXPECTED_HOST_OS="Ubuntu"
+  EXPECTED_HOST_OS_VERSION="20.04"
+  BUILD_BLOB_NAME="chromium-with-symbols-linux-arm64.zip"
   BUILDS_LIST="EXPECTED_BUILDS_WITH_SYMBOLS"
 
 
@@ -181,13 +177,6 @@ elif [[ "$BUILD_FLAVOR" == "chromium-mac-mirror-to-cdn" ]]; then
   EXPECTED_HOST_OS="Ubuntu"
   EXPECTED_HOST_OS_VERSION="18.04"
   BUILD_BLOB_NAME="chromium-mac.zip"
-elif [[ "$BUILD_FLAVOR" == "chromium-win32-mirror-to-cdn" ]]; then
-  BROWSER_NAME="chromium"
-  EXTRA_BUILD_ARGS="--mirror-win32"
-  EXTRA_ARCHIVE_ARGS="--mirror-win32"
-  EXPECTED_HOST_OS="Ubuntu"
-  EXPECTED_HOST_OS_VERSION="18.04"
-  BUILD_BLOB_NAME="chromium-win32.zip"
 elif [[ "$BUILD_FLAVOR" == "chromium-win64-mirror-to-cdn" ]]; then
   BROWSER_NAME="chromium"
   EXTRA_BUILD_ARGS="--mirror-win64"
@@ -226,14 +215,9 @@ elif [[ "$BUILD_FLAVOR" == "firefox-mac-11-arm64" ]]; then
   EXPECTED_HOST_OS_VERSION="11.6"
   EXPECTED_ARCH="arm64"
   BUILD_BLOB_NAME="firefox-mac-11-arm64.zip"
-elif [[ "$BUILD_FLAVOR" == "firefox-win32" ]]; then
-  BROWSER_NAME="firefox"
-  EXTRA_BUILD_ARGS="--full"
-  EXPECTED_HOST_OS="MINGW"
-  BUILD_BLOB_NAME="firefox-win32.zip"
 elif [[ "$BUILD_FLAVOR" == "firefox-win64" ]]; then
   BROWSER_NAME="firefox"
-  EXTRA_BUILD_ARGS="--win64 --full"
+  EXTRA_BUILD_ARGS="--full"
   EXPECTED_HOST_OS="MINGW"
   BUILD_BLOB_NAME="firefox-win64.zip"
 
@@ -267,14 +251,9 @@ elif [[ "$BUILD_FLAVOR" == "firefox-beta-mac-11-arm64" ]]; then
   EXPECTED_HOST_OS_VERSION="11.6"
   EXPECTED_ARCH="arm64"
   BUILD_BLOB_NAME="firefox-beta-mac-11-arm64.zip"
-elif [[ "$BUILD_FLAVOR" == "firefox-beta-win32" ]]; then
-  BROWSER_NAME="firefox-beta"
-  EXTRA_BUILD_ARGS="--full"
-  EXPECTED_HOST_OS="MINGW"
-  BUILD_BLOB_NAME="firefox-beta-win32.zip"
 elif [[ "$BUILD_FLAVOR" == "firefox-beta-win64" ]]; then
   BROWSER_NAME="firefox-beta"
-  EXTRA_BUILD_ARGS="--win64 --full"
+  EXTRA_BUILD_ARGS="--full"
   EXPECTED_HOST_OS="MINGW"
   BUILD_BLOB_NAME="firefox-beta-win64.zip"
 
@@ -432,7 +411,9 @@ if generate_and_upload_browser_build 2>&1 | ./sanitize_and_compress_log.js $LOG_
     done;
     LAST_COMMIT_MESSAGE=$(git log --format=%s -n 1 HEAD -- "./${BROWSER_NAME}/BUILD_NUMBER")
     send_telegram_message "<b>${BROWSER_DISPLAY_NAME} r${BUILD_NUMBER} COMPLETE! ✅</b> ${LAST_COMMIT_MESSAGE}"
-    create_roll_into_playwright_pr $BROWSER_NAME $BUILD_NUMBER
+    if [[ "${BROWSER_DISPLAY_NAME}" != "chromium-with-symbols" ]]; then
+      create_roll_into_playwright_pr $BROWSER_NAME $BUILD_NUMBER
+    fi
   )
 else
   RESULT_CODE="$?"

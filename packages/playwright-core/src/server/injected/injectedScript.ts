@@ -24,10 +24,11 @@ import { CSSComplexSelectorList } from '../common/cssParser';
 import { generateSelector } from './selectorGenerator';
 import type * as channels from '../../protocol/channels';
 
-type Predicate<T> = (progress: InjectedScriptProgress, continuePolling: symbol) => T | symbol;
+type Predicate<T> = (progress: InjectedScriptProgress) => T | symbol;
 
 export type InjectedScriptProgress = {
   injectedScript: InjectedScript;
+  continuePolling: symbol;
   aborted: boolean;
   log: (message: string) => void;
   logRepeating: (message: string) => void;
@@ -66,10 +67,10 @@ export class InjectedScript {
   private _engines: Map<string, SelectorEngineV2>;
   _evaluator: SelectorEvaluatorImpl;
   private _stableRafCount: number;
-  private _replaceRafWithTimeout: boolean;
   private _browserName: string;
+  onGlobalListenersRemoved = new Set<() => void>();
 
-  constructor(stableRafCount: number, replaceRafWithTimeout: boolean, browserName: string, customEngines: { name: string, engine: SelectorEngine}[]) {
+  constructor(stableRafCount: number, browserName: string, customEngines: { name: string, engine: SelectorEngine}[]) {
     this._evaluator = new SelectorEvaluatorImpl(new Map());
 
     this._engines = new Map();
@@ -95,8 +96,9 @@ export class InjectedScript {
       this._engines.set(name, engine);
 
     this._stableRafCount = stableRafCount;
-    this._replaceRafWithTimeout = replaceRafWithTimeout;
     this._browserName = browserName;
+
+    this._setupGlobalListenersRemovalDetection();
   }
 
   eval(expression: string): any {
@@ -292,9 +294,8 @@ export class InjectedScript {
         if (progress.aborted)
           return;
         try {
-          const continuePolling = Symbol('continuePolling');
-          const success = predicate(progress, continuePolling);
-          if (success !== continuePolling)
+          const success = predicate(progress);
+          if (success !== progress.continuePolling)
             fulfill(success as T);
           else
             scheduleNext(next);
@@ -332,6 +333,7 @@ export class InjectedScript {
     const progress: InjectedScriptProgress = {
       injectedScript: this,
       aborted: false,
+      continuePolling: Symbol('continuePolling'),
       log: (message: string) => {
         lastMessage = message;
         unsentLog.push({ message });
@@ -398,16 +400,16 @@ export class InjectedScript {
   }
 
   waitForElementStatesAndPerformAction<T>(node: Node, states: ElementState[], force: boolean | undefined,
-    callback: (node: Node, progress: InjectedScriptProgress, continuePolling: symbol) => T | symbol): InjectedScriptPoll<T | 'error:notconnected'> {
+    callback: (node: Node, progress: InjectedScriptProgress) => T | symbol): InjectedScriptPoll<T | 'error:notconnected'> {
     let lastRect: { x: number, y: number, width: number, height: number } | undefined;
     let counter = 0;
     let samePositionCounter = 0;
     let lastTime = 0;
 
-    const predicate = (progress: InjectedScriptProgress, continuePolling: symbol) => {
+    return this.pollRaf(progress => {
       if (force) {
         progress.log(`    forcing action`);
-        return callback(node, progress, continuePolling);
+        return callback(node, progress);
       }
 
       for (const state of states) {
@@ -417,7 +419,7 @@ export class InjectedScript {
             return result;
           if (!result) {
             progress.logRepeating(`    element is not ${state} - waiting...`);
-            return continuePolling;
+            return progress.continuePolling;
           }
           continue;
         }
@@ -430,12 +432,12 @@ export class InjectedScript {
         // any client rect difference compared to synchronous call. We skip the synchronous call
         // and only force layout during actual rafs as a small optimisation.
         if (++counter === 1)
-          return continuePolling;
+          return progress.continuePolling;
 
         // Drop frames that are shorter than 16ms - WebKit Win bug.
         const time = performance.now();
         if (this._stableRafCount > 1 && time - lastTime < 15)
-          return continuePolling;
+          return progress.continuePolling;
         lastTime = time;
 
         const clientRect = element.getBoundingClientRect();
@@ -451,16 +453,11 @@ export class InjectedScript {
         if (!isStableForLogs)
           progress.logRepeating(`    element is not stable - waiting...`);
         if (!isStable)
-          return continuePolling;
+          return progress.continuePolling;
       }
 
-      return callback(node, progress, continuePolling);
-    };
-
-    if (this._replaceRafWithTimeout)
-      return this.pollInterval(16, predicate);
-    else
-      return this.pollRaf(predicate);
+      return callback(node, progress);
+    });
   }
 
   elementState(node: Node, state: ElementStateWithoutStable): boolean | 'error:notconnected' {
@@ -499,7 +496,7 @@ export class InjectedScript {
   }
 
   selectOptions(optionsToSelect: (Node | { value?: string, label?: string, index?: number })[],
-    node: Node, progress: InjectedScriptProgress, continuePolling: symbol): string[] | 'error:notconnected' | symbol {
+    node: Node, progress: InjectedScriptProgress): string[] | 'error:notconnected' | symbol {
     const element = this.retarget(node, 'follow-label');
     if (!element)
       return 'error:notconnected';
@@ -535,7 +532,7 @@ export class InjectedScript {
     }
     if (remainingOptionsToSelect.length) {
       progress.logRepeating('    did not find some options - waiting... ');
-      return continuePolling;
+      return progress.continuePolling;
     }
     select.value = undefined as any;
     selectedOptions.forEach(option => option.selected = true);
@@ -776,7 +773,32 @@ export class InjectedScript {
     return error;
   }
 
-  expect(progress: InjectedScriptProgress, element: Element, options: FrameExpectParams, elements: Element[]): { matches: boolean, received?: any } {
+  private _setupGlobalListenersRemovalDetection() {
+    const customEventName = '__playwright_global_listeners_check__';
+
+    let seenEvent = false;
+    const handleCustomEvent = () => seenEvent = true;
+    window.addEventListener(customEventName, handleCustomEvent);
+
+    new MutationObserver(entries => {
+      const newDocumentElement = entries.some(entry => Array.from(entry.addedNodes).includes(document.documentElement));
+      if (!newDocumentElement)
+        return;
+
+      // New documentElement - let's check whether listeners are still here.
+      seenEvent = false;
+      window.dispatchEvent(new CustomEvent(customEventName));
+      if (seenEvent)
+        return;
+
+      // Listener did not fire. Reattach the listener and notify.
+      window.addEventListener(customEventName, handleCustomEvent);
+      for (const callback of this.onGlobalListenersRemoved)
+        callback();
+    }).observe(document, { childList: true });
+  }
+
+  expectSingleElement(progress: InjectedScriptProgress, element: Element, options: FrameExpectParams): { matches: boolean, received?: any } {
     const injected = progress.injectedScript;
     const expression = options.expression;
 
@@ -810,15 +832,6 @@ export class InjectedScript {
         if (elementState === 'error:notconnected')
           throw injected.createStacklessError('Element is not connected');
         return { received: elementState, matches: elementState };
-      }
-    }
-
-    {
-      // Single number value.
-      if (expression === 'to.have.count') {
-        const received = elements.length;
-        const matches = received === options.expectedNumber;
-        return { received, matches };
       }
     }
 
@@ -860,37 +873,47 @@ export class InjectedScript {
       }
     }
 
-    {
-      // List of values.
-      let received: string[] | undefined;
-      if (expression === 'to.have.text.array' || expression === 'to.contain.text.array')
-        received = elements.map(e => options.useInnerText ? (e as HTMLElement).innerText : e.textContent || '');
-      else if (expression === 'to.have.class.array')
-        received = elements.map(e => e.className);
+    throw this.createStacklessError('Unknown expect matcher: ' + expression);
+  }
 
-      if (received && options.expectedText) {
-        // "To match an array" is "to contain an array" + "equal length"
-        const lengthShouldMatch = expression !== 'to.contain.text.array';
-        const matchesLength = received.length === options.expectedText.length || !lengthShouldMatch;
-        if (!matchesLength)
-          return { received, matches: false };
+  expectArray(elements: Element[], options: FrameExpectParams): { matches: boolean, received?: any } {
+    const expression = options.expression;
 
-        // Each matcher should get a "received" that matches it, in order.
-        let i = 0;
-        const matchers = options.expectedText.map(e => new ExpectedTextMatcher(e));
-        let allMatchesFound = true;
-        for (const matcher of matchers) {
-          while (i < received.length && !matcher.matches(received[i]))
-            i++;
-          if (i >= received.length) {
-            allMatchesFound = false;
-            break;
-          }
-        }
-        return { received, matches: allMatchesFound };
-      }
+    if (expression === 'to.have.count') {
+      const received = elements.length;
+      const matches = received === options.expectedNumber;
+      return { received, matches };
     }
-    throw this.createStacklessError('Unknown expect matcher: ' + options.expression);
+
+    // List of values.
+    let received: string[] | undefined;
+    if (expression === 'to.have.text.array' || expression === 'to.contain.text.array')
+      received = elements.map(e => options.useInnerText ? (e as HTMLElement).innerText : e.textContent || '');
+    else if (expression === 'to.have.class.array')
+      received = elements.map(e => e.className);
+
+    if (received && options.expectedText) {
+      // "To match an array" is "to contain an array" + "equal length"
+      const lengthShouldMatch = expression !== 'to.contain.text.array';
+      const matchesLength = received.length === options.expectedText.length || !lengthShouldMatch;
+      if (!matchesLength)
+        return { received, matches: false };
+
+      // Each matcher should get a "received" that matches it, in order.
+      let i = 0;
+      const matchers = options.expectedText.map(e => new ExpectedTextMatcher(e));
+      let allMatchesFound = true;
+      for (const matcher of matchers) {
+        while (i < received.length && !matcher.matches(received[i]))
+          i++;
+        if (i >= received.length) {
+          allMatchesFound = false;
+          break;
+        }
+      }
+      return { received, matches: allMatchesFound };
+    }
+    throw this.createStacklessError('Unknown expect matcher: ' + expression);
   }
 }
 
@@ -1056,8 +1079,10 @@ function deepEquals(a: any, b: any): boolean {
     return true;
   }
 
-  // NaN
-  return isNaN(a) === isNaN(b);
+  if (typeof a === 'number' && typeof b === 'number')
+    return isNaN(a) && isNaN(b);
+
+  return false;
 }
 
 export default InjectedScript;

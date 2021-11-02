@@ -26,6 +26,7 @@ export type ReporterDescription =
   ['github'] |
   ['junit'] | ['junit', { outputFile?: string, stripANSIControlSequences?: boolean }] |
   ['json'] | ['json', { outputFile?: string }] |
+  ['html'] | ['html', { outputFolder?: string, open?: 'always' | 'never' | 'on-failure' }] |
   ['null'] |
   [string] | [string, any];
 
@@ -109,7 +110,7 @@ interface TestConfig {
   preserveOutput?: PreserveOutput;
   projects?: Project[];
   quiet?: boolean;
-  reporter?: LiteralUnion<'list'|'dot'|'line'|'github'|'json'|'junit'|'null', string> | ReporterDescription[];
+  reporter?: LiteralUnion<'list'|'dot'|'line'|'github'|'json'|'junit'|'null'|'html', string> | ReporterDescription[];
   reportSlowTests?: ReportSlowTests;
   shard?: Shard;
   updateSnapshots?: UpdateSnapshots;
@@ -165,16 +166,19 @@ export interface TestError {
 
 export interface WorkerInfo {
   config: FullConfig;
+  parallelIndex: number;
   project: FullProject;
   workerIndex: number;
 }
 
 export interface TestInfo {
   config: FullConfig;
+  parallelIndex: number;
   project: FullProject;
   workerIndex: number;
 
   title: string;
+  titlePath: string[];
   file: string;
   line: number;
   column: number;

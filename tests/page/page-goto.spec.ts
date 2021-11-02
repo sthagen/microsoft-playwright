@@ -244,7 +244,8 @@ it('should work when page calls history API in beforeunload', async ({ page, ser
   expect(response.status()).toBe(200);
 });
 
-it('should fail when navigating to bad url', async ({ page, browserName }) => {
+it('should fail when navigating to bad url', async ({ mode, page, browserName }) => {
+  it.fixme(mode === 'service', 'baseURL is inherited from webServer in config');
   let error = null;
   await page.goto('asdfasdf').catch(e => error = e);
   if (browserName === 'chromium' || browserName === 'webkit')
@@ -286,7 +287,7 @@ it('should throw if networkidle2 is passed as an option', async ({ page, server 
   let error = null;
   // @ts-expect-error networkidle2 is not allowed
   await page.goto(server.EMPTY_PAGE, { waitUntil: 'networkidle2' }).catch(err => error = err);
-  expect(error.message).toContain(`waitUntil: expected one of (load|domcontentloaded|networkidle)`);
+  expect(error.message).toContain(`waitUntil: expected one of (load|domcontentloaded|networkidle|commit)`);
 });
 
 it('should fail when main resources failed to load', async ({ page, browserName, isWindows, mode }) => {
@@ -347,6 +348,8 @@ it('should fail when exceeding default maximum timeout', async ({ page, server, 
   // Hang for request to the empty.html
   server.setRoute('/empty.html', (req, res) => { });
   let error = null;
+  // Undo what harness did.
+  page.context().setDefaultNavigationTimeout(undefined);
   page.context().setDefaultTimeout(2);
   page.setDefaultTimeout(1);
   await page.goto(server.PREFIX + '/empty.html').catch(e => error = e);
@@ -361,6 +364,8 @@ it('should fail when exceeding browser context timeout', async ({ page, server, 
   // Hang for request to the empty.html
   server.setRoute('/empty.html', (req, res) => { });
   let error = null;
+  // Undo what harness did.
+  page.context().setDefaultNavigationTimeout(undefined);
   page.context().setDefaultTimeout(2);
   await page.goto(server.PREFIX + '/empty.html').catch(e => error = e);
   expect(error.message).toContain('page.goto: Timeout 2ms exceeded.');
@@ -622,4 +627,18 @@ it('should properly wait for load', async ({ page, server, browserName }) => {
     'DOMContentLoaded',
     'load'
   ]);
+});
+
+it('should return when navigation is committed if commit is specified', async ({ page, server }) => {
+  server.setRoute('/empty.html', (req, res) => {
+    res.writeHead(200, {
+      'content-type': 'text/html',
+      'content-length': '8192'
+    });
+    // Write enought bytes of the body to trigge response received event.
+    res.write('<title>' + 'A'.repeat(4100));
+    res.uncork();
+  });
+  const response = await page.goto(server.EMPTY_PAGE, { waitUntil: 'commit' });
+  expect(response.status()).toBe(200);
 });

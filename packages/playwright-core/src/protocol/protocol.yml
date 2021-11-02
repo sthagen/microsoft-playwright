@@ -29,6 +29,7 @@ Metadata:
       type: array?
       items: StackFrame
     apiName: string?
+    internal: boolean?
 
 
 Point:
@@ -300,6 +301,16 @@ FetchResponse:
       type: array
       items: NameValue
 
+
+LifecycleEvent:
+  type: enum
+  literals:
+  - load
+  - domcontentloaded
+  - networkidle
+  - commit
+
+
 LaunchOptions:
   type: mixin
   properties:
@@ -392,7 +403,6 @@ ContextOptions:
       - none
     acceptDownloads: boolean?
     baseURL: string?
-    _debugName: string?
     recordVideo:
       type: object?
       properties:
@@ -733,11 +743,11 @@ BrowserContext:
 
     setDefaultNavigationTimeoutNoReply:
       parameters:
-        timeout: number
+        timeout: number?
 
     setDefaultTimeoutNoReply:
       parameters:
-        timeout: number
+        timeout: number?
 
     setExtraHTTPHeaders:
       parameters:
@@ -808,6 +818,8 @@ BrowserContext:
         screenshots: boolean?
 
     tracingStartChunk:
+      parameters:
+        title: string?
 
     tracingStopChunk:
       parameters:
@@ -897,11 +909,11 @@ Page:
 
     setDefaultNavigationTimeoutNoReply:
       parameters:
-        timeout: number
+        timeout: number?
 
     setDefaultTimeoutNoReply:
       parameters:
-        timeout: number
+        timeout: number?
 
     setFileChooserInterceptedNoReply:
       parameters:
@@ -955,12 +967,7 @@ Page:
     goBack:
       parameters:
         timeout: number?
-        waitUntil:
-          type: enum?
-          literals:
-          - load
-          - domcontentloaded
-          - networkidle
+        waitUntil: LifecycleEvent?
       returns:
         response: Response?
       tracing:
@@ -969,12 +976,7 @@ Page:
     goForward:
       parameters:
         timeout: number?
-        waitUntil:
-          type: enum?
-          literals:
-          - load
-          - domcontentloaded
-          - networkidle
+        waitUntil: LifecycleEvent?
       returns:
         response: Response?
       tracing:
@@ -983,12 +985,7 @@ Page:
     reload:
       parameters:
         timeout: number?
-        waitUntil:
-          type: enum?
-          literals:
-          - load
-          - domcontentloaded
-          - networkidle
+        waitUntil: LifecycleEvent?
       returns:
         response: Response?
       tracing:
@@ -1279,12 +1276,7 @@ Frame:
     parentFrame: Frame?
     loadStates:
       type: array
-      items:
-        type: enum
-        literals:
-        - load
-        - domcontentloaded
-        - networkidle
+      items: LifecycleEvent
 
   commands:
 
@@ -1489,12 +1481,7 @@ Frame:
       parameters:
         url: string
         timeout: number?
-        waitUntil:
-          type: enum?
-          literals:
-          - load
-          - domcontentloaded
-          - networkidle
+        waitUntil: LifecycleEvent?
         referer: string?
       returns:
         response: Response?
@@ -1667,12 +1654,7 @@ Frame:
       parameters:
         html: string
         timeout: number?
-        waitUntil:
-          type: enum?
-          literals:
-          - load
-          - domcontentloaded
-          - networkidle
+        waitUntil: LifecycleEvent?
       tracing:
         snapshot: true
 
@@ -1818,18 +1800,8 @@ Frame:
 
     loadstate:
       parameters:
-        add:
-          type: enum?
-          literals:
-          - load
-          - domcontentloaded
-          - networkidle
-        remove:
-          type: enum?
-          literals:
-          - load
-          - domcontentloaded
-          - networkidle
+        add: LifecycleEvent?
+        remove: LifecycleEvent?
 
     navigated:
       parameters:
@@ -2921,7 +2893,6 @@ AndroidDevice:
           - active
           - none
         acceptDownloads: boolean?
-        _debugName: string?
         recordVideo:
           type: object?
           properties:

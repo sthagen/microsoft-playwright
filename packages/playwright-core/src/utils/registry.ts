@@ -37,7 +37,6 @@ const EXECUTABLE_PATHS = {
     'mac10.15': ['chrome-mac', 'Chromium.app', 'Contents', 'MacOS', 'Chromium'],
     'mac11': ['chrome-mac', 'Chromium.app', 'Contents', 'MacOS', 'Chromium'],
     'mac11-arm64': ['chrome-mac', 'Chromium.app', 'Contents', 'MacOS', 'Chromium'],
-    'win32': ['chrome-win', 'chrome.exe'],
     'win64': ['chrome-win', 'chrome.exe'],
   },
   'firefox': {
@@ -48,7 +47,6 @@ const EXECUTABLE_PATHS = {
     'mac10.15': ['firefox', 'Nightly.app', 'Contents', 'MacOS', 'firefox'],
     'mac11': ['firefox', 'Nightly.app', 'Contents', 'MacOS', 'firefox'],
     'mac11-arm64': ['firefox', 'Nightly.app', 'Contents', 'MacOS', 'firefox'],
-    'win32': ['firefox', 'firefox.exe'],
     'win64': ['firefox', 'firefox.exe'],
   },
   'webkit': {
@@ -59,7 +57,6 @@ const EXECUTABLE_PATHS = {
     'mac10.15': ['pw_run.sh'],
     'mac11': ['pw_run.sh'],
     'mac11-arm64': ['pw_run.sh'],
-    'win32': ['Playwright.exe'],
     'win64': ['Playwright.exe'],
   },
   'ffmpeg': {
@@ -70,7 +67,6 @@ const EXECUTABLE_PATHS = {
     'mac10.15': ['ffmpeg-mac'],
     'mac11': ['ffmpeg-mac'],
     'mac11-arm64': ['ffmpeg-mac'],
-    'win32': ['ffmpeg-win32.exe'],
     'win64': ['ffmpeg-win64.exe'],
   },
 };
@@ -84,7 +80,6 @@ const DOWNLOAD_URLS = {
     'mac10.15': '%s/builds/chromium/%s/chromium-mac.zip',
     'mac11': '%s/builds/chromium/%s/chromium-mac.zip',
     'mac11-arm64': '%s/builds/chromium/%s/chromium-mac-arm64.zip',
-    'win32': '%s/builds/chromium/%s/chromium-win32.zip',
     'win64': '%s/builds/chromium/%s/chromium-win64.zip',
   },
   'chromium-with-symbols': {
@@ -95,7 +90,6 @@ const DOWNLOAD_URLS = {
     'mac10.15': '%s/builds/chromium/%s/chromium-with-symbols-mac.zip',
     'mac11': '%s/builds/chromium/%s/chromium-with-symbols-mac.zip',
     'mac11-arm64': '%s/builds/chromium/%s/chromium-with-symbols-mac-arm64.zip',
-    'win32': '%s/builds/chromium/%s/chromium-with-symbols-win32.zip',
     'win64': '%s/builds/chromium/%s/chromium-with-symbols-win64.zip',
   },
   'firefox': {
@@ -106,7 +100,6 @@ const DOWNLOAD_URLS = {
     'mac10.15': '%s/builds/firefox/%s/firefox-mac-11.zip',
     'mac11': '%s/builds/firefox/%s/firefox-mac-11.zip',
     'mac11-arm64': '%s/builds/firefox/%s/firefox-mac-11-arm64.zip',
-    'win32': '%s/builds/firefox/%s/firefox-win32.zip',
     'win64': '%s/builds/firefox/%s/firefox-win64.zip',
   },
   'firefox-beta': {
@@ -117,7 +110,6 @@ const DOWNLOAD_URLS = {
     'mac10.15': '%s/builds/firefox-beta/%s/firefox-beta-mac-11.zip',
     'mac11': '%s/builds/firefox-beta/%s/firefox-beta-mac-11.zip',
     'mac11-arm64': '%s/builds/firefox-beta/%s/firefox-beta-mac-11-arm64.zip',
-    'win32': '%s/builds/firefox-beta/%s/firefox-beta-win32.zip',
     'win64': '%s/builds/firefox-beta/%s/firefox-beta-win64.zip',
   },
   'webkit': {
@@ -128,7 +120,6 @@ const DOWNLOAD_URLS = {
     'mac10.15': '%s/builds/webkit/%s/webkit-mac-10.15.zip',
     'mac11': '%s/builds/webkit/%s/webkit-mac-10.15.zip',
     'mac11-arm64': '%s/builds/webkit/%s/webkit-mac-11-arm64.zip',
-    'win32': '%s/builds/webkit/%s/webkit-win64.zip',
     'win64': '%s/builds/webkit/%s/webkit-win64.zip',
   },
   'ffmpeg': {
@@ -139,7 +130,6 @@ const DOWNLOAD_URLS = {
     'mac10.15': '%s/builds/ffmpeg/%s/ffmpeg-mac.zip',
     'mac11': '%s/builds/ffmpeg/%s/ffmpeg-mac.zip',
     'mac11-arm64': '%s/builds/ffmpeg/%s/ffmpeg-mac.zip',
-    'win32': '%s/builds/ffmpeg/%s/ffmpeg-win32.zip',
     'win64': '%s/builds/ffmpeg/%s/ffmpeg-win64.zip',
   },
 };
@@ -335,11 +325,11 @@ export class Registry {
     }));
 
     this._executables.push(this._createChromiumChannel('msedge', {
-      'linux': '',
+      'linux': '/opt/microsoft/msedge/msedge',
       'darwin': '/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge',
       'win32': `\\Microsoft\\Edge\\Application\\msedge.exe`,
     }, () => this._installMSEdgeChannel('msedge', {
-      'linux': '',
+      'linux': 'reinstall_msedge_stable_linux.sh',
       'darwin': 'reinstall_msedge_stable_mac.sh',
       'win32': 'reinstall_msedge_stable_win.ps1',
     })));
@@ -534,22 +524,23 @@ export class Registry {
     const executables = this._addRequirementsAndDedupe(executablesToInstall);
     await fs.promises.mkdir(registryDirectory, { recursive: true });
     const lockfilePath = path.join(registryDirectory, '__dirlock');
-    const releaseLock = await lockfile.lock(registryDirectory, {
-      retries: {
-        retries: 10,
-        // Retry 20 times during 10 minutes with
-        // exponential back-off.
-        // See documentation at: https://www.npmjs.com/package/retry#retrytimeoutsoptions
-        factor: 1.27579,
-      },
-      onCompromised: (err: Error) => {
-        throw new Error(`${err.message} Path: ${lockfilePath}`);
-      },
-      lockfilePath,
-    });
     const linksDir = path.join(registryDirectory, '.links');
 
+    let releaseLock;
     try {
+      releaseLock = await lockfile.lock(registryDirectory, {
+        retries: {
+          retries: 10,
+          // Retry 20 times during 10 minutes with
+          // exponential back-off.
+          // See documentation at: https://www.npmjs.com/package/retry#retrytimeoutsoptions
+          factor: 1.27579,
+        },
+        onCompromised: (err: Error) => {
+          throw new Error(`${err.message} Path: ${lockfilePath}`);
+        },
+        lockfilePath,
+      });
       // Create a link first, so that cache validation does not remove our own browsers.
       await fs.promises.mkdir(linksDir, { recursive: true });
       await fs.promises.writeFile(path.join(linksDir, calculateSha1(PACKAGE_PATH)), PACKAGE_PATH);
@@ -584,7 +575,8 @@ export class Registry {
         throw e;
       }
     } finally {
-      await releaseLock();
+      if (releaseLock)
+        await releaseLock();
     }
   }
 
@@ -616,7 +608,7 @@ export class Registry {
       const product = products.find((product: any) => product.Product === productName);
       const searchConfig = ({
         darwin: { platform: 'MacOS', arch: 'universal', artifact: 'pkg' },
-        win32: { platform: 'Windows', arch: os.arch() === 'x64' ? 'x64' : 'x86', artifact: 'msi' },
+        win32: { platform: 'Windows', arch: 'x64', artifact: 'msi' },
       } as any)[process.platform];
       const release = searchConfig ? product.Releases.find((release: any) => release.Platform === searchConfig.platform && release.Architecture === searchConfig.arch) : null;
       const artifact = release ? release.Artifacts.find((artifact: any) => artifact.ArtifactName === searchConfig.artifact) : null;
@@ -635,7 +627,7 @@ export class Registry {
     const isPowerShell = scriptName.endsWith('.ps1');
     const shell = isPowerShell ? 'powershell.exe' : 'bash';
     const args = [
-      ...(isPowerShell ? ['-File'] : []),
+      ...(isPowerShell ? ['-ExecutionPolicy', 'Bypass', '-File'] : []),
       path.join(BIN_PATH, scriptName),
       ...scriptArgs
     ];

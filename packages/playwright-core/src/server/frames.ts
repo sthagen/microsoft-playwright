@@ -70,7 +70,7 @@ export type NavigationEvent = {
 };
 
 export type SchedulableTask<T> = (injectedScript: js.JSHandle<InjectedScript>) => Promise<js.JSHandle<InjectedScriptPoll<T>>>;
-export type DomTaskBody<T, R, E> = (progress: InjectedScriptProgress, element: E, data: T, elements: Element[], continuePolling: symbol) => R | symbol;
+export type DomTaskBody<T, R, E> = (progress: InjectedScriptProgress, element: E, data: T, elements: Element[]) => R | symbol;
 
 export class FrameManager {
   private _page: Page;
@@ -452,6 +452,9 @@ export class Frame extends SdkObject {
 
     if (this._parentFrame)
       this._parentFrame._childFrames.add(this);
+
+    this._firedLifecycleEvents.add('commit');
+    this._subtreeLifecycleEvents.add('commit');
   }
 
   _onLifecycleEvent(event: types.LifecycleEvent) {
@@ -471,6 +474,7 @@ export class Frame extends SdkObject {
     this._stopNetworkIdleTimer();
     if (this._inflightRequests.size === 0)
       this._startNetworkIdleTimer();
+    this._onLifecycleEvent('commit');
   }
 
   setPendingDocument(documentInfo: DocumentInfo | undefined) {
@@ -971,15 +975,6 @@ export class Frame extends SdkObject {
     return undefined as any;
   }
 
-  private async _retryWithSelectorIfNotConnected<R>(
-    controller: ProgressController,
-    selector: string, options: types.TimeoutOptions & types.StrictOptions,
-    action: (progress: Progress, handle: dom.ElementHandle<Element>) => Promise<R | 'error:notconnected'>): Promise<R> {
-    return controller.run(async progress => {
-      return this._retryWithProgressIfNotConnected(progress, selector, options.strict, handle => action(progress, handle));
-    }, this._page._timeoutSettings.timeout(options));
-  }
-
   async click(metadata: CallMetadata, selector: string, options: types.MouseClickOptions & types.PointerActionWaitOptions & types.NavigatingActionWaitOptions) {
     const controller = new ProgressController(metadata, this);
     return controller.run(async progress => {
@@ -997,7 +992,7 @@ export class Frame extends SdkObject {
   async dragAndDrop(metadata: CallMetadata, source: string, target: string,  options: types.DragActionOptions & types.PointerActionWaitOptions & types.NavigatingActionWaitOptions = {}) {
     const controller = new ProgressController(metadata, this);
     await controller.run(async progress => {
-      await dom.assertDone(await this._retryWithProgressIfNotConnected(progress, source, options.strict, async handle => {
+      dom.assertDone(await this._retryWithProgressIfNotConnected(progress, source, options.strict, async handle => {
         return handle._retryPointerAction(progress, 'move and down', false, async point => {
           await this._page.mouse.move(point.x, point.y);
           await this._page.mouse.down();
@@ -1007,7 +1002,7 @@ export class Frame extends SdkObject {
           timeout: progress.timeUntilDeadline(),
         });
       }));
-      await dom.assertDone(await this._retryWithProgressIfNotConnected(progress, target, options.strict, async handle => {
+      dom.assertDone(await this._retryWithProgressIfNotConnected(progress, target, options.strict, async handle => {
         return handle._retryPointerAction(progress, 'move and up', false, async point => {
           await this._page.mouse.move(point.x, point.y);
           await this._page.mouse.up();
@@ -1036,8 +1031,10 @@ export class Frame extends SdkObject {
 
   async focus(metadata: CallMetadata, selector: string, options: types.TimeoutOptions = {}) {
     const controller = new ProgressController(metadata, this);
-    await this._retryWithSelectorIfNotConnected(controller, selector, options, (progress, handle) => handle._focus(progress));
-    await this._page._doSlowMo();
+    await controller.run(async progress => {
+      dom.assertDone(await this._retryWithProgressIfNotConnected(progress, selector, undefined, handle => handle._focus(progress)));
+      await this._page._doSlowMo();
+    }, this._page._timeoutSettings.timeout(options));
   }
 
   async textContent(metadata: CallMetadata, selector: string, options: types.QueryOnSelectorOptions = {}): Promise<string | null> {
@@ -1163,47 +1160,40 @@ export class Frame extends SdkObject {
 
   async expect(metadata: CallMetadata, selector: string, options: FrameExpectParams): Promise<{ matches: boolean, received?: any, log?: string[] }> {
     const controller = new ProgressController(metadata, this);
-    const querySelectorAll = options.expression === 'to.have.count' || options.expression.endsWith('.array');
+    const isArray = options.expression === 'to.have.count' || options.expression.endsWith('.array');
     const mainWorld = options.expression === 'to.have.property';
-    return await this._scheduleRerunnableTaskWithController(controller, selector, (progress, element, options, elements, continuePolling) => {
-      if (!element) {
-        // expect(locator).toBeHidden() passes when there is no element.
-        if (!options.isNot && options.expression === 'to.be.hidden')
-          return { matches: true };
+    return await this._scheduleRerunnableTaskWithController(controller, selector, (progress, element, options, elements) => {
+      let result: { matches: boolean, received?: any };
 
-        // expect(locator).not.toBeVisible() passes when there is no element.
-        if (options.isNot && options.expression === 'to.be.visible')
-          return { matches: false };
-
-        // expect(listLocator).toHaveText([]) passes when there are no elements matching.
-        // expect(listLocator).not.toHaveText(['foo']) passes when there are no elements matching.
-        const expectsEmptyList = options.expectedText?.length === 0;
-        if (options.expression.endsWith('.array') && expectsEmptyList !== options.isNot)
-          return { matches: expectsEmptyList };
-
-        // expect(listLocator).toHaveCount(0) passes when there are no elements matching.
-        // expect(listLocator).not.toHaveCount(1) passes when there are no elements matching.
-        if (options.expression === 'to.have.count')
-          return { matches: options.expectedNumber === 0, received: options.expectedNumber };
-
-        // When none of the above applies, keep waiting for the element.
-        return continuePolling;
+      if (options.isArray) {
+        result = progress.injectedScript.expectArray(elements, options);
+      } else {
+        if (!element) {
+          // expect(locator).toBeHidden() passes when there is no element.
+          if (!options.isNot && options.expression === 'to.be.hidden')
+            return { matches: true };
+          // expect(locator).not.toBeVisible() passes when there is no element.
+          if (options.isNot && options.expression === 'to.be.visible')
+            return { matches: false };
+          // When none of the above applies, keep waiting for the element.
+          return progress.continuePolling;
+        }
+        result = progress.injectedScript.expectSingleElement(progress, element, options);
       }
 
-      const { matches, received } = progress.injectedScript.expect(progress, element, options, elements);
-      if (matches === options.isNot) {
+      if (result.matches === options.isNot) {
         // Keep waiting in these cases:
         // expect(locator).conditionThatDoesNotMatch
         // expect(locator).not.conditionThatDoesMatch
-        progress.setIntermediateResult(received);
-        if (!Array.isArray(received))
-          progress.log(`  unexpected value "${received}"`);
-        return continuePolling;
+        progress.setIntermediateResult(result.received);
+        if (!Array.isArray(result.received))
+          progress.log(`  unexpected value "${result.received}"`);
+        return progress.continuePolling;
       }
 
       // Reached the expected state!
-      return { matches, received };
-    }, options, { strict: true, querySelectorAll, mainWorld, omitAttached: true, logScale: true, ...options }).catch(e => {
+      return result;
+    }, { ...options, isArray }, { strict: true, querySelectorAll: isArray, mainWorld, omitAttached: true, logScale: true, ...options }).catch(e => {
       if (js.isJavaScriptErrorInEvaluate(e))
         throw e;
       // Q: Why not throw upon isSessionClosedError(e) as in other places?
@@ -1232,8 +1222,8 @@ export class Frame extends SdkObject {
         return result;
       };
       if (typeof polling !== 'number')
-        return injectedScript.pollRaf((progress, continuePolling) => predicate(arg) || continuePolling);
-      return injectedScript.pollInterval(polling, (progress, continuePolling) => predicate(arg) || continuePolling);
+        return injectedScript.pollRaf(progress => predicate(arg) || progress.continuePolling);
+      return injectedScript.pollInterval(polling, progress => predicate(arg) || progress.continuePolling);
     }, { expression, isFunction, polling: options.pollingInterval, arg });
     return controller.run(
         progress => this._scheduleRerunnableHandleTask(progress, world, task),
@@ -1292,7 +1282,7 @@ export class Frame extends SdkObject {
           const callback = injected.eval(callbackText) as DomTaskBody<T, R, Element | undefined>;
           const poller = logScale ? injected.pollLogScale.bind(injected) : injected.pollRaf.bind(injected);
           let markedElements = new Set<Element>();
-          return poller((progress, continuePolling) => {
+          return poller(progress => {
             let element: Element | undefined;
             let elements: Element[] = [];
             if (querySelectorAll) {
@@ -1307,7 +1297,7 @@ export class Frame extends SdkObject {
             }
 
             if (!element && !omitAttached)
-              return continuePolling;
+              return progress.continuePolling;
 
             if (snapshotName) {
               const previouslyMarkedElements = markedElements;
@@ -1322,7 +1312,7 @@ export class Frame extends SdkObject {
               }
             }
 
-            return callback(progress, element, taskData as T, elements, continuePolling);
+            return callback(progress, element, taskData as T, elements);
           });
         }, { info, taskData, callbackText, querySelectorAll: options.querySelectorAll, logScale: options.logScale, omitAttached: options.omitAttached, snapshotName: progress.metadata.afterSnapshot });
       }, true);
@@ -1506,6 +1496,6 @@ function verifyLifecycle(name: string, waitUntil: types.LifecycleEvent): types.L
   if (waitUntil as unknown === 'networkidle0')
     waitUntil = 'networkidle';
   if (!types.kLifecycleEvents.has(waitUntil))
-    throw new Error(`${name}: expected one of (load|domcontentloaded|networkidle)`);
+    throw new Error(`${name}: expected one of (load|domcontentloaded|networkidle|commit)`);
   return waitUntil;
 }

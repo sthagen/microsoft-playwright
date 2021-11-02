@@ -107,7 +107,7 @@ export class Tracing implements InstrumentationListener, SnapshotterDelegate, Ha
       this._harTracer.start();
   }
 
-  async startChunk() {
+  async startChunk(options: { title?: string } = {}) {
     if (this._state && this._state.recording)
       await this.stopChunk(false, false);
 
@@ -124,7 +124,7 @@ export class Tracing implements InstrumentationListener, SnapshotterDelegate, Ha
 
     this._appendTraceOperation(async () => {
       await mkdirIfNeeded(state.traceFile);
-      await fs.promises.appendFile(state.traceFile, JSON.stringify(this._contextCreatedEvent) + '\n');
+      await fs.promises.appendFile(state.traceFile, JSON.stringify({ ...this._contextCreatedEvent, title: options.title }) + '\n');
     });
 
     this._context.instrumentation.addListener(this);
@@ -218,7 +218,7 @@ export class Tracing implements InstrumentationListener, SnapshotterDelegate, Ha
 
       const zipArtifact = skipCompress ? null : await this._exportZip(entries, state).catch(() => null);
       return { artifact: zipArtifact, entries };
-    });
+    }) || { artifact: null, entries: [] };
   }
 
   private async _exportZip(entries: NameValue[], state: RecordingState): Promise<Artifact | null> {
@@ -254,6 +254,7 @@ export class Tracing implements InstrumentationListener, SnapshotterDelegate, Ha
   }
 
   async onBeforeCall(sdkObject: SdkObject, metadata: CallMetadata) {
+    sdkObject.attribution.page?.temporarlyDisableTracingScreencastThrottling();
     // Set afterSnapshot name for all the actions that operate selectors.
     // Elements resolved from selectors will be marked on the snapshot.
     metadata.afterSnapshot = `after@${metadata.id}`;
@@ -263,12 +264,14 @@ export class Tracing implements InstrumentationListener, SnapshotterDelegate, Ha
   }
 
   async onBeforeInputAction(sdkObject: SdkObject, metadata: CallMetadata, element: ElementHandle) {
+    sdkObject.attribution.page?.temporarlyDisableTracingScreencastThrottling();
     const actionSnapshot = this._captureSnapshot('action', sdkObject, metadata, element);
     this._pendingCalls.get(metadata.id)!.actionSnapshot = actionSnapshot;
     await actionSnapshot;
   }
 
   async onAfterCall(sdkObject: SdkObject, metadata: CallMetadata) {
+    sdkObject.attribution.page?.temporarlyDisableTracingScreencastThrottling();
     const pendingCall = this._pendingCalls.get(metadata.id);
     if (!pendingCall || pendingCall.afterSnapshot)
       return;
@@ -360,11 +363,13 @@ export class Tracing implements InstrumentationListener, SnapshotterDelegate, Ha
     });
   }
 
-  private async _appendTraceOperation<T>(cb: () => Promise<T>): Promise<T> {
+  private async _appendTraceOperation<T>(cb: () => Promise<T>): Promise<T | undefined> {
     // This method serializes all writes to the trace.
     let error: Error | undefined;
     let result: T | undefined;
     this._writeChain = this._writeChain.then(async () => {
+      if (!this._context._browser.isConnected())
+        return;
       try {
         result = await cb();
       } catch (e) {
@@ -374,7 +379,7 @@ export class Tracing implements InstrumentationListener, SnapshotterDelegate, Ha
     await this._writeChain;
     if (error)
       throw error;
-    return result!;
+    return result;
   }
 }
 

@@ -1,0 +1,55 @@
+name: "publish canary"
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "10 0 * * *"
+  push:
+    branches:
+      - release-*
+
+jobs:
+  publish-canary:
+    name: "publish canary NPM & Trigger canary Docker"
+    runs-on: ubuntu-20.04
+    if: github.repository == 'microsoft/playwright'
+    steps:
+    - uses: actions/checkout@v2
+    - uses: actions/setup-node@v2
+      with:
+        node-version: 12
+        registry-url: 'https://registry.npmjs.org'
+    - run: npm i -g npm@7
+    - run: npm ci
+    - run: npm run build
+    - run: npx playwright install-deps
+    - name: "@next: publish with commit timestamp (triggered manually)"
+      if: contains(github.ref, 'master') && github.event_name == 'workflow_dispatch'
+      run: |
+        node utils/build/update_canary_version.js --today-date
+        utils/publish_all_packages.sh --next
+      env:
+        NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+    - name: "@next: publish with today's date (triggered automatically)"
+      if: contains(github.ref, 'master') && github.event_name != 'workflow_dispatch'
+      run: |
+        node utils/build/update_canary_version.js --today-date
+        utils/publish_all_packages.sh --next
+      env:
+        NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+    - name: "@beta: publish with commit timestamp (triggered automatically)"
+      if: contains(github.ref, 'release') && github.event_name != 'workflow_dispatch'
+      run: |
+        node utils/build/update_canary_version.js --commit-timestamp
+        utils/publish_all_packages.sh --beta
+      env:
+        NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+    - run: |
+        # Trigger canary docker build and tag it with NPM canary version
+        VERSION=$(node -e 'console.log(require("./package.json").version)')
+        curl -X POST \
+          -H "Accept: application/vnd.github.v3+json" \
+          -H "Authorization: token ${{ secrets.REPOSITORY_DISPATCH_PERSONAL_ACCESS_TOKEN }}" \
+          --data "{\"event_type\": \"build_docker_canary\", \"client_payload\": {\"ref\": \"${{ github.sha }}\", \"package_version\": \"${VERSION}\"}}" \
+          https://api.github.com/repos/microsoft/playwright-internal/dispatches
+

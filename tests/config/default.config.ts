@@ -16,8 +16,6 @@
 
 import type { Config, PlaywrightTestOptions, PlaywrightWorkerOptions } from '@playwright/test';
 import * as path from 'path';
-import { playwrightFixtures } from './browserTest';
-import { test as pageTest } from '../page/pageTest';
 import { TestModeWorkerFixtures } from './testModeFixtures';
 import { CoverageWorkerOptions } from './coverageFixtures';
 
@@ -30,15 +28,6 @@ const getExecutablePath = (browserName: BrowserName) => {
     return process.env.FFPATH;
   if (browserName === 'webkit' && process.env.WKPATH)
     return process.env.WKPATH;
-};
-
-const pageFixtures = {
-  ...playwrightFixtures,
-  browserMajorVersion: async ({  browserVersion }, run) => {
-    await run(Number(browserVersion.split('.')[0]));
-  },
-  isAndroid: false,
-  isElectron: false,
 };
 
 const mode = (process.env.PWTEST_MODE || 'default') as ('default' | 'driver' | 'service');
@@ -59,9 +48,11 @@ const config: Config<CoverageWorkerOptions & PlaywrightWorkerOptions & Playwrigh
   preserveOutput: process.env.CI ? 'failures-only' : 'always',
   retries: process.env.CI ? 3 : 0,
   reporter: process.env.CI ? [
-    [ 'dot' ],
-    [ 'json', { outputFile: path.join(outputDir, 'report.json') } ],
-  ] : 'html',
+    ['dot'],
+    ['json', { outputFile: path.join(outputDir, 'report.json') }],
+  ] : [
+    ['html', { open: 'on-failure' }]
+  ],
   projects: [],
   webServer: mode === 'service' ? {
     command: 'npx playwright experimental-grid-server',
@@ -95,7 +86,6 @@ for (const browserName of browserNames) {
       trace: trace ? 'on' : undefined,
       coverageName: browserName,
     },
-    define: { test: pageTest, fixtures: pageFixtures },
     metadata: {
       platform: process.platform,
       docker: !!process.env.INSIDE_DOCKER,

@@ -33,6 +33,7 @@ export type StackFrame = {
 export type Metadata = {
   stack?: StackFrame[],
   apiName?: string,
+  internal?: boolean,
 };
 
 export type Point = {
@@ -242,6 +243,7 @@ export type FetchResponse = {
   headers: NameValue[],
 };
 
+export type LifecycleEvent = 'load' | 'domcontentloaded' | 'networkidle' | 'commit';
 // ----------- Root -----------
 export type RootInitializer = {};
 export interface RootChannel extends Channel {
@@ -556,7 +558,6 @@ export type BrowserTypeLaunchPersistentContextParams = {
   forcedColors?: 'active' | 'none',
   acceptDownloads?: boolean,
   baseURL?: string,
-  _debugName?: string,
   recordVideo?: {
     dir: string,
     size?: {
@@ -629,7 +630,6 @@ export type BrowserTypeLaunchPersistentContextOptions = {
   forcedColors?: 'active' | 'none',
   acceptDownloads?: boolean,
   baseURL?: string,
-  _debugName?: string,
   recordVideo?: {
     dir: string,
     size?: {
@@ -723,7 +723,6 @@ export type BrowserNewContextParams = {
   forcedColors?: 'active' | 'none',
   acceptDownloads?: boolean,
   baseURL?: string,
-  _debugName?: string,
   recordVideo?: {
     dir: string,
     size?: {
@@ -783,7 +782,6 @@ export type BrowserNewContextOptions = {
   forcedColors?: 'active' | 'none',
   acceptDownloads?: boolean,
   baseURL?: string,
-  _debugName?: string,
   recordVideo?: {
     dir: string,
     size?: {
@@ -898,7 +896,7 @@ export interface BrowserContextChannel extends EventTargetChannel {
   recorderSupplementEnable(params: BrowserContextRecorderSupplementEnableParams, metadata?: Metadata): Promise<BrowserContextRecorderSupplementEnableResult>;
   newCDPSession(params: BrowserContextNewCDPSessionParams, metadata?: Metadata): Promise<BrowserContextNewCDPSessionResult>;
   tracingStart(params: BrowserContextTracingStartParams, metadata?: Metadata): Promise<BrowserContextTracingStartResult>;
-  tracingStartChunk(params?: BrowserContextTracingStartChunkParams, metadata?: Metadata): Promise<BrowserContextTracingStartChunkResult>;
+  tracingStartChunk(params: BrowserContextTracingStartChunkParams, metadata?: Metadata): Promise<BrowserContextTracingStartChunkResult>;
   tracingStopChunk(params: BrowserContextTracingStopChunkParams, metadata?: Metadata): Promise<BrowserContextTracingStopChunkResult>;
   tracingStop(params?: BrowserContextTracingStopParams, metadata?: Metadata): Promise<BrowserContextTracingStopResult>;
   harExport(params?: BrowserContextHarExportParams, metadata?: Metadata): Promise<BrowserContextHarExportResult>;
@@ -997,17 +995,17 @@ export type BrowserContextNewPageResult = {
   page: PageChannel,
 };
 export type BrowserContextSetDefaultNavigationTimeoutNoReplyParams = {
-  timeout: number,
+  timeout?: number,
 };
 export type BrowserContextSetDefaultNavigationTimeoutNoReplyOptions = {
-
+  timeout?: number,
 };
 export type BrowserContextSetDefaultNavigationTimeoutNoReplyResult = void;
 export type BrowserContextSetDefaultTimeoutNoReplyParams = {
-  timeout: number,
+  timeout?: number,
 };
 export type BrowserContextSetDefaultTimeoutNoReplyOptions = {
-
+  timeout?: number,
 };
 export type BrowserContextSetDefaultTimeoutNoReplyResult = void;
 export type BrowserContextSetExtraHTTPHeadersParams = {
@@ -1111,8 +1109,12 @@ export type BrowserContextTracingStartOptions = {
   screenshots?: boolean,
 };
 export type BrowserContextTracingStartResult = void;
-export type BrowserContextTracingStartChunkParams = {};
-export type BrowserContextTracingStartChunkOptions = {};
+export type BrowserContextTracingStartChunkParams = {
+  title?: string,
+};
+export type BrowserContextTracingStartChunkOptions = {
+  title?: string,
+};
 export type BrowserContextTracingStartChunkResult = void;
 export type BrowserContextTracingStopChunkParams = {
   save: boolean,
@@ -1253,17 +1255,17 @@ export type PageWorkerEvent = {
   worker: WorkerChannel,
 };
 export type PageSetDefaultNavigationTimeoutNoReplyParams = {
-  timeout: number,
+  timeout?: number,
 };
 export type PageSetDefaultNavigationTimeoutNoReplyOptions = {
-
+  timeout?: number,
 };
 export type PageSetDefaultNavigationTimeoutNoReplyResult = void;
 export type PageSetDefaultTimeoutNoReplyParams = {
-  timeout: number,
+  timeout?: number,
 };
 export type PageSetDefaultTimeoutNoReplyOptions = {
-
+  timeout?: number,
 };
 export type PageSetDefaultTimeoutNoReplyResult = void;
 export type PageSetFileChooserInterceptedNoReplyParams = {
@@ -1310,33 +1312,33 @@ export type PageExposeBindingOptions = {
 export type PageExposeBindingResult = void;
 export type PageGoBackParams = {
   timeout?: number,
-  waitUntil?: 'load' | 'domcontentloaded' | 'networkidle',
+  waitUntil?: LifecycleEvent,
 };
 export type PageGoBackOptions = {
   timeout?: number,
-  waitUntil?: 'load' | 'domcontentloaded' | 'networkidle',
+  waitUntil?: LifecycleEvent,
 };
 export type PageGoBackResult = {
   response?: ResponseChannel,
 };
 export type PageGoForwardParams = {
   timeout?: number,
-  waitUntil?: 'load' | 'domcontentloaded' | 'networkidle',
+  waitUntil?: LifecycleEvent,
 };
 export type PageGoForwardOptions = {
   timeout?: number,
-  waitUntil?: 'load' | 'domcontentloaded' | 'networkidle',
+  waitUntil?: LifecycleEvent,
 };
 export type PageGoForwardResult = {
   response?: ResponseChannel,
 };
 export type PageReloadParams = {
   timeout?: number,
-  waitUntil?: 'load' | 'domcontentloaded' | 'networkidle',
+  waitUntil?: LifecycleEvent,
 };
 export type PageReloadOptions = {
   timeout?: number,
-  waitUntil?: 'load' | 'domcontentloaded' | 'networkidle',
+  waitUntil?: LifecycleEvent,
 };
 export type PageReloadResult = {
   response?: ResponseChannel,
@@ -1603,7 +1605,7 @@ export type FrameInitializer = {
   url: string,
   name: string,
   parentFrame?: FrameChannel,
-  loadStates: ('load' | 'domcontentloaded' | 'networkidle')[],
+  loadStates: LifecycleEvent[],
 };
 export interface FrameChannel extends Channel {
   on(event: 'loadstate', callback: (params: FrameLoadstateEvent) => void): this;
@@ -1652,8 +1654,8 @@ export interface FrameChannel extends Channel {
   expect(params: FrameExpectParams, metadata?: Metadata): Promise<FrameExpectResult>;
 }
 export type FrameLoadstateEvent = {
-  add?: 'load' | 'domcontentloaded' | 'networkidle',
-  remove?: 'load' | 'domcontentloaded' | 'networkidle',
+  add?: LifecycleEvent,
+  remove?: LifecycleEvent,
 };
 export type FrameNavigatedEvent = {
   url: string,
@@ -1885,12 +1887,12 @@ export type FrameGetAttributeResult = {
 export type FrameGotoParams = {
   url: string,
   timeout?: number,
-  waitUntil?: 'load' | 'domcontentloaded' | 'networkidle',
+  waitUntil?: LifecycleEvent,
   referer?: string,
 };
 export type FrameGotoOptions = {
   timeout?: number,
-  waitUntil?: 'load' | 'domcontentloaded' | 'networkidle',
+  waitUntil?: LifecycleEvent,
   referer?: string,
 };
 export type FrameGotoResult = {
@@ -2083,11 +2085,11 @@ export type FrameSelectOptionResult = {
 export type FrameSetContentParams = {
   html: string,
   timeout?: number,
-  waitUntil?: 'load' | 'domcontentloaded' | 'networkidle',
+  waitUntil?: LifecycleEvent,
 };
 export type FrameSetContentOptions = {
   timeout?: number,
-  waitUntil?: 'load' | 'domcontentloaded' | 'networkidle',
+  waitUntil?: LifecycleEvent,
 };
 export type FrameSetContentResult = void;
 export type FrameSetInputFilesParams = {
@@ -3536,7 +3538,6 @@ export type AndroidDeviceLaunchBrowserParams = {
   reducedMotion?: 'reduce' | 'no-preference',
   forcedColors?: 'active' | 'none',
   acceptDownloads?: boolean,
-  _debugName?: string,
   recordVideo?: {
     dir: string,
     size?: {
@@ -3583,7 +3584,6 @@ export type AndroidDeviceLaunchBrowserOptions = {
   reducedMotion?: 'reduce' | 'no-preference',
   forcedColors?: 'active' | 'none',
   acceptDownloads?: boolean,
-  _debugName?: string,
   recordVideo?: {
     dir: string,
     size?: {

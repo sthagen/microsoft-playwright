@@ -20,39 +20,51 @@ import ansi2html from 'ansi-to-html';
 import { downArrow, rightArrow, TreeItem } from '../components/treeItem';
 import { TabbedPane } from '../traceViewer/ui/tabbedPane';
 import { msToString } from '../uiUtils';
-import type { TestCase, TestResult, TestStep, TestFile, Stats, TestAttachment, HTMLReport, TestFileSummary } from '@playwright/test/src/reporters/html';
+import { traceImage } from './images';
+import type { TestCase, TestResult, TestStep, TestFile, Stats, TestAttachment, HTMLReport, TestFileSummary, TestCaseSummary } from '@playwright/test/src/reporters/html';
+import type zip from '@zip.js/zip.js';
+
+const zipjs = (self as any).zip;
+
+declare global {
+  interface Window {
+    playwrightReportBase64?: string;
+    entries: Map<string, zip.Entry>;
+  }
+}
 
 export const Report: React.FC = () => {
-  const [fetchError, setFetchError] = React.useState<string | undefined>();
+  const searchParams = new URLSearchParams(window.location.hash.slice(1));
+
   const [report, setReport] = React.useState<HTMLReport | undefined>();
-  const [expandedFiles, setExpandedFiles] = React.useState<Set<string>>(new Set());
+  const [expandedFiles, setExpandedFiles] = React.useState<Map<string, boolean>>(new Map());
+  const [filterText, setFilterText] = React.useState(searchParams.get('q') || '');
 
   React.useEffect(() => {
     if (report)
       return;
     (async () => {
-      try {
-        const report = await fetch('data/report.json', { cache: 'no-cache' }).then(r => r.json() as Promise<HTMLReport>);
-        if (report.files.length)
-          expandedFiles.add(report.files[0].fileId);
-        setReport(report);
-      } catch (e) {
-        setFetchError(e.message);
-      }
+      const zipReader = new zipjs.ZipReader(new zipjs.Data64URIReader(window.playwrightReportBase64), { useWebWorkers: false }) as zip.ZipReader;
+      window.entries = new Map<string, zip.Entry>();
+      for (const entry of await zipReader.getEntries())
+        window.entries.set(entry.filename, entry);
+      setReport(await readJsonEntry('report.json') as HTMLReport);
+      window.addEventListener('popstate', () => {
+        const params = new URLSearchParams(window.location.hash.slice(1));
+        setFilterText(params.get('q') || '');
+      });
     })();
-  }, [report, expandedFiles]);
+  }, [report]);
+
+  const filter = React.useMemo(() => Filter.parse(filterText), [filterText]);
 
   return <div className='vbox columns'>
-    {!fetchError && <div className='flow-container'>
+    {<div className='flow-container'>
       <Route params=''>
-        <AllTestFilesSummaryView report={report} isFileExpanded={fileId => expandedFiles.has(fileId)} setFileExpanded={(fileId, expanded) => {
-          const newExpanded = new Set(expandedFiles);
-          if (expanded)
-            newExpanded.add(fileId);
-          else
-            newExpanded.delete(fileId);
-          setExpandedFiles(newExpanded);
-        }}></AllTestFilesSummaryView>
+        <AllTestFilesSummaryView report={report} filter={filter} expandedFiles={expandedFiles} setExpandedFiles={setExpandedFiles} filterText={filterText} setFilterText={setFilterText}></AllTestFilesSummaryView>
+      </Route>
+      <Route params='q'>
+        <AllTestFilesSummaryView report={report} filter={filter} expandedFiles={expandedFiles} setExpandedFiles={setExpandedFiles} filterText={filterText} setFilterText={setFilterText}></AllTestFilesSummaryView>
       </Route>
       <Route params='testId'>
         {!!report && <TestCaseView report={report}></TestCaseView>}
@@ -62,16 +74,64 @@ export const Report: React.FC = () => {
 };
 
 const AllTestFilesSummaryView: React.FC<{
-  report?: HTMLReport;
-  isFileExpanded: (fileId: string) => boolean;
-  setFileExpanded: (fileId: string, expanded: boolean) => void;
-}> = ({ report, isFileExpanded, setFileExpanded }) => {
+  report?: HTMLReport,
+  expandedFiles: Map<string, boolean>,
+  setExpandedFiles: (value: Map<string, boolean>) => void,
+  filter: Filter,
+  filterText: string,
+  setFilterText: (filter: string) => void,
+}> = ({ report, filter, expandedFiles, setExpandedFiles, filterText, setFilterText }) => {
+
+  const filteredFiles = React.useMemo(() => {
+    const result: { file: TestFileSummary, defaultExpanded: boolean }[] = [];
+    let visibleTests = 0;
+    for (const file of report?.files || []) {
+      const tests = file.tests.filter(t => filter.matches(t));
+      visibleTests += tests.length;
+      if (tests.length)
+        result.push({ file, defaultExpanded: visibleTests < 200 });
+    }
+    return result;
+  }, [report, filter]);
   return <div className='file-summary-list'>
-    {report && <div className='global-stats'>
-      <span>Ran {report.stats.total} tests</span>
-      <StatsView stats={report.stats}></StatsView>
+    {report && <div>
+      <div className='status-container ml-2 pl-2 d-flex'>
+        <StatsNavView stats={report.stats}></StatsNavView>
+      </div>
+      <form className='subnav-search' onSubmit={
+        event => {
+          event.preventDefault();
+          navigate(`#?q=${filterText ? encodeURIComponent(filterText) : ''}`);
+        }
+      }>
+        <svg aria-hidden='true' height='16' viewBox='0 0 16 16' version='1.1' width='16' data-view-component='true' className='octicon subnav-search-icon'>
+          <path fillRule='evenodd' d='M11.5 7a4.499 4.499 0 11-8.998 0A4.499 4.499 0 0111.5 7zm-.82 4.74a6 6 0 111.06-1.06l3.04 3.04a.75.75 0 11-1.06 1.06l-3.04-3.04z'></path>
+        </svg>
+        {/* Use navigationId to reset defaultValue */}
+        <input type='search' spellCheck={false} className='form-control subnav-search-input input-contrast width-full' value={filterText} onChange={e => {
+          setFilterText(e.target.value);
+        }}></input>
+      </form>
     </div>}
-    {report && (report.files || []).map((file, i) => <TestFileSummaryView key={`file-${i}`} report={report} file={file} isFileExpanded={isFileExpanded} setFileExpanded={setFileExpanded}></TestFileSummaryView>)}
+    {report && filteredFiles.map(({ file, defaultExpanded }) => {
+      return <TestFileSummaryView
+        key={`file-${file.fileId}`}
+        report={report}
+        file={file}
+        isFileExpanded={fileId => {
+          const value = expandedFiles.get(fileId);
+          if (value === undefined)
+            return defaultExpanded;
+          return !!value;
+        }}
+        setFileExpanded={(fileId, expanded) => {
+          const newExpanded = new Map(expandedFiles);
+          newExpanded.set(fileId, expanded);
+          setExpandedFiles(newExpanded);
+        }}
+        filter={filter}>
+      </TestFileSummaryView>;
+    })}
   </div>;
 };
 
@@ -80,41 +140,44 @@ const TestFileSummaryView: React.FC<{
   file: TestFileSummary;
   isFileExpanded: (fileId: string) => boolean;
   setFileExpanded: (fileId: string, expanded: boolean) => void;
-}> = ({ file, report, isFileExpanded, setFileExpanded }) => {
+  filter: Filter;
+}> = ({ file, report, isFileExpanded, setFileExpanded, filter }) => {
   return <Chip
     expanded={isFileExpanded(file.fileId)}
     setExpanded={(expanded => setFileExpanded(file.fileId, expanded))}
     header={<span>
       <span style={{ float: 'right' }}>{msToString(file.stats.duration)}</span>
       {file.fileName}
-      <StatsView stats={file.stats}></StatsView>
     </span>}>
-    {file.tests.map((test, i) => <Link key={`test-${i}`} href={`?testId=${test.testId}`}>
-      <div className={'test-summary outcome-' + test.outcome}>
+    {file.tests.filter(t => filter.matches(t)).map(test =>
+      <div key={`test-${test.testId}`} className={'test-summary outcome-' + test.outcome}>
         <span style={{ float: 'right' }}>{msToString(test.duration)}</span>
         {statusIcon(test.outcome)}
-        {test.title}
-        <span className='test-summary-path'>— {test.path.join(' › ')}</span>
-        {report.projectNames.length > 1 && !!test.projectName && <span className={'label label-color-' + (report.projectNames.indexOf(test.projectName) % 8)}>{test.projectName}</span>}
+        <Link href={`#?testId=${test.testId}`} title={[...test.path, test.title].join(' › ')}>
+          {[...test.path, test.title].join(' › ')}
+          <span className='test-summary-path'>— {test.location.file}:{test.location.line}</span>
+        </Link>
+        {report.projectNames.length > 1 && !!test.projectName &&
+          <ProjectLink report={report} projectName={test.projectName}></ProjectLink>}
       </div>
-    </Link>)}
+    )}
   </Chip>;
 };
 
 const TestCaseView: React.FC<{
   report: HTMLReport,
 }> = ({ report }) => {
+  const searchParams = new URLSearchParams(window.location.hash.slice(1));
   const [test, setTest] = React.useState<TestCase | undefined>();
+  const testId = searchParams.get('testId');
   React.useEffect(() => {
     (async () => {
-      const testId = new URL(window.location.href).searchParams.get('testId');
       if (!testId || testId === test?.testId)
         return;
       const fileId = testId.split('-')[0];
       if (!fileId)
         return;
-      const result = await fetch(`data/${fileId}.json`, { cache: 'no-cache' });
-      const file = await result.json() as TestFile;
+      const file = await readJsonEntry(`${fileId}.json`) as TestFile;
       for (const t of file.tests) {
         if (t.testId === testId) {
           setTest(t);
@@ -122,13 +185,14 @@ const TestCaseView: React.FC<{
         }
       }
     })();
-  }, [test, report]);
+  }, [test, report, testId]);
 
   const [selectedResultIndex, setSelectedResultIndex] = React.useState(0);
   return <div className='test-case-column vbox'>
+    {test && <div className='test-case-path'>{test.path.join(' › ')}</div>}
     {test && <div className='test-case-title'>{test?.title}</div>}
-    {test && <div className='test-case-location'>{test.path.join(' › ')}</div>}
-    {test && !!test.projectName && <div><span className={'label label-color-' + (report.projectNames.indexOf(test.projectName) % 8)}>{test.projectName}</span></div>}
+    {test && <div className='test-case-location'>{test.location.file}:{test.location.line}</div>}
+    {test && !!test.projectName && <ProjectLink report={report} projectName={test.projectName}></ProjectLink>}
     {test && <TabbedPane tabs={
       test.results.map((result, index) => ({
         id: String(index),
@@ -189,7 +253,7 @@ const TestResultView: React.FC<{
     {!!traces.length && <Chip header='Traces'>
       {traces.map((a, i) => <div key={`trace-${i}`}>
         <a href={`trace/index.html?trace=${new URL(a.path!, window.location.href)}`}>
-          <img src='trace.png' style={{ width: 192, height: 117, marginLeft: 20 }} />
+          <img src={traceImage} style={{ width: 192, height: 117, marginLeft: 20 }} />
         </a>
       </div>)}
     </Chip>}
@@ -226,16 +290,26 @@ const StepTreeItem: React.FC<{
   } : undefined} depth={depth}></TreeItem>;
 };
 
-const StatsView: React.FC<{
+const StatsNavView: React.FC<{
   stats: Stats
 }> = ({ stats }) => {
-  return <span className='stats-line'>
-    —
-    {!!stats.unexpected && <span className='stats unexpected'>{stats.unexpected} failed</span>}
-    {!!stats.flaky && <span className='stats flaky'>{stats.flaky} flaky</span>}
-    {!!stats.expected && <span className='stats expected'>{stats.expected} passed</span>}
-    {!!stats.skipped && <span className='stats skipped'>{stats.skipped} skipped</span>}
-  </span>;
+  return <nav className='subnav-links d-flex no-wrap'>
+    <Link className='subnav-item' href='#?'>
+      All <span className='d-inline counter'>{stats.total}</span>
+    </Link>
+    <Link className='subnav-item' href='#?q=s:passed'>
+      Passed <span className='d-inline counter'>{stats.expected}</span>
+    </Link>
+    <Link className='subnav-item' href='#?q=s:failed'>
+      {!!stats.unexpected && statusIcon('unexpected')} Failed <span className='d-inline counter'>{stats.unexpected}</span>
+    </Link>
+    <Link className='subnav-item' href='#?q=s:flaky'>
+      {!!stats.flaky && statusIcon('flaky')} Flaky <span className='d-inline counter'>{stats.flaky}</span>
+    </Link>
+    <Link className='subnav-item' href='#?q=s:skipped'>
+      Skipped <span className='d-inline counter'>{stats.skipped}</span>
+    </Link>
+  </nav>;
 };
 
 const AttachmentLink: React.FunctionComponent<{
@@ -372,29 +446,167 @@ function navigate(href: string) {
   window.dispatchEvent(navEvent);
 }
 
+const ProjectLink: React.FunctionComponent<{
+  report: HTMLReport,
+  projectName: string,
+}> = ({ report, projectName }) => {
+  const encoded = encodeURIComponent(projectName);
+  const value = projectName === encoded ? projectName : `"${encoded.replace(/%22/g, '%5C%22')}"`;
+  return <Link href={`#?q=p:${value}`}>
+    <span className={'label label-color-' + (report.projectNames.indexOf(projectName) % 6)}>
+      {projectName}
+    </span>
+  </Link>;
+};
+
 const Link: React.FunctionComponent<{
   href: string,
-  children: any
-}> = ({ href, children }) => {
-  return <a onClick={event => {
-    event.preventDefault();
-    navigate(href);
-  }} className='no-decorations' href={href}>{children}</a>;
+  className?: string,
+  title?: string,
+  children: any,
+}> = ({ href, className, children, title }) => {
+  return <a className={`no-decorations${className ? ' ' + className : ''}`} href={href} title={title}>{children}</a>;
 };
 
 const Route: React.FunctionComponent<{
   params: string,
   children: any
 }> = ({ params, children }) => {
-  const initialParams = [...new URL(window.location.href).searchParams.keys()].join('&');
+  const initialParams = [...new URLSearchParams(window.location.hash.slice(1)).keys()].join('&');
   const [currentParams, setCurrentParam] = React.useState(initialParams);
   React.useEffect(() => {
     const listener = () => {
-      const newParams = [...new URL(window.location.href).searchParams.keys()].join('&');
+      const newParams = [...new URLSearchParams(window.location.hash.slice(1)).keys()].join('&');
       setCurrentParam(newParams);
     };
     window.addEventListener('popstate', listener);
     return () => window.removeEventListener('popstate', listener);
   }, []);
   return currentParams === params ? children : null;
+};
+
+class Filter {
+  project: string[] = [];
+  status: string[] = [];
+  text: string[] = [];
+
+  empty(): boolean {
+    return this.project.length + this.status.length + this.text.length === 0;
+  }
+
+  static parse(expression: string): Filter {
+    const tokens = Filter.tokenize(expression);
+    const project = new Set<string>();
+    const status = new Set<string>();
+    const text: string[] = [];
+    for (const token of tokens) {
+      if (token.startsWith('p:')) {
+        project.add(token.slice(2));
+        continue;
+      }
+      if (token.startsWith('s:')) {
+        status.add(token.slice(2));
+        continue;
+      }
+      text.push(token.toLowerCase());
+    }
+
+    const filter = new Filter();
+    filter.text = text;
+    filter.project = [...project];
+    filter.status = [...status];
+    return filter;
+  }
+
+  private static tokenize(expression: string): string[] {
+    const result: string[] = [];
+    let quote: '\'' | '"' | undefined;
+    let token: string[] = [];
+    for (let i = 0; i < expression.length; ++i) {
+      const c = expression[i];
+      if (quote && c === '\\' && expression[i + 1] === quote) {
+        token.push(quote);
+        ++i;
+        continue;
+      }
+      if (c === '"' || c === '\'') {
+        if (quote === c) {
+          result.push(token.join('').toLowerCase());
+          token = [];
+          quote = undefined;
+        } else if (quote) {
+          token.push(c);
+        } else {
+          quote = c;
+        }
+        continue;
+      }
+      if (quote) {
+        token.push(c);
+        continue;
+      }
+      if (c === ' ') {
+        if (token.length) {
+          result.push(token.join('').toLowerCase());
+          token = [];
+        }
+        continue;
+      }
+      token.push(c);
+    }
+    if (token.length)
+      result.push(token.join('').toLowerCase());
+    return result;
+  }
+
+  matches(test: TestCaseSummary): boolean {
+    if (!(test as any).searchValues) {
+      let status = 'passed';
+      if (test.outcome === 'unexpected')
+        status = 'failed';
+      if (test.outcome === 'flaky')
+        status = 'flaky';
+      if (test.outcome === 'skipped')
+        status = 'skipped';
+      const searchValues: SearchValues = {
+        text: (status + ' ' + test.projectName + ' ' + test.path.join(' ') + test.title).toLowerCase(),
+        project: test.projectName.toLowerCase(),
+        status: status as any
+      };
+      (test as any).searchValues = searchValues;
+    }
+
+    const searchValues = (test as any).searchValues as SearchValues;
+    if (this.project.length) {
+      const matches = !!this.project.find(p => searchValues.project.includes(p));
+      if (!matches)
+        return false;
+    }
+    if (this.status.length) {
+      const matches = !!this.status.find(s => searchValues.status.includes(s));
+      if (!matches)
+        return false;
+    }
+
+    if (this.text.length) {
+      const matches = this.text.filter(t => searchValues.text.includes(t)).length === this.text.length;
+      if (!matches)
+        return false;
+    }
+
+    return true;
+  }
+}
+
+async function readJsonEntry(entryName: string): Promise<any> {
+  const reportEntry = window.entries.get(entryName);
+  const writer = new zipjs.TextWriter() as zip.TextWriter;
+  await reportEntry!.getData!(writer);
+  return JSON.parse(await writer.getData());
+}
+
+type SearchValues = {
+  text: string;
+  project: string;
+  status: 'passed' | 'failed' | 'flaky' | 'skipped';
 };

@@ -237,7 +237,9 @@ export class FFPage implements PageDelegate {
 
   _onConsole(payload: Protocol.Runtime.consolePayload) {
     const { type, args, executionContextId, location } = payload;
-    const context = this._contextIdToContext.get(executionContextId)!;
+    const context = this._contextIdToContext.get(executionContextId);
+    if (!context)
+      return;
     this._page._addConsoleMessage(type, args.map(arg => context.createHandle(arg)), location);
   }
 
@@ -253,15 +255,19 @@ export class FFPage implements PageDelegate {
   }
 
   async _onBindingCalled(event: Protocol.Page.bindingCalledPayload) {
-    const context = this._contextIdToContext.get(event.executionContextId)!;
     const pageOrError = await this.pageOrError();
-    if (!(pageOrError instanceof Error))
-      await this._page._onBindingCalled(event.payload, context);
+    if (!(pageOrError instanceof Error)) {
+      const context = this._contextIdToContext.get(event.executionContextId);
+      if (context)
+        await this._page._onBindingCalled(event.payload, context);
+    }
   }
 
   async _onFileChooserOpened(payload: Protocol.Page.fileChooserOpenedPayload) {
     const { executionContextId, element } = payload;
-    const context = this._contextIdToContext.get(executionContextId)!;
+    const context = this._contextIdToContext.get(executionContextId);
+    if (!context)
+      return;
     const handle = context.createHandle(element).asElement()!;
     await this._page._onFileChooserOpened(handle);
   }
@@ -494,7 +500,10 @@ export class FFPage implements PageDelegate {
   private _onScreencastFrame(event: Protocol.Page.screencastFramePayload) {
     if (!this._screencastId)
       return;
-    this._session.send('Page.screencastFrameAck', { screencastId: this._screencastId }).catch(e => debugLogger.log('error', e));
+    const screencastId = this._screencastId;
+    this._page.throttleScreencastFrameAck(() => {
+      this._session.send('Page.screencastFrameAck', { screencastId }).catch(e => debugLogger.log('error', e));
+    });
 
     const buffer = Buffer.from(event.data, 'base64');
     this._page.emit(Page.Events.ScreencastFrame, {

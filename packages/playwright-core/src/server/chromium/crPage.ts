@@ -773,7 +773,9 @@ class FrameSession {
       // @see https://github.com/GoogleChrome/puppeteer/issues/3865
       return;
     }
-    const context = this._contextIdToContext.get(event.executionContextId)!;
+    const context = this._contextIdToContext.get(event.executionContextId);
+    if (!context)
+      return;
     const values = event.args.map(arg => context.createHandle(arg));
     this._page._addConsoleMessage(event.type, values, toConsoleMessageLocation(event.stackTrace));
   }
@@ -786,10 +788,12 @@ class FrameSession {
   }
 
   async _onBindingCalled(event: Protocol.Runtime.bindingCalledPayload) {
-    const context = this._contextIdToContext.get(event.executionContextId)!;
     const pageOrError = await this._crPage.pageOrError();
-    if (!(pageOrError instanceof Error))
-      await this._page._onBindingCalled(event.payload, context);
+    if (!(pageOrError instanceof Error)) {
+      const context = this._contextIdToContext.get(event.executionContextId);
+      if (context)
+        await this._page._onBindingCalled(event.payload, context);
+    }
   }
 
   _onDialog(event: Protocol.Page.javascriptDialogOpeningPayload) {
@@ -853,7 +857,9 @@ class FrameSession {
   }
 
   _onScreencastFrame(payload: Protocol.Page.screencastFramePayload) {
-    this._client.send('Page.screencastFrameAck', { sessionId: payload.sessionId }).catch(() => {});
+    this._page.throttleScreencastFrameAck(() => {
+      this._client.send('Page.screencastFrameAck', { sessionId: payload.sessionId }).catch(() => {});
+    });
     const buffer = Buffer.from(payload.data, 'base64');
     this._page.emit(Page.Events.ScreencastFrame, {
       buffer,
