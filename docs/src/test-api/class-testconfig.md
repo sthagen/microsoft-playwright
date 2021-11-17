@@ -286,6 +286,15 @@ test('example test', async ({}, testInfo) => {
 });
 ```
 
+## property: TestConfig.snapshotDir
+- type: <[string]>
+
+The base directory, relative to the config file, for snapshot files created with `toMatchSnapshot`. Defaults to [`property: TestConfig.testDir`].
+
+The directory for each test can be accessed by [`property: TestInfo.snapshotDir`] and [`method: TestInfo.snapshotPath`].
+
+This path will serve as the base directory for each test file snapshot directory. Setting `snapshotDir` to `'snapshots'`, the [`property: TestInfo.snapshotDir`] would resolve to `snapshots/a.spec.js-snapshots`.
+
 ## property: TestConfig.preserveOutput
 - type: <[PreserveOutput]<"always"|"never"|"failures-only">>
 
@@ -312,7 +321,7 @@ Whether to suppress stdio and stderr output from the tests.
 The number of times to repeat each test, useful for debugging flaky tests.
 
 ## property: TestConfig.reporter
-- type: <[string]|[Array]<[Object]>|[BuiltInReporter]<"list"|"dot"|"line"|"json"|"junit"|"null">>
+- type: <[string]|[Array]<[Object]>|[BuiltInReporter]<"list"|"dot"|"line"|"github"|"json"|"junit"|"null"|"html">>
   - `0` <[string]> Reporter name or module or file path
   - `1` <[Object]> An object with reporter options if any
 
@@ -349,12 +358,12 @@ export default config;
 
 ## property: TestConfig.reportSlowTests
 - type: <[Object]>
-  - `max` <[int]> The maximum number of slow tests to report. Defaults to `5`.
+  - `max` <[int]> The maximum number of slow test files to report. Defaults to `5`.
   - `threshold` <[float]> Test duration in milliseconds that is considered slow. Defaults to 15 seconds.
 
-Whether to report slow tests. Pass `null` to disable this feature.
+Whether to report slow test files. Pass `null` to disable this feature.
 
-Tests that took more than `threshold` milliseconds are considered slow, and the slowest ones are reported, no more than `max` number of them. Passing zero as `max` reports all slow tests that exceed the threshold.
+Test files that took more than `threshold` milliseconds are considered slow, and the slowest ones are reported, no more than `max` number of them. Passing zero as `max` reports all test files that exceed the threshold.
 
 ## property: TestConfig.retries
 - type: <[int]>

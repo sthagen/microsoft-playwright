@@ -17,6 +17,7 @@
 import fs from 'fs';
 import path from 'path';
 import * as mime from 'mime';
+import * as util from 'util';
 import { Serializable } from '../../types/structs';
 import * as api from '../../types/types';
 import { HeadersArray } from '../common/types';
@@ -49,18 +50,18 @@ type NewContextOptions = Omit<channels.PlaywrightNewRequestOptions, 'extraHTTPHe
 type RequestWithBodyOptions = Omit<FetchOptions, 'method'>;
 type RequestWithoutBodyOptions = Omit<RequestWithBodyOptions, 'data'|'form'|'multipart'>;
 
-export class Fetch implements api.APIRequest {
+export class APIRequest implements api.APIRequest {
   private _playwright: Playwright;
   constructor(playwright: Playwright) {
     this._playwright = playwright;
   }
 
-  async newContext(options: NewContextOptions = {}): Promise<FetchRequest> {
+  async newContext(options: NewContextOptions = {}): Promise<APIRequestContext> {
     return await this._playwright._wrapApiCall(async (channel: channels.PlaywrightChannel) => {
       const storageState = typeof options.storageState === 'string' ?
         JSON.parse(await fs.promises.readFile(options.storageState, 'utf8')) :
         options.storageState;
-      return FetchRequest.from((await channel.newRequest({
+      return APIRequestContext.from((await channel.newRequest({
         ...options,
         extraHTTPHeaders: options.extraHTTPHeaders ? headersObjectToArray(options.extraHTTPHeaders) : undefined,
         storageState,
@@ -69,65 +70,65 @@ export class Fetch implements api.APIRequest {
   }
 }
 
-export class FetchRequest extends ChannelOwner<channels.FetchRequestChannel, channels.FetchRequestInitializer> implements api.APIRequestContext {
-  static from(channel: channels.FetchRequestChannel): FetchRequest {
+export class APIRequestContext extends ChannelOwner<channels.APIRequestContextChannel, channels.APIRequestContextInitializer> implements api.APIRequestContext {
+  static from(channel: channels.APIRequestContextChannel): APIRequestContext {
     return (channel as any)._object;
   }
 
-  constructor(parent: ChannelOwner, type: string, guid: string, initializer: channels.FetchRequestInitializer) {
+  constructor(parent: ChannelOwner, type: string, guid: string, initializer: channels.APIRequestContextInitializer) {
     super(parent, type, guid, initializer);
   }
 
   dispose(): Promise<void> {
-    return this._wrapApiCall(async (channel: channels.FetchRequestChannel) => {
+    return this._wrapApiCall(async (channel: channels.APIRequestContextChannel) => {
       await channel.dispose();
     });
   }
 
-  async delete(url: string, options?: RequestWithoutBodyOptions): Promise<FetchResponse> {
+  async delete(url: string, options?: RequestWithBodyOptions): Promise<APIResponse> {
     return this.fetch(url, {
       ...options,
       method: 'DELETE',
     });
   }
 
-  async head(url: string, options?: RequestWithoutBodyOptions): Promise<FetchResponse> {
+  async head(url: string, options?: RequestWithoutBodyOptions): Promise<APIResponse> {
     return this.fetch(url, {
       ...options,
       method: 'HEAD',
     });
   }
 
-  async get(url: string, options?: RequestWithoutBodyOptions): Promise<FetchResponse> {
+  async get(url: string, options?: RequestWithoutBodyOptions): Promise<APIResponse> {
     return this.fetch(url, {
       ...options,
       method: 'GET',
     });
   }
 
-  async patch(url: string, options?: RequestWithBodyOptions): Promise<FetchResponse> {
+  async patch(url: string, options?: RequestWithBodyOptions): Promise<APIResponse> {
     return this.fetch(url, {
       ...options,
       method: 'PATCH',
     });
   }
 
-  async post(url: string, options?: RequestWithBodyOptions): Promise<FetchResponse> {
+  async post(url: string, options?: RequestWithBodyOptions): Promise<APIResponse> {
     return this.fetch(url, {
       ...options,
       method: 'POST',
     });
   }
 
-  async put(url: string, options?: RequestWithBodyOptions): Promise<FetchResponse> {
+  async put(url: string, options?: RequestWithBodyOptions): Promise<APIResponse> {
     return this.fetch(url, {
       ...options,
       method: 'PUT',
     });
   }
 
-  async fetch(urlOrRequest: string | api.Request, options: FetchOptions = {}): Promise<FetchResponse> {
-    return this._wrapApiCall(async (channel: channels.FetchRequestChannel) => {
+  async fetch(urlOrRequest: string | api.Request, options: FetchOptions = {}): Promise<APIResponse> {
+    return this._wrapApiCall(async (channel: channels.APIRequestContextChannel) => {
       const request: network.Request | undefined = (urlOrRequest instanceof network.Request) ? urlOrRequest as network.Request : undefined;
       assert(request || typeof urlOrRequest === 'string', 'First argument must be either URL string or Request');
       assert((options.data === undefined ? 0 : 1) + (options.form === undefined ? 0 : 1) + (options.multipart === undefined ? 0 : 1) <= 1, `Only one of 'data', 'form' or 'multipart' can be specified`);
@@ -142,14 +143,18 @@ export class FetchRequest extends ChannelOwner<channels.FetchRequestChannel, cha
       let multipartData: channels.FormField[] | undefined;
       let postDataBuffer: Buffer | undefined;
       if (options.data !== undefined) {
-        if (isString(options.data))
-          postDataBuffer = Buffer.from(options.data, 'utf8');
-        else if (Buffer.isBuffer(options.data))
+        if (isString(options.data)) {
+          if (isJsonContentType(headers))
+            jsonData = options.data;
+          else
+            postDataBuffer = Buffer.from(options.data, 'utf8');
+        } else if (Buffer.isBuffer(options.data)) {
           postDataBuffer = options.data;
-        else if (typeof options.data === 'object')
+        } else if (typeof options.data === 'object' || typeof options.data === 'number' || typeof options.data === 'boolean') {
           jsonData = options.data;
-        else
+        } else {
           throw new Error(`Unexpected 'data' type`);
+        }
       } else if (options.form) {
         formData = objectToArray(options.form);
       } else if (options.multipart) {
@@ -186,12 +191,12 @@ export class FetchRequest extends ChannelOwner<channels.FetchRequestChannel, cha
       });
       if (result.error)
         throw new Error(result.error);
-      return new FetchResponse(this, result.response!);
+      return new APIResponse(this, result.response!);
     });
   }
 
   async storageState(options: { path?: string } = {}): Promise<StorageState> {
-    return await this._wrapApiCall(async (channel: channels.FetchRequestChannel) => {
+    return await this._wrapApiCall(async (channel: channels.APIRequestContextChannel) => {
       const state = await channel.storageState();
       if (options.path) {
         await mkdirIfNeeded(options.path);
@@ -202,19 +207,19 @@ export class FetchRequest extends ChannelOwner<channels.FetchRequestChannel, cha
   }
 }
 
-export class FetchResponse implements api.APIResponse {
-  private readonly _initializer: channels.FetchResponse;
+export class APIResponse implements api.APIResponse {
+  private readonly _initializer: channels.APIResponse;
   private readonly _headers: RawHeaders;
-  private readonly _request: FetchRequest;
+  private readonly _request: APIRequestContext;
 
-  constructor(context: FetchRequest, initializer: channels.FetchResponse) {
+  constructor(context: APIRequestContext, initializer: channels.APIResponse) {
     this._request = context;
     this._initializer = initializer;
     this._headers = new RawHeaders(this._initializer.headers);
   }
 
   ok(): boolean {
-    return this._initializer.status === 0 || (this._initializer.status >= 200 && this._initializer.status <= 299);
+    return this._initializer.status >= 200 && this._initializer.status <= 299;
   }
 
   url(): string {
@@ -238,7 +243,7 @@ export class FetchResponse implements api.APIResponse {
   }
 
   async body(): Promise<Buffer> {
-    return this._request._wrapApiCall(async (channel: channels.FetchRequestChannel) => {
+    return this._request._wrapApiCall(async (channel: channels.APIRequestContextChannel) => {
       try {
         const result = await channel.fetchResponseBody({ fetchUid: this._fetchUid() });
         if (result.binary === undefined)
@@ -263,9 +268,14 @@ export class FetchResponse implements api.APIResponse {
   }
 
   async dispose(): Promise<void> {
-    return this._request._wrapApiCall(async (channel: channels.FetchRequestChannel) => {
-      await channel.disposeFetchResponse({ fetchUid: this._fetchUid() });
+    return this._request._wrapApiCall(async (channel: channels.APIRequestContextChannel) => {
+      await channel.disposeAPIResponse({ fetchUid: this._fetchUid() });
     });
+  }
+
+  [util.inspect.custom]() {
+    const headers = this.headersArray().map(({ name, value }) => `  ${name}: ${value}`);
+    return `APIResponse: ${this.status()} ${this.statusText()}\n${headers.join('\n')}`;
   }
 
   _fetchUid(): string {
@@ -300,4 +310,14 @@ async function readStreamToJson(stream: fs.ReadStream): Promise<ServerFilePayloa
     mimeType: mime.getType(streamPath) || 'application/octet-stream',
     buffer: buffer.toString('base64'),
   };
+}
+
+function isJsonContentType(headers?: HeadersArray): boolean {
+  if (!headers)
+    return false;
+  for (const { name, value } of headers) {
+    if (name.toLocaleLowerCase() === 'content-type')
+      return value === 'application/json';
+  }
+  return false;
 }

@@ -56,7 +56,7 @@ export class CRNetworkManager {
       eventsHelper.addEventListener(session, 'Network.responseReceived', this._onResponseReceived.bind(this)),
       eventsHelper.addEventListener(session, 'Network.responseReceivedExtraInfo', this._onResponseReceivedExtraInfo.bind(this)),
       eventsHelper.addEventListener(session, 'Network.loadingFinished', this._onLoadingFinished.bind(this)),
-      eventsHelper.addEventListener(session, 'Network.loadingFailed', this._onLoadingFailed.bind(this)),
+      eventsHelper.addEventListener(session, 'Network.loadingFailed', this._onLoadingFailed.bind(this, workerFrame)),
       eventsHelper.addEventListener(session, 'Network.webSocketCreated', e => this._page._frameManager.onWebSocketCreated(e.requestId, e.url)),
       eventsHelper.addEventListener(session, 'Network.webSocketWillSendHandshakeRequest', e => this._page._frameManager.onWebSocketRequest(e.requestId)),
       eventsHelper.addEventListener(session, 'Network.webSocketHandshakeResponseReceived', e => this._page._frameManager.onWebSocketResponse(e.requestId, e.response.status, e.response.statusText)),
@@ -105,7 +105,7 @@ export class CRNetworkManager {
         this._client.send('Network.setCacheDisabled', { cacheDisabled: true }),
         this._client.send('Fetch.enable', {
           handleAuthRequests: true,
-          patterns: [{ urlPattern: '*', requestStage: 'Request' }, { urlPattern: '*', requestStage: 'Response' }],
+          patterns: [{ urlPattern: '*', requestStage: 'Request' }],
         }),
       ]);
     } else {
@@ -161,11 +161,6 @@ export class CRNetworkManager {
         this._responseExtraInfoTracker.requestPaused(request.request, event);
     }
 
-    if (!this._userRequestInterceptionEnabled && this._protocolRequestInterceptionEnabled) {
-      this._client._sendMayFail('Fetch.continueRequest', {
-        requestId: event.requestId
-      });
-    }
     if (!event.networkId) {
       // Fetch without networkId means that request was not recongnized by inspector, and
       // it will never receive Network.requestWillBeSent. Most likely, this is an internal request
@@ -178,20 +173,6 @@ export class CRNetworkManager {
     }
     if (event.request.url.startsWith('data:'))
       return;
-
-    if (event.responseStatusCode || event.responseErrorReason) {
-      const isRedirect = event.responseStatusCode && event.responseStatusCode >= 300 && event.responseStatusCode < 400;
-      const request = this._requestIdToRequest.get(event.networkId!);
-      const route = request?._routeForRedirectChain();
-      if (isRedirect || !route || !route._interceptingResponse) {
-        this._client._sendMayFail('Fetch.continueRequest', {
-          requestId: event.requestId
-        });
-        return;
-      }
-      route._responseInterceptedCallback(event);
-      return;
-    }
 
     const requestId = event.networkId;
     const requestWillBeSentEvent = this._requestIdToRequestWillBeSentEvent.get(requestId);
@@ -263,7 +244,7 @@ export class CRNetworkManager {
     let route = null;
     if (requestPausedEvent) {
       // We do not support intercepting redirects.
-      if (redirectedFrom)
+      if (redirectedFrom || (!this._userRequestInterceptionEnabled && this._protocolRequestInterceptionEnabled))
         this._client._sendMayFail('Fetch.continueRequest', { requestId: requestPausedEvent.requestId });
       else
         route = new RouteImpl(this._client, requestPausedEvent.requestId);
@@ -382,12 +363,25 @@ export class CRNetworkManager {
     this._page._frameManager.reportRequestFinished(request.request, response);
   }
 
-  _onLoadingFailed(event: Protocol.Network.loadingFailedPayload) {
+  _onLoadingFailed(workerFrame: frames.Frame | undefined, event: Protocol.Network.loadingFailedPayload) {
     this._responseExtraInfoTracker.loadingFailed(event);
 
     let request = this._requestIdToRequest.get(event.requestId);
     if (!request)
       request = this._maybeAdoptMainRequest(event.requestId);
+
+    if (!request) {
+      const requestWillBeSentEvent = this._requestIdToRequestWillBeSentEvent.get(event.requestId);
+      if (requestWillBeSentEvent) {
+        // This is a case where request has failed before we had a chance to intercept it.
+        // We stop waiting for Fetch.requestPaused (it might never come), and dispatch request event
+        // right away, followed by requestfailed event.
+        this._requestIdToRequestWillBeSentEvent.delete(event.requestId);
+        this._onRequest(workerFrame, requestWillBeSentEvent, null);
+        request = this._requestIdToRequest.get(event.requestId);
+      }
+    }
+
     // For certain requestIds we never receive requestWillBeSent event.
     // @see https://crbug.com/750469
     if (!request)
@@ -476,24 +470,14 @@ class InterceptableRequest {
 class RouteImpl implements network.RouteDelegate {
   private readonly _client: CRSession;
   private _interceptionId: string;
-  private _responseInterceptedPromise: Promise<Protocol.Fetch.requestPausedPayload>;
-  _responseInterceptedCallback: ((event: Protocol.Fetch.requestPausedPayload) => void) = () => {};
-  _interceptingResponse: boolean = false;
   _wasFulfilled = false;
 
   constructor(client: CRSession, interceptionId: string) {
     this._client = client;
     this._interceptionId = interceptionId;
-    this._responseInterceptedPromise = new Promise(resolve => this._responseInterceptedCallback = resolve);
   }
 
-  async responseBody(): Promise<Buffer> {
-    const response = await this._client.send('Fetch.getResponseBody', { requestId: this._interceptionId! });
-    return Buffer.from(response.body, response.base64Encoded ? 'base64' : 'utf8');
-  }
-
-  async continue(request: network.Request, overrides: types.NormalizedContinueOverrides): Promise<network.InterceptedResponse|null> {
-    this._interceptingResponse = !!overrides.interceptResponse;
+  async continue(request: network.Request, overrides: types.NormalizedContinueOverrides): Promise<void> {
     // In certain cases, protocol will return error if the request was already canceled
     // or the page was closed. We should tolerate these errors.
     await this._client._sendMayFail('Fetch.continueRequest', {
@@ -503,18 +487,6 @@ class RouteImpl implements network.RouteDelegate {
       method: overrides.method,
       postData: overrides.postData ? overrides.postData.toString('base64') : undefined
     });
-    if (!this._interceptingResponse)
-      return null;
-    const event = await this._responseInterceptedPromise;
-    this._interceptionId = event.requestId;
-    // FIXME: plumb status text from browser
-    if (event.responseErrorReason) {
-      this._client._sendMayFail('Fetch.continueRequest', {
-        requestId: event.requestId
-      });
-      throw new Error(`Request failed: ${event.responseErrorReason}`);
-    }
-    return new network.InterceptedResponse(request, event.responseStatusCode!, '', event.responseHeaders!);
   }
 
   async fulfill(response: types.NormalizedFulfillResponse) {

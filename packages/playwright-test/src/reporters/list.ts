@@ -38,8 +38,13 @@ class ListReporter extends BaseReporter {
     this._liveTerminal = process.stdout.isTTY || process.env.PWTEST_SKIP_TEST_OUTPUT || !!this._ttyWidthForTest;
   }
 
+  printsToStdio() {
+    return true;
+  }
+
   override onBegin(config: FullConfig, suite: Suite) {
     super.onBegin(config, suite);
+    console.log(this.generateStartingMessage());
     console.log();
   }
 

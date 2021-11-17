@@ -16,8 +16,8 @@
 
 import milliseconds from 'ms';
 import path from 'path';
-import { BaseReporter, formatFailure, stripAnsiEscapes } from './base';
-import { TestCase, FullResult } from '../../types/testReporter';
+import { BaseReporter, formatError, formatFailure, stripAnsiEscapes } from './base';
+import { TestCase, FullResult, TestError } from '../../types/testReporter';
 
 type GitHubLogType = 'debug' | 'notice' | 'warning' | 'error';
 
@@ -59,9 +59,18 @@ class GitHubLogger {
 export class GitHubReporter extends BaseReporter {
   githubLogger = new GitHubLogger();
 
+  printsToStdio() {
+    return false;
+  }
+
   override async onEnd(result: FullResult) {
     super.onEnd(result);
     this._printAnnotations();
+  }
+
+  override onError(error: TestError) {
+    const errorMessage = formatError(error, false).message;
+    this.githubLogger.error(errorMessage);
   }
 
   private _printAnnotations() {

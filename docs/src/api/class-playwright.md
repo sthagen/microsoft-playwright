@@ -178,7 +178,7 @@ class PlaywrightExample
   - `TimeoutError` <[function]> A class of [TimeoutError].
 
 Playwright methods might throw errors if they are unable to fulfill a request. For example,
-[`method: Page.waitForSelector`] might fail if the selector doesn't match any nodes during the given timeframe.
+[`method: Locator.waitFor`] might fail if the selector doesn't match any nodes during the given timeframe.
 
 For certain types of errors Playwright uses specific error classes. These classes are available via
 [`playwright.errors`](#playwrighterrors).
@@ -187,7 +187,7 @@ An example of handling a timeout error:
 
 ```js
 try {
-  await page.waitForSelector('.foo');
+  await page.locator('.foo').waitFor();
 } catch (e) {
   if (e instanceof playwright.errors.TimeoutError) {
     // Do something if this is a timeout.
@@ -215,7 +215,7 @@ except TimeoutError as e:
 This object can be used to launch or connect to Firefox, returning instances of [Browser].
 
 ## property: Playwright.request
-* langs: js
+* langs: js, java, python
 - type: <[APIRequest]>
 
 Exposes API that can be used for the Web API testing.

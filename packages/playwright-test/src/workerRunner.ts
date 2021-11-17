@@ -27,7 +27,7 @@ import { Loader } from './loader';
 import { Modifier, Suite, TestCase } from './test';
 import { Annotations, TestError, TestInfo, TestInfoImpl, TestStepInternal, WorkerInfo } from './types';
 import { ProjectImpl } from './project';
-import { FixturePool, FixtureRunner } from './fixtures';
+import { FixtureRunner } from './fixtures';
 import { DeadlineRunner, raceAgainstDeadline } from 'playwright-core/lib/utils/async';
 
 const removeFolderAsync = util.promisify(rimraf);
@@ -148,15 +148,14 @@ export class WorkerRunner extends EventEmitter {
       this._entries = new Map(runPayload.entries.map(e => [ e.testId, e ]));
       await this._loadIfNeeded();
       const fileSuite = await this._loader.loadTestFile(runPayload.file);
-      let anyPool: FixturePool | undefined;
       const suite = this._project.cloneFileSuite(fileSuite, this._params.repeatEachIndex, test => {
         if (!this._entries.has(test._id))
           return false;
-        anyPool = test._pool;
         return true;
       });
-      if (suite && anyPool) {
-        this._fixtureRunner.setPool(anyPool);
+      if (suite) {
+        const firstPool = suite.allTests()[0]._pool!;
+        this._fixtureRunner.setPool(firstPool);
         await this._runSuite(suite, []);
       }
       if (this._failedTest)
@@ -241,7 +240,11 @@ export class WorkerRunner extends EventEmitter {
       return path.join(this._project.config.outputDir, testOutputDir);
     })();
 
-    let testFinishedCallback = () => {};
+    const snapshotDir = (() => {
+      const relativeTestFilePath = path.relative(this._project.config.testDir, test._requireFile);
+      return path.join(this._project.config.snapshotDir, relativeTestFilePath + '-snapshots');
+    })();
+
     let lastStepId = 0;
     const testInfo: TestInfoImpl = {
       workerIndex: this._params.workerIndex,
@@ -266,13 +269,13 @@ export class WorkerRunner extends EventEmitter {
       timeout: this._project.config.timeout,
       snapshotSuffix: '',
       outputDir: baseOutputDir,
+      snapshotDir,
       outputPath: (...pathSegments: string[]): string => {
         fs.mkdirSync(baseOutputDir, { recursive: true });
         const joinedPath = path.join(...pathSegments);
         const outputPath = getContainedPath(baseOutputDir, joinedPath);
         if (outputPath) return outputPath;
         throw new Error(`The outputPath is not allowed outside of the parent directory. Please fix the defined path.\n\n\toutputPath: ${joinedPath}`);
-
       },
       snapshotPath: (...pathSegments: string[]): string => {
         let suffix = '';
@@ -280,11 +283,8 @@ export class WorkerRunner extends EventEmitter {
           suffix += '-' + this._projectNamePathSegment;
         if (testInfo.snapshotSuffix)
           suffix += '-' + testInfo.snapshotSuffix;
-
-        const baseSnapshotPath = test._requireFile + '-snapshots';
         const subPath = addSuffixToFilePath(path.join(...pathSegments), suffix);
-        const snapshotPath =  getContainedPath(baseSnapshotPath, subPath);
-
+        const snapshotPath =  getContainedPath(snapshotDir, subPath);
         if (snapshotPath) return snapshotPath;
         throw new Error(`The snapshotPath is not allowed outside of the parent directory. Please fix the defined path.\n\n\tsnapshotPath: ${subPath}`);
       },
@@ -297,7 +297,6 @@ export class WorkerRunner extends EventEmitter {
         if (deadlineRunner)
           deadlineRunner.updateDeadline(deadline());
       },
-      _testFinished: new Promise(f => testFinishedCallback = f),
       _addStep: data => {
         const stepId = `${data.category}@${data.title}@${++lastStepId}`;
         let callbackHandled = false;
@@ -387,7 +386,7 @@ export class WorkerRunner extends EventEmitter {
     // Do not overwrite test failure upon hook timeout.
     if (result.timedOut && testInfo.status === 'passed')
       testInfo.status = 'timedOut';
-    testFinishedCallback();
+    testInfo.duration = monotonicTime() - startTime;
 
     if (!result.timedOut) {
       this._currentDeadlineRunner = deadlineRunner = new DeadlineRunner(this._runAfterHooks(test, testInfo), deadline());

@@ -46,7 +46,7 @@ compile_chromium() {
     # As of Jan, 2021 Chromium mac compilation requires Xcode12.2
     selectXcodeVersionOrDie "12.2"
     # As of Jan, 2021 Chromium mac compilation is only possible on Intel macbooks.
-    # See https://chromium.googlesource.com/chromium/src.git/+/master/docs/mac_arm64.md
+    # See https://chromium.googlesource.com/chromium/src.git/+/main/docs/mac_arm64.md
     if [[ $1 == "--compile-mac-arm64" && $(uname -m) != "x86_64" ]]; then
       echo "ERROR: chromium mac arm64 compilation is (ironically) only supported on Intel Macbooks"
       exit 1
@@ -68,7 +68,7 @@ compile_chromium() {
   if [[ $1 == "--compile-mac-arm64" ]]; then
     echo 'target_cpu = "arm64"' >> ./out/Default/args.gn
   elif [[ $1 == "--compile-linux-arm64" ]]; then
-    echo 'target_cpu = "arm"' >> ./out/Default/args.gn
+    echo 'target_cpu = "arm64"' >> ./out/Default/args.gn
   fi
 
   if [[ ! -z "$USE_GOMA" ]]; then
@@ -88,9 +88,9 @@ compile_chromium() {
     if [[ $(uname) == "--compile-linux" ]]; then
       ./build/install-build-deps.sh
     elif [[ $1 == "--compile-linux-arm64" ]]; then
-      ./build/install-build-deps.sh --arm
+      ./build/install-build-deps.sh
       # Install sysroot image, see https://chromium.googlesource.com/chromium/src/+/refs/heads/main/docs/linux/chromium_arm.md
-      ./build/linux/sysroot_scripts/install-sysroot.py --arch=arm
+      ./build/linux/sysroot_scripts/install-sysroot.py --arch=arm64
     fi
   fi
 
@@ -156,4 +156,4 @@ mirror_chromium() {
   unzip chromium-upstream.zip
 }
 
-main "$1"
+main "$1" "$2" "$3"

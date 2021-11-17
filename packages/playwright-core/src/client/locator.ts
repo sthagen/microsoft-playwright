@@ -90,6 +90,10 @@ export class Locator implements api.Locator {
     return new Locator(this._frame, this._selector + ' >> ' + selector);
   }
 
+  frameLocator(selector: string): FrameLocator {
+    return new FrameLocator(this._frame, this._selector + ' >> ' + selector);
+  }
+
   async elementHandle(options?: TimeoutOptions): Promise<ElementHandle<SVGElement | HTMLElement>> {
     return await this._frame.waitForSelector(this._selector, { strict: true, state: 'attached', ...options })!;
   }
@@ -237,11 +241,41 @@ export class Locator implements api.Locator {
     });
   }
 
-  [(util.inspect as any).custom]() {
+  [util.inspect.custom]() {
     return this.toString();
   }
 
   toString() {
     return `Locator@${this._selector}`;
+  }
+}
+
+export class FrameLocator implements api.FrameLocator {
+  private _frame: Frame;
+  private _frameSelector: string;
+
+  constructor(frame: Frame, selector: string) {
+    this._frame = frame;
+    this._frameSelector = selector;
+  }
+
+  locator(selector: string): Locator {
+    return new Locator(this._frame, this._frameSelector + ' >> control=enter-frame >> ' + selector);
+  }
+
+  frameLocator(selector: string): FrameLocator {
+    return new FrameLocator(this._frame, this._frameSelector + ' >> control=enter-frame >> ' + selector);
+  }
+
+  first(): FrameLocator {
+    return new FrameLocator(this._frame, this._frameSelector + ' >> nth=0');
+  }
+
+  last(): FrameLocator {
+    return new FrameLocator(this._frame, this._frameSelector + ` >> nth=-1`);
+  }
+
+  nth(index: number): FrameLocator {
+    return new FrameLocator(this._frame, this._frameSelector + ` >> nth=${index}`);
   }
 }

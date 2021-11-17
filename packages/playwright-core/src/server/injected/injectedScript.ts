@@ -18,7 +18,7 @@ import { SelectorEngine, SelectorRoot } from './selectorEngine';
 import { XPathEngine } from './xpathSelectorEngine';
 import { ReactEngine } from './reactSelectorEngine';
 import { VueEngine } from './vueSelectorEngine';
-import { ParsedSelector, ParsedSelectorPart, parseSelector } from '../common/selectorParser';
+import { ParsedSelector, ParsedSelectorPart, parseSelector, stringifySelector } from '../common/selectorParser';
 import { SelectorEvaluatorImpl, isVisible, parentElementOrShadowHost, elementMatchesText, TextMatcher, createRegexTextMatcher, createStrictTextMatcher, createLaxTextMatcher } from './selectorEvaluator';
 import { CSSComplexSelectorList } from '../common/cssParser';
 import { generateSelector } from './selectorGenerator';
@@ -63,12 +63,17 @@ export type ElementMatch = {
   capture: Element | undefined;
 };
 
+export type HitTargetInterceptionResult = {
+  stop: () => 'done' | { hitTargetDescription: string };
+};
+
 export class InjectedScript {
   private _engines: Map<string, SelectorEngineV2>;
   _evaluator: SelectorEvaluatorImpl;
   private _stableRafCount: number;
   private _browserName: string;
   onGlobalListenersRemoved = new Set<() => void>();
+  private _hitTargetInterceptor: undefined | ((event: MouseEvent | PointerEvent | TouchEvent) => void);
 
   constructor(stableRafCount: number, browserName: string, customEngines: { name: string, engine: SelectorEngine}[]) {
     this._evaluator = new SelectorEvaluatorImpl(new Map());
@@ -91,6 +96,7 @@ export class InjectedScript {
     this._engines.set('css', this._createCSSEngine());
     this._engines.set('nth', { queryAll: () => [] });
     this._engines.set('visible', { queryAll: () => [] });
+    this._engines.set('control', this._createControlEngine());
 
     for (const { name, engine } of customEngines)
       this._engines.set(name, engine);
@@ -99,6 +105,7 @@ export class InjectedScript {
     this._browserName = browserName;
 
     this._setupGlobalListenersRemovalDetection();
+    this._setupHitTargetInterceptors();
   }
 
   eval(expression: string): any {
@@ -253,6 +260,18 @@ export class InjectedScript {
     return {
       queryAll: (root: SelectorRoot, selector: string): Element[] => {
         return queryList(root, selector);
+      }
+    };
+  }
+
+  private _createControlEngine(): SelectorEngineV2 {
+    return {
+      queryAll(root: SelectorRoot, body: any) {
+        if (body === 'enter-frame')
+          return [];
+        if (body === 'return-empty')
+          return [];
+        throw new Error(`Internal error, unknown control selector ${body}`);
       }
     };
   }
@@ -654,19 +673,24 @@ export class InjectedScript {
     if (!element || !element.isConnected)
       return 'error:notconnected';
     element = element.closest('button, [role=button]') || element;
-    let hitElement = this.deepElementFromPoint(document, point.x, point.y);
+    const hitElement = this.deepElementFromPoint(document, point.x, point.y);
+    return this._expectHitTargetParent(hitElement, element);
+  }
+
+  private _expectHitTargetParent(hitElement: Element | undefined, targetElement: Element) {
     const hitParents: Element[] = [];
-    while (hitElement && hitElement !== element) {
+    while (hitElement && hitElement !== targetElement) {
       hitParents.push(hitElement);
       hitElement = parentElementOrShadowHost(hitElement);
     }
-    if (hitElement === element)
+    if (hitElement === targetElement)
       return 'done';
-    const hitTargetDescription = this.previewNode(hitParents[0]);
+    const hitTargetDescription = this.previewNode(hitParents[0] || document.documentElement);
     // Root is the topmost element in the hitTarget's chain that is not in the
     // element's chain. For example, it might be a dialog element that overlays
     // the target.
     let rootHitTargetDescription: string | undefined;
+    let element: Element | undefined = targetElement;
     while (element) {
       const index = hitParents.indexOf(element);
       if (index !== -1) {
@@ -679,6 +703,64 @@ export class InjectedScript {
     if (rootHitTargetDescription)
       return { hitTargetDescription: `${hitTargetDescription} from ${rootHitTargetDescription} subtree` };
     return { hitTargetDescription };
+  }
+
+  setupHitTargetInterceptor(node: Node, action: 'hover' | 'tap' | 'mouse', blockAllEvents: boolean): HitTargetInterceptionResult | 'error:notconnected' {
+    const maybeElement: Element | null | undefined = node.nodeType === Node.ELEMENT_NODE ? (node as Element) : node.parentElement;
+    if (!maybeElement || !maybeElement.isConnected)
+      return 'error:notconnected';
+    const element = maybeElement.closest('button, [role=button]') || maybeElement;
+
+    const events = {
+      'hover': kHoverHitTargetInterceptorEvents,
+      'tap': kTapHitTargetInterceptorEvents,
+      'mouse': kMouseHitTargetInterceptorEvents,
+    }[action];
+    let result: 'done' | { hitTargetDescription: string } | undefined;
+
+    const listener = (event: PointerEvent | MouseEvent | TouchEvent) => {
+      // Ignore events that we do not expect to intercept.
+      if (!events.has(event.type))
+        return;
+
+      // Playwright only issues trusted events, so allow any custom events originating from
+      // the page or content scripts.
+      if (!event.isTrusted)
+        return;
+
+      // Element was detached during the action, for example in some event handler.
+      // If events before that were correctly pointing to it, consider this a valid scenario.
+      if (!element.isConnected)
+        return;
+
+      // Determine the event point. Note that Firefox does not always have window.TouchEvent.
+      const point = (!!window.TouchEvent && (event instanceof window.TouchEvent)) ? event.touches[0] : (event as MouseEvent | PointerEvent);
+      if (!!point && (result === undefined || result === 'done')) {
+        // Determine whether we hit the target element, unless we have already failed.
+        const hitElement = this.deepElementFromPoint(document, point.clientX, point.clientY);
+        result = this._expectHitTargetParent(hitElement, element);
+      }
+      if (blockAllEvents || result !== 'done') {
+        event.preventDefault();
+        event.stopPropagation();
+        event.stopImmediatePropagation();
+      }
+    };
+
+    const stop = () => {
+      if (this._hitTargetInterceptor === listener)
+        this._hitTargetInterceptor = undefined;
+      // If we did not get any events, consider things working. Possible causes:
+      // - JavaScript is disabled (webkit-only).
+      // - Some <iframe> overlays the element from another frame.
+      // - Hovering a disabled control prevents any events from firing.
+      return result || 'done';
+    };
+
+    // Note: this removes previous listener, just in case there are two concurrent clicks
+    // or something went wrong and we did not cleanup.
+    this._hitTargetInterceptor = listener;
+    return { stop };
   }
 
   dispatchEvent(node: Node, type: string, eventInit: Object) {
@@ -757,7 +839,7 @@ export class InjectedScript {
     const lines = infos.map((info, i) => `\n    ${i + 1}) ${info.preview} aka playwright.$("${info.selector}")`);
     if (infos.length < matches.length)
       lines.push('\n    ...');
-    return this.createStacklessError(`strict mode violation: "${selector.selector}" resolved to ${matches.length} elements:${lines.join('')}\n`);
+    return this.createStacklessError(`strict mode violation: "${stringifySelector(selector)}" resolved to ${matches.length} elements:${lines.join('')}\n`);
   }
 
   createStacklessError(message: string): Error {
@@ -796,6 +878,16 @@ export class InjectedScript {
       for (const callback of this.onGlobalListenersRemoved)
         callback();
     }).observe(document, { childList: true });
+  }
+
+  private _setupHitTargetInterceptors() {
+    const listener = (event: PointerEvent | MouseEvent | TouchEvent) => this._hitTargetInterceptor?.(event);
+    const addHitTargetInterceptorListeners = () => {
+      for (const event of kAllHitTargetInterceptorEvents)
+        window.addEventListener(event as any, listener, { capture: true, passive: false });
+    };
+    addHitTargetInterceptorListeners();
+    this.onGlobalListenersRemoved.add(addHitTargetInterceptorListeners);
   }
 
   expectSingleElement(progress: InjectedScriptProgress, element: Element, options: FrameExpectParams): { matches: boolean, received?: any } {
@@ -971,6 +1063,11 @@ const eventType = new Map<string, 'mouse'|'keyboard'|'touch'|'pointer'|'focus'|'
   ['dragexit', 'drag'],
   ['drop', 'drag'],
 ]);
+
+const kHoverHitTargetInterceptorEvents = new Set(['mousemove']);
+const kTapHitTargetInterceptorEvents = new Set(['pointerdown', 'pointerup', 'touchstart', 'touchend', 'touchcancel']);
+const kMouseHitTargetInterceptorEvents = new Set(['mousedown', 'mouseup', 'pointerdown', 'pointerup', 'click', 'auxclick', 'dblclick', 'contextmenu']);
+const kAllHitTargetInterceptorEvents = new Set([...kHoverHitTargetInterceptorEvents, ...kTapHitTargetInterceptorEvents, ...kMouseHitTargetInterceptorEvents]);
 
 function unescape(s: string): string {
   if (!s.includes('\\'))

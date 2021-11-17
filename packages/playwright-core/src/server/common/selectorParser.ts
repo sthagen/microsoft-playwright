@@ -19,10 +19,10 @@ import { CSSComplexSelectorList, parseCSS } from './cssParser';
 export type ParsedSelectorPart = {
   name: string,
   body: string | CSSComplexSelectorList,
+  source: string,
 };
 
 export type ParsedSelector = {
-  selector: string,
   parts: ParsedSelectorPart[],
   capture?: number,
 };
@@ -43,16 +43,54 @@ export function parseSelector(selector: string): ParsedSelector {
       const parsedCSS = parseCSS(part.body, customCSSNames);
       return {
         name: 'css',
-        body: parsedCSS.selector
+        body: parsedCSS.selector,
+        source: part.body
       };
     }
-    return part;
+    return { ...part, source: part.body };
   });
   return {
-    selector,
     capture: result.capture,
     parts
   };
+}
+
+export function splitSelectorByFrame(selectorText: string): ParsedSelector[] {
+  const selector = parseSelector(selectorText);
+  const result: ParsedSelector[] = [];
+  let chunk: ParsedSelector = {
+    parts: [],
+  };
+  let chunkStartIndex = 0;
+  for (let i = 0; i < selector.parts.length; ++i) {
+    const part = selector.parts[i];
+    if (part.name === 'control' && part.body === 'enter-frame') {
+      if (!chunk.parts.length)
+        throw new Error('Selector cannot start with entering frame, select the iframe first');
+      result.push(chunk);
+      chunk = { parts: [] };
+      chunkStartIndex = i + 1;
+      continue;
+    }
+    if (selector.capture === i)
+      chunk.capture = i - chunkStartIndex;
+    chunk.parts.push(part);
+  }
+  if (!chunk.parts.length)
+    throw new Error(`Selector cannot end with entering frame, while parsing selector ${selectorText}`);
+  result.push(chunk);
+  if (typeof selector.capture === 'number' && typeof result[result.length - 1].capture !== 'number')
+    throw new Error(`Can not capture the selector before diving into the frame. Only use * after the last frame has been selected`);
+  return result;
+}
+
+export function stringifySelector(selector: string | ParsedSelector): string {
+  if (typeof selector === 'string')
+    return selector;
+  return selector.parts.map((p, i) => {
+    const prefix = p.name === 'css' ? '' : p.name + '=';
+    return `${i === selector.capture ? '*' : ''}${prefix}${p.source}`;
+  }).join(' >> ');
 }
 
 function parseSelectorString(selector: string): ParsedSelectorStrings {

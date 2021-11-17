@@ -163,6 +163,7 @@ export class FFPage implements PageDelegate {
     else if (!auxData.name)
       worldName = 'main';
     const context = new dom.FrameExecutionContext(delegate, frame, worldName);
+    (context as any)[contextDelegateSymbol] = delegate;
     if (worldName)
       frame._contextCreated(worldName, context);
     this._contextIdToContext.set(executionContextId, context);
@@ -536,7 +537,7 @@ export class FFPage implements PageDelegate {
     const result = await this._session.send('Page.adoptNode', {
       frameId: handle._context.frame._id,
       objectId: handle._objectId,
-      executionContextId: (to._delegate as FFExecutionContext)._executionContextId
+      executionContextId: ((to as any)[contextDelegateSymbol] as FFExecutionContext)._executionContextId
     });
     if (!result.remoteObject)
       throw new Error(dom.kUnableToAdoptErrorMessage);
@@ -554,7 +555,8 @@ export class FFPage implements PageDelegate {
     const parent = frame.parentFrame();
     if (!parent)
       throw new Error('Frame has been detached.');
-    const handles = await this._page.selectors._queryAll(parent, 'frame,iframe', undefined);
+    const info = this._page.parseSelector('frame,iframe');
+    const handles = await this._page.selectors._queryAll(parent, info);
     const items = await Promise.all(handles.map(async handle => {
       const frame = await handle.contentFrame().catch(e => null);
       return { handle, frame };
@@ -570,3 +572,5 @@ export class FFPage implements PageDelegate {
 function webSocketId(frameId: string, wsid: string): string {
   return `${frameId}---${wsid}`;
 }
+
+const contextDelegateSymbol = Symbol('delegate');

@@ -24,7 +24,7 @@ import type { CallMetadata } from '../../protocol/callMetadata';
 // @ts-ignore
 self.importScripts('zip.min.js');
 
-const zipjs = (self as any).zip;
+const zipjs = (self as any).zip as typeof zip;
 
 export class TraceModel {
   contextEntry: ContextEntry;
@@ -38,7 +38,7 @@ export class TraceModel {
   }
 
   async load(traceURL: string, progress: (done: number, total: number) => void) {
-    const zipReader = new zipjs.ZipReader(
+    const zipReader = new zipjs.ZipReader( // @ts-ignore
         new zipjs.HttpReader(traceURL, { mode: 'cors' }),
         { useWebWorkers: false }) as zip.ZipReader;
     let traceEntry: zip.Entry | undefined;
@@ -48,6 +48,8 @@ export class TraceModel {
         traceEntry = entry;
       if (entry.filename.endsWith('.network'))
         networkEntry = entry;
+      if (entry.filename.includes('src@'))
+        this.contextEntry.hasSource = true;
       this._entries.set(entry.filename, entry);
     }
     this._snapshotStorage = new PersistentSnapshotStorage(this._entries);
@@ -104,6 +106,8 @@ export class TraceModel {
       case 'context-options': {
         this.contextEntry.browserName = event.browserName;
         this.contextEntry.title = event.title;
+        this.contextEntry.platform = event.platform;
+        this.contextEntry.wallTime = event.wallTime;
         this.contextEntry.options = event.options;
         break;
       }

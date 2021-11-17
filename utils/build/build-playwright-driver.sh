@@ -4,7 +4,7 @@ set -x
 
 trap "cd $(pwd -P)" EXIT
 SCRIPT_PATH="$(cd "$(dirname "$0")" ; pwd -P)"
-NODE_VERSION="14.17.6"
+NODE_VERSION="16.13.0"
 
 cd "$(dirname "$0")"
 PACKAGE_VERSION=$(node -p "require('../../package.json').version")
@@ -53,7 +53,7 @@ function build {
   cp ./output/api.json ./output/playwright-${SUFFIX}/package/
   cp ./output/protocol.yml ./output/playwright-${SUFFIX}/package/
   cd ./output/playwright-${SUFFIX}/package
-  PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 node "../../${NODE_DIR}/${NPM_PATH}" install --production
+  PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 node "../../${NODE_DIR}/${NPM_PATH}" install --production --ignore-scripts
   rm package-lock.json
 
   cd ..
@@ -71,5 +71,7 @@ function build {
 }
 
 build "node-v${NODE_VERSION}-darwin-x64" "mac" "tar.gz" "run-driver-posix.sh"
+build "node-v${NODE_VERSION}-darwin-arm64" "mac-arm64" "tar.gz" "run-driver-posix.sh"
 build "node-v${NODE_VERSION}-linux-x64" "linux" "tar.gz" "run-driver-posix.sh"
+build "node-v${NODE_VERSION}-linux-arm64" "linux-arm64" "tar.gz" "run-driver-posix.sh"
 build "node-v${NODE_VERSION}-win-x64" "win32_x64" "zip" "run-driver-win.cmd"

@@ -169,16 +169,20 @@ export const test = _baseTest.extend<TestFixtures, WorkerAndFileFixtures>({
     });
   },
 
-  _snapshotSuffix: [process.platform, { scope: 'worker' }],
+  _snapshotSuffix: [process.env.PLAYWRIGHT_DOCKER ? 'docker' : process.platform, { scope: 'worker' }],
 
   _setupContextOptionsAndArtifacts: [async ({ _snapshotSuffix, _browserType, _combinedContextOptions, _artifactsDir, trace, screenshot, actionTimeout, navigationTimeout }, use, testInfo) => {
     testInfo.snapshotSuffix = _snapshotSuffix;
     if (process.env.PWDEBUG)
       testInfo.setTimeout(0);
 
-    if (trace === 'retry-with-trace')
-      trace = 'on-first-retry';
-    const captureTrace = (trace === 'on' || trace === 'retain-on-failure' || (trace === 'on-first-retry' && testInfo.retry === 1));
+    let traceMode = typeof trace === 'string' ? trace : trace.mode;
+    if (traceMode as any === 'retry-with-trace')
+      traceMode = 'on-first-retry';
+    const defaultTraceOptions = { screenshots: true, snapshots: true, sources: true };
+    const traceOptions = typeof trace === 'string' ? defaultTraceOptions : { ...defaultTraceOptions, ...trace, mode: undefined };
+
+    const captureTrace = (traceMode === 'on' || traceMode === 'retain-on-failure' || (traceMode === 'on-first-retry' && testInfo.retry === 1));
     const temporaryTraceFiles: string[] = [];
     const temporaryScreenshots: string[] = [];
 
@@ -188,7 +192,7 @@ export const test = _baseTest.extend<TestFixtures, WorkerAndFileFixtures>({
       if (captureTrace) {
         const title = [path.relative(testInfo.project.testDir, testInfo.file) + ':' + testInfo.line, ...testInfo.titlePath.slice(1)].join(' › ');
         if (!(context.tracing as any)[kTracingStarted]) {
-          await context.tracing.start({ screenshots: true, snapshots: true, sources: true, title });
+          await context.tracing.start({ ...traceOptions, title });
           (context.tracing as any)[kTracingStarted] = true;
         } else {
           await context.tracing.startChunk({ title });
@@ -218,7 +222,10 @@ export const test = _baseTest.extend<TestFixtures, WorkerAndFileFixtures>({
       });
     };
 
+    const startedCollectingArtifacts = Symbol('startedCollectingArtifacts');
+
     const onWillCloseContext = async (context: BrowserContext) => {
+      (context as any)[startedCollectingArtifacts] = true;
       if (captureTrace) {
         // Export trace for now. We'll know whether we have to preserve it
         // after the test finishes.
@@ -250,7 +257,7 @@ export const test = _baseTest.extend<TestFixtures, WorkerAndFileFixtures>({
     // 3. Determine whether we need the artifacts.
     const testFailed = testInfo.status !== testInfo.expectedStatus;
     const isHook = !!hookType(testInfo);
-    const preserveTrace = captureTrace && !isHook && (trace === 'on' || (testFailed && trace === 'retain-on-failure') || (trace === 'on-first-retry' && testInfo.retry === 1));
+    const preserveTrace = captureTrace && !isHook && (traceMode === 'on' || (testFailed && traceMode === 'retain-on-failure') || (traceMode === 'on-first-retry' && testInfo.retry === 1));
     const captureScreenshots = !isHook && (screenshot === 'on' || (screenshot === 'only-on-failure' && testFailed));
 
     const traceAttachments: string[] = [];
@@ -278,6 +285,12 @@ export const test = _baseTest.extend<TestFixtures, WorkerAndFileFixtures>({
 
     // 5. Collect artifacts from any non-closed contexts.
     await Promise.all(leftoverContexts.map(async context => {
+      // When we timeout during context.close(), we might end up with context still alive
+      // but artifacts being already collected. In this case, do not collect artifacts
+      // for the second time.
+      if ((context as any)[startedCollectingArtifacts])
+        return;
+
       if (preserveTrace)
         await context.tracing.stopChunk({ path: addTraceAttachment() });
       else if (captureTrace)

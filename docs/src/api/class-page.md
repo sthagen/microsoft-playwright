@@ -1023,6 +1023,11 @@ It's not supported in WebKit, see [here](https://bugs.webkit.org/show_bug.cgi?id
   - alias-js: $eval
 - returns: <[Serializable]>
 
+:::caution
+This method does not wait for the element to pass actionability checks and therefore can lead to
+the flaky tests. Use [`method: Locator.evaluate`], other [Locator] helper methods or web-first assertions instead.
+:::
+
 The method finds an element matching the specified selector within the page and passes it as a first argument to
 [`param: expression`]. If no elements match the selector, the method throws an error. Returns the value of
 [`param: expression`].
@@ -1080,6 +1085,10 @@ Optional argument to pass to [`param: expression`].
   - alias-python: eval_on_selector_all
   - alias-js: $$eval
 - returns: <[Serializable]>
+
+:::note
+In most cases, [`method: Locator.evaluateAll`], other [Locator] helper methods and web-first assertions do a better job.
+:::
 
 The method finds all elements matching the specified selector within the page and passes an array of matched elements as
 a first argument to [`param: expression`]. Returns the result of [`param: expression`] invocation.
@@ -1190,31 +1199,31 @@ Console.WriteLine(await page.EvaluateAsync<int>("1 + 2")); // prints "3"
 [ElementHandle] instances can be passed as an argument to the [`method: Page.evaluate`]:
 
 ```js
-const bodyHandle = await page.$('body');
+const bodyHandle = await page.evaluate('document.body');
 const html = await page.evaluate(([body, suffix]) => body.innerHTML + suffix, [bodyHandle, 'hello']);
 await bodyHandle.dispose();
 ```
 
 ```java
-ElementHandle bodyHandle = page.querySelector("body");
+ElementHandle bodyHandle = page.evaluate("document.body");
 String html = (String) page.evaluate("([body, suffix]) => body.innerHTML + suffix", Arrays.asList(bodyHandle, "hello"));
 bodyHandle.dispose();
 ```
 
 ```python async
-body_handle = await page.query_selector("body")
+body_handle = await page.evaluate("document.body")
 html = await page.evaluate("([body, suffix]) => body.innerHTML + suffix", [body_handle, "hello"])
 await body_handle.dispose()
 ```
 
 ```python sync
-body_handle = page.query_selector("body")
+body_handle = page.evaluate("document.body")
 html = page.evaluate("([body, suffix]) => body.innerHTML + suffix", [body_handle, "hello"])
 body_handle.dispose()
 ```
 
 ```csharp
-var bodyHandle = await page.QuerySelectorAsync("body");
+var bodyHandle = await page.EvaluateAsync("document.body");
 var html = await page.EvaluateAsync<string>("([body, suffix]) => body.innerHTML + suffix", new object [] { bodyHandle, "hello" });
 await bodyHandle.DisposeAsync();
 ```
@@ -1843,6 +1852,42 @@ Returns frame with matching URL.
 
 A glob pattern, regex pattern or predicate receiving frame's `url` as a [URL] object.
 
+
+## method: Page.frameLocator
+- returns: <[FrameLocator]>
+
+When working with iframes, you can create a frame locator that will enter the iframe and allow selecting elements
+in that iframe. Following snippet locates element with text "Submit" in the iframe with id `my-frame`,
+like `<iframe id="my-frame">`:
+
+```js
+const locator = page.frameLocator('#my-iframe').locator('text=Submit');
+await locator.click();
+```
+
+```java
+Locator locator = page.frameLocator("#my-iframe").locator("text=Submit");
+locator.click();
+```
+
+```python async
+locator = page.frame_locator("#my-iframe").locator("text=Submit")
+await locator.click()
+```
+
+```python sync
+locator = page.frame_locator("#my-iframe").locator("text=Submit")
+locator.click()
+```
+
+```csharp
+var locator = page.FrameLocator("#my-iframe").Locator("text=Submit");
+await locator.ClickAsync();
+```
+
+### param: Page.frameLocator.selector = %%-find-selector-%%
+
+
 ## method: Page.frames
 - returns: <[Array]<[Frame]>>
 
@@ -2386,8 +2431,12 @@ Time to wait between `keydown` and `keyup` in milliseconds. Defaults to 0.
   - alias-js: $
 - returns: <[null]|[ElementHandle]>
 
+:::caution
+The use of [ElementHandle] is discouraged, use [Locator] objects and web-first assertions instead.
+:::
+
 The method finds an element matching the specified selector within the page. If no elements match the selector, the
-return value resolves to `null`. To wait for an element on the page, use [`method: Page.waitForSelector`].
+return value resolves to `null`. To wait for an element on the page, use [`method: Locator.waitFor`].
 
 Shortcut for main frame's [`method: Frame.querySelector`].
 
@@ -2400,6 +2449,10 @@ Shortcut for main frame's [`method: Frame.querySelector`].
   - alias-python: query_selector_all
   - alias-js: $$
 - returns: <[Array]<[ElementHandle]>>
+
+:::caution
+The use of [ElementHandle] is discouraged, use [Locator] objects and web-first assertions instead.
+:::
 
 The method finds all elements matching the specified selector within the page. If no elements match the selector, the
 return value resolves to `[]`.
@@ -2420,7 +2473,7 @@ last redirect.
 ### option: Page.reload.timeout = %%-navigation-timeout-%%
 
 ## property: Page.request
-* langs: js
+* langs: js, java, python
 - type: <[APIRequestContext]>
 
 API testing helper associated with this page. Requests made with this API will use page cookies.
@@ -3576,7 +3629,7 @@ response = response_info.value
 return response.ok
 
 # or with a lambda
-async with page.expect_response(lambda response: response.url == "https://example.com" and response.status === 200) as response_info:
+async with page.expect_response(lambda response: response.url == "https://example.com" and response.status == 200) as response_info:
     await page.click("input")
 response = response_info.value
 return response.ok
@@ -3637,6 +3690,11 @@ changed by using the [`method: BrowserContext.setDefaultTimeout`] or [`method: P
 
 Returns when element specified by selector satisfies [`option: state`] option. Returns `null` if waiting for `hidden` or
 `detached`.
+
+:::note
+Playwright automatically waits for element to be ready before performing an action. Using
+[Locator] objects and web-first assertions make the code wait-for-selector-free.
+:::
 
 Wait for the [`param: selector`] to satisfy [`option: state`] option (either appear/disappear from dom, or become
 visible/hidden). If at the moment of calling the method [`param: selector`] already satisfies the condition, the method

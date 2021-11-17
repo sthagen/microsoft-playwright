@@ -81,7 +81,7 @@ Processed configuration from the [configuration file](./test-configuration.md).
 ## property: TestInfo.duration
 - type: <[int]>
 
-The number of milliseconds the test took to finish. Always zero before the test finishes, either successfully or not.
+The number of milliseconds the test took to finish. Always zero before the test finishes, either successfully or not. Can be used in [`method: Test.afterEach`] hook.
 
 
 ## property: TestInfo.error
@@ -162,6 +162,11 @@ Test function as passed to `test(title, testFunction)`.
 - type: <[int]>
 
 Line number where the currently running test is declared.
+
+## property: TestInfo.snapshotDir
+- type: <[string]>
+
+Absolute path to the snapshot output directory for this specific test. Each test suite gets its own directory so they cannot conflict.
 
 ## property: TestInfo.outputDir
 - type: <[string]>

@@ -124,6 +124,19 @@ interface TestProject {
    */
   name?: string;
   /**
+   * The base directory, relative to the config file, for snapshot files created with `toMatchSnapshot`. Defaults to
+   * [testProject.testDir](https://playwright.dev/docs/api/class-testproject#test-project-test-dir).
+   *
+   * The directory for each test can be accessed by
+   * [testInfo.snapshotDir](https://playwright.dev/docs/api/class-testinfo#test-info-snapshot-dir) and
+   * [testInfo.snapshotPath(pathSegments)](https://playwright.dev/docs/api/class-testinfo#test-info-snapshot-path).
+   *
+   * This path will serve as the base directory for each test file snapshot directory. Setting `snapshotDir` to
+   * `'snapshots'`, the [testInfo.snapshotDir](https://playwright.dev/docs/api/class-testinfo#test-info-snapshot-dir) would
+   * resolve to `snapshots/a.spec.js-snapshots`.
+   */
+  snapshotDir?: string;
+  /**
    * The output directory for files created during test execution. Defaults to `test-results`.
    *
    * This directory is cleaned at the start. When running a test, a unique subdirectory inside the
@@ -533,10 +546,10 @@ interface TestConfig {
    */
   reporter?: LiteralUnion<'list'|'dot'|'line'|'github'|'json'|'junit'|'null'|'html', string> | ReporterDescription[];
   /**
-   * Whether to report slow tests. Pass `null` to disable this feature.
+   * Whether to report slow test files. Pass `null` to disable this feature.
    *
-   * Tests that took more than `threshold` milliseconds are considered slow, and the slowest ones are reported, no more than
-   * `max` number of them. Passing zero as `max` reports all slow tests that exceed the threshold.
+   * Test files that took more than `threshold` milliseconds are considered slow, and the slowest ones are reported, no more
+   * than `max` number of them. Passing zero as `max` reports all test files that exceed the threshold.
    */
   reportSlowTests?: ReportSlowTests;
   /**
@@ -603,6 +616,19 @@ interface TestConfig {
    */
   metadata?: any;
   name?: string;
+  /**
+   * The base directory, relative to the config file, for snapshot files created with `toMatchSnapshot`. Defaults to
+   * [testConfig.testDir](https://playwright.dev/docs/api/class-testconfig#test-config-test-dir).
+   *
+   * The directory for each test can be accessed by
+   * [testInfo.snapshotDir](https://playwright.dev/docs/api/class-testinfo#test-info-snapshot-dir) and
+   * [testInfo.snapshotPath(pathSegments)](https://playwright.dev/docs/api/class-testinfo#test-info-snapshot-path).
+   *
+   * This path will serve as the base directory for each test file snapshot directory. Setting `snapshotDir` to
+   * `'snapshots'`, the [testInfo.snapshotDir](https://playwright.dev/docs/api/class-testinfo#test-info-snapshot-dir) would
+   * resolve to `snapshots/a.spec.js-snapshots`.
+   */
+  snapshotDir?: string;
   /**
    * The output directory for files created during test execution. Defaults to `test-results`.
    *
@@ -939,10 +965,10 @@ export interface FullConfig<TestArgs = {}, WorkerArgs = {}> {
    */
   reporter: ReporterDescription[];
   /**
-   * Whether to report slow tests. Pass `null` to disable this feature.
+   * Whether to report slow test files. Pass `null` to disable this feature.
    *
-   * Tests that took more than `threshold` milliseconds are considered slow, and the slowest ones are reported, no more than
-   * `max` number of them. Passing zero as `max` reports all slow tests that exceed the threshold.
+   * Test files that took more than `threshold` milliseconds are considered slow, and the slowest ones are reported, no more
+   * than `max` number of them. Passing zero as `max` reports all test files that exceed the threshold.
    */
   reportSlowTests: ReportSlowTests;
   rootDir: string;
@@ -1303,6 +1329,7 @@ export interface TestInfo {
   retry: number;
   /**
    * The number of milliseconds the test took to finish. Always zero before the test finishes, either successfully or not.
+   * Can be used in [test.afterEach(hookFunction)](https://playwright.dev/docs/api/class-test#test-after-each) hook.
    */
   duration: number;
   /**
@@ -1342,6 +1369,11 @@ export interface TestInfo {
    * [snapshots](https://playwright.dev/docs/test-snapshots).
    */
   snapshotSuffix: string;
+  /**
+   * Absolute path to the snapshot output directory for this specific test. Each test suite gets its own directory so they
+   * cannot conflict.
+   */
+  snapshotDir: string;
   /**
    * Absolute path to the output directory for this specific test run. Each test run gets its own directory so they cannot
    * conflict.
@@ -2473,7 +2505,7 @@ export interface TestType<TestArgs extends KeyValue, WorkerArgs extends KeyValue
    *
    * You can use [test.afterAll(hookFunction)](https://playwright.dev/docs/api/class-test#test-after-all) to teardown any
    * resources set up in `beforeAll`.
-   * @param hookFunction Hook function that takes one or two arguments: an object with fixtures and optional [TestInfo].
+   * @param hookFunction Hook function that takes one or two arguments: an object with worker fixtures and optional [TestInfo].
    */
   beforeAll(inner: (args: TestArgs & WorkerArgs, testInfo: TestInfo) => Promise<any> | any): void;
   /**
@@ -2481,7 +2513,7 @@ export interface TestType<TestArgs extends KeyValue, WorkerArgs extends KeyValue
    * all tests in the file. When called inside a
    * [test.describe(title, callback)](https://playwright.dev/docs/api/class-test#test-describe) group, runs after all tests
    * in the group.
-   * @param hookFunction Hook function that takes one or two arguments: an object with fixtures and optional [TestInfo].
+   * @param hookFunction Hook function that takes one or two arguments: an object with worker fixtures and optional [TestInfo].
    */
   afterAll(inner: (args: TestArgs & WorkerArgs, testInfo: TestInfo) => Promise<any> | any): void;
   /**
@@ -2655,15 +2687,15 @@ export interface PlaywrightWorkerOptions {
    */
   screenshot: 'off' | 'on' | 'only-on-failure';
   /**
-   * Whether to record a trace for each test. Defaults to `'off'`.
-   * - `'off'`: Do not record a trace.
-   * - `'on'`: Record a trace for each test.
-   * - `'retain-on-failure'`: Record a trace for each test, but remove it from successful test runs.
-   * - `'on-first-retry'`: Record a trace only when retrying a test for the first time.
+   * Whether to record trace for each test. Defaults to `'off'`.
+   * - `'off'`: Do not record trace.
+   * - `'on'`: Record trace for each test.
+   * - `'retain-on-failure'`: Record trace for each test, but remove all traces from successful test runs.
+   * - `'on-first-retry'`: Record trace only when retrying a test for the first time.
    *
    * Learn more about [recording trace](https://playwright.dev/docs/test-configuration#record-test-trace).
    */
-  trace: 'off' | 'on' | 'retain-on-failure' | 'on-first-retry' | /** deprecated */ 'retry-with-trace';
+  trace: TraceMode | /** deprecated */ 'retry-with-trace' | { mode: TraceMode, snapshots?: boolean, screenshots?: boolean, sources?: boolean };
   /**
    * Whether to record video for each test. Defaults to `'off'`.
    * - `'off'`: Do not record video.
@@ -2673,10 +2705,11 @@ export interface PlaywrightWorkerOptions {
    *
    * Learn more about [recording video](https://playwright.dev/docs/test-configuration#record-video).
    */
-  video: VideoMode | { mode: VideoMode, size: ViewportSize };
+  video: VideoMode | /** deprecated */ 'retry-with-video' | { mode: VideoMode, size?: ViewportSize };
 }
 
-export type VideoMode = 'off' | 'on' | 'retain-on-failure' | 'on-first-retry' | /** deprecated */ 'retry-with-video';
+export type TraceMode = 'off' | 'on' | 'retain-on-failure' | 'on-first-retry';
+export type VideoMode = 'off' | 'on' | 'retain-on-failure' | 'on-first-retry';
 
 /**
  * Playwright Test provides many options to configure test environment, [Browser], [BrowserContext] and more.

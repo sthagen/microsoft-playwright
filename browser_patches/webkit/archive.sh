@@ -76,17 +76,6 @@ createZipForLinux() {
   rm -rf "$tmpdir"
 }
 
-# see https://docs.microsoft.com/en-us/visualstudio/install/tools-for-managing-visual-studio-instances?view=vs-2019
-printMSVCRedistDir() {
-  local dll_file=$("C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe" -latest -find '**\Redist\MSVC\*\x64\**\vcruntime140.dll')
-  local redist_dir=$(dirname "$dll_file")
-  if ! [[ -d $redist_dir ]]; then
-    echo "ERROR: cannot find MS VS C++ redistributable $redist_dir"
-    exit 1;
-  fi
-  echo "$redist_dir"
-}
-
 createZipForWindows() {
   # create a TMP directory to copy all necessary files
   local tmpdir="/tmp/webkit-deploy-$(date +%s)"
@@ -118,13 +107,11 @@ createZipForMac() {
   # copy all relevant files
   ditto {./WebKitBuild/Release,"$tmpdir"}/com.apple.WebKit.GPU.xpc
   ditto {./WebKitBuild/Release,"$tmpdir"}/com.apple.WebKit.Networking.xpc
-  ditto {./WebKitBuild/Release,"$tmpdir"}/com.apple.WebKit.Plugin.64.xpc
   ditto {./WebKitBuild/Release,"$tmpdir"}/com.apple.WebKit.WebContent.xpc
   ditto {./WebKitBuild/Release,"$tmpdir"}/JavaScriptCore.framework
   ditto {./WebKitBuild/Release,"$tmpdir"}/libANGLE-shared.dylib
   ditto {./WebKitBuild/Release,"$tmpdir"}/libwebrtc.dylib
   ditto {./WebKitBuild/Release,"$tmpdir"}/Playwright.app
-  ditto {./WebKitBuild/Release,"$tmpdir"}/PluginProcessShim.dylib
   ditto {./WebKitBuild/Release,"$tmpdir"}/WebCore.framework
   ditto {./WebKitBuild/Release,"$tmpdir"}/WebInspectorUI.framework
   ditto {./WebKitBuild/Release,"$tmpdir"}/WebKit.framework
@@ -144,5 +131,6 @@ createZipForMac() {
 trap "cd $(pwd -P)" EXIT
 cd "$(dirname "$0")"
 SCRIPTS_DIR="$(pwd -P)"
+source "${SCRIPTS_DIR}/../utils.sh"
 
 main "$@"

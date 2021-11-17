@@ -47,17 +47,16 @@
 }
 
 .call-line {
-  padding: 0 0 2px 6px;
+  padding: 4px 0 4px 6px;
   flex: none;
   align-items: center;
   text-overflow: ellipsis;
   overflow: hidden;
+  line-height: 18px;
+  white-space: nowrap;
 }
 
-.call-duration {
-  color: var(--gray);
-}
-
+.call-line .datetime,
 .call-line .string {
   color: var(--orange);
 }

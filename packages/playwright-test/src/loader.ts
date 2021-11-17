@@ -169,6 +169,9 @@ export class Loader {
     let outputDir = takeFirst(this._configOverrides.outputDir, projectConfig.outputDir, this._config.outputDir, path.resolve(process.cwd(), 'test-results'));
     if (!path.isAbsolute(outputDir))
       outputDir = path.resolve(configDir, outputDir);
+    let snapshotDir = takeFirst(this._configOverrides.snapshotDir, projectConfig.snapshotDir, this._config.snapshotDir, testDir);
+    if (!path.isAbsolute(snapshotDir))
+      snapshotDir = path.resolve(configDir, snapshotDir);
     const fullProject: FullProject = {
       define: takeFirst(this._configOverrides.define, projectConfig.define, this._config.define, []),
       expect: takeFirst(this._configOverrides.expect, projectConfig.expect, this._config.expect, undefined),
@@ -178,6 +181,7 @@ export class Loader {
       metadata: takeFirst(this._configOverrides.metadata, projectConfig.metadata, this._config.metadata, undefined),
       name: takeFirst(this._configOverrides.name, projectConfig.name, this._config.name, ''),
       testDir,
+      snapshotDir,
       testIgnore: takeFirst(this._configOverrides.testIgnore, projectConfig.testIgnore, this._config.testIgnore, []),
       testMatch: takeFirst(this._configOverrides.testMatch, projectConfig.testMatch, this._config.testMatch, '**/?(*.)@(spec|test).@(ts|js|mjs)'),
       timeout: takeFirst(this._configOverrides.timeout, projectConfig.timeout, this._config.timeout, 10000),
@@ -204,6 +208,14 @@ export class Loader {
         }
       }
     } catch (error) {
+      if (error.code === 'ERR_MODULE_NOT_FOUND' && error.message.includes('Did you mean to import')) {
+        const didYouMean = /Did you mean to import (.*)\?/.exec(error.message)?.[1];
+        if (didYouMean?.endsWith('.ts'))
+          throw errorWithFile(file, 'Cannot import a typescript file from an esmodule.');
+      }
+      if (error.code === 'ERR_UNKNOWN_FILE_EXTENSION' && error.message.includes('.ts'))
+        throw errorWithFile(file, 'Cannot import a typescript file from an esmodule.');
+
       if (error instanceof SyntaxError && error.message.includes('Cannot use import statement outside a module'))
         throw errorWithFile(file, 'JavaScript files must end with .mjs to use import.');
 

@@ -21,6 +21,8 @@ export type ContextEntry = {
   startTime: number;
   endTime: number;
   browserName: string;
+  platform?: string;
+  wallTime?: number;
   title?: string;
   options: trace.BrowserContextEventOptions;
   pages: PageEntry[];
@@ -28,6 +30,7 @@ export type ContextEntry = {
   actions: trace.ActionTraceEvent[];
   events: trace.ActionTraceEvent[];
   objects: { [key: string]: any };
+  hasSource: boolean;
 };
 
 export type PageEntry = {
@@ -53,5 +56,6 @@ export function createEmptyContext(): ContextEntry {
     actions: [],
     events: [],
     objects: {},
+    hasSource: false
   };
 }

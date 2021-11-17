@@ -27,7 +27,7 @@ import { ConsoleMessage } from './consoleMessage';
 import { Dialog } from './dialog';
 import { Download } from './download';
 import { ElementHandle, determineScreenshotType } from './elementHandle';
-import { Locator } from './locator';
+import { Locator, FrameLocator } from './locator';
 import { Worker } from './worker';
 import { Frame, verifyLoadState, WaitForNavigationOptions } from './frame';
 import { Keyboard, Mouse, Touchscreen } from './input';
@@ -47,7 +47,7 @@ import { isString, isRegExp, isObject, mkdirIfNeeded, headersObjectToArray } fro
 import { isSafeCloseError } from '../utils/errors';
 import { Video } from './video';
 import { Artifact } from './artifact';
-import { FetchRequest } from './fetch';
+import { APIRequestContext } from './fetch';
 
 type PDFOptions = Omit<channels.PagePdfParams, 'width' | 'height' | 'margin'> & {
   width?: string | number,
@@ -78,7 +78,7 @@ export class Page extends ChannelOwner<channels.PageChannel, channels.PageInitia
   readonly coverage: Coverage;
   readonly keyboard: Keyboard;
   readonly mouse: Mouse;
-  readonly request: FetchRequest;
+  readonly request: APIRequestContext;
   readonly touchscreen: Touchscreen;
 
   readonly _bindings = new Map<string, (source: structs.BindingSource, ...args: any[]) => any>();
@@ -541,6 +541,10 @@ export class Page extends ChannelOwner<channels.PageChannel, channels.PageInitia
 
   locator(selector: string): Locator {
     return this.mainFrame().locator(selector);
+  }
+
+  frameLocator(selector: string): FrameLocator {
+    return this.mainFrame().frameLocator(selector);
   }
 
   async focus(selector: string, options?: channels.FrameFocusOptions) {

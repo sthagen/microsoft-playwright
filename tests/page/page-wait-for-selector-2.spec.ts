@@ -236,7 +236,7 @@ it('should throw when frame is detached xpath', async ({ page, server }) => {
   await detachFrame(page, 'frame1');
   await waitPromise;
   expect(waitError).toBeTruthy();
-  expect(waitError.message).toContain('waitForFunction failed: frame got detached.');
+  expect(waitError.message).toContain('frame.waitForSelector: Frame was detached');
 });
 
 it('should return the element handle xpath', async ({ page, server }) => {
@@ -287,4 +287,24 @@ it('should work when navigating before node adoption', async ({ page, mode, serv
 
   // This text is coming from /one-style.html
   expect(await div.textContent()).toBe('hello, world!');
+});
+
+it('should fail when navigating while on handle', async ({ page, mode, server }) => {
+  it.skip(mode !== 'default');
+
+  await page.goto(server.EMPTY_PAGE);
+  await page.setContent(`<div>Hello</div>`);
+
+  let navigatedOnce = false;
+  const __testHookBeforeAdoptNode = async () => {
+    if (!navigatedOnce) {
+      navigatedOnce = true;
+      await page.goto(server.PREFIX + '/one-style.html');
+    }
+  };
+
+  const body = await page.waitForSelector('body');
+  const error = await body.waitForSelector('div', { __testHookBeforeAdoptNode } as any).catch(e => e);
+  expect(error.message).toContain('Error: frame navigated while waiting for selector');
+  expect(error.message).toContain('"div"');
 });

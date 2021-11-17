@@ -211,7 +211,6 @@ export type NormalizedContinueOverrides = {
   method?: string,
   headers?: HeadersArray,
   postData?: Buffer,
-  interceptResponse?: boolean,
 };
 
 export type NetworkCookie = {
@@ -371,7 +370,7 @@ export type SetStorageState = {
   origins?: OriginStorage[]
 };
 
-export type FetchResponse = {
+export type APIResponse = {
   url: string,
   status: number,
   statusText: string,

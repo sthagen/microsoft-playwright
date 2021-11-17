@@ -124,14 +124,15 @@ test('should print slow tests', async ({ runInlineTest }) => {
   });
   expect(result.exitCode).toBe(0);
   expect(result.passed).toBe(8);
-  expect(stripAscii(result.output)).toContain(`Slow test: [foo] › dir${path.sep}a.test.js (`);
-  expect(stripAscii(result.output)).toContain(`Slow test: [bar] › dir${path.sep}a.test.js (`);
-  expect(stripAscii(result.output)).toContain(`Slow test: [baz] › dir${path.sep}a.test.js (`);
-  expect(stripAscii(result.output)).toContain(`Slow test: [qux] › dir${path.sep}a.test.js (`);
-  expect(stripAscii(result.output)).not.toContain(`Slow test: [foo] › dir${path.sep}b.test.js (`);
-  expect(stripAscii(result.output)).not.toContain(`Slow test: [bar] › dir${path.sep}b.test.js (`);
-  expect(stripAscii(result.output)).not.toContain(`Slow test: [baz] › dir${path.sep}b.test.js (`);
-  expect(stripAscii(result.output)).not.toContain(`Slow test: [qux] › dir${path.sep}b.test.js (`);
+  expect(stripAscii(result.output)).toContain(`Slow test file: [foo] › dir${path.sep}a.test.js (`);
+  expect(stripAscii(result.output)).toContain(`Slow test file: [bar] › dir${path.sep}a.test.js (`);
+  expect(stripAscii(result.output)).toContain(`Slow test file: [baz] › dir${path.sep}a.test.js (`);
+  expect(stripAscii(result.output)).toContain(`Slow test file: [qux] › dir${path.sep}a.test.js (`);
+  expect(stripAscii(result.output)).toContain(`Consider splitting slow test files to speed up parallel execution`);
+  expect(stripAscii(result.output)).not.toContain(`Slow test file: [foo] › dir${path.sep}b.test.js (`);
+  expect(stripAscii(result.output)).not.toContain(`Slow test file: [bar] › dir${path.sep}b.test.js (`);
+  expect(stripAscii(result.output)).not.toContain(`Slow test file: [baz] › dir${path.sep}b.test.js (`);
+  expect(stripAscii(result.output)).not.toContain(`Slow test file: [qux] › dir${path.sep}b.test.js (`);
 });
 
 test('should not print slow tests', async ({ runInlineTest }) => {
@@ -246,4 +247,10 @@ test('should print errors with inconsistent message/stack', async ({ runInlineTe
   expect(result.failed).toBe(1);
   expect(result.output).toContain('hi!Error: Hello');
   expect(result.output).toContain('at myTest');
+});
+
+test('should print "no tests found" error', async ({ runInlineTest }) => {
+  const result = await runInlineTest({ });
+  expect(result.exitCode).toBe(1);
+  expect(result.output).toContain('no tests found.');
 });

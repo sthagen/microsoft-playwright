@@ -157,13 +157,7 @@ export function createScheme(tChannel: (name: string) => Validator): Scheme {
       buffer: tBinary,
     })),
   });
-  scheme.InterceptedResponse = tObject({
-    request: tChannel('Request'),
-    status: tNumber,
-    statusText: tString,
-    headers: tArray(tType('NameValue')),
-  });
-  scheme.FetchRequestFetchParams = tObject({
+  scheme.APIRequestContextFetchParams = tObject({
     url: tString,
     params: tOptional(tArray(tType('NameValue'))),
     method: tOptional(tString),
@@ -176,15 +170,15 @@ export function createScheme(tChannel: (name: string) => Validator): Scheme {
     failOnStatusCode: tOptional(tBoolean),
     ignoreHTTPSErrors: tOptional(tBoolean),
   });
-  scheme.FetchRequestFetchResponseBodyParams = tObject({
+  scheme.APIRequestContextFetchResponseBodyParams = tObject({
     fetchUid: tString,
   });
-  scheme.FetchRequestStorageStateParams = tOptional(tObject({}));
-  scheme.FetchRequestDisposeFetchResponseParams = tObject({
+  scheme.APIRequestContextStorageStateParams = tOptional(tObject({}));
+  scheme.APIRequestContextDisposeAPIResponseParams = tObject({
     fetchUid: tString,
   });
-  scheme.FetchRequestDisposeParams = tOptional(tObject({}));
-  scheme.FetchResponse = tObject({
+  scheme.APIRequestContextDisposeParams = tOptional(tObject({}));
+  scheme.APIResponse = tObject({
     fetchUid: tString,
     url: tString,
     status: tNumber,
@@ -1108,17 +1102,14 @@ export function createScheme(tChannel: (name: string) => Validator): Scheme {
     method: tOptional(tString),
     headers: tOptional(tArray(tType('NameValue'))),
     postData: tOptional(tBinary),
-    interceptResponse: tOptional(tBoolean),
   });
   scheme.RouteFulfillParams = tObject({
     status: tOptional(tNumber),
     headers: tOptional(tArray(tType('NameValue'))),
     body: tOptional(tString),
     isBase64: tOptional(tBoolean),
-    useInterceptedResponseBody: tOptional(tBoolean),
     fetchResponseUid: tOptional(tString),
   });
-  scheme.RouteResponseBodyParams = tOptional(tObject({}));
   scheme.ResourceTiming = tObject({
     startTime: tNumber,
     domainLookupStart: tNumber,

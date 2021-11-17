@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+import fs from 'fs';
 import path from 'path';
 import type { Browser, Frame, Locator, Page } from 'playwright-core';
 import { showTraceViewer } from '../../packages/playwright-core/lib/server/trace/viewer/traceViewer';
@@ -103,8 +104,8 @@ const test = playwrightTest.extend<{ showTraceViewer: (trace: string) => Promise
       browser = await playwright.chromium.connectOverCDP({ endpointURL: contextImpl._browser.options.wsEndpoint });
       return new TraceViewerPage(browser.contexts()[0].pages()[0]);
     });
-    await browser.close();
-    await contextImpl._browser.close();
+    await browser?.close();
+    await contextImpl?._browser.close();
   },
 
   runAndTrace: async ({ context, showTraceViewer }, use, testInfo) => {
@@ -174,25 +175,25 @@ test.beforeAll(async function recordTrace({ browser, browserName, browserType, s
 
 test('should show empty trace viewer', async ({ showTraceViewer }, testInfo) => {
   const traceViewer = await showTraceViewer(testInfo.outputPath());
-  expect(await traceViewer.page.title()).toBe('Playwright Trace Viewer');
+  await expect(traceViewer.page).toHaveTitle('Playwright Trace Viewer');
 });
 
 test('should open simple trace viewer', async ({ showTraceViewer }) => {
   const traceViewer = await showTraceViewer(traceFile);
   await expect(traceViewer.actionTitles).toHaveText([
-    /browserContext.newPage— [\d.ms]+/,
-    /page.gotodata:text\/html,<html>Hello world<\/html>— [\d.ms]+/,
-    /page.setContent— [\d.ms]+/,
-    /expect.toHaveTextbutton— [\d.ms]+/,
-    /page.evaluate— [\d.ms]+/,
-    /page.click"Click"— [\d.ms]+/,
-    /page.waitForEvent— [\d.ms]+/,
-    /page.route— [\d.ms]+/,
-    /page.waitForNavigation— [\d.ms]+/,
-    /page.waitForTimeout— [\d.ms]+/,
-    /page.gotohttp:\/\/localhost:\d+\/frames\/frame.html— [\d.ms]+/,
-    /route.continue— [\d.ms]+/,
-    /page.setViewportSize— [\d.ms]+/,
+    /browserContext.newPage/,
+    /page.gotodata:text\/html,<html>Hello world<\/html>/,
+    /page.setContent/,
+    /expect.toHaveTextbutton/,
+    /page.evaluate/,
+    /page.click"Click"/,
+    /page.waitForEvent/,
+    /page.route/,
+    /page.waitForNavigation/,
+    /page.waitForTimeout/,
+    /page.gotohttp:\/\/localhost:\d+\/frames\/frame.html/,
+    /route.continue/,
+    /page.setViewportSize/,
   ]);
 });
 
@@ -235,7 +236,9 @@ test('should show params and return value', async ({ showTraceViewer, browserNam
   const traceViewer = await showTraceViewer(traceFile);
   await traceViewer.selectAction('page.evaluate');
   await expect(traceViewer.callLines).toHaveText([
-    /page.evaluate — [\d.ms]+/,
+    /page.evaluate/,
+    /wall time: [0-9/:,APM ]+/,
+    /duration: [\d]+ms/,
     'expression: "({↵    a↵  }) => {↵    console.log(\'Info\');↵    console.warn(\'Warning\');↵    con…"',
     'isFunction: true',
     'arg: {"a":"paramA","b":4}',
@@ -276,7 +279,16 @@ test('should have network requests', async ({ showTraceViewer }) => {
   ]);
 });
 
-test('should capture iframe', async ({ page, server, browserName, runAndTrace }) => {
+test('should show snapshot URL', async ({ page, runAndTrace, server }) => {
+  const traceViewer = await runAndTrace(async () => {
+    await page.goto(server.EMPTY_PAGE);
+    await page.evaluate('2+2');
+  });
+  await traceViewer.snapshotFrame('page.evaluate');
+  await expect(traceViewer.page.locator('.snapshot-url')).toHaveText(server.EMPTY_PAGE);
+});
+
+test('should capture iframe', async ({ page, server, runAndTrace }) => {
   await page.route('**/empty.html', route => {
     route.fulfill({
       body: '<iframe src="iframe.html"></iframe>',
@@ -540,4 +552,45 @@ test('should show action source', async ({ showTraceViewer }) => {
   ]);
   await expect(page.locator('.source-line-running')).toContainText('page.click');
   await expect(page.locator('.stack-trace-frame.selected')).toHaveText(/doClick.*trace-viewer\.spec\.ts:[\d]+/);
+});
+
+test('should follow redirects', async ({ page, runAndTrace, server, asset }) => {
+  server.setRoute('/empty.html', (req, res) => {
+    res.writeHead(200, { 'Content-Type': 'text/html' });
+    res.end(`<div><img id=img src="image.png"></img></div>`);
+  });
+  server.setRoute('/image.png', (req, res) => {
+    res.writeHead(301, { location: '/image-301.png' });
+    res.end();
+  });
+  server.setRoute('/image-301.png', (req, res) => {
+    res.writeHead(302, { location: '/image-302.png' });
+    res.end();
+  });
+  server.setRoute('/image-302.png', (req, res) => {
+    res.writeHead(200, { 'content-type': 'image/png' });
+    res.end(fs.readFileSync(asset('digits/0.png')));
+  });
+
+  const traceViewer = await runAndTrace(async () => {
+    await page.goto(server.EMPTY_PAGE);
+    expect(await page.evaluate(() => (window as any).img.naturalWidth)).toBe(10);
+  });
+  const snapshotFrame = await traceViewer.snapshotFrame('page.evaluate');
+  await expect(snapshotFrame.locator('img')).toHaveJSProperty('naturalWidth', 10);
+});
+
+test('should include metainfo', async ({ showTraceViewer, browserName }) => {
+  const traceViewer = await showTraceViewer(traceFile);
+  await traceViewer.page.locator('text=Metadata').click();
+  const callLine = traceViewer.page.locator('.call-line');
+  await expect(callLine.locator('text=start time')).toHaveText(/start time: [\d/,: ]+/);
+  await expect(callLine.locator('text=duration')).toHaveText(/duration: [\dms]+/);
+  await expect(callLine.locator('text=engine')).toHaveText(/engine: [\w]+/);
+  await expect(callLine.locator('text=platform')).toHaveText(/platform: [\w]+/);
+  await expect(callLine.locator('text=width')).toHaveText(/width: [\d]+/);
+  await expect(callLine.locator('text=height')).toHaveText(/height: [\d]+/);
+  await expect(callLine.locator('text=pages')).toHaveText(/pages: 1/);
+  await expect(callLine.locator('text=actions')).toHaveText(/actions: [\d]+/);
+  await expect(callLine.locator('text=events')).toHaveText(/events: [\d]+/);
 });

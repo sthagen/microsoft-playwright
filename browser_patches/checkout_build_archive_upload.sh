@@ -66,6 +66,12 @@ elif [[ "$BUILD_FLAVOR" == "ffmpeg-linux" ]]; then
   EXPECTED_HOST_OS="Ubuntu"
   EXPECTED_HOST_OS_VERSION="20.04"
   BUILD_BLOB_NAME="ffmpeg-linux.zip"
+elif [[ "$BUILD_FLAVOR" == "ffmpeg-linux-arm64" ]]; then
+  BROWSER_NAME="ffmpeg"
+  EXTRA_BUILD_ARGS="--cross-compile-linux-arm64"
+  EXPECTED_HOST_OS="Ubuntu"
+  EXPECTED_HOST_OS_VERSION="20.04"
+  BUILD_BLOB_NAME="ffmpeg-linux-arm64.zip"
 elif [[ "$BUILD_FLAVOR" == "ffmpeg-cross-compile-win64" ]]; then
   BROWSER_NAME="ffmpeg"
   EXTRA_BUILD_ARGS="--cross-compile-win64"
@@ -201,6 +207,13 @@ elif [[ "$BUILD_FLAVOR" == "firefox-ubuntu-20.04" ]]; then
   EXPECTED_HOST_OS="Ubuntu"
   EXPECTED_HOST_OS_VERSION="20.04"
   BUILD_BLOB_NAME="firefox-ubuntu-20.04.zip"
+elif [[ "$BUILD_FLAVOR" == "firefox-ubuntu-20.04-arm64" ]]; then
+  BROWSER_NAME="firefox"
+  EXTRA_BUILD_ARGS="--full --linux-arm64"
+  EXTRA_ARCHIVE_ARGS="--linux-arm64"
+  EXPECTED_HOST_OS="Ubuntu"
+  EXPECTED_HOST_OS_VERSION="20.04"
+  BUILD_BLOB_NAME="firefox-ubuntu-20.04-arm64.zip"
 elif [[ "$BUILD_FLAVOR" == "firefox-mac-11" ]]; then
   BROWSER_NAME="firefox"
   EXTRA_BUILD_ARGS="--full"
@@ -272,6 +285,13 @@ elif [[ "$BUILD_FLAVOR" == "webkit-ubuntu-20.04" ]]; then
   EXPECTED_HOST_OS="Ubuntu"
   EXPECTED_HOST_OS_VERSION="20.04"
   BUILD_BLOB_NAME="webkit-ubuntu-20.04.zip"
+elif [[ "$BUILD_FLAVOR" == "webkit-ubuntu-20.04-arm64" ]]; then
+  BROWSER_NAME="webkit"
+  EXTRA_BUILD_ARGS="--full"
+  EXPECTED_HOST_OS="Ubuntu"
+  EXPECTED_HOST_OS_VERSION="20.04"
+  EXPECTED_ARCH="aarch64"
+  BUILD_BLOB_NAME="webkit-ubuntu-20.04-arm64.zip"
 elif [[ "$BUILD_FLAVOR" == "webkit-win64" ]]; then
   BROWSER_NAME="webkit"
   EXPECTED_HOST_OS="MINGW"

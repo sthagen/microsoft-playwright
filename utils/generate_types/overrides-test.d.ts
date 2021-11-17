@@ -51,6 +51,7 @@ interface TestProject {
   expect?: ExpectSettings;
   metadata?: any;
   name?: string;
+  snapshotDir?: string;
   outputDir?: string;
   repeatEach?: number;
   retries?: number;
@@ -120,6 +121,7 @@ interface TestConfig {
   expect?: ExpectSettings;
   metadata?: any;
   name?: string;
+  snapshotDir?: string;
   outputDir?: string;
   repeatEach?: number;
   retries?: number;
@@ -213,6 +215,7 @@ export interface TestInfo {
   stdout: (string | Buffer)[];
   stderr: (string | Buffer)[];
   snapshotSuffix: string;
+  snapshotDir: string;
   outputDir: string;
   snapshotPath: (...pathSegments: string[]) => string;
   outputPath: (...pathSegments: string[]) => string;
@@ -297,11 +300,12 @@ export interface PlaywrightWorkerOptions {
   channel: BrowserChannel | undefined;
   launchOptions: LaunchOptions;
   screenshot: 'off' | 'on' | 'only-on-failure';
-  trace: 'off' | 'on' | 'retain-on-failure' | 'on-first-retry' | /** deprecated */ 'retry-with-trace';
-  video: VideoMode | { mode: VideoMode, size: ViewportSize };
+  trace: TraceMode | /** deprecated */ 'retry-with-trace' | { mode: TraceMode, snapshots?: boolean, screenshots?: boolean, sources?: boolean };
+  video: VideoMode | /** deprecated */ 'retry-with-video' | { mode: VideoMode, size?: ViewportSize };
 }
 
-export type VideoMode = 'off' | 'on' | 'retain-on-failure' | 'on-first-retry' | /** deprecated */ 'retry-with-video';
+export type TraceMode = 'off' | 'on' | 'retain-on-failure' | 'on-first-retry';
+export type VideoMode = 'off' | 'on' | 'retain-on-failure' | 'on-first-retry';
 
 export interface PlaywrightTestOptions {
   acceptDownloads: boolean | undefined;

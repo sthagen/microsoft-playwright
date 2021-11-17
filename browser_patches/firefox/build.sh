@@ -2,12 +2,8 @@
 set -e
 set +x
 
-RUST_VERSION="1.51.0"
+RUST_VERSION="1.53.0"
 CBINDGEN_VERSION="0.19.0"
-# Certain minimal SDK Version is required by firefox
-MACOS_SDK_VERSION="10.12"
-# XCode version can be determined from https://en.wikipedia.org/wiki/Xcode
-XCODE_VERSION_WITH_REQUIRED_SDK_VERSION="8.3.3"
 
 trap "cd $(pwd -P)" EXIT
 
@@ -55,6 +51,10 @@ else
   exit 1;
 fi
 
+if [[ $1 == "--linux-arm64" || $2 == "--linux-arm64" ]]; then
+  echo "ac_add_options --target=aarch64-linux-gnu" >> .mozconfig
+fi
+
 OBJ_FOLDER="obj-build-playwright"
 echo "mk_add_options MOZ_OBJDIR=@TOPSRCDIR@/${OBJ_FOLDER}" >> .mozconfig
 echo "ac_add_options --disable-crashreporter" >> .mozconfig
@@ -86,6 +86,7 @@ if [[ $1 != "--juggler" ]]; then
 fi
 
 if [[ $1 == "--full" || $2 == "--full" ]]; then
+  echo "ac_add_options --enable-bootstrap" >> .mozconfig
   if [[ "$(uname)" == "Darwin" || "$(uname)" == "Linux" ]]; then
     SHELL=/bin/sh ./mach --no-interactive bootstrap --application-choice=browser
   fi

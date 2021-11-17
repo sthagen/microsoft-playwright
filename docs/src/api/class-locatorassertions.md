@@ -1,7 +1,22 @@
 # class: LocatorAssertions
 * langs: java
 
-The [LocatorAssertions] class provides assertion methods that can be used to make assertions about the [Locator] state in the tests. A new instance of [LocatorAssertions] is created by calling [`method: PlaywrightAssertions.assertThatLocator`].
+The [LocatorAssertions] class provides assertion methods that can be used to make assertions about the [Locator] state in the tests. A new instance of [LocatorAssertions] is created by calling [`method: PlaywrightAssertions.assertThatLocator`]:
+
+```java
+...
+import static com.microsoft.playwright.assertions.PlaywrightAssertions.assertThat;
+
+public class TestLocator {
+  ...
+  @Test
+  void statusBecomesSubmitted() {
+    ...
+    page.click("#submit-button");
+    assertThat(page.locator(".status")).hasText("Submitted");
+  }
+}
+```
 
 ## method: LocatorAssertions.containsText
 
@@ -14,7 +29,7 @@ assertThat(page.locator(".title")).containsText("substring");
 Note that if array is passed as an expected value, entire lists can be asserted:
 
 ```java
-assertThat(page.locator("list > .list-item")).containsText(Arrays.asList("Text 1", "Text 4", "Text 5"));
+assertThat(page.locator("list > .list-item")).containsText(new String[] {"Text 1", "Text 4", "Text 5"});
 ```
 
 ### param: LocatorAssertions.containsText.expected
@@ -60,7 +75,7 @@ assertThat(page.locator("#component")).hasClass(Pattern.compile("selected"));
 Note that if array is passed as an expected value, entire lists can be asserted:
 
 ```java
-assertThat(page.locator("list > .component")).hasClass(Arrays.asList("component", "component selected", "component"));
+assertThat(page.locator("list > .component")).hasClass(new String[] {"component", "component selected", "component"});
 ```
 
 ### param: LocatorAssertions.hasClass.expected
@@ -145,14 +160,14 @@ Property value.
 Ensures the [Locator] points to an element with the given text. You can use regular expressions for the value as well.
 
 ```java
-assertThat(page.locator(".title")).hasText(Pattern.compile("Welcome, Test User"));
+assertThat(page.locator(".title")).hasText("Welcome, Test User");
 assertThat(page.locator(".title")).hasText(Pattern.compile("Welcome, .*"));
 ```
 
 Note that if array is passed as an expected value, entire lists can be asserted:
 
 ```java
-assertThat(page.locator("list > .component")).hasText(Arrays.asList("Text 1", "Text 2", "Text 3"));
+assertThat(page.locator("list > .component")).hasText(new String[] {"Text 1", "Text 2", "Text 3"});
 ```
 
 ### param: LocatorAssertions.hasText.expected

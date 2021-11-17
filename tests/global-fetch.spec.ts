@@ -15,6 +15,7 @@
  */
 
 import http from 'http';
+import * as util from 'util';
 import { getPlaywrightVersion } from 'playwright-core/lib/utils/utils';
 import { expect, playwrightTest as it } from './config/browserTest';
 
@@ -38,7 +39,7 @@ it.afterAll(() => {
   http.globalAgent = prevAgent;
 });
 
-for (const method of ['fetch', 'delete', 'get', 'head', 'patch', 'post', 'put']) {
+for (const method of ['fetch', 'delete', 'get', 'head', 'patch', 'post', 'put'] as const) {
   it(`${method} should work`, async ({ playwright, server }) => {
     const request = await playwright.request.newContext();
     const response = await request[method](server.PREFIX + '/simple.json');
@@ -46,21 +47,20 @@ for (const method of ['fetch', 'delete', 'get', 'head', 'patch', 'post', 'put'])
     expect(response.status()).toBe(200);
     expect(response.statusText()).toBe('OK');
     expect(response.ok()).toBeTruthy();
-    expect(response.url()).toBe(server.PREFIX + '/simple.json');
     expect(response.headers()['content-type']).toBe('application/json; charset=utf-8');
     expect(response.headersArray()).toContainEqual({ name: 'Content-Type', value: 'application/json; charset=utf-8' });
     expect(await response.text()).toBe(method === 'head' ? '' : '{"foo": "bar"}\n');
   });
-
-  it(`should dispose global ${method} request`, async function({ playwright, context, server }) {
-    const request = await playwright.request.newContext();
-    const response = await request.get(server.PREFIX + '/simple.json');
-    expect(await response.json()).toEqual({ foo: 'bar' });
-    await request.dispose();
-    const error = await response.body().catch(e => e);
-    expect(error.message).toContain('Response has been disposed');
-  });
 }
+
+it(`should dispose global request`, async function({ playwright, server }) {
+  const request = await playwright.request.newContext();
+  const response = await request.get(server.PREFIX + '/simple.json');
+  expect(await response.json()).toEqual({ foo: 'bar' });
+  await request.dispose();
+  const error = await response.body().catch(e => e);
+  expect(error.message).toContain('Response has been disposed');
+});
 
 it('should support global userAgent option', async ({ playwright, server }) => {
   const request = await playwright.request.newContext({ userAgent: 'My Agent' });
@@ -111,8 +111,8 @@ it('should support global httpCredentials option', async ({ playwright, server }
 it('should return error with wrong credentials', async ({ playwright, server }) => {
   server.setAuth('/empty.html', 'user', 'pass');
   const request = await playwright.request.newContext({ httpCredentials: { username: 'user', password: 'wrong' } });
-  const response2 = await request.get(server.EMPTY_PAGE);
-  expect(response2.status()).toBe(401);
+  const response = await request.get(server.EMPTY_PAGE);
+  expect(response.status()).toBe(401);
 });
 
 it('should use socks proxy', async ({ playwright, server, socksPort }) => {
@@ -233,5 +233,80 @@ it('should remove content-length from reidrected post requests', async ({ playwr
   expect(result.status()).toBe(200);
   expect(req1.headers['content-length']).toBe('13');
   expect(req2.headers['content-length']).toBe(undefined);
+  await request.dispose();
+});
+
+
+const serialization = [
+  ['object', { 'foo': 'bar' }],
+  ['array', ['foo', 'bar', 2021]],
+  ['string', 'foo'],
+  ['bool', true],
+  ['number', 2021],
+];
+for (const [type, value] of serialization) {
+  const stringifiedValue = JSON.stringify(value);
+  it(`should json stringify ${type} body when content-type is application/json`, async ({ playwright, server }) => {
+    const request = await playwright.request.newContext();
+    const [req] = await Promise.all([
+      server.waitForRequest('/empty.html'),
+      request.post(server.EMPTY_PAGE, {
+        headers: {
+          'content-type': 'application/json'
+        },
+        data: value
+      })
+    ]);
+    const body = await req.postBody;
+    expect(body.toString()).toEqual(stringifiedValue);
+    await request.dispose();
+  });
+
+  it(`should not double stringify ${type} body when content-type is application/json`, async ({ playwright, server }) => {
+    const request = await playwright.request.newContext();
+    const [req] = await Promise.all([
+      server.waitForRequest('/empty.html'),
+      request.post(server.EMPTY_PAGE, {
+        headers: {
+          'content-type': 'application/json'
+        },
+        data: stringifiedValue
+      })
+    ]);
+    const body = await req.postBody;
+    expect(body.toString()).toEqual(stringifiedValue);
+    await request.dispose();
+  });
+}
+
+it(`should accept already serialized data as Buffer when content-type is application/json`, async ({ playwright, server }) => {
+  const request = await playwright.request.newContext();
+  const value = JSON.stringify(JSON.stringify({ 'foo': 'bar' }));
+  const [req] = await Promise.all([
+    server.waitForRequest('/empty.html'),
+    request.post(server.EMPTY_PAGE, {
+      headers: {
+        'content-type': 'application/json'
+      },
+      data: Buffer.from(value, 'utf8')
+    })
+  ]);
+  const body = await req.postBody;
+  expect(body.toString()).toEqual(value);
+  await request.dispose();
+});
+
+it(`should have nice toString`, async ({ playwright, server }) => {
+  const request = await playwright.request.newContext();
+  const response = await request.post(server.EMPTY_PAGE, {
+    headers: {
+      'content-type': 'application/json'
+    },
+    data: 'My post data'
+  });
+  const str = response[util.inspect.custom]();
+  expect(str).toContain('APIResponse: 200 OK');
+  for (const { name, value } of response.headersArray())
+    expect(str).toContain(`  ${name}: ${value}`);
   await request.dispose();
 });

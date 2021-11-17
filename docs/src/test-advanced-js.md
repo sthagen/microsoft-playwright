@@ -15,6 +15,7 @@ These options define your test suite:
 - `metadata: any` - Any JSON-serializable metadata that will be put directly to the test report.
 - `name: string` - Project name, useful when defining multiple [test projects](#projects).
 - `outputDir: string` - Output directory for files created during the test run.
+- `snapshotDir: string` - Base output directory for snapshot files.
 - `repeatEach: number` - The number of times to repeat each test, useful for debugging flaky tests.
 - `retries: number` - The maximum number of retry attempts given to failed tests. If not specified, failing tests are not retried.
 - `testDir: string` - Directory that will be recursively scanned for test files.
@@ -39,7 +40,7 @@ These options would be typically different between local development and CI oper
 - `projects: Project[]` - Multiple [projects](#projects) configuration.
 - `quiet: boolean` - Whether to suppress stdout and stderr from the tests.
 - `reporter: 'list' | 'line' | 'dot' | 'json' | 'junit' | 'github' | 'html' | 'null'` - The reporter to use. See [reporters](./test-reporters.md) for details.
-- `reportSlowTests: { max: number, threshold: number } | null` - Whether to report slow tests. When `null`, slow tests are not reported. Otherwise, tests that took more than `threshold` milliseconds are reported as slow, but no more than `max` number of them. Passing zero as `max` reports all slow tests that exceed the threshold.
+- `reportSlowTests: { max: number, threshold: number } | null` - Whether to report slow test files. When `null`, slow test files are not reported. Otherwise, test files that took more than `threshold` milliseconds are reported as slow, but no more than `max` number of them. Passing zero as `max` reports all test files that exceed the threshold.
 - `shard: { total: number, current: number } | null` - [Shard](./test-parallel.md#shard-tests-between-multiple-machines) information.
 - `updateSnapshots: boolean` - Whether to update expected snapshots with the actual results produced by the test run.
 - `workers: number` - The maximum number of concurrent worker processes to use for parallelizing tests.
@@ -488,7 +489,7 @@ const config: PlaywrightTestConfig<TestOptions> = {
 export default config;
 ```
 
-Each project can be configured separately, and run different set of tests with different parameters. See [test suite options](#test-suite-options) for the list of options available to each project.
+Each project can be configured separately, and run different set of tests with different parameters. See [project options][TestProject] for the list of options available to each project.
 
 You can run all projects or just a single one:
 ```bash
@@ -498,6 +499,12 @@ npx playwright test
 # Run a single project - each test will be run once
 npx playwright test --project=v2
 ```
+
+There are many more things you can do with projects:
+- Run a subset of test by specifying different `testDir` for each project.
+- Run tests in multiple configurations, for example with desktop Chromium and emulating Chrome for Android.
+- Run "core" tests without retries to ensure stability of the core functionality, and use `retries` for other tests.
+- And much more! See [project options][TestProject] for the list of options available to each project.
 
 ## Add custom matchers using expect.extend
 

@@ -1,7 +1,22 @@
 # class: PageAssertions
 * langs: java
 
-The [PageAssertions] class provides assertion methods that can be used to make assertions about the [Page] state in the tests. A new instance of [LocatorAssertions] is created by calling [`method: PlaywrightAssertions.assertThatPage`].
+The [PageAssertions] class provides assertion methods that can be used to make assertions about the [Page] state in the tests. A new instance of [LocatorAssertions] is created by calling [`method: PlaywrightAssertions.assertThatPage`]:
+
+```java
+...
+import static com.microsoft.playwright.assertions.PlaywrightAssertions.assertThat;
+
+public class TestPage {
+  ...
+  @Test
+  void navigatesToLoginPage() {
+    ...
+    page.click("#login");
+    assertThat(page).hasURL(Pattern.compile(".*/login"));
+  }
+}
+```
 
 ## method: PageAssertions.hasTitle
 
@@ -23,7 +38,7 @@ Expected title or RegExp.
 Ensures the page is navigated to the given URL.
 
 ```java
-assertThat(page).hasURL('.com');
+assertThat(page).hasURL(".com");
 ```
 
 ### param: PageAssertions.hasURL.urlOrRegExp
@@ -39,5 +54,5 @@ Expected substring or RegExp.
 Makes the assertion check for the opposite condition. For example, this code tests that the page URL doesn't contain `"error"`:
 
 ```java
-assertThat(page).not().hasURL('error');
+assertThat(page).not().hasURL("error");
 ```

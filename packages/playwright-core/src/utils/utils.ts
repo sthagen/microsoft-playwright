@@ -40,7 +40,7 @@ const ProxyAgent = require('https-proxy-agent');
 
 export const existsAsync = (path: string): Promise<boolean> => new Promise(resolve => fs.stat(path, err => resolve(!err)));
 
-type HTTPRequestParams = {
+export type HTTPRequestParams = {
   url: string,
   method?: string,
   headers?: http.OutgoingHttpHeaders,
@@ -97,11 +97,11 @@ function httpRequest(params: HTTPRequestParams, onResponse: (r: http.IncomingMes
   request.end(params.data);
 }
 
-export function fetchData(params: HTTPRequestParams, onError?: (response: http.IncomingMessage) => Promise<Error>): Promise<string> {
+export function fetchData(params: HTTPRequestParams, onError?: (params: HTTPRequestParams, response: http.IncomingMessage) => Promise<Error>): Promise<string> {
   return new Promise((resolve, reject) => {
     httpRequest(params, async response => {
       if (response.statusCode !== 200) {
-        const error = onError ? await onError(response) : new Error(`fetch failed: server returned code ${response.statusCode}. URL: ${params.url}`);
+        const error = onError ? await onError(params, response) : new Error(`fetch failed: server returned code ${response.statusCode}. URL: ${params.url}`);
         reject(error);
         return;
       }
@@ -462,7 +462,7 @@ export function constructURLBasedOnBaseURL(baseURL: string | undefined, givenURL
   }
 }
 
-export type HostPlatform = 'win64'|'mac10.13'|'mac10.14'|'mac10.15'|'mac11'|'mac11-arm64'|'ubuntu18.04'|'ubuntu20.04';
+export type HostPlatform = 'win64'|'mac10.13'|'mac10.14'|'mac10.15'|'mac11'|'mac11-arm64'|'ubuntu18.04'|'ubuntu20.04'|'ubuntu18.04-arm64'|'ubuntu20.04-arm64';
 export const hostPlatform = ((): HostPlatform => {
   const platform = os.platform();
   if (platform === 'darwin') {
@@ -488,9 +488,10 @@ export const hostPlatform = ((): HostPlatform => {
   }
   if (platform === 'linux') {
     const ubuntuVersion = getUbuntuVersionSync();
+    const archSuffix = os.arch() === 'arm64' ? '-arm64' : '';
     if (parseInt(ubuntuVersion, 10) <= 19)
-      return 'ubuntu18.04';
-    return 'ubuntu20.04';
+      return ('ubuntu18.04' + archSuffix) as HostPlatform;
+    return ('ubuntu20.04' + archSuffix) as HostPlatform;
   }
   if (platform === 'win32')
     return 'win64';

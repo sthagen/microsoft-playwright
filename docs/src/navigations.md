@@ -12,10 +12,11 @@ to wait for page navigations and loading to complete.
 
 Playwright splits the process of showing a new document in a page into **navigation** and **loading**.
 
-**Navigations** can be initiated by changing the page URL or by interacting with the page (e.g., clicking a link).
-Navigation ends when response headers have been parsed and session history is updated. The navigation intent may be
-canceled, for example, on hitting an unresolved DNS address or transformed into a file download. Only after the
-navigation succeeds, page starts **loading** the document.
+**Navigation starts** by changing the page URL or by interacting with the page (e.g., clicking a link).
+The navigation intent may be canceled, for example, on hitting an unresolved DNS address or transformed into a file download.
+
+**Navigation is committed** when the response headers have been parsed and session history is updated. Only after the
+navigation succeeds (is committed), the page starts **loading** the document.
 
 **Loading** covers getting the remaining response body over the network, parsing, executing the scripts and firing load
 events:
@@ -94,13 +95,13 @@ await page.GotoAsync("https://example.com", new PageGotoOptions { WaitUntil = Wa
 
 ### Wait for element
 
-In lazy-loaded pages, it can be useful to wait until an element is visible with [`method: Page.waitForSelector`].
+In lazy-loaded pages, it can be useful to wait until an element is visible with [`method: Locator.waitFor`].
 Alternatively, page interactions like [`method: Page.click`] auto-wait for elements.
 
 ```js
 // Navigate and wait for element
 await page.goto('https://example.com');
-await page.waitForSelector('text=Example Domain');
+await page.locator('text=Example Domain').waitFor();
 
 // Navigate and click element
 // Click will auto-wait for the element
@@ -111,7 +112,7 @@ await page.click('text=Example Domain');
 ```java
 // Navigate and wait for element
 page.navigate("https://example.com");
-page.waitForSelector("text=Example Domain");
+page.locator("text=Example Domain").waitFor();
 
 // Navigate and click element
 // Click will auto-wait for the element
@@ -122,7 +123,7 @@ page.click("text=Example Domain");
 ```python async
 # Navigate and wait for element
 await page.goto("https://example.com")
-await page.wait_for_selector("text=example domain")
+await page.locator("text=example domain").wait_for()
 
 # Navigate and click element
 # Click will auto-wait for the element
@@ -133,7 +134,7 @@ await page.click("text=example domain")
 ```python sync
 # Navigate and wait for element
 page.goto("https://example.com")
-page.wait_for_selector("text=example domain")
+page.locator("text=example domain").wait_for()
 
 # Navigate and click element
 # Click will auto-wait for the element
@@ -144,7 +145,7 @@ page.click("text=example domain")
 ```csharp
 // Navigate and wait for element
 await page.GotoAsync("https://example.com");
-await page.WaitForSelectorAsync("text=Example Domain");
+await page.Locator("text=Example Domain").WaitForAsync();
 
 // Navigate and click element
 // Click will auto-wait for the element
@@ -238,14 +239,14 @@ await page.WaitForLoadStateAsync(LoadState.NetworkIdle); // This resolves after 
 
 ### Wait for element
 
-In lazy-loaded pages, it can be useful to wait until an element is visible with [`method: Page.waitForSelector`].
+In lazy-loaded pages, it can be useful to wait until an element is visible with [`method: Locator.waitFor`].
 Alternatively, page interactions like [`method: Page.click`] auto-wait for elements.
 
 ```js
 // Click will auto-wait for the element and trigger navigation
 await page.click('text=Login');
 // Wait for the element
-await page.waitForSelector('#username');
+await page.locator('#username').waitFor();
 
 // Click triggers navigation
 await page.click('text=Login');
@@ -257,7 +258,7 @@ await page.fill('#username', 'John Doe');
 // Click will auto-wait for the element and trigger navigation
 page.click("text=Login");
 // Wait for the element
-page.waitForSelector("#username");
+page.locator("#username").waitFor();
 
 // Click triggers navigation
 page.click("text=Login");
@@ -269,7 +270,7 @@ page.fill("#username", "John Doe");
 # Click will auto-wait for the element and trigger navigation
 await page.click("text=Login")
 # Wait for the element
-await page.wait_for_selector("#username")
+await page.locator("#username").wait_for()
 
 # Click triggers navigation
 await page.click("text=Login")
@@ -281,7 +282,7 @@ await page.fill("#username", "John Doe")
 # Click triggers navigation
 page.click("text=Login")
 # Click will auto-wait for the element
-page.wait_for_selector("#username", "John Doe")
+page.locator("#username").wait_for()
 
 # Click triggers navigation
 page.click("text=Login")
@@ -293,7 +294,7 @@ page.fill("#username", "John Doe")
 // Click will auto-wait for the element and trigger navigation
 await page.ClickAsync("text=Login");
 // Wait for the element
-await page.WaitForSelectorAsync("#username");
+await page.Locator("#username").WaitForAsync();
 
 // Click triggers navigation
 await page.ClickAsync("text=Login");
@@ -449,7 +450,6 @@ popup.WaitForLoadStateAsync(LoadState.Load);
 ### API reference
 - [`method: Page.click`]
 - [`method: Page.waitForLoadState`]
-- [`method: Page.waitForSelector`]
 - [`method: Page.waitForNavigation`]
 - [`method: Page.waitForFunction`]
 
