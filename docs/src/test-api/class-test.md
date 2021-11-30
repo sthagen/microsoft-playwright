@@ -61,7 +61,9 @@ Test function that takes one or two arguments: an object with fixtures and optio
 
 ## method: Test.afterAll
 
-Declares an `afterAll` hook that is executed once after all tests. When called in the scope of a test file, runs after all tests in the file. When called inside a [`method: Test.describe`] group, runs after all tests in the group.
+Declares an `afterAll` hook that is executed once per worker after all tests. When called in the scope of a test file, runs after all tests in the file. When called inside a [`method: Test.describe`] group, runs after all tests in the group.
+
+Note that worker process is restarted on test failures, and `afterAll` hook runs again in the new worker. Learn more about [workers and failures](./test-retries.md).
 
 ### param: Test.afterAll.hookFunction
 - `hookFunction` <[function]\([Fixtures], [TestInfo]\)>
@@ -116,7 +118,7 @@ Hook function that takes one or two arguments: an object with fixtures and optio
 
 ## method: Test.beforeAll
 
-Declares a `beforeAll` hook that is executed once before all tests. When called in the scope of a test file, runs before all tests in the file. When called inside a [`method: Test.describe`] group, runs before all tests in the group.
+Declares a `beforeAll` hook that is executed once per worker process before all tests. When called in the scope of a test file, runs before all tests in the file. When called inside a [`method: Test.describe`] group, runs before all tests in the group.
 
 ```js js-flavor=js
 // example.spec.js
@@ -151,6 +153,8 @@ test('my test', async ({ page }) => {
   // ...
 });
 ```
+
+Note that worker process is restarted on test failures, and `beforeAll` hook runs again in the new worker. Learn more about [workers and failures](./test-retries.md).
 
 You can use [`method: Test.afterAll`] to teardown any resources set up in `beforeAll`.
 
@@ -201,6 +205,7 @@ You can use [`method: Test.afterEach`] to teardown any resources set up in `befo
 - `hookFunction` <[function]\([Fixtures], [TestInfo]\)>
 
 Hook function that takes one or two arguments: an object with fixtures and optional [TestInfo].
+
 
 
 
@@ -418,6 +423,137 @@ A callback that is run immediately when calling [`method: Test.describe.serial.o
 
 
 
+
+## method: Test.extend
+- returns: <[Test]>
+
+Extends the `test` object by defining fixtures and/or options that can be used in the tests.
+
+First define a fixture and/or an option.
+
+```js js-flavor=js
+// my-test.js
+const base = require('@playwright/test');
+const { TodoPage } = require('./todo-page');
+
+// Extend basic test by providing a "defaultItem" option and a "todoPage" fixture.
+exports.test = base.test.extend({
+  // Define an option and provide a default value.
+  // We can later override it in the config.
+  defaultItem: ['Do stuff', { option: true }],
+
+  // Define a fixture. Note that it can use built-in fixture "page"
+  // and a new option "defaultItem".
+  todoPage: async ({ page, defaultItem }, use) => {
+    const todoPage = new TodoPage(page);
+    await todoPage.goto();
+    await todoPage.addToDo(defaultItem);
+    await use(todoPage);
+    await todoPage.removeAll();
+  },
+});
+```
+
+```js js-flavor=ts
+import { test as base } from '@playwright/test';
+import { TodoPage } from './todo-page';
+
+export type Options = { defaultItem: string };
+
+// Extend basic test by providing a "defaultItem" option and a "todoPage" fixture.
+export const test = base.extend<Options & { todoPage: TodoPage }>({
+  // Define an option and provide a default value.
+  // We can later override it in the config.
+  defaultItem: ['Do stuff', { option: true }],
+
+  // Define a fixture. Note that it can use built-in fixture "page"
+  // and a new option "defaultItem".
+  todoPage: async ({ page, defaultItem }, use) => {
+    const todoPage = new TodoPage(page);
+    await todoPage.goto();
+    await todoPage.addToDo(defaultItem);
+    await use(todoPage);
+    await todoPage.removeAll();
+  },
+});
+```
+
+Then use the fixture in the test.
+
+```js js-flavor=js
+// example.spec.js
+const { test } = require('./my-test');
+
+test('test 1', async ({ todoPage }) => {
+  await todoPage.addToDo('my todo');
+  // ...
+});
+```
+
+```js js-flavor=ts
+// example.spec.ts
+import { test } from './my-test';
+
+test('test 1', async ({ todoPage }) => {
+  await todoPage.addToDo('my todo');
+  // ...
+});
+```
+
+Configure the option in config file.
+
+```js js-flavor=js
+// playwright.config.js
+// @ts-check
+
+/** @type {import('@playwright/test').PlaywrightTestConfig<{ defaultItem: string }>} */
+const config = {
+  projects: [
+    {
+      name: 'shopping',
+      use: { defaultItem: 'Buy milk' },
+    },
+    {
+      name: 'wellbeing',
+      use: { defaultItem: 'Exercise!' },
+    },
+  ]
+};
+
+module.exports = config;
+```
+
+```js js-flavor=ts
+// playwright.config.ts
+import { PlaywrightTestConfig } from '@playwright/test';
+import { Options } from './my-test';
+
+const config: PlaywrightTestConfig<Options> = {
+  projects: [
+    {
+      name: 'shopping',
+      use: { defaultItem: 'Buy milk' },
+    },
+    {
+      name: 'wellbeing',
+      use: { defaultItem: 'Exercise!' },
+    },
+  ]
+};
+export default config;
+```
+
+Learn more about [fixtures](./test-fixtures.md) and [parametrizing tests](./test-parameterize.md).
+
+### param: Test.extend.fixtures
+- `fixtures` <[Object]>
+
+An object containing fixtures and/or options. Learn more about [fixtures format](./test-fixtures.md).
+
+
+
+
+
 ## method: Test.fail
 
 Marks a test or a group of tests as "should fail". Playwright Test runs these tests and ensures that they are actually failing. This is useful for documentation purposes to acknowledge that some functionality is broken until it is fixed.
@@ -503,16 +639,46 @@ Optional description that will be reflected in a test report.
 
 
 
-## method: Test.fixme
+## method: Test.fixme#1
 
-Marks a test or a group of tests as "fixme". These tests will not be run, but the intention is to fix them.
-
-Unconditional fixme:
+Declares a test to be fixed, similarly to [`method: Test.(call)`]. This test will not be run.
 
 ```js js-flavor=js
 const { test, expect } = require('@playwright/test');
 
-test('not yet ready', async ({ page }) => {
+test.fixme('test to be fixed', async ({ page }) => {
+  // ...
+});
+```
+
+```js js-flavor=ts
+import { test, expect } from '@playwright/test';
+
+test.fixme('test to be fixed', async ({ page }) => {
+  // ...
+});
+```
+
+### param: Test.fixme#1.title
+- `title` <[string]>
+
+Test title.
+
+### param: Test.fixme#1.testFunction
+- `testFunction` <[function]\([Fixtures], [TestInfo]\)>
+
+Test function that takes one or two arguments: an object with fixtures and optional [TestInfo].
+
+
+
+## method: Test.fixme#2
+
+Mark a test as "fixme", with the intention to fix it. Test is immediately aborted when you call [`method: Test.fixme#2`].
+
+```js js-flavor=js
+const { test, expect } = require('@playwright/test');
+
+test('test to be fixed', async ({ page }) => {
   test.fixme();
   // ...
 });
@@ -521,19 +687,23 @@ test('not yet ready', async ({ page }) => {
 ```js js-flavor=ts
 import { test, expect } from '@playwright/test';
 
-test('not yet ready', async ({ page }) => {
+test('test to be fixed', async ({ page }) => {
   test.fixme();
   // ...
 });
 ```
 
-Conditional fixme a test with an optional description:
+Mark all tests in a file or [`method: Test.describe`] group as "fixme".
 
 ```js js-flavor=js
 const { test, expect } = require('@playwright/test');
 
-test('fixme in WebKit', async ({ page, browserName }) => {
-  test.fixme(browserName === 'webkit', 'This feature is not implemented for Mac yet');
+test.fixme();
+
+test('test to be fixed 1', async ({ page }) => {
+  // ...
+});
+test('test to be fixed 2', async ({ page }) => {
   // ...
 });
 ```
@@ -541,23 +711,26 @@ test('fixme in WebKit', async ({ page, browserName }) => {
 ```js js-flavor=ts
 import { test, expect } from '@playwright/test';
 
-test('fixme in WebKit', async ({ page, browserName }) => {
-  test.fixme(browserName === 'webkit', 'This feature is not implemented for Mac yet');
+test.fixme();
+
+test('test to be fixed 1', async ({ page }) => {
+  // ...
+});
+test('test to be fixed 2', async ({ page }) => {
   // ...
 });
 ```
 
-Conditional fixme for all tests in a file or [`method: Test.describe`] group:
+
+## method: Test.fixme#3
+
+Conditionally mark a test as "fixme" with an optional description.
 
 ```js js-flavor=js
 const { test, expect } = require('@playwright/test');
 
-test.fixme(({ browserName }) => browserName === 'webkit');
-
-test('fixme in WebKit 1', async ({ page }) => {
-  // ...
-});
-test('fixme in WebKit 2', async ({ page }) => {
+test('broken in WebKit', async ({ page, browserName }) => {
+  test.fixme(browserName === 'webkit', 'This feature is not implemented on Mac yet');
   // ...
 });
 ```
@@ -565,45 +738,66 @@ test('fixme in WebKit 2', async ({ page }) => {
 ```js js-flavor=ts
 import { test, expect } from '@playwright/test';
 
-test.fixme(({ browserName }) => browserName === 'webkit');
-
-test('fixme in WebKit 1', async ({ page }) => {
-  // ...
-});
-test('fixme in WebKit 2', async ({ page }) => {
+test('broken in WebKit', async ({ page, browserName }) => {
+  test.fixme(browserName === 'webkit', 'This feature is not implemented on Mac yet');
   // ...
 });
 ```
 
-`fixme` from a hook:
 
-```js js-flavor=js
-const { test, expect } = require('@playwright/test');
+### param: Test.fixme#3.condition
+- `condition` <[boolean]>
 
-test.beforeEach(async ({ page }) => {
-  test.fixme(process.env.APP_VERSION === 'v2', 'No settings in v2 yet');
-  await page.goto('/settings');
-});
-```
+Test or tests are marked as "fixme" when the condition is `true`.
 
-```js js-flavor=ts
-import { test, expect } from '@playwright/test';
-
-test.beforeEach(async ({ page }) => {
-  test.fixme(process.env.APP_VERSION === 'v2', 'No settings in v2 yet');
-  await page.goto('/settings');
-});
-```
-
-### param: Test.fixme.condition
-- `condition` <[void]|[boolean]|[function]\([Fixtures]\):[boolean]>
-
-Optional condition - either a boolean value, or a function that takes a fixtures object and returns a boolean. Test or tests are marked as "fixme" when the condition is `true`.
-
-### param: Test.fixme.description
+### param: Test.fixme#3.description
 - `description` <[void]|[string]>
 
-Optional description that will be reflected in a test report.
+An optional description that will be reflected in a test report.
+
+
+
+
+## method: Test.fixme#4
+
+Conditionally mark all tests in a file or [`method: Test.describe`] group as "fixme".
+
+```js js-flavor=js
+const { test, expect } = require('@playwright/test');
+
+test.fixme(({ browserName }) => browserName === 'webkit');
+
+test('broken in WebKit 1', async ({ page }) => {
+  // ...
+});
+test('broken in WebKit 2', async ({ page }) => {
+  // ...
+});
+```
+
+```js js-flavor=ts
+import { test, expect } from '@playwright/test';
+
+test.fixme(({ browserName }) => browserName === 'webkit');
+
+test('broken in WebKit 1', async ({ page }) => {
+  // ...
+});
+test('broken in WebKit 2', async ({ page }) => {
+  // ...
+});
+```
+
+
+### param: Test.fixme#4.condition
+- `callback` <[function]\([Fixtures]\):[boolean]>
+
+A function that returns whether to mark as "fixme", based on test fixtures. Test or tests are marked as "fixme" when the return value is `true`.
+
+### param: Test.fixme#4.description
+- `description` <[void]|[string]>
+
+An optional description that will be reflected in a test report.
 
 
 
@@ -638,7 +832,7 @@ Test function that takes one or two arguments: an object with fixtures and optio
 
 ## method: Test.setTimeout
 
-Changes the timeout for the test.
+Changes the timeout for the test. Learn more about [various timeouts](./test-timeouts.md).
 
 ```js js-flavor=js
 const { test, expect } = require('@playwright/test');

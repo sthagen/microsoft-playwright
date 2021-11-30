@@ -153,7 +153,7 @@ export function createScheme(tChannel: (name: string) => Validator): Scheme {
     value: tOptional(tString),
     file: tOptional(tObject({
       name: tString,
-      mimeType: tString,
+      mimeType: tOptional(tString),
       buffer: tBinary,
     })),
   });
@@ -188,6 +188,7 @@ export function createScheme(tChannel: (name: string) => Validator): Scheme {
   scheme.LifecycleEvent = tEnum(['load', 'domcontentloaded', 'networkidle', 'commit']);
   scheme.RootInitializeParams = tObject({
     sdkLanguage: tString,
+    version: tString,
   });
   scheme.PlaywrightSocksConnectedParams = tObject({
     uid: tString,
@@ -695,6 +696,7 @@ export function createScheme(tChannel: (name: string) => Validator): Scheme {
     trial: tOptional(tBoolean),
     sourcePosition: tOptional(tType('Point')),
     targetPosition: tOptional(tType('Point')),
+    strict: tOptional(tBoolean),
   });
   scheme.FrameDblclickParams = tObject({
     selector: tString,

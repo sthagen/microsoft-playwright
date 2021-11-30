@@ -40,8 +40,9 @@ import { Artifact } from './artifact';
 import { EventEmitter } from 'events';
 import { JsonPipe } from './jsonPipe';
 import { APIRequestContext } from './fetch';
+import { getPlaywrightVersion } from '../utils/utils';
 
-class Root extends ChannelOwner<channels.RootChannel, {}> {
+class Root extends ChannelOwner<channels.RootChannel> {
   constructor(connection: Connection) {
     super(connection, 'Root', '', {});
   }
@@ -49,6 +50,7 @@ class Root extends ChannelOwner<channels.RootChannel, {}> {
   async initialize(): Promise<Playwright> {
     return Playwright.from((await this._channel.initialize({
       sdkLanguage: 'javascript',
+      version: getPlaywrightVersion(),
     })).playwright);
   }
 }
@@ -58,7 +60,7 @@ export class Connection extends EventEmitter {
   private _waitingForObject = new Map<string, any>();
   onmessage = (message: object): void => {};
   private _lastId = 0;
-  private _callbacks = new Map<number, { resolve: (a: any) => void, reject: (a: Error) => void, stackTrace: ParsedStackTrace }>();
+  private _callbacks = new Map<number, { resolve: (a: any) => void, reject: (a: Error) => void, stackTrace: ParsedStackTrace | null }>();
   private _rootObject: Root;
   private _closedErrorMessage: string | undefined;
   private _isRemote = false;
@@ -81,20 +83,19 @@ export class Connection extends EventEmitter {
   }
 
   pendingProtocolCalls(): ParsedStackTrace[] {
-    return Array.from(this._callbacks.values()).map(callback => callback.stackTrace);
+    return Array.from(this._callbacks.values()).map(callback => callback.stackTrace).filter(Boolean) as ParsedStackTrace[];
   }
 
   getObjectWithKnownName(guid: string): any {
     return this._objects.get(guid)!;
   }
 
-  async sendMessageToServer(object: ChannelOwner, method: string, params: any, maybeStackTrace: ParsedStackTrace | null): Promise<any> {
+  async sendMessageToServer(object: ChannelOwner, method: string, params: any, stackTrace: ParsedStackTrace | null): Promise<any> {
     if (this._closedErrorMessage)
       throw new Error(this._closedErrorMessage);
 
+    const { apiName, frames } = stackTrace || { apiName: '', frames: [] };
     const guid = object._guid;
-    const stackTrace: ParsedStackTrace = maybeStackTrace || { frameTexts: [], frames: [], apiName: '', allFrames: [] };
-    const { frames, apiName } = stackTrace;
     const id = ++this._lastId;
     const converted = { id, guid, method, params };
     // Do not include metadata in debug logs to avoid noise.
@@ -142,7 +143,7 @@ export class Connection extends EventEmitter {
     const object = this._objects.get(guid);
     if (!object)
       throw new Error(`Cannot find object to emit "${method}": ${guid}`);
-    object._channel.emit(method, object._type === 'JsonPipe' ? params : this._replaceGuidsWithChannels(params));
+    (object._channel as any).emit(method, object._type === 'JsonPipe' ? params : this._replaceGuidsWithChannels(params));
   }
 
   close(errorMessage: string = 'Connection closed') {
@@ -173,7 +174,7 @@ export class Connection extends EventEmitter {
     const parent = this._objects.get(parentGuid);
     if (!parent)
       throw new Error(`Cannot find parent object ${parentGuid} to create ${guid}`);
-    let result: ChannelOwner<any, any>;
+    let result: ChannelOwner<any>;
     initializer = this._replaceGuidsWithChannels(initializer);
     switch (type) {
       case 'Android':

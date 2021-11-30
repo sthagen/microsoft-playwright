@@ -224,7 +224,7 @@ FormField:
       type: object?
       properties:
         name: string
-        mimeType: string
+        mimeType: string?
         buffer: binary
 
 APIRequestContext:
@@ -254,8 +254,7 @@ APIRequestContext:
         failOnStatusCode: boolean?
         ignoreHTTPSErrors: boolean?
       returns:
-        response: APIResponse?
-        error: string?
+        response: APIResponse
 
     fetchResponseBody:
       parameters:
@@ -416,6 +415,7 @@ Root:
     initialize:
       parameters:
         sdkLanguage: string
+        version: string
       returns:
         playwright: Playwright
 
@@ -1368,6 +1368,7 @@ Frame:
         trial: boolean?
         sourcePosition: Point?
         targetPosition: Point?
+        strict: boolean?
       tracing:
         snapshot: true
         pausesBeforeInput: true

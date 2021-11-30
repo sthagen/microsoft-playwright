@@ -36,6 +36,7 @@ export class Loader {
   private _configFile: string | undefined;
   private _projects: ProjectImpl[] = [];
   private _fileSuites = new Map<string, Suite>();
+  private _lastModuleInfo: { rootFolder: string, isModule: boolean } | null = null;
 
   constructor(defaultConfig: Config, configOverrides: Config) {
     this._defaultConfig = defaultConfig;
@@ -173,7 +174,6 @@ export class Loader {
     if (!path.isAbsolute(snapshotDir))
       snapshotDir = path.resolve(configDir, snapshotDir);
     const fullProject: FullProject = {
-      define: takeFirst(this._configOverrides.define, projectConfig.define, this._config.define, []),
       expect: takeFirst(this._configOverrides.expect, projectConfig.expect, this._config.expect, undefined),
       outputDir,
       repeatEach: takeFirst(this._configOverrides.repeatEach, projectConfig.repeatEach, this._config.repeatEach, 1),
@@ -193,20 +193,37 @@ export class Loader {
 
   private async _requireOrImport(file: string) {
     const revertBabelRequire = installTransform();
-    try {
-      const esmImport = () => eval(`import(${JSON.stringify(url.pathToFileURL(file))})`);
-      if (file.endsWith('.mjs')) {
-        return await esmImport();
-      } else {
+
+    // Figure out if we are importing or requiring.
+    let isModule: boolean;
+    if (file.endsWith('.mjs')) {
+      isModule = true;
+    } else {
+      if (!this._lastModuleInfo || !file.startsWith(this._lastModuleInfo.rootFolder)) {
+        this._lastModuleInfo = null;
         try {
-          return require(file);
-        } catch (e) {
-          // Attempt to load this module as ESM if a normal require didn't work.
-          if (e.code === 'ERR_REQUIRE_ESM')
-            return await esmImport();
-          throw e;
+          const pathSegments = file.split(path.sep);
+          for (let i = pathSegments.length - 1; i >= 0; --i) {
+            const rootFolder = pathSegments.slice(0, i).join(path.sep);
+            const packageJson = path.join(rootFolder, 'package.json');
+            if (fs.existsSync(packageJson)) {
+              isModule = require(packageJson).type === 'module';
+              this._lastModuleInfo = { rootFolder, isModule };
+              break;
+            }
+          }
+        } catch {
+          // Silent catch.
         }
       }
+      isModule = this._lastModuleInfo?.isModule || false;
+    }
+
+    try {
+      const esmImport = () => eval(`import(${JSON.stringify(url.pathToFileURL(file))})`);
+      if (isModule)
+        return await esmImport();
+      return require(file);
     } catch (error) {
       if (error.code === 'ERR_MODULE_NOT_FOUND' && error.message.includes('Did you mean to import')) {
         const didYouMean = /Did you mean to import (.*)\?/.exec(error.message)?.[1];
@@ -357,16 +374,6 @@ function validateProject(file: string, project: Project, title: string) {
   if (typeof project !== 'object' || !project)
     throw errorWithFile(file, `${title} must be an object`);
 
-  if ('define' in project && project.define !== undefined) {
-    if (Array.isArray(project.define)) {
-      project.define.forEach((item, index) => {
-        validateDefine(file, item, `${title}.define[${index}]`);
-      });
-    } else {
-      validateDefine(file, project.define, `${title}.define`);
-    }
-  }
-
   if ('name' in project && project.name !== undefined) {
     if (typeof project.name !== 'string')
       throw errorWithFile(file, `${title}.name must be a string`);
@@ -415,11 +422,6 @@ function validateProject(file: string, project: Project, title: string) {
     if (!project.use || typeof project.use !== 'object')
       throw errorWithFile(file, `${title}.use must be an object`);
   }
-}
-
-function validateDefine(file: string, define: any, title: string) {
-  if (!define || typeof define !== 'object' || !define.test || !define.fixtures)
-    throw errorWithFile(file, `${title} must be an object with "test" and "fixtures" properties`);
 }
 
 const baseFullConfig: FullConfig = {

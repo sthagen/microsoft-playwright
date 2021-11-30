@@ -36,7 +36,6 @@ export type ReportSlowTests = { max: number, threshold: number } | null;
 export type PreserveOutput = 'always' | 'never' | 'failures-only';
 export type UpdateSnapshots = 'all' | 'none' | 'missing';
 
-type FixtureDefine<TestArgs extends KeyValue = {}, WorkerArgs extends KeyValue = {}> = { test: TestType<TestArgs, WorkerArgs>, fixtures: Fixtures<{}, {}, TestArgs, WorkerArgs> };
 type UseOptions<TestArgs, WorkerArgs> = { [K in keyof WorkerArgs]?: WorkerArgs[K] } & { [K in keyof TestArgs]?: TestArgs[K] };
 
 type ExpectSettings = {
@@ -319,7 +318,6 @@ interface TestProject {
  *
  */
 export interface Project<TestArgs = {}, WorkerArgs = {}> extends TestProject {
-  define?: FixtureDefine | FixtureDefine[];
   /**
    * Options for all tests in this project, for example
    * [testOptions.browserName](https://playwright.dev/docs/api/class-testoptions#test-options-browser-name). Learn more about
@@ -460,7 +458,8 @@ interface TestConfig {
   globalTeardown?: string;
   /**
    * Maximum time in milliseconds the whole test suite can run. Zero timeout (default) disables this behavior. Useful on CI
-   * to prevent broken setup from running too long and wasting resources.
+   * to prevent broken setup from running too long and wasting resources. Learn more about
+   * [various timeouts](https://playwright.dev/docs/test-timeouts).
    *
    * ```ts
    * // playwright.config.ts
@@ -568,6 +567,49 @@ interface TestConfig {
    * Learn more about [snapshots](https://playwright.dev/docs/test-snapshots).
    */
   updateSnapshots?: UpdateSnapshots;
+  /**
+   * Launch a development web server during the tests.
+   *
+   * The server will wait for it to be available on `127.0.0.1` or `::1` before running the tests. For continuous
+   * integration, you may want to use the `reuseExistingServer: !process.env.CI` option which does not use an existing server
+   * on the CI.
+   *
+   * The port gets then passed over to Playwright as a `baseURL` when creating the context
+   * [browser.newContext([options])](https://playwright.dev/docs/api/class-browser#browser-new-context). For example `8080`
+   * ends up in `baseURL` to be `http://localhost:8080`. If you want to use `https://` you need to manually specify the
+   * `baseURL` inside `use`.
+   *
+   * ```ts
+   * // playwright.config.ts
+   * import { PlaywrightTestConfig } from '@playwright/test';
+   * const config: PlaywrightTestConfig = {
+   *   webServer: {
+   *     command: 'npm run start',
+   *     port: 3000,
+   *     timeout: 120 * 1000,
+   *     reuseExistingServer: !process.env.CI,
+   *   },
+   * };
+   * export default config;
+   * ```
+   *
+   * Now you can use a relative path when navigating the page, or use `baseURL` fixture:
+   *
+   * ```ts
+   * // test.spec.ts
+   * import { test } from '@playwright/test';
+   * test('test', async ({ page, baseURL }) => {
+   *   // baseURL is taken directly from your web server,
+   *   // e.g. http://localhost:3000
+   *   await page.goto(baseURL + '/bar');
+   *   // Alternatively, just use relative path, because baseURL is already
+   *   // set for the default context and page.
+   *   // For example, this will result in http://localhost:3000/foo
+   *   await page.goto('/foo');
+   * });
+   * ```
+   *
+   */
   webServer?: WebServerConfig;
   /**
    * The maximum number of concurrent worker processes to use for parallelizing tests.
@@ -592,7 +634,7 @@ interface TestConfig {
   workers?: number;
 
   /**
-   * Configuration for the `expect` assertion library.
+   * Configuration for the `expect` assertion library. Learn more about [various timeouts](https://playwright.dev/docs/test-timeouts).
    *
    * ```ts
    * // playwright.config.ts
@@ -739,7 +781,8 @@ interface TestConfig {
    * Timeout for each test in milliseconds. Defaults to 30 seconds.
    *
    * This is a base timeout for all tests. In addition, each test can configure its own timeout with
-   * [test.setTimeout(timeout)](https://playwright.dev/docs/api/class-test#test-set-timeout).
+   * [test.setTimeout(timeout)](https://playwright.dev/docs/api/class-test#test-set-timeout). Learn more about
+   * [various timeouts](https://playwright.dev/docs/test-timeouts).
    *
    * ```ts
    * // playwright.config.ts
@@ -782,7 +825,6 @@ export interface Config<TestArgs = {}, WorkerArgs = {}> extends TestConfig {
    * Playwright Test supports running multiple test projects at the same time. See [TestProject] for more information.
    */
   projects?: Project<TestArgs, WorkerArgs>[];
-  define?: FixtureDefine | FixtureDefine[];
   /**
    * Global options for all tests, for example
    * [testOptions.browserName](https://playwright.dev/docs/api/class-testoptions#test-options-browser-name). Learn more about
@@ -882,7 +924,8 @@ export interface FullConfig<TestArgs = {}, WorkerArgs = {}> {
   globalTeardown: string | null;
   /**
    * Maximum time in milliseconds the whole test suite can run. Zero timeout (default) disables this behavior. Useful on CI
-   * to prevent broken setup from running too long and wasting resources.
+   * to prevent broken setup from running too long and wasting resources. Learn more about
+   * [various timeouts](https://playwright.dev/docs/test-timeouts).
    *
    * ```ts
    * // playwright.config.ts
@@ -1013,6 +1056,49 @@ export interface FullConfig<TestArgs = {}, WorkerArgs = {}> {
    *
    */
   workers: number;
+  /**
+   * Launch a development web server during the tests.
+   *
+   * The server will wait for it to be available on `127.0.0.1` or `::1` before running the tests. For continuous
+   * integration, you may want to use the `reuseExistingServer: !process.env.CI` option which does not use an existing server
+   * on the CI.
+   *
+   * The port gets then passed over to Playwright as a `baseURL` when creating the context
+   * [browser.newContext([options])](https://playwright.dev/docs/api/class-browser#browser-new-context). For example `8080`
+   * ends up in `baseURL` to be `http://localhost:8080`. If you want to use `https://` you need to manually specify the
+   * `baseURL` inside `use`.
+   *
+   * ```ts
+   * // playwright.config.ts
+   * import { PlaywrightTestConfig } from '@playwright/test';
+   * const config: PlaywrightTestConfig = {
+   *   webServer: {
+   *     command: 'npm run start',
+   *     port: 3000,
+   *     timeout: 120 * 1000,
+   *     reuseExistingServer: !process.env.CI,
+   *   },
+   * };
+   * export default config;
+   * ```
+   *
+   * Now you can use a relative path when navigating the page, or use `baseURL` fixture:
+   *
+   * ```ts
+   * // test.spec.ts
+   * import { test } from '@playwright/test';
+   * test('test', async ({ page, baseURL }) => {
+   *   // baseURL is taken directly from your web server,
+   *   // e.g. http://localhost:3000
+   *   await page.goto(baseURL + '/bar');
+   *   // Alternatively, just use relative path, because baseURL is already
+   *   // set for the default context and page.
+   *   // For example, this will result in http://localhost:3000/foo
+   *   await page.goto('/foo');
+   * });
+   * ```
+   *
+   */
   webServer: WebServerConfig | null;
 }
 
@@ -1172,21 +1258,21 @@ export interface TestInfo {
 
   /**
    * Marks the currently running test as "fixme". The test will be skipped, but the intention is to fix it. This is similar
-   * to [test.fixme([condition, description])](https://playwright.dev/docs/api/class-test#test-fixme).
+   * to [test.fixme()](https://playwright.dev/docs/api/class-test#test-fixme-2).
    * @param condition Optional condition - the test is marked as "fixme" when the condition is `true`.
    * @param description Optional description that will be reflected in a test report.
    */
   fixme(): void;
   /**
    * Marks the currently running test as "fixme". The test will be skipped, but the intention is to fix it. This is similar
-   * to [test.fixme([condition, description])](https://playwright.dev/docs/api/class-test#test-fixme).
+   * to [test.fixme()](https://playwright.dev/docs/api/class-test#test-fixme-2).
    * @param condition Optional condition - the test is marked as "fixme" when the condition is `true`.
    * @param description Optional description that will be reflected in a test report.
    */
   fixme(condition: boolean): void;
   /**
    * Marks the currently running test as "fixme". The test will be skipped, but the intention is to fix it. This is similar
-   * to [test.fixme([condition, description])](https://playwright.dev/docs/api/class-test#test-fixme).
+   * to [test.fixme()](https://playwright.dev/docs/api/class-test#test-fixme-2).
    * @param condition Optional condition - the test is marked as "fixme" when the condition is `true`.
    * @param description Optional description that will be reflected in a test report.
    */
@@ -1237,7 +1323,8 @@ export interface TestInfo {
   slow(condition: boolean, description: string): void;
 
   /**
-   * Changes the timeout for the currently running test. Zero means no timeout.
+   * Changes the timeout for the currently running test. Zero means no timeout. Learn more about
+   * [various timeouts](https://playwright.dev/docs/test-timeouts).
    *
    * Timeout is usually specified in the [configuration file](https://playwright.dev/docs/test-configuration), but it could be useful to change the
    * timeout in certain scenarios:
@@ -1275,8 +1362,10 @@ export interface TestInfo {
    */
   expectedStatus: TestStatus;
   /**
-   * Timeout in milliseconds for the currently running test. Zero means no timeout. Timeout is usually specified in the
-   * [configuration file](https://playwright.dev/docs/test-configuration)
+   * Timeout in milliseconds for the currently running test. Zero means no timeout. Learn more about
+   * [various timeouts](https://playwright.dev/docs/test-timeouts).
+   *
+   * Timeout is usually specified in the [configuration file](https://playwright.dev/docs/test-configuration)
    *
    * ```ts
    * import { test, expect } from '@playwright/test';
@@ -1298,8 +1387,19 @@ export interface TestInfo {
    */
   annotations: { type: string, description?: string }[];
   /**
-   * The list of files or buffers attached to the current test. Some reporters show test attachments. For example, you can
-   * attach a screenshot to the test.
+   * The list of files or buffers attached to the current test. Some reporters show test attachments.
+   *
+   * To safely add a file from disk as an attachment, please use
+   * [testInfo.attach(path[, options])](https://playwright.dev/docs/api/class-testinfo#test-info-attach-1) instead of
+   * directly pushing onto this array. For inline attachments, use
+   * [testInfo.attach(path[, options])](https://playwright.dev/docs/api/class-testinfo#test-info-attach-1).
+   */
+  attachments: { name: string, path?: string, body?: Buffer, contentType: string }[];
+  /**
+   * Attach a file from disk to the current test. Some reporters show test attachments. The `name` and `contentType` will be
+   * inferred by default from the `path`, but you can optionally override either of these.
+   *
+   * For example, you can attach a screenshot to the test:
    *
    * ```ts
    * import { test, expect } from '@playwright/test';
@@ -1310,12 +1410,40 @@ export interface TestInfo {
    *   // Capture a screenshot and attach it.
    *   const path = testInfo.outputPath('screenshot.png');
    *   await page.screenshot({ path });
-   *   testInfo.attachments.push({ name: 'screenshot', path, contentType: 'image/png' });
+   *   await testInfo.attach(path);
+   *   // Optionally override the name.
+   *   await testInfo.attach(path, { name: 'example.png' });
+   *   // Optionally override the contentType.
+   *   await testInfo.attach(path, { name: 'example.custom-file', contentType: 'x-custom-content-type' });
    * });
    * ```
    *
+   * Or you can attach files returned by your APIs:
+   *
+   * ```ts
+   * import { test, expect } from '@playwright/test';
+   *
+   * test('basic test', async ({}, testInfo) => {
+   *   const { download } = require('./my-custom-helpers');
+   *   const tmpPath = await download('a');
+   *   await testInfo.attach(tmpPath, { name: 'example.json' });
+   * });
+   * ```
+   *
+   * > NOTE: [testInfo.attach(path[, options])](https://playwright.dev/docs/api/class-testinfo#test-info-attach-1)
+   * automatically takes care of copying attachments to a location that is accessible to reporters, even if you were to
+   * delete the attachment after awaiting the attach call.
+   * @param path
+   * @param options
    */
-  attachments: { name: string, path?: string, body?: Buffer, contentType: string }[];
+  attach(path: string, options?: { contentType?: string, name?: string}): Promise<void>;
+  /**
+   * Attach data to the current test, either a `string` or a `Buffer`. Some reporters show test attachments.
+   * @param body
+   * @param name
+   * @param options
+   */
+  attach(body: string | Buffer, name: string, options?: { contentType?: string }): Promise<void>;
   /**
    * Specifies a unique repeat index when running in "repeat each" mode. This mode is enabled by passing `--repeat-each` to
    * the [command line](https://playwright.dev/docs/test-cli).
@@ -1325,6 +1453,24 @@ export interface TestInfo {
    * Specifies the retry number when the test is retried after a failure. The first test run has
    * [testInfo.retry](https://playwright.dev/docs/api/class-testinfo#test-info-retry) equal to zero, the first retry has it
    * equal to one, and so on. Learn more about [retries](https://playwright.dev/docs/test-retries#retries).
+   *
+   * ```ts
+   * import { test, expect } from '@playwright/test';
+   *
+   * test.beforeEach(async ({}, testInfo) => {
+   *   // You can access testInfo.retry in any hook or fixture.
+   *   if (testInfo.retry > 0)
+   *     console.log(`Retrying!`);
+   * });
+   *
+   * test('my test', async ({ page }, testInfo) => {
+   *   // Here we clear some server-side state when retrying.
+   *   if (testInfo.retry)
+   *     await cleanSomeCachesOnTheServer();
+   *   // ...
+   * });
+   * ```
+   *
    */
   retry: number;
   /**
@@ -1662,285 +1808,89 @@ export interface TestType<TestArgs extends KeyValue, WorkerArgs extends KeyValue
    */
   skip(callback: (args: TestArgs & WorkerArgs) => boolean, description?: string): void;
   /**
-   * Marks a test or a group of tests as "fixme". These tests will not be run, but the intention is to fix them.
-   *
-   * Unconditional fixme:
+   * Declares a test to be fixed, similarly to
+   * [test.(call)(title, testFunction)](https://playwright.dev/docs/api/class-test#test-call). This test will not be run.
    *
    * ```ts
    * import { test, expect } from '@playwright/test';
    *
-   * test('not yet ready', async ({ page }) => {
+   * test.fixme('test to be fixed', async ({ page }) => {
+   *   // ...
+   * });
+   * ```
+   *
+   * @param title Test title.
+   * @param testFunction Test function that takes one or two arguments: an object with fixtures and optional [TestInfo].
+   */
+  fixme(title: string, testFunction: (args: TestArgs & WorkerArgs, testInfo: TestInfo) => Promise<void> | void): void;
+  /**
+   * Mark a test as "fixme", with the intention to fix it. Test is immediately aborted when you call
+   * [test.fixme()](https://playwright.dev/docs/api/class-test#test-fixme-2).
+   *
+   * ```ts
+   * import { test, expect } from '@playwright/test';
+   *
+   * test('test to be fixed', async ({ page }) => {
    *   test.fixme();
    *   // ...
    * });
    * ```
    *
-   * Conditional fixme a test with an optional description:
+   * Mark all tests in a file or [test.describe(title, callback)](https://playwright.dev/docs/api/class-test#test-describe)
+   * group as "fixme".
    *
    * ```ts
    * import { test, expect } from '@playwright/test';
    *
-   * test('fixme in WebKit', async ({ page, browserName }) => {
-   *   test.fixme(browserName === 'webkit', 'This feature is not implemented for Mac yet');
+   * test.fixme();
+   *
+   * test('test to be fixed 1', async ({ page }) => {
+   *   // ...
+   * });
+   * test('test to be fixed 2', async ({ page }) => {
    *   // ...
    * });
    * ```
    *
-   * Conditional fixme for all tests in a file or
-   * [test.describe(title, callback)](https://playwright.dev/docs/api/class-test#test-describe) group:
-   *
-   * ```ts
-   * import { test, expect } from '@playwright/test';
-   *
-   * test.fixme(({ browserName }) => browserName === 'webkit');
-   *
-   * test('fixme in WebKit 1', async ({ page }) => {
-   *   // ...
-   * });
-   * test('fixme in WebKit 2', async ({ page }) => {
-   *   // ...
-   * });
-   * ```
-   *
-   * `fixme` from a hook:
-   *
-   * ```ts
-   * import { test, expect } from '@playwright/test';
-   *
-   * test.beforeEach(async ({ page }) => {
-   *   test.fixme(process.env.APP_VERSION === 'v2', 'No settings in v2 yet');
-   *   await page.goto('/settings');
-   * });
-   * ```
-   *
-   * @param condition Optional condition - either a boolean value, or a function that takes a fixtures object and returns a boolean. Test or tests are marked as "fixme" when the condition is `true`.
-   * @param description Optional description that will be reflected in a test report.
    */
   fixme(): void;
   /**
-   * Marks a test or a group of tests as "fixme". These tests will not be run, but the intention is to fix them.
-   *
-   * Unconditional fixme:
+   * Conditionally mark a test as "fixme" with an optional description.
    *
    * ```ts
    * import { test, expect } from '@playwright/test';
    *
-   * test('not yet ready', async ({ page }) => {
-   *   test.fixme();
+   * test('broken in WebKit', async ({ page, browserName }) => {
+   *   test.fixme(browserName === 'webkit', 'This feature is not implemented on Mac yet');
    *   // ...
    * });
    * ```
    *
-   * Conditional fixme a test with an optional description:
-   *
-   * ```ts
-   * import { test, expect } from '@playwright/test';
-   *
-   * test('fixme in WebKit', async ({ page, browserName }) => {
-   *   test.fixme(browserName === 'webkit', 'This feature is not implemented for Mac yet');
-   *   // ...
-   * });
-   * ```
-   *
-   * Conditional fixme for all tests in a file or
-   * [test.describe(title, callback)](https://playwright.dev/docs/api/class-test#test-describe) group:
-   *
-   * ```ts
-   * import { test, expect } from '@playwright/test';
-   *
-   * test.fixme(({ browserName }) => browserName === 'webkit');
-   *
-   * test('fixme in WebKit 1', async ({ page }) => {
-   *   // ...
-   * });
-   * test('fixme in WebKit 2', async ({ page }) => {
-   *   // ...
-   * });
-   * ```
-   *
-   * `fixme` from a hook:
-   *
-   * ```ts
-   * import { test, expect } from '@playwright/test';
-   *
-   * test.beforeEach(async ({ page }) => {
-   *   test.fixme(process.env.APP_VERSION === 'v2', 'No settings in v2 yet');
-   *   await page.goto('/settings');
-   * });
-   * ```
-   *
-   * @param condition Optional condition - either a boolean value, or a function that takes a fixtures object and returns a boolean. Test or tests are marked as "fixme" when the condition is `true`.
-   * @param description Optional description that will be reflected in a test report.
+   * @param condition Test or tests are marked as "fixme" when the condition is `true`.
+   * @param description An optional description that will be reflected in a test report.
    */
-  fixme(condition: boolean): void;
+  fixme(condition: boolean, description?: string): void;
   /**
-   * Marks a test or a group of tests as "fixme". These tests will not be run, but the intention is to fix them.
-   *
-   * Unconditional fixme:
-   *
-   * ```ts
-   * import { test, expect } from '@playwright/test';
-   *
-   * test('not yet ready', async ({ page }) => {
-   *   test.fixme();
-   *   // ...
-   * });
-   * ```
-   *
-   * Conditional fixme a test with an optional description:
-   *
-   * ```ts
-   * import { test, expect } from '@playwright/test';
-   *
-   * test('fixme in WebKit', async ({ page, browserName }) => {
-   *   test.fixme(browserName === 'webkit', 'This feature is not implemented for Mac yet');
-   *   // ...
-   * });
-   * ```
-   *
-   * Conditional fixme for all tests in a file or
-   * [test.describe(title, callback)](https://playwright.dev/docs/api/class-test#test-describe) group:
+   * Conditionally mark all tests in a file or
+   * [test.describe(title, callback)](https://playwright.dev/docs/api/class-test#test-describe) group as "fixme".
    *
    * ```ts
    * import { test, expect } from '@playwright/test';
    *
    * test.fixme(({ browserName }) => browserName === 'webkit');
    *
-   * test('fixme in WebKit 1', async ({ page }) => {
+   * test('broken in WebKit 1', async ({ page }) => {
    *   // ...
    * });
-   * test('fixme in WebKit 2', async ({ page }) => {
+   * test('broken in WebKit 2', async ({ page }) => {
    *   // ...
    * });
    * ```
    *
-   * `fixme` from a hook:
-   *
-   * ```ts
-   * import { test, expect } from '@playwright/test';
-   *
-   * test.beforeEach(async ({ page }) => {
-   *   test.fixme(process.env.APP_VERSION === 'v2', 'No settings in v2 yet');
-   *   await page.goto('/settings');
-   * });
-   * ```
-   *
-   * @param condition Optional condition - either a boolean value, or a function that takes a fixtures object and returns a boolean. Test or tests are marked as "fixme" when the condition is `true`.
-   * @param description Optional description that will be reflected in a test report.
+   * @param callback A function that returns whether to mark as "fixme", based on test fixtures. Test or tests are marked as "fixme" when the return value is `true`.
+   * @param description An optional description that will be reflected in a test report.
    */
-  fixme(condition: boolean, description: string): void;
-  /**
-   * Marks a test or a group of tests as "fixme". These tests will not be run, but the intention is to fix them.
-   *
-   * Unconditional fixme:
-   *
-   * ```ts
-   * import { test, expect } from '@playwright/test';
-   *
-   * test('not yet ready', async ({ page }) => {
-   *   test.fixme();
-   *   // ...
-   * });
-   * ```
-   *
-   * Conditional fixme a test with an optional description:
-   *
-   * ```ts
-   * import { test, expect } from '@playwright/test';
-   *
-   * test('fixme in WebKit', async ({ page, browserName }) => {
-   *   test.fixme(browserName === 'webkit', 'This feature is not implemented for Mac yet');
-   *   // ...
-   * });
-   * ```
-   *
-   * Conditional fixme for all tests in a file or
-   * [test.describe(title, callback)](https://playwright.dev/docs/api/class-test#test-describe) group:
-   *
-   * ```ts
-   * import { test, expect } from '@playwright/test';
-   *
-   * test.fixme(({ browserName }) => browserName === 'webkit');
-   *
-   * test('fixme in WebKit 1', async ({ page }) => {
-   *   // ...
-   * });
-   * test('fixme in WebKit 2', async ({ page }) => {
-   *   // ...
-   * });
-   * ```
-   *
-   * `fixme` from a hook:
-   *
-   * ```ts
-   * import { test, expect } from '@playwright/test';
-   *
-   * test.beforeEach(async ({ page }) => {
-   *   test.fixme(process.env.APP_VERSION === 'v2', 'No settings in v2 yet');
-   *   await page.goto('/settings');
-   * });
-   * ```
-   *
-   * @param condition Optional condition - either a boolean value, or a function that takes a fixtures object and returns a boolean. Test or tests are marked as "fixme" when the condition is `true`.
-   * @param description Optional description that will be reflected in a test report.
-   */
-  fixme(callback: (args: TestArgs & WorkerArgs) => boolean): void;
-  /**
-   * Marks a test or a group of tests as "fixme". These tests will not be run, but the intention is to fix them.
-   *
-   * Unconditional fixme:
-   *
-   * ```ts
-   * import { test, expect } from '@playwright/test';
-   *
-   * test('not yet ready', async ({ page }) => {
-   *   test.fixme();
-   *   // ...
-   * });
-   * ```
-   *
-   * Conditional fixme a test with an optional description:
-   *
-   * ```ts
-   * import { test, expect } from '@playwright/test';
-   *
-   * test('fixme in WebKit', async ({ page, browserName }) => {
-   *   test.fixme(browserName === 'webkit', 'This feature is not implemented for Mac yet');
-   *   // ...
-   * });
-   * ```
-   *
-   * Conditional fixme for all tests in a file or
-   * [test.describe(title, callback)](https://playwright.dev/docs/api/class-test#test-describe) group:
-   *
-   * ```ts
-   * import { test, expect } from '@playwright/test';
-   *
-   * test.fixme(({ browserName }) => browserName === 'webkit');
-   *
-   * test('fixme in WebKit 1', async ({ page }) => {
-   *   // ...
-   * });
-   * test('fixme in WebKit 2', async ({ page }) => {
-   *   // ...
-   * });
-   * ```
-   *
-   * `fixme` from a hook:
-   *
-   * ```ts
-   * import { test, expect } from '@playwright/test';
-   *
-   * test.beforeEach(async ({ page }) => {
-   *   test.fixme(process.env.APP_VERSION === 'v2', 'No settings in v2 yet');
-   *   await page.goto('/settings');
-   * });
-   * ```
-   *
-   * @param condition Optional condition - either a boolean value, or a function that takes a fixtures object and returns a boolean. Test or tests are marked as "fixme" when the condition is `true`.
-   * @param description Optional description that will be reflected in a test report.
-   */
-  fixme(callback: (args: TestArgs & WorkerArgs) => boolean, description: string): void;
+  fixme(callback: (args: TestArgs & WorkerArgs) => boolean, description?: string): void;
   /**
    * Marks a test or a group of tests as "should fail". Playwright Test runs these tests and ensures that they are actually
    * failing. This is useful for documentation purposes to acknowledge that some functionality is broken until it is fixed.
@@ -2397,7 +2347,7 @@ export interface TestType<TestArgs extends KeyValue, WorkerArgs extends KeyValue
    */
   slow(callback: (args: TestArgs & WorkerArgs) => boolean, description: string): void;
   /**
-   * Changes the timeout for the test.
+   * Changes the timeout for the test. Learn more about [various timeouts](https://playwright.dev/docs/test-timeouts).
    *
    * ```ts
    * import { test, expect } from '@playwright/test';
@@ -2481,8 +2431,8 @@ export interface TestType<TestArgs extends KeyValue, WorkerArgs extends KeyValue
    */
   afterEach(inner: (args: TestArgs & WorkerArgs, testInfo: TestInfo) => Promise<any> | any): void;
   /**
-   * Declares a `beforeAll` hook that is executed once before all tests. When called in the scope of a test file, runs before
-   * all tests in the file. When called inside a
+   * Declares a `beforeAll` hook that is executed once per worker process before all tests. When called in the scope of a
+   * test file, runs before all tests in the file. When called inside a
    * [test.describe(title, callback)](https://playwright.dev/docs/api/class-test#test-describe) group, runs before all tests
    * in the group.
    *
@@ -2503,16 +2453,22 @@ export interface TestType<TestArgs extends KeyValue, WorkerArgs extends KeyValue
    * });
    * ```
    *
+   * Note that worker process is restarted on test failures, and `beforeAll` hook runs again in the new worker. Learn more
+   * about [workers and failures](https://playwright.dev/docs/test-retries).
+   *
    * You can use [test.afterAll(hookFunction)](https://playwright.dev/docs/api/class-test#test-after-all) to teardown any
    * resources set up in `beforeAll`.
    * @param hookFunction Hook function that takes one or two arguments: an object with worker fixtures and optional [TestInfo].
    */
   beforeAll(inner: (args: TestArgs & WorkerArgs, testInfo: TestInfo) => Promise<any> | any): void;
   /**
-   * Declares an `afterAll` hook that is executed once after all tests. When called in the scope of a test file, runs after
-   * all tests in the file. When called inside a
+   * Declares an `afterAll` hook that is executed once per worker after all tests. When called in the scope of a test file,
+   * runs after all tests in the file. When called inside a
    * [test.describe(title, callback)](https://playwright.dev/docs/api/class-test#test-describe) group, runs after all tests
    * in the group.
+   *
+   * Note that worker process is restarted on test failures, and `afterAll` hook runs again in the new worker. Learn more
+   * about [workers and failures](https://playwright.dev/docs/test-retries).
    * @param hookFunction Hook function that takes one or two arguments: an object with worker fixtures and optional [TestInfo].
    */
   afterAll(inner: (args: TestArgs & WorkerArgs, testInfo: TestInfo) => Promise<any> | any): void;
@@ -2575,8 +2531,74 @@ export interface TestType<TestArgs extends KeyValue, WorkerArgs extends KeyValue
    * [expect library documentation](https://jestjs.io/docs/expect) for more details.
    */
   expect: Expect;
-  declare<T extends KeyValue = {}, W extends KeyValue = {}>(): TestType<TestArgs & T, WorkerArgs & W>;
+  /**
+   * Extends the `test` object by defining fixtures and/or options that can be used in the tests.
+   *
+   * First define a fixture and/or an option.
+   *
+   * ```ts
+   * import { test as base } from '@playwright/test';
+   * import { TodoPage } from './todo-page';
+   *
+   * export type Options = { defaultItem: string };
+   *
+   * // Extend basic test by providing a "defaultItem" option and a "todoPage" fixture.
+   * export const test = base.extend<Options & { todoPage: TodoPage }>({
+   *   // Define an option and provide a default value.
+   *   // We can later override it in the config.
+   *   defaultItem: ['Do stuff', { option: true }],
+   *
+   *   // Define a fixture. Note that it can use built-in fixture "page"
+   *   // and a new option "defaultItem".
+   *   todoPage: async ({ page, defaultItem }, use) => {
+   *     const todoPage = new TodoPage(page);
+   *     await todoPage.goto();
+   *     await todoPage.addToDo(defaultItem);
+   *     await use(todoPage);
+   *     await todoPage.removeAll();
+   *   },
+   * });
+   * ```
+   *
+   * Then use the fixture in the test.
+   *
+   * ```ts
+   * // example.spec.ts
+   * import { test } from './my-test';
+   *
+   * test('test 1', async ({ todoPage }) => {
+   *   await todoPage.addToDo('my todo');
+   *   // ...
+   * });
+   * ```
+   *
+   * Configure the option in config file.
+   *
+   * ```ts
+   * // playwright.config.ts
+   * import { PlaywrightTestConfig } from '@playwright/test';
+   * import { Options } from './my-test';
+   *
+   * const config: PlaywrightTestConfig<Options> = {
+   *   projects: [
+   *     {
+   *       name: 'shopping',
+   *       use: { defaultItem: 'Buy milk' },
+   *     },
+   *     {
+   *       name: 'wellbeing',
+   *       use: { defaultItem: 'Exercise!' },
+   *     },
+   *   ]
+   * };
+   * export default config;
+   * ```
+   *
+   * Learn more about [fixtures](https://playwright.dev/docs/test-fixtures) and [parametrizing tests](https://playwright.dev/docs/test-parameterize).
+   * @param fixtures An object containing fixtures and/or options. Learn more about [fixtures format](https://playwright.dev/docs/test-fixtures).
+   */
   extend<T, W extends KeyValue = {}>(fixtures: Fixtures<T, W, TestArgs, WorkerArgs>): TestType<TestArgs & T, WorkerArgs & W>;
+  extendTest<T, W>(other: TestType<T, W>): TestType<TestArgs & T, WorkerArgs & W>;
 }
 
 type KeyValue = { [key: string]: any };
@@ -2589,9 +2611,9 @@ export type Fixtures<T extends KeyValue = {}, W extends KeyValue = {}, PT extend
 } & {
   [K in keyof PT]?: TestFixtureValue<PT[K], T & W & PT & PW> | [TestFixtureValue<PT[K], T & W & PT & PW>, { scope: 'test' }];
 } & {
-  [K in keyof W]?: [WorkerFixtureValue<W[K], W & PW>, { scope: 'worker', auto?: boolean }];
+  [K in keyof W]?: [WorkerFixtureValue<W[K], W & PW>, { scope: 'worker', auto?: boolean, option?: boolean }];
 } & {
-  [K in keyof T]?: TestFixtureValue<T[K], T & W & PT & PW> | [TestFixtureValue<T[K], T & W & PT & PW>, { scope?: 'test', auto?: boolean }];
+  [K in keyof T]?: TestFixtureValue<T[K], T & W & PT & PW> | [TestFixtureValue<T[K], T & W & PT & PW>, { scope?: 'test', auto?: boolean, option?: boolean }];
 };
 
 type BrowserName = 'chromium' | 'firefox' | 'webkit';
@@ -2856,6 +2878,8 @@ export interface PlaywrightTestOptions {
    *
    * This is a default timeout for all Playwright actions, same as configured via
    * [page.setDefaultTimeout(timeout)](https://playwright.dev/docs/api/class-page#page-set-default-timeout).
+   *
+   * Learn more about [various timeouts](https://playwright.dev/docs/test-timeouts).
    */
   actionTimeout: number | undefined;
   /**
@@ -2863,6 +2887,8 @@ export interface PlaywrightTestOptions {
    *
    * This is a default navigation timeout, same as configured via
    * [page.setDefaultNavigationTimeout(timeout)](https://playwright.dev/docs/api/class-page#page-set-default-navigation-timeout).
+   *
+   * Learn more about [various timeouts](https://playwright.dev/docs/test-timeouts).
    */
   navigationTimeout: number | undefined;
 }

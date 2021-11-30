@@ -141,7 +141,7 @@ export function expectType(receiver: any, type: string, matcherName: string) {
 }
 
 export function sanitizeForFilePath(s: string) {
-  return s.replace(/[\x00-\x2F\x3A-\x40\x5B-\x60\x7B-\x7F]+/g, '-');
+  return s.replace(/[\x00-\x2C\x2E-\x2F\x3A-\x40\x5B-\x60\x7B-\x7F]+/g, '-');
 }
 
 export function addSuffixToFilePath(filePath: string, suffix: string, customExtension?: string, sanitize = false): string {
@@ -162,3 +162,20 @@ export function getContainedPath(parentPath: string, subPath: string = ''): stri
 }
 
 export const debugTest = debug('pw:test');
+
+export function prependToTestError(testError: TestError | undefined, message: string | undefined) {
+  if (!message)
+    return testError;
+  if (!testError)
+    return { value: message };
+  if (testError.message) {
+    const stack = testError.stack ? message + testError.stack : testError.stack;
+    message = message + testError.message;
+    return {
+      value: testError.value,
+      message,
+      stack,
+    };
+  }
+  return testError;
+}

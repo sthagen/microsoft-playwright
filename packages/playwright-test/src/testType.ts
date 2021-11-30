@@ -22,20 +22,17 @@ import { Fixtures, FixturesWithLocation, Location, TestType } from './types';
 import { errorWithLocation, serializeError } from './util';
 
 const countByFile = new Map<string, number>();
-
-export class DeclaredFixtures {
-  testType!: TestTypeImpl;
-  location!: Location;
-}
+const testTypeSymbol = Symbol('testType');
 
 export class TestTypeImpl {
-  readonly fixtures: (FixturesWithLocation | DeclaredFixtures)[];
+  readonly fixtures: FixturesWithLocation[];
   readonly test: TestType<any, any>;
 
-  constructor(fixtures: (FixturesWithLocation | DeclaredFixtures)[]) {
+  constructor(fixtures: FixturesWithLocation[]) {
     this.fixtures = fixtures;
 
     const test: any = wrapFunctionWithLocation(this._createTest.bind(this, 'default'));
+    test[testTypeSymbol] = this;
     test.expect = expect;
     test.only = wrapFunctionWithLocation(this._createTest.bind(this, 'only'));
     test.describe = wrapFunctionWithLocation(this._describe.bind(this, 'default'));
@@ -56,11 +53,11 @@ export class TestTypeImpl {
     test.step = wrapFunctionWithLocation(this._step.bind(this));
     test.use = wrapFunctionWithLocation(this._use.bind(this));
     test.extend = wrapFunctionWithLocation(this._extend.bind(this));
-    test.declare = wrapFunctionWithLocation(this._declare.bind(this));
+    test.extendTest = wrapFunctionWithLocation(this._extendTest.bind(this));
     this.test = test;
   }
 
-  private _createTest(type: 'default' | 'only' | 'skip', location: Location, title: string, fn: Function) {
+  private _createTest(type: 'default' | 'only' | 'skip' | 'fixme', location: Location, title: string, fn: Function) {
     throwIfRunningInsideJest();
     const suite = currentlyLoadingFileSuite();
     if (!suite)
@@ -75,7 +72,7 @@ export class TestTypeImpl {
 
     if (type === 'only')
       test._only = true;
-    if (type === 'skip')
+    if (type === 'skip' || type === 'fixme')
       test.expectedStatus = 'skipped';
   }
 
@@ -137,9 +134,9 @@ export class TestTypeImpl {
   private _modifier(type: 'skip' | 'fail' | 'fixme' | 'slow', location: Location, ...modifierArgs: [arg?: any | Function, description?: string]) {
     const suite = currentlyLoadingFileSuite();
     if (suite) {
-      if (typeof modifierArgs[0] === 'string' && typeof modifierArgs[1] === 'function') {
-        // Support for test.skip('title', () => {})
-        this._createTest('skip', location, modifierArgs[0], modifierArgs[1]);
+      if (typeof modifierArgs[0] === 'string' && typeof modifierArgs[1] === 'function' && (type === 'skip' || type === 'fixme')) {
+        // Support for test.{skip,fixme}('title', () => {})
+        this._createTest(type, location, modifierArgs[0], modifierArgs[1]);
         return;
       }
 
@@ -203,16 +200,19 @@ export class TestTypeImpl {
   }
 
   private _extend(location: Location, fixtures: Fixtures) {
-    const fixturesWithLocation = { fixtures, location };
+    if ((fixtures as any)[testTypeSymbol])
+      throw new Error(`test.extend() accepts fixtures object, not a test object.\nDid you mean to call test.extendTest()?`);
+    const fixturesWithLocation: FixturesWithLocation = { fixtures, location };
     return new TestTypeImpl([...this.fixtures, fixturesWithLocation]).test;
   }
 
-  private _declare(location: Location) {
-    const declared = new DeclaredFixtures();
-    declared.location = location;
-    const child = new TestTypeImpl([...this.fixtures, declared]);
-    declared.testType = child;
-    return child.test;
+  private _extendTest(location: Location, test: TestType<any, any>) {
+    const testTypeImpl = (test as any)[testTypeSymbol] as TestTypeImpl;
+    if (!testTypeImpl)
+      throw new Error(`test.extendTest() accepts a single "test" parameter.\nDid you mean to call test.extend() with fixtures instead?`);
+    // Filter out common ancestor fixtures.
+    const newFixtures = testTypeImpl.fixtures.filter(theirs => !this.fixtures.find(ours => ours.fixtures === theirs.fixtures));
+    return new TestTypeImpl([...this.fixtures, ...newFixtures]).test;
   }
 }
 

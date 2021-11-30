@@ -18,7 +18,7 @@ import * as channels from '../protocol/channels';
 import { ChannelOwner } from './channelOwner';
 import * as api from '../../types/types';
 
-export class Dialog extends ChannelOwner<channels.DialogChannel, channels.DialogInitializer> implements api.Dialog {
+export class Dialog extends ChannelOwner<channels.DialogChannel> implements api.Dialog {
   static from(dialog: channels.DialogChannel): Dialog {
     return (dialog as any)._object;
   }
@@ -40,14 +40,10 @@ export class Dialog extends ChannelOwner<channels.DialogChannel, channels.Dialog
   }
 
   async accept(promptText: string | undefined) {
-    return this._wrapApiCall(async (channel: channels.DialogChannel) => {
-      await channel.accept({ promptText });
-    });
+    await this._channel.accept({ promptText });
   }
 
   async dismiss() {
-    return this._wrapApiCall(async (channel: channels.DialogChannel) => {
-      await channel.dismiss();
-    });
+    await this._channel.dismiss();
   }
 }

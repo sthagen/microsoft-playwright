@@ -35,6 +35,7 @@ import type { ElementStateWithoutStable, FrameExpectParams, InjectedScriptPoll, 
 import { isSessionClosedError } from './common/protocolError';
 import { splitSelectorByFrame, stringifySelector } from './common/selectorParser';
 import { SelectorInfo } from './selectors';
+import { isInvalidSelectorError } from './common/selectorErrors';
 
 type ContextData = {
   contextPromise: ManualPromise<dom.FrameExecutionContext | Error>;
@@ -377,7 +378,7 @@ export class FrameManager {
 
   onWebSocketRequest(requestId: string) {
     const ws = this._webSockets.get(requestId);
-    if (ws)
+    if (ws && ws.markAsNotified())
       this._page.emit(Page.Events.WebSocket, ws);
   }
 
@@ -1223,6 +1224,7 @@ export class Frame extends SdkObject {
     const controller = new ProgressController(metadata, this);
     const isArray = options.expression === 'to.have.count' || options.expression.endsWith('.array');
     const mainWorld = options.expression === 'to.have.property';
+    const timeout = this._page._timeoutSettings.timeout(options);
 
     // List all combinations that are satisfied with the detached node(s).
     let omitAttached = false;
@@ -1239,41 +1241,44 @@ export class Frame extends SdkObject {
     else if (options.isNot && options.expression.endsWith('.array') && options.expectedText!.length > 0)
       omitAttached = true;
 
-    return await this._scheduleRerunnableTaskWithController(controller, selector, (progress, element, options, elements) => {
-      let result: { matches: boolean, received?: any };
+    return controller.run(async outerProgress => {
+      outerProgress.log(`${metadata.apiName}${timeout ? ` with timeout ${timeout}ms` : ''}`);
+      return await this._scheduleRerunnableTaskWithProgress(outerProgress, selector, (progress, element, options, elements) => {
+        let result: { matches: boolean, received?: any };
 
-      if (options.isArray) {
-        result = progress.injectedScript.expectArray(elements, options);
-      } else {
-        if (!element) {
-          // expect(locator).toBeHidden() passes when there is no element.
-          if (!options.isNot && options.expression === 'to.be.hidden')
-            return { matches: true };
-          // expect(locator).not.toBeVisible() passes when there is no element.
-          if (options.isNot && options.expression === 'to.be.visible')
-            return { matches: false };
-          // When none of the above applies, keep waiting for the element.
+        if (options.isArray) {
+          result = progress.injectedScript.expectArray(elements, options);
+        } else {
+          if (!element) {
+            // expect(locator).toBeHidden() passes when there is no element.
+            if (!options.isNot && options.expression === 'to.be.hidden')
+              return { matches: true };
+            // expect(locator).not.toBeVisible() passes when there is no element.
+            if (options.isNot && options.expression === 'to.be.visible')
+              return { matches: false };
+            // When none of the above applies, keep waiting for the element.
+            return progress.continuePolling;
+          }
+          result = progress.injectedScript.expectSingleElement(progress, element, options);
+        }
+
+        if (result.matches === options.isNot) {
+          // Keep waiting in these cases:
+          // expect(locator).conditionThatDoesNotMatch
+          // expect(locator).not.conditionThatDoesMatch
+          progress.setIntermediateResult(result.received);
+          if (!Array.isArray(result.received))
+            progress.log(`  unexpected value "${result.received}"`);
           return progress.continuePolling;
         }
-        result = progress.injectedScript.expectSingleElement(progress, element, options);
-      }
 
-      if (result.matches === options.isNot) {
-        // Keep waiting in these cases:
-        // expect(locator).conditionThatDoesNotMatch
-        // expect(locator).not.conditionThatDoesMatch
-        progress.setIntermediateResult(result.received);
-        if (!Array.isArray(result.received))
-          progress.log(`  unexpected value "${result.received}"`);
-        return progress.continuePolling;
-      }
-
-      // Reached the expected state!
-      return result;
-    }, { ...options, isArray }, { strict: true, querySelectorAll: isArray, mainWorld, omitAttached, logScale: true, ...options }).catch(e => {
+        // Reached the expected state!
+        return result;
+      }, { ...options, isArray }, { strict: true, querySelectorAll: isArray, mainWorld, omitAttached, logScale: true, ...options });
+    }, timeout).catch(e => {
       // Q: Why not throw upon isSessionClosedError(e) as in other places?
       // A: We want user to receive a friendly message containing the last intermediate result.
-      if (js.isJavaScriptErrorInEvaluate(e))
+      if (js.isJavaScriptErrorInEvaluate(e) || isInvalidSelectorError(e))
         throw e;
       return { received: controller.lastIntermediateResult(), matches: options.isNot, log: metadata.log };
     });
@@ -1342,26 +1347,25 @@ export class Frame extends SdkObject {
 
   private async _scheduleRerunnableTask<T, R>(metadata: CallMetadata, selector: string, body: DomTaskBody<T, R, Element>, taskData: T, options: types.TimeoutOptions & types.StrictOptions & { mainWorld?: boolean } = {}): Promise<R> {
     const controller = new ProgressController(metadata, this);
-    return this._scheduleRerunnableTaskWithController(controller, selector, body as DomTaskBody<T, R, Element | undefined>, taskData, options);
+    return controller.run(async progress => {
+      return await this._scheduleRerunnableTaskWithProgress(progress, selector, body as DomTaskBody<T, R, Element | undefined>, taskData, options);
+    }, this._page._timeoutSettings.timeout(options));
   }
 
-  private async _scheduleRerunnableTaskWithController<T, R>(
-    controller: ProgressController,
+  private async _scheduleRerunnableTaskWithProgress<T, R>(
+    progress: Progress,
     selector: string,
     body: DomTaskBody<T, R, Element | undefined>,
     taskData: T,
     options: types.TimeoutOptions & types.StrictOptions & { mainWorld?: boolean, querySelectorAll?: boolean, logScale?: boolean, omitAttached?: boolean } = {}): Promise<R> {
 
     const callbackText = body.toString();
-
-    return controller.run(async progress => {
-      return this.retryWithProgress(progress, selector, options, async selectorInFrame => {
-        // Be careful, |this| can be different from |frame|.
-        progress.log(`waiting for selector "${selector}"`);
-        const { frame, info } = selectorInFrame || { frame: this, info: { parsed: { parts: [{ name: 'control', body: 'return-empty', source: 'control=return-empty' }] }, world: 'utility', strict: !!options.strict } };
-        return await frame._scheduleRerunnableTaskInFrame(progress, info, callbackText, taskData, options);
-      });
-    }, this._page._timeoutSettings.timeout(options));
+    return this.retryWithProgress(progress, selector, options, async selectorInFrame => {
+      // Be careful, |this| can be different from |frame|.
+      progress.log(`waiting for selector "${selector}"`);
+      const { frame, info } = selectorInFrame || { frame: this, info: { parsed: { parts: [{ name: 'control', body: 'return-empty', source: 'control=return-empty' }] }, world: 'utility', strict: !!options.strict } };
+      return await frame._scheduleRerunnableTaskInFrame(progress, info, callbackText, taskData, options);
+    });
   }
 
   private async _scheduleRerunnableTaskInFrame<T, R>(

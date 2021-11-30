@@ -16,12 +16,12 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import type { LaunchOptions, BrowserContextOptions, Page, BrowserContext, BrowserType, Video } from 'playwright-core';
+import type { LaunchOptions, BrowserContextOptions, Page, BrowserContext, BrowserType, Video, Browser } from 'playwright-core';
 import type { TestType, PlaywrightTestArgs, PlaywrightTestOptions, PlaywrightWorkerArgs, PlaywrightWorkerOptions, TestInfo } from '../types/test';
 import { rootTestType } from './testType';
 import { createGuid, removeFolders } from 'playwright-core/lib/utils/utils';
 import { GridClient } from 'playwright-core/lib/grid/gridClient';
-import { Browser } from 'playwright-core';
+import { prependToTestError } from './util';
 export { expect } from './expect';
 export const _baseTest: TestType<{}, {}> = rootTestType.test;
 
@@ -30,16 +30,16 @@ type TestFixtures = PlaywrightTestArgs & PlaywrightTestOptions & {
   _setupContextOptionsAndArtifacts: void;
   _contextFactory: (options?: BrowserContextOptions) => Promise<BrowserContext>;
 };
-type WorkerAndFileFixtures = PlaywrightWorkerArgs & PlaywrightWorkerOptions & {
+type WorkerFixtures = PlaywrightWorkerArgs & PlaywrightWorkerOptions & {
   _browserType: BrowserType;
   _browserOptions: LaunchOptions;
   _artifactsDir: () => string;
   _snapshotSuffix: string;
 };
 
-export const test = _baseTest.extend<TestFixtures, WorkerAndFileFixtures>({
-  defaultBrowserType: [ 'chromium', { scope: 'worker' } ],
-  browserName: [ ({ defaultBrowserType }, use) => use(defaultBrowserType), { scope: 'worker' } ],
+export const test = _baseTest.extend<TestFixtures, WorkerFixtures>({
+  defaultBrowserType: [ 'chromium', { scope: 'worker', option: true } ],
+  browserName: [ ({ defaultBrowserType }, use) => use(defaultBrowserType), { scope: 'worker', option: true } ],
   playwright: [async ({}, use, workerInfo) => {
     if (process.env.PW_GRID) {
       const gridClient = await GridClient.connect(process.env.PW_GRID);
@@ -49,12 +49,12 @@ export const test = _baseTest.extend<TestFixtures, WorkerAndFileFixtures>({
       await use(require('playwright-core'));
     }
   }, { scope: 'worker' } ],
-  headless: [ undefined, { scope: 'worker' } ],
-  channel: [ undefined, { scope: 'worker' } ],
-  launchOptions: [ {}, { scope: 'worker' } ],
-  screenshot: [ 'off', { scope: 'worker' } ],
-  video: [ 'off', { scope: 'worker' } ],
-  trace: [ 'off', { scope: 'worker' } ],
+  headless: [ undefined, { scope: 'worker', option: true } ],
+  channel: [ undefined, { scope: 'worker', option: true } ],
+  launchOptions: [ {}, { scope: 'worker', option: true } ],
+  screenshot: [ 'off', { scope: 'worker', option: true } ],
+  video: [ 'off', { scope: 'worker', option: true } ],
+  trace: [ 'off', { scope: 'worker', option: true } ],
 
   _artifactsDir: [async ({}, use, workerInfo) => {
     let dir: string | undefined;
@@ -73,31 +73,31 @@ export const test = _baseTest.extend<TestFixtures, WorkerAndFileFixtures>({
   _browserType: [browserTypeWorkerFixture, { scope: 'worker' }],
   browser: [browserWorkerFixture, { scope: 'worker' } ],
 
-  acceptDownloads: undefined,
-  bypassCSP: undefined,
-  colorScheme: undefined,
-  deviceScaleFactor: undefined,
-  extraHTTPHeaders: undefined,
-  geolocation: undefined,
-  hasTouch: undefined,
-  httpCredentials: undefined,
-  ignoreHTTPSErrors: undefined,
-  isMobile: undefined,
-  javaScriptEnabled: undefined,
-  locale: undefined,
-  offline: undefined,
-  permissions: undefined,
-  proxy: undefined,
-  storageState: undefined,
-  timezoneId: undefined,
-  userAgent: undefined,
-  viewport: undefined,
-  actionTimeout: undefined,
-  navigationTimeout: undefined,
-  baseURL: async ({ }, use) => {
+  acceptDownloads: [ undefined, { option: true } ],
+  bypassCSP: [ undefined, { option: true } ],
+  colorScheme: [ undefined, { option: true } ],
+  deviceScaleFactor: [ undefined, { option: true } ],
+  extraHTTPHeaders: [ undefined, { option: true } ],
+  geolocation: [ undefined, { option: true } ],
+  hasTouch: [ undefined, { option: true } ],
+  httpCredentials: [ undefined, { option: true } ],
+  ignoreHTTPSErrors: [ undefined, { option: true } ],
+  isMobile: [ undefined, { option: true } ],
+  javaScriptEnabled: [ undefined, { option: true } ],
+  locale: [ undefined, { option: true } ],
+  offline: [ undefined, { option: true } ],
+  permissions: [ undefined, { option: true } ],
+  proxy: [ undefined, { option: true } ],
+  storageState: [ undefined, { option: true } ],
+  timezoneId: [ undefined, { option: true } ],
+  userAgent: [ undefined, { option: true } ],
+  viewport: [ undefined, { option: true } ],
+  actionTimeout: [ undefined, { option: true } ],
+  navigationTimeout: [ undefined, { option: true } ],
+  baseURL: [ async ({ }, use) => {
     await use(process.env.PLAYWRIGHT_TEST_BASE_URL);
-  },
-  contextOptions: {},
+  }, { option: true } ],
+  contextOptions: [ {}, { option: true } ],
 
   _combinedContextOptions: async ({
     acceptDownloads,
@@ -171,7 +171,7 @@ export const test = _baseTest.extend<TestFixtures, WorkerAndFileFixtures>({
 
   _snapshotSuffix: [process.env.PLAYWRIGHT_DOCKER ? 'docker' : process.platform, { scope: 'worker' }],
 
-  _setupContextOptionsAndArtifacts: [async ({ _snapshotSuffix, _browserType, _combinedContextOptions, _artifactsDir, trace, screenshot, actionTimeout, navigationTimeout }, use, testInfo) => {
+  _setupContextOptionsAndArtifacts: [async ({ playwright, _snapshotSuffix, _combinedContextOptions, _artifactsDir, trace, screenshot, actionTimeout, navigationTimeout }, use, testInfo) => {
     testInfo.snapshotSuffix = _snapshotSuffix;
     if (process.env.PWDEBUG)
       testInfo.setTimeout(0);
@@ -185,8 +185,10 @@ export const test = _baseTest.extend<TestFixtures, WorkerAndFileFixtures>({
     const captureTrace = (traceMode === 'on' || traceMode === 'retain-on-failure' || (traceMode === 'on-first-retry' && testInfo.retry === 1));
     const temporaryTraceFiles: string[] = [];
     const temporaryScreenshots: string[] = [];
+    const createdContexts = new Set<BrowserContext>();
 
     const onDidCreateContext = async (context: BrowserContext) => {
+      createdContexts.add(context);
       context.setDefaultTimeout(actionTimeout || 0);
       context.setDefaultNavigationTimeout(navigationTimeout || actionTimeout || 0);
       if (captureTrace) {
@@ -245,11 +247,13 @@ export const test = _baseTest.extend<TestFixtures, WorkerAndFileFixtures>({
     };
 
     // 1. Setup instrumentation and process existing contexts.
-    (_browserType as any)._onDidCreateContext = onDidCreateContext;
-    (_browserType as any)._onWillCloseContext = onWillCloseContext;
-    (_browserType as any)._defaultContextOptions = _combinedContextOptions;
-    const existingContexts = Array.from((_browserType as any)._contexts) as BrowserContext[];
-    await Promise.all(existingContexts.map(onDidCreateContext));
+    for (const browserType of [playwright.chromium, playwright.firefox, playwright.webkit]) {
+      (browserType as any)._onDidCreateContext = onDidCreateContext;
+      (browserType as any)._onWillCloseContext = onWillCloseContext;
+      (browserType as any)._defaultContextOptions = _combinedContextOptions;
+      const existingContexts = Array.from((browserType as any)._contexts) as BrowserContext[];
+      await Promise.all(existingContexts.map(onDidCreateContext));
+    }
 
     // 2. Run the test.
     await use();
@@ -277,10 +281,13 @@ export const test = _baseTest.extend<TestFixtures, WorkerAndFileFixtures>({
     };
 
     // 4. Cleanup instrumentation.
-    const leftoverContexts = Array.from((_browserType as any)._contexts) as BrowserContext[];
-    (_browserType as any)._onDidCreateContext = undefined;
-    (_browserType as any)._onWillCloseContext = undefined;
-    (_browserType as any)._defaultContextOptions = undefined;
+    const leftoverContexts: BrowserContext[] = [];
+    for (const browserType of [playwright.chromium, playwright.firefox, playwright.webkit]) {
+      leftoverContexts.push(...(browserType as any)._contexts);
+      (browserType as any)._onDidCreateContext = undefined;
+      (browserType as any)._onWillCloseContext = undefined;
+      (browserType as any)._defaultContextOptions = undefined;
+    }
     leftoverContexts.forEach(context => (context as any)._instrumentation.removeAllListeners());
 
     // 5. Collect artifacts from any non-closed contexts.
@@ -313,6 +320,14 @@ export const test = _baseTest.extend<TestFixtures, WorkerAndFileFixtures>({
       else
         await fs.promises.unlink(file).catch(() => {});
     }));
+
+    // 7. Cleanup created contexts when we know it's safe - this will produce nice error message.
+    if (hookType(testInfo) === 'beforeAll' && testInfo.status === 'timedOut') {
+      const anyContext = leftoverContexts[0];
+      const pendingCalls = anyContext ? formatPendingCalls((anyContext as any)._connection.pendingProtocolCalls()) : '';
+      await Promise.all(leftoverContexts.filter(c => createdContexts.has(c)).map(c => c.close()));
+      testInfo.error = prependToTestError(testInfo.error, pendingCalls);
+    }
   }, { auto: true }],
 
   _contextFactory: async ({ browser, video, _artifactsDir }, use, testInfo) => {
@@ -364,15 +379,7 @@ export const test = _baseTest.extend<TestFixtures, WorkerAndFileFixtures>({
       }
     }));
 
-    if (prependToError) {
-      if (!testInfo.error) {
-        testInfo.error = { value: prependToError };
-      } else if (testInfo.error.message) {
-        testInfo.error.message = prependToError + testInfo.error.message;
-        if (testInfo.error.stack)
-          testInfo.error.stack = prependToError + testInfo.error.stack;
-      }
-    }
+    testInfo.error = prependToTestError(testInfo.error, prependToError);
   },
 
   context: async ({ _contextFactory }, use) => {

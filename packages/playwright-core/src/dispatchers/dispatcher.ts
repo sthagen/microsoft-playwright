@@ -18,7 +18,7 @@ import { EventEmitter } from 'events';
 import * as channels from '../protocol/channels';
 import { serializeError } from '../protocol/serializers';
 import { createScheme, Validator, ValidationError } from '../protocol/validator';
-import { assert, debugAssert, isUnderTest, monotonicTime } from '../utils/utils';
+import { assert, debugAssert, getPlaywrightVersion, isUnderTest, monotonicTime } from '../utils/utils';
 import { tOptional } from '../protocol/validatorPrimitives';
 import { kBrowserOrContextClosedError } from '../utils/errors';
 import { CallMetadata, SdkObject } from '../server/instrumentation';
@@ -41,21 +41,21 @@ export function lookupNullableDispatcher<DispatcherType>(object: any | null): Di
   return object ? lookupDispatcher(object) : undefined;
 }
 
-export class Dispatcher<Type extends { guid: string }, Initializer, Events> extends EventEmitter implements channels.Channel {
+export class Dispatcher<Type extends { guid: string }, ChannelType> extends EventEmitter implements channels.Channel {
   private _connection: DispatcherConnection;
   private _isScope: boolean;
   // Parent is always "isScope".
-  private _parent: Dispatcher<any, any, {}> | undefined;
+  private _parent: Dispatcher<any, any> | undefined;
   // Only "isScope" channel owners have registered dispatchers inside.
-  private _dispatchers = new Map<string, Dispatcher<any, any, {}>>();
+  private _dispatchers = new Map<string, Dispatcher<any, any>>();
   protected _disposed = false;
 
   readonly _guid: string;
   readonly _type: string;
-  readonly _scope: Dispatcher<any, any, {}>;
+  readonly _scope: Dispatcher<any, any>;
   _object: Type;
 
-  constructor(parent: Dispatcher<any, any, {}> | DispatcherConnection, object: Type, type: string, initializer: Initializer, isScope?: boolean) {
+  constructor(parent: Dispatcher<any, any> | DispatcherConnection, object: Type, type: string, initializer: channels.InitializerTraits<Type>, isScope?: boolean) {
     super();
 
     this._connection = parent instanceof DispatcherConnection ? parent : parent._connection;
@@ -80,7 +80,7 @@ export class Dispatcher<Type extends { guid: string }, Initializer, Events> exte
       this._connection.sendMessageToClient(this._parent._guid, type, '__create__', { type, initializer, guid }, this._parent._object);
   }
 
-  _dispatchEvent<T extends keyof Events>(method: T, params?: Events[T]) {
+  _dispatchEvent<T extends keyof channels.EventsTraits<ChannelType>>(method: T, params?: channels.EventsTraits<ChannelType>[T]) {
     if (this._disposed) {
       if (isUnderTest())
         throw new Error(`${this._guid} is sending "${method}" event after being disposed`);
@@ -121,8 +121,8 @@ export class Dispatcher<Type extends { guid: string }, Initializer, Events> exte
   }
 }
 
-export type DispatcherScope = Dispatcher<any, any, {}>;
-export class Root extends Dispatcher<{ guid: '' }, {}, {}> {
+export type DispatcherScope = Dispatcher<any, any>;
+export class Root extends Dispatcher<{ guid: '' }, any> {
   private _initialized = false;
 
   constructor(connection: DispatcherConnection, private readonly createPlaywright?: (scope: DispatcherScope, options: channels.RootInitializeParams) => Promise<PlaywrightDispatcher>) {
@@ -132,6 +132,7 @@ export class Root extends Dispatcher<{ guid: '' }, {}, {}> {
   async initialize(params: channels.RootInitializeParams): Promise<channels.RootInitializeResult> {
     assert(this.createPlaywright);
     assert(!this._initialized);
+    assertPlaywrightVersion(params.version);
     this._initialized = true;
     return {
       playwright: await this.createPlaywright(this, params),
@@ -140,7 +141,7 @@ export class Root extends Dispatcher<{ guid: '' }, {}, {}> {
 }
 
 export class DispatcherConnection {
-  readonly _dispatchers = new Map<string, Dispatcher<any, any, {}>>();
+  readonly _dispatchers = new Map<string, Dispatcher<any, any>>();
   onmessage = (message: object) => {};
   private _validateParams: (type: string, method: string, params: any) => any;
   private _validateMetadata: (metadata: any) => { stack?: channels.StackFrame[] };
@@ -320,3 +321,10 @@ function formatLogRecording(log: string[]): string {
 }
 
 let lastEventId = 0;
+
+function assertPlaywrightVersion(givenVersion: string): void {
+  const expectedVersion = getPlaywrightVersion();
+  const givenParts = givenVersion.split('.');
+  const expectedParts = givenVersion.split('.');
+  assert(givenParts.slice(0, 2).join('.') === expectedParts.slice(0, 2).join('.'), `${expectedVersion} does not match the client version ${givenVersion}.`);
+}

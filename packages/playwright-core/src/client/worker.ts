@@ -23,7 +23,7 @@ import { BrowserContext } from './browserContext';
 import * as api from '../../types/types';
 import * as structs from '../../types/structs';
 
-export class Worker extends ChannelOwner<channels.WorkerChannel, channels.WorkerInitializer> implements api.Worker {
+export class Worker extends ChannelOwner<channels.WorkerChannel> implements api.Worker {
   _page: Page | undefined;  // Set for web workers.
   _context: BrowserContext | undefined;  // Set for service workers.
 
@@ -48,17 +48,13 @@ export class Worker extends ChannelOwner<channels.WorkerChannel, channels.Worker
 
   async evaluate<R, Arg>(pageFunction: structs.PageFunction<Arg, R>, arg?: Arg): Promise<R> {
     assertMaxArguments(arguments.length, 2);
-    return this._wrapApiCall(async (channel: channels.WorkerChannel) => {
-      const result = await channel.evaluateExpression({ expression: String(pageFunction), isFunction: typeof pageFunction === 'function', arg: serializeArgument(arg) });
-      return parseResult(result.value);
-    });
+    const result = await this._channel.evaluateExpression({ expression: String(pageFunction), isFunction: typeof pageFunction === 'function', arg: serializeArgument(arg) });
+    return parseResult(result.value);
   }
 
   async evaluateHandle<R, Arg>(pageFunction: structs.PageFunction<Arg, R>, arg?: Arg): Promise<structs.SmartHandle<R>> {
     assertMaxArguments(arguments.length, 2);
-    return this._wrapApiCall(async (channel: channels.WorkerChannel) => {
-      const result = await channel.evaluateExpressionHandle({ expression: String(pageFunction), isFunction: typeof pageFunction === 'function', arg: serializeArgument(arg) });
-      return JSHandle.from(result.handle) as any as structs.SmartHandle<R>;
-    });
+    const result = await this._channel.evaluateExpressionHandle({ expression: String(pageFunction), isFunction: typeof pageFunction === 'function', arg: serializeArgument(arg) });
+    return JSHandle.from(result.handle) as any as structs.SmartHandle<R>;
   }
 }

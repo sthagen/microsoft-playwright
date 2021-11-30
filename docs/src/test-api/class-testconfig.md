@@ -39,7 +39,7 @@ export default config;
   - `toMatchSnapshot` <[Object]>
     - `threshold` <[float]> Image matching threshold between zero (strict) and one (lax).
 
-Configuration for the `expect` assertion library.
+Configuration for the `expect` assertion library. Learn more about [various timeouts](./test-timeouts.md).
 
 ```js js-flavor=js
 // playwright.config.js
@@ -161,7 +161,7 @@ export default config;
 ## property: TestConfig.globalTimeout
 - type: <[int]>
 
-Maximum time in milliseconds the whole test suite can run. Zero timeout (default) disables this behavior. Useful on CI to prevent broken setup from running too long and wasting resources.
+Maximum time in milliseconds the whole test suite can run. Zero timeout (default) disables this behavior. Useful on CI to prevent broken setup from running too long and wasting resources. Learn more about [various timeouts](./test-timeouts.md).
 
 ```js js-flavor=js
 // playwright.config.js
@@ -491,7 +491,7 @@ export default config;
 
 Timeout for each test in milliseconds. Defaults to 30 seconds.
 
-This is a base timeout for all tests. In addition, each test can configure its own timeout with [`method: Test.setTimeout`].
+This is a base timeout for all tests. In addition, each test can configure its own timeout with [`method: Test.setTimeout`]. Learn more about [various timeouts](./test-timeouts.md).
 
 ```js js-flavor=js
 // playwright.config.js
@@ -554,6 +554,82 @@ const config: PlaywrightTestConfig = {
   },
 };
 export default config;
+```
+
+## property: TestConfig.webServer
+- type: <[Object]>
+  - `command` <[string]> Command which gets executed
+  - `port` <[int]> Port to wait on for the web server
+  - `timeout` <[int]> Maximum duration to wait on until the web server is ready
+  - `reuseExistingServer` <[boolean]> If true, reuse the existing server if it is already running, otherwise it will fail
+  - `cwd` <[boolean]> Working directory to run the command in
+  - `env` <[Object]<[string], [string]>> Environment variables to set for the command
+
+Launch a development web server during the tests.
+
+The server will wait for it to be available on `127.0.0.1` or `::1` before running the tests. For continuous integration, you may want to use the `reuseExistingServer: !process.env.CI` option which does not use an existing server on the CI.
+
+The port gets then passed over to Playwright as a `baseURL` when creating the context [`method: Browser.newContext`].
+For example `8080` ends up in `baseURL` to be `http://localhost:8080`. If you want to use `https://` you need to manually specify
+the `baseURL` inside `use`.
+
+```js js-flavor=ts
+// playwright.config.ts
+import { PlaywrightTestConfig } from '@playwright/test';
+const config: PlaywrightTestConfig = {
+  webServer: {
+    command: 'npm run start',
+    port: 3000,
+    timeout: 120 * 1000,
+    reuseExistingServer: !process.env.CI,
+  },
+};
+export default config;
+```
+
+```js js-flavor=js
+// playwright.config.js
+// @ts-check
+/** @type {import('@playwright/test').PlaywrightTestConfig} */
+const config = {
+  webServer: {
+    command: 'npm run start',
+    port: 3000,
+    timeout: 120 * 1000,
+    reuseExistingServer: !process.env.CI,
+  },
+};
+module.exports = config;
+```
+
+Now you can use a relative path when navigating the page, or use `baseURL` fixture:
+
+```js js-flavor=ts
+// test.spec.ts
+import { test } from '@playwright/test';
+test('test', async ({ page, baseURL }) => {
+  // baseURL is taken directly from your web server,
+  // e.g. http://localhost:3000
+  await page.goto(baseURL + '/bar');
+  // Alternatively, just use relative path, because baseURL is already
+  // set for the default context and page.
+  // For example, this will result in http://localhost:3000/foo
+  await page.goto('/foo');
+});
+```
+
+```js js-flavor=js
+// test.spec.js
+const { test } = require('@playwright/test');
+test('test', async ({ page, baseURL }) => {
+  // baseURL is taken directly from your web server,
+  // e.g. http://localhost:3000
+  await page.goto(baseURL + '/bar');
+  // Alternatively, just use relative path, because baseURL is already
+  // set for the default context and page.
+  // For example, this will result in http://localhost:3000/foo
+  await page.goto('/foo');
+});
 ```
 
 ## property: TestConfig.workers

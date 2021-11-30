@@ -150,6 +150,10 @@ export module Protocol {
        */
       properties?: AXProperty[];
       /**
+       * ID for this node's parent.
+       */
+      parentId?: AXNodeId;
+      /**
        * IDs for each of this node's child nodes.
        */
       childIds?: AXNodeId[];
@@ -157,8 +161,31 @@ export module Protocol {
        * The backend ID for the associated DOM node, if any.
        */
       backendDOMNodeId?: DOM.BackendNodeId;
+      /**
+       * The frame ID for the frame associated with this nodes document.
+       */
+      frameId?: Page.FrameId;
     }
     
+    /**
+     * The loadComplete event mirrors the load complete event sent by the browser to assistive
+technology when the web page has finished loading.
+     */
+    export type loadCompletePayload = {
+      /**
+       * New document root node.
+       */
+      root: AXNode;
+    }
+    /**
+     * The nodesUpdated event is sent every time a previously requested node has changed the in tree.
+     */
+    export type nodesUpdatedPayload = {
+      /**
+       * Updated node data.
+       */
+      nodes: AXNode[];
+    }
     
     /**
      * Disables the accessibility domain.
@@ -223,6 +250,41 @@ If omited, the root frame is used.
       frameId?: Page.FrameId;
     }
     export type getFullAXTreeReturnValue = {
+      nodes: AXNode[];
+    }
+    /**
+     * Fetches the root node.
+Requires `enable()` to have been called previously.
+     */
+    export type getRootAXNodeParameters = {
+      /**
+       * The frame in whose document the node resides.
+If omitted, the root frame is used.
+       */
+      frameId?: Page.FrameId;
+    }
+    export type getRootAXNodeReturnValue = {
+      node: AXNode;
+    }
+    /**
+     * Fetches a node and all ancestors up to and including the root.
+Requires `enable()` to have been called previously.
+     */
+    export type getAXNodeAndAncestorsParameters = {
+      /**
+       * Identifier of the node to get.
+       */
+      nodeId?: DOM.NodeId;
+      /**
+       * Identifier of the backend node to get.
+       */
+      backendNodeId?: DOM.BackendNodeId;
+      /**
+       * JavaScript object id of the node wrapper to get.
+       */
+      objectId?: Runtime.RemoteObjectId;
+    }
+    export type getAXNodeAndAncestorsReturnValue = {
       nodes: AXNode[];
     }
     /**
@@ -4957,6 +5019,7 @@ Missing optional values will be filled in by the target with what it would norma
      */
     export interface UserAgentMetadata {
       brands?: UserAgentBrandVersion[];
+      fullVersionList?: UserAgentBrandVersion[];
       fullVersion?: string;
       platform: string;
       platformVersion: string;
@@ -7550,6 +7613,15 @@ An unspecified port value allows protocol clients to emulate legacy cookie scope
 This is a temporary ability and it will be removed in the future.
        */
       sourcePort: number;
+      /**
+       * Cookie partition key. The site of the top-level URL the browser was visiting at the start
+of the request to the endpoint that set the cookie.
+       */
+      partitionKey?: string;
+      /**
+       * True if cookie partition key is opaque.
+       */
+      partitionKeyOpaque?: boolean;
     }
     /**
      * Types of reasons why a cookie may not be stored from a response.
@@ -7651,6 +7723,12 @@ An unspecified port value allows protocol clients to emulate legacy cookie scope
 This is a temporary ability and it will be removed in the future.
        */
       sourcePort?: number;
+      /**
+       * Cookie partition key. The site of the top-level URL the browser was visiting at the start
+of the request to the endpoint that set the cookie.
+If not set, the cookie will be set as not partitioned.
+       */
+      partitionKey?: string;
     }
     /**
      * Authorization challenge for HTTP status code 401 or 407.
@@ -7900,6 +7978,16 @@ the same request (but not for redirected requests).
       completedAttempts: number;
       body: { [key: string]: string };
       status: ReportStatus;
+    }
+    export interface ReportingApiEndpoint {
+      /**
+       * The URL of the endpoint to which reports may be delivered.
+       */
+      url: string;
+      /**
+       * Name of the endpoint group.
+       */
+      groupName: string;
     }
     /**
      * An object providing the result of a network resource load.
@@ -8560,6 +8648,13 @@ And after 'enableReportingApi' for all existing reports.
     export type reportingApiReportUpdatedPayload = {
       report: ReportingApiReport;
     }
+    export type reportingApiEndpointsChangedForOriginPayload = {
+      /**
+       * Origin of the document(s) which configured the endpoints.
+       */
+      origin: string;
+      endpoints: ReportingApiEndpoint[];
+    }
     
     /**
      * Sets a list of content encodings that will be accepted. Empty list means no encoding is accepted.
@@ -8988,6 +9083,12 @@ An unspecified port value allows protocol clients to emulate legacy cookie scope
 This is a temporary ability and it will be removed in the future.
        */
       sourcePort?: number;
+      /**
+       * Cookie partition key. The site of the top-level URL the browser was visiting at the start
+of the request to the endpoint that set the cookie.
+If not set, the cookie will be set as not partitioned.
+       */
+      partitionKey?: string;
     }
     export type setCookieReturnValue = {
       /**
@@ -9939,7 +10040,7 @@ Backend then generates 'inspectNodeRequested' event upon element selection.
      * All Permissions Policy features. This enum should match the one defined
 in third_party/blink/renderer/core/permissions_policy/permissions_policy_features.json5.
      */
-    export type PermissionsPolicyFeature = "accelerometer"|"ambient-light-sensor"|"attribution-reporting"|"autoplay"|"camera"|"ch-dpr"|"ch-device-memory"|"ch-downlink"|"ch-ect"|"ch-prefers-color-scheme"|"ch-rtt"|"ch-ua"|"ch-ua-arch"|"ch-ua-bitness"|"ch-ua-platform"|"ch-ua-model"|"ch-ua-mobile"|"ch-ua-full-version"|"ch-ua-platform-version"|"ch-ua-reduced"|"ch-viewport-height"|"ch-viewport-width"|"ch-width"|"clipboard-read"|"clipboard-write"|"cross-origin-isolated"|"direct-sockets"|"display-capture"|"document-domain"|"encrypted-media"|"execution-while-out-of-viewport"|"execution-while-not-rendered"|"focus-without-user-activation"|"fullscreen"|"frobulate"|"gamepad"|"geolocation"|"gyroscope"|"hid"|"idle-detection"|"interest-cohort"|"join-ad-interest-group"|"keyboard-map"|"magnetometer"|"microphone"|"midi"|"otp-credentials"|"payment"|"picture-in-picture"|"publickey-credentials-get"|"run-ad-auction"|"screen-wake-lock"|"serial"|"shared-autofill"|"storage-access-api"|"sync-xhr"|"trust-token-redemption"|"usb"|"vertical-scroll"|"web-share"|"window-placement"|"xr-spatial-tracking";
+    export type PermissionsPolicyFeature = "accelerometer"|"ambient-light-sensor"|"attribution-reporting"|"autoplay"|"camera"|"ch-dpr"|"ch-device-memory"|"ch-downlink"|"ch-ect"|"ch-prefers-color-scheme"|"ch-rtt"|"ch-ua"|"ch-ua-arch"|"ch-ua-bitness"|"ch-ua-platform"|"ch-ua-model"|"ch-ua-mobile"|"ch-ua-full-version"|"ch-ua-full-version-list"|"ch-ua-platform-version"|"ch-ua-reduced"|"ch-viewport-height"|"ch-viewport-width"|"ch-width"|"clipboard-read"|"clipboard-write"|"cross-origin-isolated"|"direct-sockets"|"display-capture"|"document-domain"|"encrypted-media"|"execution-while-out-of-viewport"|"execution-while-not-rendered"|"focus-without-user-activation"|"fullscreen"|"frobulate"|"gamepad"|"geolocation"|"gyroscope"|"hid"|"idle-detection"|"interest-cohort"|"join-ad-interest-group"|"keyboard-map"|"magnetometer"|"microphone"|"midi"|"otp-credentials"|"payment"|"picture-in-picture"|"publickey-credentials-get"|"run-ad-auction"|"screen-wake-lock"|"serial"|"shared-autofill"|"storage-access-api"|"sync-xhr"|"trust-token-redemption"|"usb"|"vertical-scroll"|"web-share"|"window-placement"|"xr-spatial-tracking";
     /**
      * Reason for a permissions policy feature to be disabled.
      */
@@ -12050,7 +12151,7 @@ certificate errors at the same time.
       visibleSecurityState: VisibleSecurityState;
     }
     /**
-     * The security state of the page changed.
+     * The security state of the page changed. No longer being sent.
      */
     export type securityStateChangedPayload = {
       /**
@@ -12915,6 +13016,11 @@ one.
        * Proxy bypass list, similar to the one passed to --proxy-bypass-list
        */
       proxyBypassList?: string;
+      /**
+       * An optional list of origins to grant unlimited cross-origin access to.
+Parts of the URL other than those constituting origin are ignored.
+       */
+      originsWithUniversalNetworkAccess?: string[];
     }
     export type createBrowserContextReturnValue = {
       /**
@@ -16737,6 +16843,8 @@ unsubscribes current runtime agent from Runtime.bindingCalled notifications.
   }
   
   export interface Events {
+    "Accessibility.loadComplete": Accessibility.loadCompletePayload;
+    "Accessibility.nodesUpdated": Accessibility.nodesUpdatedPayload;
     "Animation.animationCanceled": Animation.animationCanceledPayload;
     "Animation.animationCreated": Animation.animationCreatedPayload;
     "Animation.animationStarted": Animation.animationStartedPayload;
@@ -16809,6 +16917,7 @@ unsubscribes current runtime agent from Runtime.bindingCalled notifications.
     "Network.subresourceWebBundleInnerResponseError": Network.subresourceWebBundleInnerResponseErrorPayload;
     "Network.reportingApiReportAdded": Network.reportingApiReportAddedPayload;
     "Network.reportingApiReportUpdated": Network.reportingApiReportUpdatedPayload;
+    "Network.reportingApiEndpointsChangedForOrigin": Network.reportingApiEndpointsChangedForOriginPayload;
     "Overlay.inspectNodeRequested": Overlay.inspectNodeRequestedPayload;
     "Overlay.nodeHighlightRequested": Overlay.nodeHighlightRequestedPayload;
     "Overlay.screenshotRequested": Overlay.screenshotRequestedPayload;
@@ -16910,6 +17019,8 @@ unsubscribes current runtime agent from Runtime.bindingCalled notifications.
     "Accessibility.enable": Accessibility.enableParameters;
     "Accessibility.getPartialAXTree": Accessibility.getPartialAXTreeParameters;
     "Accessibility.getFullAXTree": Accessibility.getFullAXTreeParameters;
+    "Accessibility.getRootAXNode": Accessibility.getRootAXNodeParameters;
+    "Accessibility.getAXNodeAndAncestors": Accessibility.getAXNodeAndAncestorsParameters;
     "Accessibility.getChildAXNodes": Accessibility.getChildAXNodesParameters;
     "Accessibility.queryAXTree": Accessibility.queryAXTreeParameters;
     "Animation.disable": Animation.disableParameters;
@@ -17430,6 +17541,8 @@ unsubscribes current runtime agent from Runtime.bindingCalled notifications.
     "Accessibility.enable": Accessibility.enableReturnValue;
     "Accessibility.getPartialAXTree": Accessibility.getPartialAXTreeReturnValue;
     "Accessibility.getFullAXTree": Accessibility.getFullAXTreeReturnValue;
+    "Accessibility.getRootAXNode": Accessibility.getRootAXNodeReturnValue;
+    "Accessibility.getAXNodeAndAncestors": Accessibility.getAXNodeAndAncestorsReturnValue;
     "Accessibility.getChildAXNodes": Accessibility.getChildAXNodesReturnValue;
     "Accessibility.queryAXTree": Accessibility.queryAXTreeReturnValue;
     "Animation.disable": Animation.disableReturnValue;

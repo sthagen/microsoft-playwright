@@ -64,10 +64,16 @@ it('should work for different console API calls', async ({ page }) => {
     console.dir('calling console.dir');
     console.warn('calling console.warn');
     console.error('calling console.error');
+    console.info('calling console.info');
+    console.debug('calling console.debug');
     console.log(Promise.resolve('should not wait until resolved!'));
   });
+  // WebKit uses console.debug() to report binding calls, make sure they don't get reported.
+  await page.exposeBinding('foobar', async (_, value) => page.evaluate(value => console.log(value), value));
+  await page.evaluate(() => window['foobar']('Using bindings'));
+
   expect(messages.map(msg => msg.type())).toEqual([
-    'timeEnd', 'trace', 'dir', 'warning', 'error', 'log'
+    'timeEnd', 'trace', 'dir', 'warning', 'error', 'info', 'debug', 'log', 'log'
   ]);
   expect(messages[0].text()).toContain('calling console.time');
   expect(messages.slice(1).map(msg => msg.text())).toEqual([
@@ -75,8 +81,34 @@ it('should work for different console API calls', async ({ page }) => {
     'calling console.dir',
     'calling console.warn',
     'calling console.error',
+    'calling console.info',
+    'calling console.debug',
     'Promise',
+    'Using bindings',
   ]);
+});
+
+it('should format the message correctly with time/timeLog/timeEnd', async ({ page, browserName }) => {
+  it.fixme(browserName === 'firefox', 'https://github.com/microsoft/playwright/issues/10580');
+  const messages = [];
+  page.on('console', msg => messages.push(msg));
+  await page.evaluate(async () => {
+    console.time('foo time');
+    await new Promise(x => setTimeout(x, 100));
+    console.timeLog('foo time');
+    await new Promise(x => setTimeout(x, 100));
+    console.timeEnd('foo time');
+  });
+  expect(messages.length).toBe(2);
+  if (browserName === 'webkit')
+    expect(messages[0].type()).toBe('timeEnd');
+  else if (browserName === 'chromium')
+    expect(messages[0].type()).toBe('log');
+  expect(messages[1].type()).toBe('timeEnd');
+
+  // WebKit has a space before the unit: https://bugs.webkit.org/show_bug.cgi?id=233556
+  expect(messages[0].text()).toMatch(/foo time: \d+.\d+ ?ms/);
+  expect(messages[1].text()).toMatch(/foo time: \d+.\d+ ?ms/);
 });
 
 it('should not fail for window object', async ({ page, browserName }) => {
