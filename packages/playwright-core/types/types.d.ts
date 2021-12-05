@@ -8528,6 +8528,27 @@ export interface ElementHandle<T=Node> extends JSHandle<T> {
  * await page.locator('button').count();
  * ```
  *
+ * **Lists**
+ *
+ * You can also use locators to work with the element lists.
+ *
+ * ```js
+ * // Locate elements, this locator points to a list.
+ * const rows = page.locator('table tr');
+ *
+ * // Pattern 1: use locator methods to calculate text on the whole list.
+ * const texts = await rows.allTextContents();
+ *
+ * // Pattern 2: do something with each element in the list.
+ * const count = await rows.count()
+ * for (let i = 0; i < count; ++i)
+ *   console.log(await rows.nth(i).textContent());
+ *
+ * // Pattern 3: resolve locator to elements on page and map them to their text content.
+ * // Note: the code inside evaluateAll runs in page, you can call any DOM apis there.
+ * const texts = await rows.evaluateAll(list => list.map(element => element.textContent));
+ * ```
+ *
  */
 export interface Locator {
   /**
@@ -9809,7 +9830,14 @@ export interface Locator {
      * or [page.setDefaultTimeout(timeout)](https://playwright.dev/docs/api/class-page#page-set-default-timeout) methods.
      */
     timeout?: number;
-  }): Promise<void>;}
+  }): Promise<void>;
+
+  /**
+   * Matches elements containing specified text somewhere inside, possibly in a child or a descendant element. For example,
+   * `"Playwright"` matches `<article><div>Playwright</div></article>`.
+   * @param text Text to filter by as a string or as a regular expression.
+   */
+  withText(text: string|RegExp): Locator;}
 
 /**
  * BrowserType provides methods to launch a specific browser instance or connect to an existing one. The following is a

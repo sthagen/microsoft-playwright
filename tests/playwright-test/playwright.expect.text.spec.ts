@@ -88,6 +88,8 @@ test('should support toHaveText w/ text', async ({ runInlineTest }) => {
         const locator = page.locator('#node');
         // Should normalize whitespace.
         await expect(locator).toHaveText('Text                        content');
+        // Should normalize zero width whitespace.
+        await expect(locator).toHaveText('T\u200be\u200bx\u200bt content');
       });
 
       test('pass contain', async ({ page }) => {
@@ -339,9 +341,15 @@ test('should support toHaveValue', async ({ runInlineTest }) => {
         await locator.fill('Text content');
         await expect(locator).toHaveValue('Text content');
       });
+
+      test('pass on label', async ({ page }) => {
+        await page.setContent('<label><input></input></label>');
+        await page.locator('label input').fill('Text content');
+        await expect(page.locator('label')).toHaveValue('Text content');
+      });
       `,
   }, { workers: 1 });
-  expect(result.passed).toBe(1);
+  expect(result.passed).toBe(2);
   expect(result.exitCode).toBe(0);
 });
 

@@ -14,14 +14,14 @@
  * limitations under the License.
  */
 
-import path from 'path';
-import { Generator } from './generator';
-
-(async () => {
-  const rootDir = path.resolve(process.cwd(), process.argv[2] || '');
-  const generator = new Generator(rootDir);
-  await generator.run();
-})().catch(error => {
-  console.error(error);
-  process.exit(1);
-});
+export function escapeWithQuotes(text: string, char: string = '\'') {
+  const stringified = JSON.stringify(text);
+  const escapedText = stringified.substring(1, stringified.length - 1).replace(/\\"/g, '"');
+  if (char === '\'')
+    return char + escapedText.replace(/[']/g, '\\\'') + char;
+  if (char === '"')
+    return char + escapedText.replace(/["]/g, '\\"') + char;
+  if (char === '`')
+    return char + escapedText.replace(/[`]/g, '`') + char;
+  throw new Error('Invalid escape char');
+}

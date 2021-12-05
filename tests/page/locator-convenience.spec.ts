@@ -58,6 +58,12 @@ it('inputValue should work', async ({ page, server }) => {
   expect(await locator2.inputValue().catch(e => e.message)).toContain('Node is not an <input>, <textarea> or <select> element');
 });
 
+it('inputValue should work on label', async ({ page, server }) => {
+  await page.setContent(`<label><input type=text></input></label>`);
+  await page.fill('input', 'foo');
+  expect(await page.locator('label').inputValue()).toBe('foo');
+});
+
 it('innerHTML should work', async ({ page, server }) => {
   await page.goto(`${server.PREFIX}/dom.html`);
   const locator = page.locator('#outer');
@@ -171,4 +177,17 @@ it('allTextContents should work', async ({ page }) => {
 it('allInnerTexts should work', async ({ page }) => {
   await page.setContent(`<div>A</div><div>B</div><div>C</div>`);
   expect(await page.locator('div').allInnerTexts()).toEqual(['A', 'B', 'C']);
+});
+
+it('isVisible and isHidden should work with details', async ({ page }) => {
+  await page.setContent(`<details>
+    <summary>click to open</summary>
+      <ul>
+        <li>hidden item 1</li>
+        <li>hidden item 2</li>
+        <li>hidden item 3</li>
+      </ul
+  </details>`);
+
+  await expect(page.locator('ul')).toBeHidden();
 });
