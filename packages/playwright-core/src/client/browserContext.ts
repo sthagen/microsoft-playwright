@@ -38,12 +38,14 @@ import type { BrowserType } from './browserType';
 import { Artifact } from './artifact';
 import { APIRequestContext } from './fetch';
 import { createInstrumentation } from './clientInstrumentation';
+import { LocalUtils } from './localUtils';
 
 export class BrowserContext extends ChannelOwner<channels.BrowserContextChannel> implements api.BrowserContext {
   _pages = new Set<Page>();
   private _routes: network.RouteHandler[] = [];
   readonly _browser: Browser | null = null;
   private _browserType: BrowserType | undefined;
+  _localUtils!: LocalUtils;
   readonly _bindings = new Map<string, (source: structs.BindingSource, ...args: any[]) => any>();
   _timeoutSettings = new TimeoutSettings();
   _ownerPage: Page | undefined;
@@ -165,12 +167,16 @@ export class BrowserContext extends ChannelOwner<channels.BrowserContextChannel>
 
   setDefaultNavigationTimeout(timeout: number) {
     this._timeoutSettings.setDefaultNavigationTimeout(timeout);
-    this._channel.setDefaultNavigationTimeoutNoReply({ timeout });
+    this._wrapApiCall(async () => {
+      this._channel.setDefaultNavigationTimeoutNoReply({ timeout });
+    }, true);
   }
 
   setDefaultTimeout(timeout: number) {
     this._timeoutSettings.setDefaultTimeout(timeout);
-    this._channel.setDefaultTimeoutNoReply({ timeout });
+    this._wrapApiCall(async () => {
+      this._channel.setDefaultTimeoutNoReply({ timeout });
+    }, true);
   }
 
   browser(): Browser | null {
@@ -266,8 +272,8 @@ export class BrowserContext extends ChannelOwner<channels.BrowserContextChannel>
     return this._wrapApiCall(async () => {
       const timeout = this._timeoutSettings.timeout(typeof optionsOrPredicate === 'function'  ? {} : optionsOrPredicate);
       const predicate = typeof optionsOrPredicate === 'function'  ? optionsOrPredicate : optionsOrPredicate.predicate;
-      const waiter = Waiter.createForEvent(this._channel, event);
-      waiter.rejectOnTimeout(timeout, `Timeout while waiting for event "${event}"`);
+      const waiter = Waiter.createForEvent(this, event);
+      waiter.rejectOnTimeout(timeout, `Timeout ${timeout}ms exceeded while waiting for event "${event}"`);
       if (event !== Events.BrowserContext.Close)
         waiter.rejectOnEvent(this, Events.BrowserContext.Close, new Error('Context closed'));
       const result = await waiter.waitForEvent(this, event, predicate as any);

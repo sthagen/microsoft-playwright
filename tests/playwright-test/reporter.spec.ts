@@ -259,7 +259,10 @@ test('should report api steps', async ({ runInlineTest }) => {
     'a.test.ts': `
       const { test } = pwt;
       test('pass', async ({ page }) => {
-        await page.setContent('<button></button>');
+        await Promise.all([
+          page.waitForNavigation(),
+          page.goto('data:text/html,<button></button>'),
+        ]);
         await page.click('button');
       });
 
@@ -290,14 +293,24 @@ test('should report api steps', async ({ runInlineTest }) => {
     `%% begin {\"title\":\"browserContext.newPage\",\"category\":\"pw:api\"}`,
     `%% end {\"title\":\"browserContext.newPage\",\"category\":\"pw:api\"}`,
     `%% end {\"title\":\"Before Hooks\",\"category\":\"hook\",\"steps\":[{\"title\":\"browserContext.newPage\",\"category\":\"pw:api\"}]}`,
-    `%% begin {\"title\":\"page.setContent\",\"category\":\"pw:api\"}`,
-    `%% end {\"title\":\"page.setContent\",\"category\":\"pw:api\"}`,
+    `%% begin {\"title\":\"page.waitForNavigation\",\"category\":\"pw:api\"}`,
+    `%% begin {\"title\":\"page.goto(data:text/html,<button></button>)\",\"category\":\"pw:api\"}`,
+    `%% end {\"title\":\"page.waitForNavigation\",\"category\":\"pw:api\"}`,
+    `%% end {\"title\":\"page.goto(data:text/html,<button></button>)\",\"category\":\"pw:api\"}`,
     `%% begin {\"title\":\"page.click(button)\",\"category\":\"pw:api\"}`,
     `%% end {\"title\":\"page.click(button)\",\"category\":\"pw:api\"}`,
     `%% begin {\"title\":\"After Hooks\",\"category\":\"hook\"}`,
     `%% begin {\"title\":\"browserContext.close\",\"category\":\"pw:api\"}`,
     `%% end {\"title\":\"browserContext.close\",\"category\":\"pw:api\"}`,
     `%% end {\"title\":\"After Hooks\",\"category\":\"hook\",\"steps\":[{\"title\":\"browserContext.close\",\"category\":\"pw:api\"}]}`,
+    `%% begin {\"title\":\"Before Hooks\",\"category\":\"hook\"}`,
+    `%% end {\"title\":\"Before Hooks\",\"category\":\"hook\"}`,
+    `%% begin {\"title\":\"browser.newPage\",\"category\":\"pw:api\"}`,
+    `%% end {\"title\":\"browser.newPage\",\"category\":\"pw:api\"}`,
+    `%% begin {\"title\":\"page.setContent\",\"category\":\"pw:api\"}`,
+    `%% end {\"title\":\"page.setContent\",\"category\":\"pw:api\"}`,
+    `%% begin {\"title\":\"After Hooks\",\"category\":\"hook\"}`,
+    `%% end {\"title\":\"After Hooks\",\"category\":\"hook\"}`,
     `%% begin {\"title\":\"Before Hooks\",\"category\":\"hook\"}`,
     `%% end {\"title\":\"Before Hooks\",\"category\":\"hook\"}`,
     `%% begin {\"title\":\"page.click(button)\",\"category\":\"pw:api\"}`,
@@ -308,6 +321,12 @@ test('should report api steps', async ({ runInlineTest }) => {
     `%% end {\"title\":\"Before Hooks\",\"category\":\"hook\"}`,
     `%% begin {\"title\":\"page.click(button)\",\"category\":\"pw:api\"}`,
     `%% end {\"title\":\"page.click(button)\",\"category\":\"pw:api\"}`,
+    `%% begin {\"title\":\"After Hooks\",\"category\":\"hook\"}`,
+    `%% end {\"title\":\"After Hooks\",\"category\":\"hook\"}`,
+    `%% begin {\"title\":\"Before Hooks\",\"category\":\"hook\"}`,
+    `%% end {\"title\":\"Before Hooks\",\"category\":\"hook\"}`,
+    `%% begin {\"title\":\"page.close\",\"category\":\"pw:api\"}`,
+    `%% end {\"title\":\"page.close\",\"category\":\"pw:api\"}`,
     `%% begin {\"title\":\"After Hooks\",\"category\":\"hook\"}`,
     `%% end {\"title\":\"After Hooks\",\"category\":\"hook\"}`,
   ]);

@@ -100,8 +100,8 @@ export class Runner {
     try {
       const config = this._loader.fullConfig();
       const globalDeadline = config.globalTimeout ? config.globalTimeout + monotonicTime() : 0;
-      const { result, timedOut } = await raceAgainstDeadline(this._run(list, filePatternFilters, projectNames), globalDeadline);
-      if (timedOut) {
+      const result = await raceAgainstDeadline(this._run(list, filePatternFilters, projectNames), globalDeadline);
+      if (result.timedOut) {
         const actualResult: FullResult = { status: 'timedout' };
         if (this._didBegin)
           await this._reporter.onEnd?.(actualResult);
@@ -109,7 +109,7 @@ export class Runner {
           this._reporter.onError?.(createStacklessError(`Timed out waiting ${config.globalTimeout / 1000}s for the entire test run`));
         return actualResult;
       }
-      return result!;
+      return result.result;
     } catch (e) {
       const result: FullResult = { status: 'failed' };
       try {
@@ -161,7 +161,8 @@ export class Runner {
       const allFiles = await collectFiles(project.config.testDir);
       const testMatch = createFileMatcher(project.config.testMatch);
       const testIgnore = createFileMatcher(project.config.testIgnore);
-      const testFileExtension = (file: string) => ['.js', '.ts', '.mjs'].includes(path.extname(file));
+      const extensions = ['.js', '.ts', '.mjs', ...(process.env.PW_COMPONENT_TESTING ? ['.tsx', '.jsx'] : [])];
+      const testFileExtension = (file: string) => extensions.includes(path.extname(file));
       const testFiles = allFiles.filter(file => !testIgnore(file) && testMatch(file) && testFileFilter(file) && testFileExtension(file));
       files.set(project, testFiles);
       testFiles.forEach(file => allTestFiles.add(file));

@@ -40,7 +40,7 @@ import { Artifact } from './artifact';
 import { EventEmitter } from 'events';
 import { JsonPipe } from './jsonPipe';
 import { APIRequestContext } from './fetch';
-import { getPlaywrightVersion } from '../utils/utils';
+import { LocalUtils } from './localUtils';
 
 class Root extends ChannelOwner<channels.RootChannel> {
   constructor(connection: Connection) {
@@ -50,7 +50,6 @@ class Root extends ChannelOwner<channels.RootChannel> {
   async initialize(): Promise<Playwright> {
     return Playwright.from((await this._channel.initialize({
       sdkLanguage: 'javascript',
-      version: getPlaywrightVersion(),
     })).playwright);
   }
 }
@@ -230,6 +229,9 @@ export class Connection extends EventEmitter {
         break;
       case 'JsonPipe':
         result = new JsonPipe(parent, type, guid, initializer);
+        break;
+      case 'LocalUtils':
+        result = new LocalUtils(parent, type, guid, initializer);
         break;
       case 'Page':
         result = new Page(parent, type, guid, initializer);

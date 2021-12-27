@@ -83,6 +83,19 @@ it('should play video', async ({ page, asset, browserName, platform }) => {
   await page.$eval('video', v => v.pause());
 });
 
+it('should play audio', async ({ page, server, browserName, platform }) => {
+  it.fixme(browserName === 'firefox' && platform === 'win32', 'https://github.com/microsoft/playwright/issues/10887');
+  it.fixme(browserName === 'firefox' && platform === 'linux', 'https://github.com/microsoft/playwright/issues/10887');
+  it.fixme(browserName === 'webkit' && platform === 'win32', 'https://github.com/microsoft/playwright/issues/10892');
+  it.fixme(browserName === 'webkit' && platform === 'darwin', 'https://github.com/microsoft/playwright/issues/10892');
+  await page.goto(server.EMPTY_PAGE);
+  await page.setContent(`<audio src="${server.PREFIX}/example.mp3"></audio>`);
+  await page.$eval('audio', e => e.play());
+  await page.waitForTimeout(1000);
+  await page.$eval('audio', e => e.pause());
+  expect(await page.$eval('audio', e => e.currentTime)).toBeGreaterThan(0.5);
+});
+
 it('should support webgl', async ({ page, browserName, headless }) => {
   it.fixme(browserName === 'firefox' && headless);
 
@@ -103,4 +116,11 @@ it('should support webgl 2', async ({ page, browserName, headless }) => {
     return !!canvas.getContext('webgl2');
   });
   expect(hasWebGL2).toBe(true);
+});
+
+it('should not crash on page with mp4', async ({ page, server, platform, browserName }) => {
+  it.fixme(browserName === 'webkit' && platform === 'win32', 'https://github.com/microsoft/playwright/issues/11009, times out in setContent');
+  it.fail(browserName === 'webkit' && platform === 'darwin' && parseInt(os.release(), 10) >= 21, 'https://github.com/microsoft/playwright/issues/11009');
+  await page.setContent(`<video><source src="${server.PREFIX}/movie.mp4"/></video>`);
+  await page.waitForTimeout(1000);
 });

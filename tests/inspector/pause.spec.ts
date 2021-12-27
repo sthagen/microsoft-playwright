@@ -173,6 +173,30 @@ it.describe('pause', () => {
     await scriptPromise;
   });
 
+  it('should hide internal calls', async ({ page, recorderPageGetter, trace }) => {
+    it.skip(trace === 'on');
+
+    const scriptPromise = (async () => {
+      await page.pause();
+      await page.context().tracing.start();
+      page.setDefaultTimeout(0);
+      page.context().setDefaultNavigationTimeout(0);
+      await page.context().tracing.stop();
+      await page.pause();  // 2
+    })();
+    const recorderPage = await recorderPageGetter();
+    await recorderPage.click('[title="Resume"]');
+    await recorderPage.waitForSelector('.source-line-paused:has-text("page.pause();  // 2")');
+    expect(await sanitizeLog(recorderPage)).toEqual([
+      'page.pause- XXms',
+      'tracing.start- XXms',
+      'tracing.stop- XXms',
+      'page.pause',
+    ]);
+    await recorderPage.click('[title="Resume"]');
+    await scriptPromise;
+  });
+
   it('should show expect.toHaveText', async ({ page, recorderPageGetter }) => {
     await page.setContent('<button>Submit</button>');
     const scriptPromise = (async () => {
@@ -269,7 +293,7 @@ it.describe('pause', () => {
       'page.pause- XXms',
       'page.waitForEvent(console)',
       'waiting for event \"console\"',
-      'error: Timeout while waiting for event \"console\"',
+      'error: Timeout 1ms exceeded while waiting for event \"console\"',
       'page.pause',
     ]);
     await recorderPage.click('[title="Resume"]');
@@ -317,6 +341,46 @@ it.describe('pause', () => {
     expect(box1).toEqual(box2);
     await recorderPage.click('[title=Resume]');
     await scriptPromise;
+  });
+
+  it('should not prevent key events', async ({ page, recorderPageGetter }) => {
+    await page.setContent('<div>Hello</div>');
+    await page.evaluate(() => {
+      (window as any).log = [];
+      for (const event of ['keydown', 'keyup', 'keypress'])
+        window.addEventListener(event, e => (window as any).log.push(e.type));
+    });
+    const scriptPromise = (async () => {
+      await page.pause();
+      await page.keyboard.press('Enter');
+      await page.keyboard.press('A');
+      await page.keyboard.press('Shift+A');
+    })();
+    const recorderPage = await recorderPageGetter();
+    await recorderPage.waitForSelector(`.source-line-paused:has-text("page.pause")`);
+    await recorderPage.click('[title="Step over"]');
+    await recorderPage.waitForSelector(`.source-line-paused:has-text("press('Enter')")`);
+    await recorderPage.click('[title="Step over"]');
+    await recorderPage.waitForSelector(`.source-line-paused:has-text("press('A')")`);
+    await recorderPage.click('[title="Step over"]');
+    await recorderPage.waitForSelector(`.source-line-paused:has-text("press('Shift+A')")`);
+    await recorderPage.click('[title=Resume]');
+    await scriptPromise;
+
+    const log = await page.evaluate(() => (window as any).log);
+    expect(log).toEqual([
+      'keydown',
+      'keypress',
+      'keyup',
+      'keydown',
+      'keypress',
+      'keyup',
+      'keydown',
+      'keydown',
+      'keypress',
+      'keyup',
+      'keyup',
+    ]);
   });
 });
 

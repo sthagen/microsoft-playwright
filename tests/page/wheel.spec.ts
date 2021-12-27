@@ -104,15 +104,14 @@ it('should work when the event is canceled', async ({ page }) => {
     altKey: false,
     metaKey: false,
   });
-  // give the page a chacne to scroll
+  // Give the page a chance to scroll.
   await page.waitForTimeout(100);
-  // ensure that it did not.
+  // Ensure that it did not.
   expect(await page.evaluate('window.scrollY')).toBe(0);
 });
 
 contextTest('should scroll when emulating a mobile viewport', async ({ contextFactory, server, browserName }) => {
   contextTest.skip(browserName === 'firefox');
-  contextTest.fixme(browserName === 'webkit');
   const context = await contextFactory({
     viewport: { 'width': 1000, 'height': 600 },
     isMobile: true,
@@ -120,8 +119,11 @@ contextTest('should scroll when emulating a mobile viewport', async ({ contextFa
   const page = await context.newPage();
   await page.goto(server.PREFIX + '/input/scrollable.html');
   await page.mouse.move(50, 60);
-  await page.mouse.wheel(0, 100);
-  await page.waitForFunction('window.scrollY === 100');
+  const error = await page.mouse.wheel(0, 100).catch(e => e);
+  if (browserName === 'webkit')
+    expect(error.message).toContain('Mouse wheel is not supported in mobile WebKit');
+  else
+    await page.waitForFunction('window.scrollY === 100');
 });
 
 async function listenForWheelEvents(page: Page, selector: string) {

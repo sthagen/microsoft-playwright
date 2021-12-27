@@ -51,6 +51,7 @@ export type InitializerTraits<T> =
     T extends SelectorsChannel ? SelectorsInitializer :
     T extends PlaywrightChannel ? PlaywrightInitializer :
     T extends RootChannel ? RootInitializer :
+    T extends LocalUtilsChannel ? LocalUtilsInitializer :
     T extends APIRequestContextChannel ? APIRequestContextInitializer :
     object;
 
@@ -84,6 +85,7 @@ export type EventsTraits<T> =
     T extends SelectorsChannel ? SelectorsEvents :
     T extends PlaywrightChannel ? PlaywrightEvents :
     T extends RootChannel ? RootEvents :
+    T extends LocalUtilsChannel ? LocalUtilsEvents :
     T extends APIRequestContextChannel ? APIRequestContextEvents :
     undefined;
 
@@ -117,6 +119,7 @@ export type EventTargetTraits<T> =
     T extends SelectorsChannel ? SelectorsEventTarget :
     T extends PlaywrightChannel ? PlaywrightEventTarget :
     T extends RootChannel ? RootEventTarget :
+    T extends LocalUtilsChannel ? LocalUtilsEventTarget :
     T extends APIRequestContextChannel ? APIRequestContextEventTarget :
     undefined;
 
@@ -346,6 +349,26 @@ export type APIResponse = {
 };
 
 export type LifecycleEvent = 'load' | 'domcontentloaded' | 'networkidle' | 'commit';
+// ----------- LocalUtils -----------
+export type LocalUtilsInitializer = {};
+export interface LocalUtilsEventTarget {
+}
+export interface LocalUtilsChannel extends LocalUtilsEventTarget, Channel {
+  _type_LocalUtils: boolean;
+  zip(params: LocalUtilsZipParams, metadata?: Metadata): Promise<LocalUtilsZipResult>;
+}
+export type LocalUtilsZipParams = {
+  zipFile: string,
+  entries: NameValue[],
+};
+export type LocalUtilsZipOptions = {
+
+};
+export type LocalUtilsZipResult = void;
+
+export interface LocalUtilsEvents {
+}
+
 // ----------- Root -----------
 export type RootInitializer = {};
 export interface RootEventTarget {
@@ -356,7 +379,6 @@ export interface RootChannel extends RootEventTarget, Channel {
 }
 export type RootInitializeParams = {
   sdkLanguage: string,
-  version: string,
 };
 export type RootInitializeOptions = {
 
@@ -375,6 +397,7 @@ export type PlaywrightInitializer = {
   webkit: BrowserTypeChannel,
   android: AndroidChannel,
   electron: ElectronChannel,
+  utils: LocalUtilsChannel,
   deviceDescriptors: {
     name: string,
     descriptor: {
@@ -1226,11 +1249,13 @@ export type BrowserContextTracingStartParams = {
   name?: string,
   snapshots?: boolean,
   screenshots?: boolean,
+  sources?: boolean,
 };
 export type BrowserContextTracingStartOptions = {
   name?: string,
   snapshots?: boolean,
   screenshots?: boolean,
+  sources?: boolean,
 };
 export type BrowserContextTracingStartResult = void;
 export type BrowserContextTracingStartChunkParams = {
@@ -1241,15 +1266,14 @@ export type BrowserContextTracingStartChunkOptions = {
 };
 export type BrowserContextTracingStartChunkResult = void;
 export type BrowserContextTracingStopChunkParams = {
-  save: boolean,
-  skipCompress: boolean,
+  mode: 'doNotSave' | 'compressTrace' | 'compressTraceAndSources',
 };
 export type BrowserContextTracingStopChunkOptions = {
 
 };
 export type BrowserContextTracingStopChunkResult = {
   artifact?: ArtifactChannel,
-  entries: NameValue[],
+  sourceEntries?: NameValue[],
 };
 export type BrowserContextTracingStopParams = {};
 export type BrowserContextTracingStopOptions = {};
@@ -3903,7 +3927,9 @@ export interface JsonPipeChannel extends JsonPipeEventTarget, Channel {
 export type JsonPipeMessageEvent = {
   message: any,
 };
-export type JsonPipeClosedEvent = {};
+export type JsonPipeClosedEvent = {
+  error?: SerializedError,
+};
 export type JsonPipeSendParams = {
   message: any,
 };

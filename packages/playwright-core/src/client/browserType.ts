@@ -23,7 +23,7 @@ import { Connection } from './connection';
 import { Events } from './events';
 import { ChildProcess } from 'child_process';
 import { envObjectToArray } from './clientHelper';
-import { assert, headersObjectToArray, getUserAgent, monotonicTime } from '../utils/utils';
+import { assert, headersObjectToArray, monotonicTime } from '../utils/utils';
 import * as api from '../../types/types';
 import { kBrowserClosedError } from '../utils/errors';
 import { raceAgainstDeadline } from '../utils/async';
@@ -80,6 +80,7 @@ export class BrowserType extends ChannelOwner<channels.BrowserTypeChannel> imple
     const browser = Browser.from((await this._channel.launch(launchOptions)).browser);
     browser._logger = logger;
     browser._setBrowserType(this);
+    browser._localUtils = this._playwright._utils;
     return browser;
   }
 
@@ -108,6 +109,7 @@ export class BrowserType extends ChannelOwner<channels.BrowserTypeChannel> imple
     context._options = contextParams;
     context._logger = logger;
     context._setBrowserType(this);
+    context._localUtils = this._playwright._utils;
     await this._onDidCreateContext?.(context);
     return context;
   }
@@ -172,6 +174,7 @@ export class BrowserType extends ChannelOwner<channels.BrowserTypeChannel> imple
           browser._logger = logger;
           browser._shouldCloseConnectionOnClose = true;
           browser._setBrowserType((playwright as any)[browser._name]);
+          browser._localUtils = this._playwright._utils;
           browser.on(Events.Browser.Disconnected, closePipe);
           fulfill(browser);
         } catch (e) {
@@ -180,7 +183,7 @@ export class BrowserType extends ChannelOwner<channels.BrowserTypeChannel> imple
       });
 
       const result = await raceAgainstDeadline(createBrowserPromise, deadline);
-      if (result.result) {
+      if (!result.timedOut) {
         return result.result;
       } else {
         closePipe();
@@ -202,9 +205,7 @@ export class BrowserType extends ChannelOwner<channels.BrowserTypeChannel> imple
   async _connectOverCDP(endpointURL: string, params: api.ConnectOverCDPOptions = {}): Promise<Browser>  {
     if (this.name() !== 'chromium')
       throw new Error('Connecting over CDP is only supported in Chromium.');
-    const logger = params.logger;
-    const paramsHeaders = Object.assign({ 'User-Agent': getUserAgent() }, params.headers);
-    const headers = paramsHeaders ? headersObjectToArray(paramsHeaders) : undefined;
+    const headers = params.headers ? headersObjectToArray(params.headers) : undefined;
     const result = await this._channel.connectOverCDP({
       endpointURL,
       headers,
@@ -214,8 +215,9 @@ export class BrowserType extends ChannelOwner<channels.BrowserTypeChannel> imple
     const browser = Browser.from(result.browser);
     if (result.defaultContext)
       browser._contexts.add(BrowserContext.from(result.defaultContext));
-    browser._logger = logger;
+    browser._logger = params.logger;
     browser._setBrowserType(this);
+    browser._localUtils = this._playwright._utils;
     return browser;
   }
 }

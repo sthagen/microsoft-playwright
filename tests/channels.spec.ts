@@ -38,6 +38,7 @@ it('should scope context handles', async ({ browserType, server }) => {
         { _guid: 'browser', objects: [] }
       ] },
       { _guid: 'electron', objects: [] },
+      { _guid: 'localUtils', objects: [] },
       { _guid: 'Playwright', objects: [] },
       { _guid: 'selectors', objects: [] },
     ]
@@ -46,7 +47,9 @@ it('should scope context handles', async ({ browserType, server }) => {
 
   const context = await browser.newContext();
   const page = await context.newPage();
-  await page.goto(server.EMPTY_PAGE);
+  // Firefox Beta 96 yields a console warning for the pages that
+  // don't use `<!DOCTYPE HTML> tag.
+  await page.goto(server.PREFIX + '/empty-standard-mode.html');
   await expectScopeState(browser, {
     _guid: '',
     objects: [
@@ -65,6 +68,7 @@ it('should scope context handles', async ({ browserType, server }) => {
         ] },
       ] },
       { _guid: 'electron', objects: [] },
+      { _guid: 'localUtils', objects: [] },
       { _guid: 'Playwright', objects: [] },
       { _guid: 'selectors', objects: [] },
     ]
@@ -89,6 +93,7 @@ it('should scope CDPSession handles', async ({ browserType, browserName }) => {
         { _guid: 'browser', objects: [] }
       ] },
       { _guid: 'electron', objects: [] },
+      { _guid: 'localUtils', objects: [] },
       { _guid: 'Playwright', objects: [] },
       { _guid: 'selectors', objects: [] },
     ]
@@ -108,6 +113,7 @@ it('should scope CDPSession handles', async ({ browserType, browserName }) => {
         ] },
       ] },
       { _guid: 'electron', objects: [] },
+      { _guid: 'localUtils', objects: [] },
       { _guid: 'Playwright', objects: [] },
       { _guid: 'selectors', objects: [] },
     ]
@@ -128,6 +134,7 @@ it('should scope browser handles', async ({ browserType }) => {
       { _guid: 'browser-type', objects: [] },
       { _guid: 'browser-type', objects: [] },
       { _guid: 'electron', objects: [] },
+      { _guid: 'localUtils', objects: [] },
       { _guid: 'Playwright', objects: [] },
       { _guid: 'selectors', objects: [] },
     ]
@@ -152,6 +159,7 @@ it('should scope browser handles', async ({ browserType }) => {
       ]
       },
       { _guid: 'electron', objects: [] },
+      { _guid: 'localUtils', objects: [] },
       { _guid: 'Playwright', objects: [] },
       { _guid: 'selectors', objects: [] },
     ]

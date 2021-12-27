@@ -51,12 +51,14 @@ export class Electron extends ChannelOwner<channels.ElectronChannel> implements 
       extraHTTPHeaders: options.extraHTTPHeaders && headersObjectToArray(options.extraHTTPHeaders),
       env: envObjectToArray(options.env ? options.env : process.env),
     };
-    return ElectronApplication.from((await this._channel.launch(params)).electronApplication);
+    const app = ElectronApplication.from((await this._channel.launch(params)).electronApplication);
+    app._context._options = params;
+    return app;
   }
 }
 
 export class ElectronApplication extends ChannelOwner<channels.ElectronApplicationChannel> implements api.ElectronApplication {
-  private _context: BrowserContext;
+  readonly _context: BrowserContext;
   private _windows = new Set<Page>();
   private _timeoutSettings = new TimeoutSettings();
 
@@ -91,7 +93,7 @@ export class ElectronApplication extends ChannelOwner<channels.ElectronApplicati
   }
 
   context(): BrowserContext {
-    return this._context! as BrowserContext;
+    return this._context;
   }
 
   async close() {
@@ -102,8 +104,8 @@ export class ElectronApplication extends ChannelOwner<channels.ElectronApplicati
     return this._wrapApiCall(async () => {
       const timeout = this._timeoutSettings.timeout(typeof optionsOrPredicate === 'function' ? {} : optionsOrPredicate);
       const predicate = typeof optionsOrPredicate === 'function' ? optionsOrPredicate : optionsOrPredicate.predicate;
-      const waiter = Waiter.createForEvent(this._channel, event);
-      waiter.rejectOnTimeout(timeout, `Timeout while waiting for event "${event}"`);
+      const waiter = Waiter.createForEvent(this, event);
+      waiter.rejectOnTimeout(timeout, `Timeout ${timeout}ms exceeded while waiting for event "${event}"`);
       if (event !== Events.ElectronApplication.Close)
         waiter.rejectOnEvent(this, Events.ElectronApplication.Close, new Error('Electron application closed'));
       const result = await waiter.waitForEvent(this, event, predicate as any);

@@ -61,10 +61,10 @@ test('should generate report', async ({ runInlineTest, showReport, page }) => {
   await expect(page.locator('.subnav-item:has-text("Flaky") .counter')).toHaveText('1');
   await expect(page.locator('.subnav-item:has-text("Skipped") .counter')).toHaveText('1');
 
-  await expect(page.locator('.test-summary.outcome-unexpected >> text=fails')).toBeVisible();
-  await expect(page.locator('.test-summary.outcome-flaky >> text=flaky')).toBeVisible();
-  await expect(page.locator('.test-summary.outcome-expected >> text=passes')).toBeVisible();
-  await expect(page.locator('.test-summary.outcome-skipped >> text=skipped')).toBeVisible();
+  await expect(page.locator('.test-file-test-outcome-unexpected >> text=fails')).toBeVisible();
+  await expect(page.locator('.test-file-test-outcome-flaky >> text=flaky')).toBeVisible();
+  await expect(page.locator('.test-file-test-outcome-expected >> text=passes')).toBeVisible();
+  await expect(page.locator('.test-file-test-outcome-skipped >> text=skipped')).toBeVisible();
 });
 
 test('should not throw when attachment is missing', async ({ runInlineTest, page, showReport }, testInfo) => {
@@ -88,7 +88,7 @@ test('should not throw when attachment is missing', async ({ runInlineTest, page
   await page.click('text=passes');
   await page.locator('text=Missing attachment "screenshot"').click();
   const screenshotFile = testInfo.outputPath('test-results' , 'a-passes', 'screenshot.png');
-  await expect(page.locator('.attachment-body')).toHaveText(`Attachment file ${screenshotFile} is missing`);
+  await expect(page.locator('.attachment-link')).toHaveText(`Attachment file ${screenshotFile} is missing`);
 });
 
 test('should include image diff', async ({ runInlineTest, page, showReport }) => {
@@ -114,7 +114,7 @@ test('should include image diff', async ({ runInlineTest, page, showReport }) =>
 
   await showReport();
   await page.click('text=fails');
-  const imageDiff = page.locator('.test-image-mismatch');
+  const imageDiff = page.locator('data-testid=test-result-image-mismatch');
   const image = imageDiff.locator('img');
   await expect(image).toHaveAttribute('src', /.*png/);
   const actualSrc = await image.getAttribute('src');
@@ -173,9 +173,9 @@ test('should include stdio', async ({ runInlineTest, page, showReport }) => {
   await showReport();
   await page.click('text=fails');
   await page.locator('text=stdout').click();
-  await expect(page.locator('.attachment-body')).toHaveText('First line\nSecond line');
+  await expect(page.locator('.attachment-link')).toHaveText('First line\nSecond line');
   await page.locator('text=stderr').click();
-  await expect(page.locator('.attachment-body').nth(1)).toHaveText('Third line');
+  await expect(page.locator('.attachment-link').nth(1)).toHaveText('Third line');
 });
 
 test('should highlight error', async ({ runInlineTest, page, showReport }) => {
@@ -192,7 +192,7 @@ test('should highlight error', async ({ runInlineTest, page, showReport }) => {
 
   await showReport();
   await page.click('text=fails');
-  await expect(page.locator('.error-message span:has-text("received")').nth(1)).toHaveCSS('color', 'rgb(204, 0, 0)');
+  await expect(page.locator('.test-result-error-message span:has-text("received")').nth(1)).toHaveCSS('color', 'rgb(204, 0, 0)');
 });
 
 test('should show trace source', async ({ runInlineTest, page, showReport }) => {
@@ -247,4 +247,130 @@ test('should show trace title', async ({ runInlineTest, page, showReport }) => {
   await page.click('text=passes');
   await page.click('img');
   await expect(page.locator('.workbench .title')).toHaveText('a.test.js:6 › passes');
+});
+
+test('should show timed out steps', async ({ runInlineTest, page, showReport }) => {
+  const result = await runInlineTest({
+    'playwright.config.js': `
+      module.exports = { timeout: 3000 };
+    `,
+    'a.test.js': `
+      const { test } = pwt;
+      test('fails', async ({ page }) => {
+        await test.step('outer step', async () => {
+          await test.step('inner step', async () => {
+            await new Promise(() => {});
+          });
+        });
+      });
+    `,
+  }, { reporter: 'dot,html' });
+  expect(result.exitCode).toBe(1);
+  expect(result.passed).toBe(0);
+
+  await showReport();
+  await page.click('text=fails');
+  await page.click('text=outer step');
+  await expect(page.locator('.tree-item:has-text("outer step") svg.color-text-danger')).toHaveCount(2);
+  await expect(page.locator('.tree-item:has-text("inner step") svg.color-text-danger')).toHaveCount(2);
+});
+
+test('should render annotations', async ({ runInlineTest, page, showReport }) => {
+  const result = await runInlineTest({
+    'playwright.config.js': `
+      module.exports = { timeout: 1500 };
+    `,
+    'a.test.js': `
+      const { test } = pwt;
+      test('skipped test', async ({ page }) => {
+        test.skip(true, 'I am not interested in this test');
+      });
+    `,
+  }, { reporter: 'dot,html' });
+  expect(result.exitCode).toBe(0);
+  expect(result.skipped).toBe(1);
+
+  await showReport();
+  await page.click('text=skipped test');
+  await expect(page.locator('.test-case-annotation')).toHaveText('skip: I am not interested in this test');
+});
+
+test('should render beforeAll/afterAll hooks', async ({ runInlineTest, page, showReport }) => {
+  const result = await runInlineTest({
+    'a.test.js': `
+      const { test } = pwt;
+      test.use({ trace: 'on' });
+      test.beforeAll(async () => {
+      });
+      test.afterAll(async ({ browser }) => {
+        const page = await browser.newPage();
+        await page.close();
+        await test.step('after step', () => {
+          throw new Error('oh!');
+        });
+      });
+      test('test', async ({}) => {
+      });
+    `,
+  }, { reporter: 'dot,html' });
+  expect(result.exitCode).toBe(1);
+  expect(result.passed).toBe(1);
+
+  await showReport();
+  await expect(page.locator('.subnav-item:has-text("All") .counter')).toHaveText('1');
+  await expect(page.locator('.subnav-item:has-text("Passed") .counter')).toHaveText('1');
+  await expect(page.locator('.subnav-item:has-text("Failed") .counter')).toHaveText('0');
+  await expect(page.locator('.subnav-item:has-text("Flaky") .counter')).toHaveText('0');
+  await expect(page.locator('.subnav-item:has-text("Skipped") .counter')).toHaveText('0');
+
+  await expect(page.locator('text=beforeAll')).toBeVisible();
+  await expect(page.locator('.test-file-test:has-text("beforeAll") svg.color-icon-success')).toHaveCount(1);
+
+  await expect(page.locator('text=afterAll')).toBeVisible();
+  await expect(page.locator('.test-file-test:has-text("afterAll") svg.color-text-danger')).toHaveCount(1);
+
+  await page.click('text=afterAll');
+  await expect(page.locator('.tree-item:has-text("after step") svg.color-text-danger')).toHaveCount(1);
+  await expect(page.locator('img')).toBeVisible();
+});
+
+test('should render text attachments as text', async ({ runInlineTest, page, showReport }) => {
+  const result = await runInlineTest({
+    'a.test.js': `
+      const { test } = pwt;
+      test('passing', async ({ page }, testInfo) => {
+        testInfo.attachments.push({
+          name: 'example.txt',
+          contentType: 'text/plain',
+          body: Buffer.from('foo'),
+        });
+
+        testInfo.attachments.push({
+          name: 'example.json',
+          contentType: 'application/json',
+          body: Buffer.from(JSON.stringify({ foo: 1 })),
+        });
+
+        testInfo.attachments.push({
+          name: 'example-utf16.txt',
+          contentType: 'text/plain, charset=utf16le',
+          body: Buffer.from('utf16 encoded', 'utf16le'),
+        });
+
+        testInfo.attachments.push({
+          name: 'example-null.txt',
+          contentType: 'text/plain, charset=utf16le',
+          body: null,
+        });
+      });
+    `,
+  }, { reporter: 'dot,html' });
+  expect(result.exitCode).toBe(0);
+
+  await showReport();
+  await page.click('text=passing');
+  await page.click('text=example.txt');
+  await page.click('text=example.json');
+  await page.click('text=example-utf16.txt');
+  await expect(page.locator('.attachment-link')).toHaveText(['foo', '{"foo":1}', 'utf16 encoded']);
 });

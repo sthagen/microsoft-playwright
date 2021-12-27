@@ -189,9 +189,12 @@ export function createScheme(tChannel: (name: string) => Validator): Scheme {
     headers: tArray(tType('NameValue')),
   });
   scheme.LifecycleEvent = tEnum(['load', 'domcontentloaded', 'networkidle', 'commit']);
+  scheme.LocalUtilsZipParams = tObject({
+    zipFile: tString,
+    entries: tArray(tType('NameValue')),
+  });
   scheme.RootInitializeParams = tObject({
     sdkLanguage: tString,
-    version: tString,
   });
   scheme.PlaywrightSocksConnectedParams = tObject({
     uid: tString,
@@ -500,13 +503,13 @@ export function createScheme(tChannel: (name: string) => Validator): Scheme {
     name: tOptional(tString),
     snapshots: tOptional(tBoolean),
     screenshots: tOptional(tBoolean),
+    sources: tOptional(tBoolean),
   });
   scheme.BrowserContextTracingStartChunkParams = tObject({
     title: tOptional(tString),
   });
   scheme.BrowserContextTracingStopChunkParams = tObject({
-    save: tBoolean,
-    skipCompress: tBoolean,
+    mode: tEnum(['doNotSave', 'compressTrace', 'compressTraceAndSources']),
   });
   scheme.BrowserContextTracingStopParams = tOptional(tObject({}));
   scheme.BrowserContextHarExportParams = tOptional(tObject({}));

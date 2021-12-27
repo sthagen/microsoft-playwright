@@ -56,10 +56,17 @@ if [[ "$BUILD_FLAVOR" == "winldd-win64" ]]; then
 # ===========================
 elif [[ "$BUILD_FLAVOR" == "ffmpeg-mac" ]]; then
   BROWSER_NAME="ffmpeg"
-  EXTRA_BUILD_ARGS="--mac"
+  EXTRA_BUILD_ARGS="--mac --full"
   EXPECTED_HOST_OS="Darwin"
   EXPECTED_HOST_OS_VERSION="11.6"
   BUILD_BLOB_NAME="ffmpeg-mac.zip"
+elif [[ "$BUILD_FLAVOR" == "ffmpeg-mac-arm64" ]]; then
+  BROWSER_NAME="ffmpeg"
+  EXTRA_BUILD_ARGS="--mac --full"
+  EXPECTED_HOST_OS="Darwin"
+  EXPECTED_HOST_OS_VERSION="11.6"
+  EXPECTED_ARCH="arm64"
+  BUILD_BLOB_NAME="ffmpeg-mac-arm64.zip"
 elif [[ "$BUILD_FLAVOR" == "ffmpeg-linux" ]]; then
   BROWSER_NAME="ffmpeg"
   EXTRA_BUILD_ARGS="--linux"
@@ -274,6 +281,17 @@ elif [[ "$BUILD_FLAVOR" == "webkit-mac-10.15" ]]; then
   EXPECTED_HOST_OS="Darwin"
   EXPECTED_HOST_OS_VERSION="10.15"
   BUILD_BLOB_NAME="webkit-mac-10.15.zip"
+elif [[ "$BUILD_FLAVOR" == "webkit-mac-12" ]]; then
+  BROWSER_NAME="webkit"
+  EXPECTED_HOST_OS="Darwin"
+  EXPECTED_HOST_OS_VERSION="12.1"
+  BUILD_BLOB_NAME="webkit-mac-12.zip"
+elif [[ "$BUILD_FLAVOR" == "webkit-mac-12-arm64" ]]; then
+  BROWSER_NAME="webkit"
+  EXPECTED_HOST_OS="Darwin"
+  EXPECTED_HOST_OS_VERSION="12.1"
+  EXPECTED_ARCH="arm64"
+  BUILD_BLOB_NAME="webkit-mac-12-arm64.zip"
 elif [[ "$BUILD_FLAVOR" == "webkit-mac-11-arm64" ]]; then
   BROWSER_NAME="webkit"
   EXPECTED_HOST_OS="Darwin"

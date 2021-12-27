@@ -23,7 +23,7 @@ rm -rf .mozconfig
 if [[ "$(uname)" == "Darwin" ]]; then
   CURRENT_HOST_OS_VERSION=$(getMacVersion)
   # As of Oct 2021, building Firefox requires XCode 13
-  if [[ "${CURRENT_HOST_OS_VERSION}" == "11."* ]]; then
+  if [[ "${CURRENT_HOST_OS_VERSION}" != "10."* ]]; then
     selectXcodeVersionOrDie "13"
   else
     echo "ERROR: ${CURRENT_HOST_OS_VERSION} is not supported"
@@ -62,6 +62,9 @@ echo "ac_add_options --disable-backgroundtasks" >> .mozconfig
 
 if [[ -n $FF_DEBUG_BUILD ]]; then
   echo "ac_add_options --enable-debug" >> .mozconfig
+  echo "ac_add_options --enable-debug-symbols" >> .mozconfig
+else
+  echo "ac_add_options --enable-release" >> .mozconfig
 fi
 
 if [[ "$(uname)" == MINGW* || "$(uname)" == "Darwin" ]]; then
@@ -86,14 +89,29 @@ if [[ $1 != "--juggler" ]]; then
 fi
 
 if [[ $1 == "--full" || $2 == "--full" ]]; then
-  echo "ac_add_options --enable-bootstrap" >> .mozconfig
-  if [[ "$(uname)" == "Darwin" || "$(uname)" == "Linux" ]]; then
+  if [[ "$(uname)" == "Linux" ]]; then
+    echo "ac_add_options --enable-bootstrap" >> .mozconfig
     SHELL=/bin/sh ./mach --no-interactive bootstrap --application-choice=browser
   fi
   if [[ ! -z "${WIN32_REDIST_DIR}" ]]; then
     # Having this option in .mozconfig kills incremental compilation.
     echo "export WIN32_REDIST_DIR=\"$WIN32_REDIST_DIR\"" >> .mozconfig
   fi
+fi
+
+if [[ "$(uname)" == "Darwin" ]]; then
+  if [[ ! -d "$HOME/.mozbuild/clang" ]]; then
+    echo "ERROR: build toolchains are not found, specifically \$HOME/.mozbuild/clang is not there!"
+    echo "Since December, 2021, build toolchains have to be predownloaded (see https://github.com/microsoft/playwright/pull/10929)"
+    echo
+    echo "To bootstrap toolchains:"
+    echo "    ./browser_patches/prepare_checkout.sh firefox-beta"
+    echo "    ./browser_patches/build.sh firefox-beta --bootstrap"
+    echo
+    exit 1
+  fi
+  export MOZ_AUTOMATION=1
+  export MOZ_FETCHES_DIR=$HOME/.mozbuild
 fi
 
 if ! [[ -f "$HOME/.mozbuild/_virtualenvs/mach/bin/python" ]]; then

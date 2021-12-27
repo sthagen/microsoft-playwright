@@ -15,25 +15,38 @@
  */
 
 import fs from 'fs';
+import path from 'path';
+import { tsConfigLoader, TsConfigLoaderResult } from './third_party/tsconfig-loader';
 import { transformHook } from './transform';
+
+const tsConfigCache = new Map<string, TsConfigLoaderResult>();
 
 async function resolve(specifier: string, context: { parentURL: string }, defaultResolve: any) {
   if (specifier.endsWith('.js') || specifier.endsWith('.ts') || specifier.endsWith('.mjs'))
     return defaultResolve(specifier, context, defaultResolve);
   let url = new URL(specifier, context.parentURL).toString();
   url = url.substring('file://'.length);
-  if (fs.existsSync(url + '.ts'))
-    return defaultResolve(specifier + '.ts', context, defaultResolve);
-  if (fs.existsSync(url + '.js'))
-    return defaultResolve(specifier + '.js', context, defaultResolve);
+  for (const extension of ['.ts', '.js', '.tsx', '.jsx']) {
+    if (fs.existsSync(url + extension))
+      return defaultResolve(specifier + extension, context, defaultResolve);
+  }
   return defaultResolve(specifier, context, defaultResolve);
 }
 
 async function load(url: string, context: any, defaultLoad: any) {
-  if (url.endsWith('.ts')) {
+  if (url.endsWith('.ts') || url.endsWith('.tsx')) {
     const filename = url.substring('file://'.length);
+    const cwd = path.dirname(filename);
+    let tsconfig = tsConfigCache.get(cwd);
+    if (!tsconfig) {
+      tsconfig = tsConfigLoader({
+        getEnv: (name: string) => process.env[name],
+        cwd
+      });
+      tsConfigCache.set(cwd, tsconfig);
+    }
     const code = fs.readFileSync(filename, 'utf-8');
-    const source = transformHook(code, filename, true);
+    const source = transformHook(code, filename, tsconfig, true);
     return { format: 'module', source };
   }
   return defaultLoad(url, context, defaultLoad);

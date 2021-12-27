@@ -902,10 +902,6 @@ export interface Page {
   /**
    * Emitted when attachment download started. User can access basic file operations on downloaded content via the passed
    * [Download] instance.
-   *
-   * > NOTE: Browser context **must** be created with the `acceptDownloads` set to `true` when user needs access to the
-   * downloaded content. If `acceptDownloads` is not set, download events are emitted, but the actual download is not
-   * performed and user has no access to the downloaded files.
    */
   on(event: 'download', listener: (download: Download) => void): this;
 
@@ -1175,10 +1171,6 @@ export interface Page {
   /**
    * Emitted when attachment download started. User can access basic file operations on downloaded content via the passed
    * [Download] instance.
-   *
-   * > NOTE: Browser context **must** be created with the `acceptDownloads` set to `true` when user needs access to the
-   * downloaded content. If `acceptDownloads` is not set, download events are emitted, but the actual download is not
-   * performed and user has no access to the downloaded files.
    */
   addListener(event: 'download', listener: (download: Download) => void): this;
 
@@ -2564,10 +2556,18 @@ export interface Page {
    * element immediately before performing an action, so a series of actions on the same locator can in fact be performed on
    * different DOM elements. That would happen if the DOM structure between those actions has changed.
    *
-   * Shortcut for main frame's [frame.locator(selector)](https://playwright.dev/docs/api/class-frame#frame-locator).
+   * Shortcut for main frame's
+   * [frame.locator(selector[, options])](https://playwright.dev/docs/api/class-frame#frame-locator).
    * @param selector A selector to use when resolving DOM element. See [working with selectors](https://playwright.dev/docs/selectors) for more details.
+   * @param options
    */
-  locator(selector: string): Locator;
+  locator(selector: string, options?: {
+    /**
+     * Matches elements containing specified text somewhere inside, possibly in a child or a descendant element. For example,
+     * `"Playwright"` matches `<article><div>Playwright</div></article>`.
+     */
+    hasText?: string|RegExp;
+  }): Locator;
 
   /**
    * The page's main frame. Page is guaranteed to have a main frame which persists during navigations.
@@ -3525,10 +3525,6 @@ export interface Page {
   /**
    * Emitted when attachment download started. User can access basic file operations on downloaded content via the passed
    * [Download] instance.
-   *
-   * > NOTE: Browser context **must** be created with the `acceptDownloads` set to `true` when user needs access to the
-   * downloaded content. If `acceptDownloads` is not set, download events are emitted, but the actual download is not
-   * performed and user has no access to the downloaded files.
    */
   waitForEvent(event: 'download', optionsOrPredicate?: { predicate?: (download: Download) => boolean | Promise<boolean>, timeout?: number } | ((download: Download) => boolean | Promise<boolean>)): Promise<Download>;
 
@@ -5336,8 +5332,15 @@ export interface Frame {
    * element immediately before performing an action, so a series of actions on the same locator can in fact be performed on
    * different DOM elements. That would happen if the DOM structure between those actions has changed.
    * @param selector A selector to use when resolving DOM element. See [working with selectors](https://playwright.dev/docs/selectors) for more details.
+   * @param options
    */
-  locator(selector: string): Locator;
+  locator(selector: string, options?: {
+    /**
+     * Matches elements containing specified text somewhere inside, possibly in a child or a descendant element. For example,
+     * `"Playwright"` matches `<article><div>Playwright</div></article>`.
+     */
+    hasText?: string|RegExp;
+  }): Locator;
 
   /**
    * Returns frame's name attribute as specified in the tag.
@@ -8479,76 +8482,11 @@ export interface ElementHandle<T=Node> extends JSHandle<T> {
   }): Promise<void>;}
 
 /**
- * Locator represents a view to the element(s) on the page. It captures the logic sufficient to retrieve the element at any
- * given moment. Locator can be created with the
- * [page.locator(selector)](https://playwright.dev/docs/api/class-page#page-locator) method.
+ * Locators are the central piece of Playwright's auto-waiting and retry-ability. In a nutshell, locators represent a way
+ * to find element(s) on the page at any moment. Locator can be created with the
+ * [page.locator(selector[, options])](https://playwright.dev/docs/api/class-page#page-locator) method.
  *
- * ```js
- * const locator = page.locator('text=Submit');
- * await locator.click();
- * ```
- *
- * The difference between the Locator and [ElementHandle] is that the latter points to a particular element, while Locator
- * captures the logic of how to retrieve that element.
- *
- * In the example below, handle points to a particular DOM element on page. If that element changes text or is used by
- * React to render an entirely different component, handle is still pointing to that very DOM element. This can lead to
- * unexpected behaviors.
- *
- * ```js
- * const handle = await page.$('text=Submit');
- * // ...
- * await handle.hover();
- * await handle.click();
- * ```
- *
- * With the locator, every time the `element` is used, up-to-date DOM element is located in the page using the selector. So
- * in the snippet below, underlying DOM element is going to be located twice.
- *
- * ```js
- * const locator = page.locator('text=Submit');
- * // ...
- * await locator.hover();
- * await locator.click();
- * ```
- *
- * **Strictness**
- *
- * Locators are strict. This means that all operations on locators that imply some target DOM element will throw if more
- * than one element matches given selector.
- *
- * ```js
- * // Throws if there are several buttons in DOM:
- * await page.locator('button').click();
- *
- * // Works because we explicitly tell locator to pick the first element:
- * await page.locator('button').first().click();
- *
- * // Works because count knows what to do with multiple matches:
- * await page.locator('button').count();
- * ```
- *
- * **Lists**
- *
- * You can also use locators to work with the element lists.
- *
- * ```js
- * // Locate elements, this locator points to a list.
- * const rows = page.locator('table tr');
- *
- * // Pattern 1: use locator methods to calculate text on the whole list.
- * const texts = await rows.allTextContents();
- *
- * // Pattern 2: do something with each element in the list.
- * const count = await rows.count()
- * for (let i = 0; i < count; ++i)
- *   console.log(await rows.nth(i).textContent());
- *
- * // Pattern 3: resolve locator to elements on page and map them to their text content.
- * // Note: the code inside evaluateAll runs in page, you can call any DOM apis there.
- * const texts = await rows.evaluateAll(list => list.map(element => element.textContent));
- * ```
- *
+ * [Learn more about locators](https://playwright.dev/docs/locators).
  */
 export interface Locator {
   /**
@@ -8570,7 +8508,7 @@ export interface Locator {
    * @param arg Optional argument to pass to `pageFunction`.
    * @param options
    */
-  evaluate<R, Arg>(pageFunction: PageFunctionOn<SVGElement | HTMLElement, Arg, R>, arg: Arg, options?: {
+  evaluate<R, Arg, E extends SVGElement | HTMLElement = SVGElement | HTMLElement>(pageFunction: PageFunctionOn<E, Arg, R>, arg: Arg, options?: {
     timeout?: number;
   }): Promise<R>;
   /**
@@ -8592,7 +8530,7 @@ export interface Locator {
    * @param arg Optional argument to pass to `pageFunction`.
    * @param options
    */
-  evaluate<R>(pageFunction: PageFunctionOn<SVGElement | HTMLElement, void, R>, options?: {
+  evaluate<R, E extends SVGElement | HTMLElement = SVGElement | HTMLElement>(pageFunction: PageFunctionOn<E, void, R>, options?: {
     timeout?: number;
   }): Promise<R>;
   /**
@@ -8613,7 +8551,7 @@ export interface Locator {
    * @param pageFunction Function to be evaluated in the page context.
    * @param arg Optional argument to pass to `pageFunction`.
    */
-  evaluateAll<R, Arg>(pageFunction: PageFunctionOn<(SVGElement | HTMLElement)[], Arg, R>, arg: Arg): Promise<R>;
+  evaluateAll<R, Arg, E extends SVGElement | HTMLElement = SVGElement | HTMLElement>(pageFunction: PageFunctionOn<E[], Arg, R>, arg: Arg): Promise<R>;
   /**
    * The method finds all elements matching the specified locator and passes an array of matched elements as a first argument
    * to `pageFunction`. Returns the result of `pageFunction` invocation.
@@ -8632,7 +8570,7 @@ export interface Locator {
    * @param pageFunction Function to be evaluated in the page context.
    * @param arg Optional argument to pass to `pageFunction`.
    */
-  evaluateAll<R>(pageFunction: PageFunctionOn<(SVGElement | HTMLElement)[], void, R>): Promise<R>;
+  evaluateAll<R, E extends SVGElement | HTMLElement = SVGElement | HTMLElement>(pageFunction: PageFunctionOn<E[], void, R>): Promise<R>;
   /**
    * Resolves given locator to the first matching DOM element. If no elements matching the query are visible, waits for them
    * up to a given timeout. If multiple elements match the selector, throws.
@@ -9307,8 +9245,15 @@ export interface Locator {
   /**
    * The method finds an element matching the specified selector in the `Locator`'s subtree.
    * @param selector A selector to use when resolving DOM element. See [working with selectors](https://playwright.dev/docs/selectors) for more details.
+   * @param options
    */
-  locator(selector: string): Locator;
+  locator(selector: string, options?: {
+    /**
+     * Matches elements containing specified text somewhere inside, possibly in a child or a descendant element. For example,
+     * `"Playwright"` matches `<article><div>Playwright</div></article>`.
+     */
+    hasText?: string|RegExp;
+  }): Locator;
 
   /**
    * Returns locator to the n-th matching element.
@@ -9830,14 +9775,7 @@ export interface Locator {
      * or [page.setDefaultTimeout(timeout)](https://playwright.dev/docs/api/class-page#page-set-default-timeout) methods.
      */
     timeout?: number;
-  }): Promise<void>;
-
-  /**
-   * Matches elements containing specified text somewhere inside, possibly in a child or a descendant element. For example,
-   * `"Playwright"` matches `<article><div>Playwright</div></article>`.
-   * @param text Text to filter by as a string or as a regular expression.
-   */
-  withText(text: string|RegExp): Locator;}
+  }): Promise<void>;}
 
 /**
  * BrowserType provides methods to launch a specific browser instance or connect to an existing one. The following is a
@@ -9948,7 +9886,7 @@ export interface BrowserType<Unused = {}> {
    */
   launchPersistentContext(userDataDir: string, options?: {
     /**
-     * Whether to automatically download all the attachments. Defaults to `false` where all the downloads are canceled.
+     * Whether to automatically download all the attachments. Defaults to `true` where all the downloads are accepted.
      */
     acceptDownloads?: boolean;
 
@@ -11176,7 +11114,7 @@ export interface AndroidDevice {
    */
   launchBrowser(options?: {
     /**
-     * Whether to automatically download all the attachments. Defaults to `false` where all the downloads are canceled.
+     * Whether to automatically download all the attachments. Defaults to `true` where all the downloads are accepted.
      */
     acceptDownloads?: boolean;
 
@@ -12643,7 +12581,7 @@ export interface Browser extends EventEmitter {
    */
   newPage(options?: {
     /**
-     * Whether to automatically download all the attachments. Defaults to `false` where all the downloads are canceled.
+     * Whether to automatically download all the attachments. Defaults to `true` where all the downloads are accepted.
      */
     acceptDownloads?: boolean;
 
@@ -13319,9 +13257,6 @@ export interface Dialog {
  * const path = await download.path();
  * ```
  *
- * > NOTE: Browser context **must** be created with the `acceptDownloads` set to `true` when user needs access to the
- * downloaded content. If `acceptDownloads` is not set, download events are emitted, but the actual download is not
- * performed and user has no access to the downloaded files.
  */
 export interface Download {
   /**
@@ -13435,7 +13370,7 @@ export interface Electron {
    */
   launch(options?: {
     /**
-     * Whether to automatically download all the attachments. Defaults to `false` where all the downloads are canceled.
+     * Whether to automatically download all the attachments. Defaults to `true` where all the downloads are accepted.
      */
     acceptDownloads?: boolean;
 
@@ -13688,6 +13623,15 @@ export interface FileChooser {
  * await page.frameLocator('.result-frame').first().locator('button').click();
  * ```
  *
+ * **Converting Locator to FrameLocator**
+ *
+ * If you have a [Locator] object pointing to an `iframe` it can be converted to [FrameLocator] using
+ * [`:scope`](https://developer.mozilla.org/en-US/docs/Web/CSS/:scope) CSS selector:
+ *
+ * ```js
+ * const frameLocator = locator.frameLocator(':scope');
+ * ```
+ *
  */
 export interface FrameLocator {
   /**
@@ -13710,8 +13654,15 @@ export interface FrameLocator {
   /**
    * The method finds an element matching the specified selector in the FrameLocator's subtree.
    * @param selector A selector to use when resolving DOM element. See [working with selectors](https://playwright.dev/docs/selectors) for more details.
+   * @param options
    */
-  locator(selector: string): Locator;
+  locator(selector: string, options?: {
+    /**
+     * Matches elements containing specified text somewhere inside, possibly in a child or a descendant element. For example,
+     * `"Playwright"` matches `<article><div>Playwright</div></article>`.
+     */
+    hasText?: string|RegExp;
+  }): Locator;
 
   /**
    * Returns locator to the n-th matching frame.
@@ -15037,7 +14988,7 @@ export interface WebSocket {
 
 export interface BrowserContextOptions {
   /**
-   * Whether to automatically download all the attachments. Defaults to `false` where all the downloads are canceled.
+   * Whether to automatically download all the attachments. Defaults to `true` where all the downloads are accepted.
    */
   acceptDownloads?: boolean;
 

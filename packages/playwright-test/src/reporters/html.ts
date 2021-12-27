@@ -22,7 +22,7 @@ import { Transform, TransformCallback } from 'stream';
 import { FullConfig, Suite, Reporter } from '../../types/testReporter';
 import { HttpServer } from 'playwright-core/lib/utils/httpServer';
 import { calculateSha1, removeFolders } from 'playwright-core/lib/utils/utils';
-import RawReporter, { JsonReport, JsonSuite, JsonTestCase, JsonTestResult, JsonTestStep, JsonAttachment } from './raw';
+import RawReporter, { JsonReport, JsonSuite, JsonTestCase, JsonTestResult, JsonTestStep } from './raw';
 import assert from 'assert';
 import yazl from 'yazl';
 import { stripAnsiEscapes } from './base';
@@ -53,12 +53,14 @@ export type TestFile = {
   fileId: string;
   fileName: string;
   tests: TestCase[];
+  hooks: TestCase[];
 };
 
 export type TestFileSummary = {
   fileId: string;
   fileName: string;
   tests: TestCaseSummary[];
+  hooks: TestCaseSummary[];
   stats: Stats;
 };
 
@@ -68,6 +70,7 @@ export type TestCaseSummary = {
   path: string[];
   projectName: string;
   location: Location;
+  annotations: { type: string, description?: string }[];
   outcome: 'skipped' | 'expected' | 'unexpected' | 'flaky';
   duration: number;
   ok: boolean;
@@ -77,7 +80,13 @@ export type TestCase = TestCaseSummary & {
   results: TestResult[];
 };
 
-export type TestAttachment = JsonAttachment;
+export type TestAttachment = {
+  name: string;
+  body?: string;
+  path?: string;
+  contentType: string;
+};
+
 
 export type TestResult = {
   retry: number;
@@ -230,17 +239,22 @@ class HtmlBuilder {
         let fileEntry = data.get(fileId);
         if (!fileEntry) {
           fileEntry = {
-            testFile: { fileId, fileName, tests: [] },
-            testFileSummary: { fileId, fileName, tests: [], stats: emptyStats() },
+            testFile: { fileId, fileName, tests: [], hooks: [] },
+            testFileSummary: { fileId, fileName, tests: [], hooks: [], stats: emptyStats() },
           };
           data.set(fileId, fileEntry);
         }
         const { testFile, testFileSummary } = fileEntry;
         const testEntries: TestEntry[] = [];
-        this._processJsonSuite(file, fileId, projectJson.project.name, [], testEntries);
+        const hookEntries: TestEntry[] = [];
+        this._processJsonSuite(file, fileId, projectJson.project.name, [], testEntries, hookEntries);
         for (const test of testEntries) {
           testFile.tests.push(test.testCase);
           testFileSummary.tests.push(test.testCaseSummary);
+        }
+        for (const hook of hookEntries) {
+          testFile.hooks.push(hook.testCase);
+          testFileSummary.hooks.push(hook.testCaseSummary);
         }
       }
     }
@@ -264,13 +278,15 @@ class HtmlBuilder {
       if (!stats.ok)
         ok = false;
 
-      testFileSummary.tests.sort((t1, t2) => {
+      const testCaseSummaryComparator = (t1: TestCaseSummary, t2: TestCaseSummary) => {
         const w1 = (t1.outcome === 'unexpected' ? 1000 : 0) +  (t1.outcome === 'flaky' ? 1 : 0);
         const w2 = (t2.outcome === 'unexpected' ? 1000 : 0) +  (t2.outcome === 'flaky' ? 1 : 0);
         if (w2 - w1)
           return w2 - w1;
         return t1.location.line - t2.location.line;
-      });
+      };
+      testFileSummary.tests.sort(testCaseSummaryComparator);
+      testFileSummary.hooks.sort(testCaseSummaryComparator);
 
       this._addDataFile(fileId + '.json', testFile);
     }
@@ -328,10 +344,11 @@ class HtmlBuilder {
     this._dataZipFile.addBuffer(Buffer.from(JSON.stringify(data)), fileName);
   }
 
-  private _processJsonSuite(suite: JsonSuite, fileId: string, projectName: string, path: string[], out: TestEntry[]) {
+  private _processJsonSuite(suite: JsonSuite, fileId: string, projectName: string, path: string[], outTests: TestEntry[], outHooks: TestEntry[]) {
     const newPath = [...path, suite.title];
-    suite.suites.map(s => this._processJsonSuite(s, fileId, projectName, newPath, out));
-    suite.tests.forEach(t => out.push(this._createTestEntry(t, projectName, newPath)));
+    suite.suites.map(s => this._processJsonSuite(s, fileId, projectName, newPath, outTests, outHooks));
+    suite.tests.forEach(t => outTests.push(this._createTestEntry(t, projectName, newPath)));
+    suite.hooks.forEach(t => outHooks.push(this._createTestEntry(t, projectName, newPath)));
   }
 
   private _createTestEntry(test: JsonTestCase, projectName: string, path: string[]): TestEntry {
@@ -348,6 +365,7 @@ class HtmlBuilder {
         projectName,
         location,
         duration,
+        annotations: test.annotations,
         outcome: test.outcome,
         path,
         results: test.results.map(r => this._createTestResult(r)),
@@ -359,6 +377,7 @@ class HtmlBuilder {
         projectName,
         location,
         duration,
+        annotations: test.annotations,
         outcome: test.outcome,
         path,
         ok: test.outcome === 'expected' || test.outcome === 'flaky',
@@ -378,6 +397,19 @@ class HtmlBuilder {
       attachments: result.attachments.map(a => {
         if (a.name === 'trace')
           this._hasTraces = true;
+
+        if ((a.name === 'stdout' || a.name === 'stderr') && a.contentType === 'text/plain') {
+          if (lastAttachment &&
+            lastAttachment.name === a.name &&
+            lastAttachment.contentType === a.contentType) {
+            lastAttachment.body += stripAnsiEscapes(a.body as string);
+            return null;
+          }
+          a.body = stripAnsiEscapes(a.body as string);
+          lastAttachment = a as TestAttachment;
+          return a;
+        }
+
         if (a.path) {
           let fileName = a.path;
           try {
@@ -401,17 +433,39 @@ class HtmlBuilder {
           };
         }
 
-        if ((a.name === 'stdout' || a.name === 'stderr') && a.contentType === 'text/plain') {
-          if (lastAttachment &&
-            lastAttachment.name === a.name &&
-            lastAttachment.contentType === a.contentType) {
-            lastAttachment.body += stripAnsiEscapes(a.body as string);
-            return null;
+        if (a.body instanceof Buffer) {
+          if (isTextContentType(a.contentType)) {
+            // Content type is like this: "text/html; charset=UTF-8"
+            const charset = a.contentType.match(/charset=(.*)/)?.[1];
+            try {
+              const body = a.body.toString(charset as any || 'utf-8');
+              return {
+                name: a.name,
+                contentType: a.contentType,
+                body,
+              };
+            } catch (e) {
+              // Invalid encoding, fall through and save to file.
+            }
           }
-          a.body = stripAnsiEscapes(a.body as string);
+
+          fs.mkdirSync(path.join(this._reportFolder, 'data'), { recursive: true });
+          const sha1 = calculateSha1(a.body) + '.dat';
+          fs.writeFileSync(path.join(this._reportFolder, 'data', sha1), a.body);
+          return {
+            name: a.name,
+            contentType: a.contentType,
+            path: 'data/' + sha1,
+            body: a.body,
+          };
         }
-        lastAttachment = a;
-        return a;
+
+        // string
+        return {
+          name: a.name,
+          contentType: a.contentType,
+          body: a.body,
+        };
       }).filter(Boolean) as TestAttachment[]
     };
   }
@@ -476,6 +530,10 @@ class Base64Encoder extends Transform {
       this.push(Buffer.from(this._remainder.toString('base64')));
     callback();
   }
+}
+
+function isTextContentType(contentType: string) {
+  return contentType.startsWith('text/') || contentType.startsWith('application/json');
 }
 
 export default HtmlReporter;

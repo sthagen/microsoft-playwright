@@ -415,6 +415,18 @@ ContextOptions:
         path: string
     strictSelectors: boolean?
 
+LocalUtils:
+  type: interface
+
+  commands:
+
+    zip:
+      parameters:
+        zipFile: string
+        entries:
+          type: array
+          items: NameValue
+
 Root:
   type: interface
 
@@ -423,7 +435,6 @@ Root:
     initialize:
       parameters:
         sdkLanguage: string
-        version: string
       returns:
         playwright: Playwright
 
@@ -436,6 +447,7 @@ Playwright:
     webkit: BrowserType
     android: Android
     electron: Electron
+    utils: LocalUtils
     deviceDescriptors:
       type: array
       items:
@@ -813,6 +825,7 @@ BrowserContext:
         name: string?
         snapshots: boolean?
         screenshots: boolean?
+        sources: boolean?
 
     tracingStartChunk:
       parameters:
@@ -820,12 +833,17 @@ BrowserContext:
 
     tracingStopChunk:
       parameters:
-        save: boolean
-        skipCompress: boolean
+        mode:
+          type: enum
+          literals:
+          - doNotSave
+          - compressTrace
+          - compressTraceAndSources
       returns:
+        # The artifact may be missing if the browser closes while tracing is beeing stopped.
         artifact: Artifact?
-        entries:
-          type: array
+        sourceEntries:
+          type: array?
           items: NameValue
 
     tracingStop:
@@ -3032,4 +3050,5 @@ JsonPipe:
         message: json
 
     closed:
+      parameters:
         error: SerializedError?

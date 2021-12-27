@@ -37,7 +37,7 @@ import { GridServer, GridFactory } from '../grid/gridServer';
 const packageJSON = require('../../package.json');
 
 program
-    .version('Version ' + packageJSON.version)
+    .version('Version ' + (process.env.PW_CLI_DISPLAY_VERSION || packageJSON.version))
     .name(buildBasePlaywrightCLICommand(process.env.PW_CLI_TARGET_LANG));
 
 commandWithOpenOptions('open [url]', 'open page in browser specified via -b, --browser', [])
@@ -332,8 +332,6 @@ async function launchContext(options: Options, headless: boolean, executablePath
   if (contextOptions.isMobile && browserType.name() === 'firefox')
     contextOptions.isMobile = undefined;
 
-  contextOptions.acceptDownloads = true;
-
   // Proxy
 
   if (options.proxyServer) {
@@ -441,7 +439,6 @@ async function launchContext(options: Options, headless: boolean, executablePath
   delete launchOptions.headless;
   delete launchOptions.executablePath;
   delete contextOptions.deviceScaleFactor;
-  delete contextOptions.acceptDownloads;
   return { browser, browserName: browserType.name(), context, contextOptions, launchOptions };
 }
 

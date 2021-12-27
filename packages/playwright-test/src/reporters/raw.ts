@@ -54,6 +54,7 @@ export type JsonSuite = {
   location?: JsonLocation;
   suites: JsonSuite[];
   tests: JsonTestCase[];
+  hooks: JsonTestCase[];
 };
 
 export type JsonTestCase = {
@@ -71,7 +72,7 @@ export type JsonTestCase = {
 
 export type JsonAttachment = {
   name: string;
-  body?: string;
+  body?: string | Buffer;
   path?: string;
   contentType: string;
 };
@@ -188,6 +189,7 @@ class RawReporter {
       location,
       suites: suite.suites.map(s => this._serializeSuite(s)),
       tests: suite.tests.map(t => this._serializeTest(t, fileId)),
+      hooks: suite.hooks.map(t => this._serializeTest(t, fileId)),
     };
   }
 
@@ -245,7 +247,7 @@ class RawReporter {
         attachments.push({
           name: attachment.name,
           contentType: attachment.contentType,
-          body: attachment.body.toString('base64')
+          body: attachment.body
         });
       } else if (attachment.path) {
         attachments.push({
@@ -274,7 +276,7 @@ class RawReporter {
     return {
       name: type,
       contentType: 'application/octet-stream',
-      body: chunk.toString('base64')
+      body: chunk
     };
   }
 

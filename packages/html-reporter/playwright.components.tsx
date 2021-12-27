@@ -14,11 +14,13 @@
  * limitations under the License.
  */
 
-import * as React from 'react';
-import * as ReactDOM from 'react-dom';
-import { Report } from './htmlReport';
-import './colors.css';
+import { AutoChip, Chip } from './src/chip';
+import { HeaderView } from './src/headerView';
+import { TestCaseView } from './src/testCaseView';
+import './src/theme.css';
+import { registerComponent } from './test/component';
 
-window.onload = () => {
-  ReactDOM.render(<Report />, document.querySelector('#root'));
-};
+registerComponent('HeaderView', HeaderView);
+registerComponent('Chip', Chip);
+registerComponent('TestCaseView', TestCaseView);
+registerComponent('AutoChip', AutoChip);

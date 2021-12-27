@@ -94,7 +94,7 @@ async function innerCheckDeps(root, checkDepsFile) {
       }
       const importPath = path.resolve(path.dirname(fileName), importName) + '.ts';
       if (checkDepsFile && !allowImport(fileName, importPath))
-        errors.push(`Disallowed import from ${path.relative(root, fileName)} to ${path.relative(root, importPath)}`);
+        errors.push(`Disallowed import ${path.relative(root, importPath)} in ${path.relative(root, fileName)}`);
       if (checkDepsFile && !allowExternalImport(fileName, importPath, importName))
         errors.push(`Disallowed external dependency ${importName} from ${path.relative(root, fileName)}`);
     }
@@ -237,12 +237,6 @@ DEPS['src/server/trace/viewer/'] = ['src/server/trace/common/', 'src/server/trac
 // // Playwright Test
 // DEPS['src/test/'] = ['src/test/**', 'src/utils/utils.ts', 'src/utils/**', 'src/protocol/channels.ts'];
 // DEPS['src/test/index.ts'] = [... DEPS['src/test/'], 'src/grid/gridClient.ts' ];
-
-// HTML report
-DEPS['src/web/htmlReport/'] = [
-  // 'src/test/**',
-  'src/web/'
-];
 
 // Grid
 DEPS['src/grid/'] = ['src/utils/**', 'src/dispatchers/**', 'src/server/', 'src/client/'];

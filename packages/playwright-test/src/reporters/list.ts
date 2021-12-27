@@ -17,7 +17,7 @@
 /* eslint-disable no-console */
 import colors from 'colors/safe';
 import milliseconds from 'ms';
-import { BaseReporter, formatTestTitle } from './base';
+import { BaseReporter, fitToScreen, formatTestTitle } from './base';
 import { FullConfig, FullResult, Suite, TestCase, TestResult, TestStep } from '../../types/testReporter';
 
 // Allow it in the Visual Studio Code Terminal and the new Windows Terminal
@@ -30,12 +30,10 @@ class ListReporter extends BaseReporter {
   private _testRows = new Map<TestCase, number>();
   private _needNewLine = false;
   private readonly _liveTerminal: string | boolean | undefined;
-  private readonly _ttyWidthForTest: number;
 
   constructor(options: { omitFailures?: boolean } = {}) {
     super(options);
-    this._ttyWidthForTest = parseInt(process.env.PWTEST_TTY_WIDTH || '', 10);
-    this._liveTerminal = process.stdout.isTTY || process.env.PWTEST_SKIP_TEST_OUTPUT || !!this._ttyWidthForTest;
+    this._liveTerminal = process.stdout.isTTY || process.env.PWTEST_SKIP_TEST_OUTPUT || !!process.env.PWTEST_TTY_WIDTH;
   }
 
   printsToStdio() {
@@ -48,7 +46,7 @@ class ListReporter extends BaseReporter {
     console.log();
   }
 
-  onTestBegin(test: TestCase) {
+  onTestBegin(test: TestCase, result: TestResult) {
     if (this._liveTerminal) {
       if (this._needNewLine) {
         this._needNewLine = false;
@@ -56,7 +54,8 @@ class ListReporter extends BaseReporter {
         this._lastRow++;
       }
       const line = '     ' + colors.gray(formatTestTitle(this.config, test));
-      process.stdout.write(this._fitToScreen(line) + '\n');
+      const suffix = this._retrySuffix(result);
+      process.stdout.write(this._fitToScreen(line, suffix) + suffix + '\n');
     }
     this._testRows.set(test, this._lastRow++);
   }
@@ -76,7 +75,7 @@ class ListReporter extends BaseReporter {
       return;
     if (step.category !== 'test.step')
       return;
-    this._updateTestLine(test, '     ' + colors.gray(formatTestTitle(this.config, test, step)));
+    this._updateTestLine(test, '     ' + colors.gray(formatTestTitle(this.config, test, step)), this._retrySuffix(result));
   }
 
   onStepEnd(test: TestCase, result: TestResult, step: TestStep) {
@@ -84,7 +83,7 @@ class ListReporter extends BaseReporter {
       return;
     if (step.category !== 'test.step')
       return;
-    this._updateTestLine(test, '     ' + colors.gray(formatTestTitle(this.config, test, step.parent)));
+    this._updateTestLine(test, '     ' + colors.gray(formatTestTitle(this.config, test, step.parent)), this._retrySuffix(result));
   }
 
   private _dumpToStdio(test: TestCase | undefined, chunk: string | Buffer, stream: NodeJS.WriteStream) {
@@ -102,75 +101,67 @@ class ListReporter extends BaseReporter {
   override onTestEnd(test: TestCase, result: TestResult) {
     super.onTestEnd(test, result);
 
-    const duration = colors.dim(` (${milliseconds(result.duration)})`);
+    let duration = colors.dim(` (${milliseconds(result.duration)})`);
     const title = formatTestTitle(this.config, test);
     let text = '';
     if (result.status === 'skipped') {
       text = colors.green('  -  ') + colors.cyan(title);
+      duration = ''; // Do not show duration for skipped.
     } else {
       const statusMark = ('  ' + (result.status === 'passed' ? POSITIVE_STATUS_MARK : NEGATIVE_STATUS_MARK)).padEnd(5);
       if (result.status === test.expectedStatus)
-        text = '\u001b[2K\u001b[0G' + colors.green(statusMark) + colors.gray(title) + duration;
+        text = colors.green(statusMark) + colors.gray(title);
       else
-        text = '\u001b[2K\u001b[0G' + colors.red(statusMark + title) + duration;
+        text = colors.red(statusMark + title);
     }
+    const suffix = this._retrySuffix(result) + duration;
 
     if (this._liveTerminal) {
-      this._updateTestLine(test, text);
+      this._updateTestLine(test, text, suffix);
     } else {
       if (this._needNewLine) {
         this._needNewLine = false;
         process.stdout.write('\n');
       }
-      process.stdout.write(text);
+      process.stdout.write(text + suffix);
       process.stdout.write('\n');
     }
   }
 
-  private _updateTestLine(test: TestCase, line: string) {
+  private _updateTestLine(test: TestCase, line: string, suffix: string) {
     if (process.env.PWTEST_SKIP_TEST_OUTPUT)
-      this._updateTestLineForTest(test,line);
+      this._updateTestLineForTest(test, line, suffix);
     else
-      this._updateTestLineForTTY(test,line);
+      this._updateTestLineForTTY(test, line, suffix);
   }
 
-  private _updateTestLineForTTY(test: TestCase, line: string) {
+  private _updateTestLineForTTY(test: TestCase, line: string, suffix: string) {
     const testRow = this._testRows.get(test)!;
     // Go up if needed
     if (testRow !== this._lastRow)
       process.stdout.write(`\u001B[${this._lastRow - testRow}A`);
-    // Erase line
-    process.stdout.write('\u001B[2K');
-    process.stdout.write(this._fitToScreen(line));
+    // Erase line, go to the start
+    process.stdout.write('\u001B[2K\u001B[0G');
+    process.stdout.write(this._fitToScreen(line, suffix) + suffix);
     // Go down if needed.
     if (testRow !== this._lastRow)
       process.stdout.write(`\u001B[${this._lastRow - testRow}E`);
   }
 
-  private _fitToScreen(line: string): string {
-    if (!this._ttyWidth() || line.length <= this._ttyWidth())
+  private _retrySuffix(result: TestResult) {
+    return (result.retry ? colors.yellow(` (retry #${result.retry})`) : '');
+  }
+
+  private _fitToScreen(line: string, suffix?: string): string {
+    const ttyWidth = this.ttyWidth();
+    if (!ttyWidth)
       return line;
-    // Matches '\u001b[2K\u001b[0G' and all color codes.
-    const re = /\u001b\[2K\u001b\[0G|\x1B\[\d+m/g;
-    let m;
-    let colorLen = 0;
-    while ((m = re.exec(line)) !== null) {
-      const visibleLen = m.index - colorLen;
-      if (visibleLen >= this._ttyWidth())
-        break;
-      colorLen += m[0].length;
-    }
-    // Truncate and reset all colors.
-    return line.substr(0, this._ttyWidth() + colorLen) + '\u001b[0m';
+    return fitToScreen(line, ttyWidth, suffix);
   }
 
-  private _ttyWidth(): number {
-    return this._ttyWidthForTest || process.stdout.columns || 0;
-  }
-
-  private _updateTestLineForTest(test: TestCase, line: string) {
+  private _updateTestLineForTest(test: TestCase, line: string, suffix: string) {
     const testRow = this._testRows.get(test)!;
-    process.stdout.write(testRow + ' : ' + line + '\n');
+    process.stdout.write(testRow + ' : ' + line + suffix + '\n');
   }
 
   override async onEnd(result: FullResult) {

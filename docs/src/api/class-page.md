@@ -297,12 +297,6 @@ event is dispatched.
 Emitted when attachment download started. User can access basic file operations on downloaded content via the passed
 [Download] instance.
 
-:::note
-Browser context **must** be created with the [`option: acceptDownloads`] set to `true` when user needs access to the
-downloaded content. If [`option: acceptDownloads`] is not set, download events are emitted, but the actual download is
-not performed and user has no access to the downloaded files.
-:::
-
 ## event: Page.fileChooser
 - argument: <[FileChooser]>
 
@@ -2119,6 +2113,7 @@ Locator is resolved to the element immediately before performing an action, so a
 Shortcut for main frame's [`method: Frame.locator`].
 
 ### param: Page.locator.selector = %%-find-selector-%%
+### option: Page.locator.-inline- = %%-locator-options-list-%%
 
 ## method: Page.mainFrame
 - returns: <[Frame]>

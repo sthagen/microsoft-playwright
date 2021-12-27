@@ -849,17 +849,17 @@ export module Protocol {
       range?: SourceRange;
     }
     /**
-     * CSS @media (as well as other users of media queries, like @import, <style>, <link>, etc.) and @supports descriptor.
+     * CSS @media (as well as other users of media queries, like @import, <style>, <link>, etc.), @supports, and @layer descriptor.
      */
     export interface Grouping {
       /**
-       * Media query text.
+       * Source of the media query: "media-rule" if specified by a @media rule, "media-import-rule" if specified by an @import rule, "media-link-node" if specified by a "media" attribute in a linked style sheet's LINK tag, "media-style-node" if specified by a "media" attribute in an inline style sheet's STYLE tag, "supports-rule" if specified by an @supports rule, "layer-rule" if specified by an @layer rule.
        */
-      text: string;
+      type: "media-rule"|"media-import-rule"|"media-link-node"|"media-style-node"|"supports-rule"|"layer-rule"|"layer-import-rule";
       /**
-       * Source of the media query: "media-rule" if specified by a @media rule, "media-import-rule" if specified by an @import rule, "media-link-node" if specified by a "media" attribute in a linked style sheet's LINK tag, "media-style-node" if specified by a "media" attribute in an inline style sheet's STYLE tag, "supports-rule" if specified by an @supports rule, .
+       * Query text if specified by a @media or @supports rule. Layer name (or not present for anonymous layers) for @layer rules.
        */
-      type: "media-rule"|"media-import-rule"|"media-link-node"|"media-style-node"|"supports-rule";
+      text?: string;
       /**
        * URL of the document containing the CSS grouping.
        */
@@ -8202,7 +8202,6 @@ the top of the viewport and Y increases as it proceeds towards the bottom of the
       width: number;
       height: number;
       toolbarHeight: number;
-      scale?: number;
     }
     export type startVideoReturnValue = {
       /**

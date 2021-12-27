@@ -17,17 +17,21 @@
 import { formatLocation, wrapInPromise, debugTest } from './util';
 import * as crypto from 'crypto';
 import { FixturesWithLocation, Location, WorkerInfo, TestInfo, TestStepInternal } from './types';
+import { ManualPromise } from 'playwright-core/lib/utils/async';
 
 type FixtureScope = 'test' | 'worker';
+type FixtureOptions = { auto?: boolean, scope?: FixtureScope, option?: boolean };
+type FixtureTuple = [ value: any, options: FixtureOptions ];
 type FixtureRegistration = {
-  location: Location;
+  location: Location;  // Fixutre registration location.
   name: string;
   scope: FixtureScope;
   fn: Function | any;  // Either a fixture function, or a fixture value.
   auto: boolean;
-  deps: string[];
-  id: string;
-  super?: FixtureRegistration;
+  option: boolean;
+  deps: string[];  // Names of the dependencies, ({ foo, bar }) => {...}
+  id: string;  // Unique id, to differentiate between fixtures with the same name.
+  super?: FixtureRegistration;  // A fixture override can use the previous version of the fixture.
 };
 
 class Fixture {
@@ -35,10 +39,10 @@ class Fixture {
   registration: FixtureRegistration;
   usages: Set<Fixture>;
   value: any;
-  _teardownFenceCallback!: (value?: unknown) => void;
-  _tearDownComplete!: Promise<void>;
-  _setup = false;
-  _teardown = false;
+
+  _useFuncFinished: ManualPromise<void> | undefined;
+  _selfTeardownComplete: Promise<void> | undefined;
+  _teardownWithDepsComplete: Promise<void> | undefined;
 
   constructor(runner: FixtureRunner, registration: FixtureRegistration) {
     this.runner = runner;
@@ -49,7 +53,6 @@ class Fixture {
 
   async setup(workerInfo: WorkerInfo, testInfo: TestInfo | undefined) {
     if (typeof this.registration.fn !== 'function') {
-      this._setup = true;
       this.value = this.registration.fn;
       return;
     }
@@ -62,52 +65,54 @@ class Fixture {
       params[name] = dep.value;
     }
 
-    let setupFenceFulfill = () => {};
-    let setupFenceReject = (e: Error) => {};
     let called = false;
-    const setupFence = new Promise<void>((f, r) => { setupFenceFulfill = f; setupFenceReject = r; });
-    const teardownFence = new Promise(f => this._teardownFenceCallback = f);
+    const useFuncStarted = new ManualPromise<void>();
     debugTest(`setup ${this.registration.name}`);
-    this._tearDownComplete = wrapInPromise(this.registration.fn(params, async (value: any) => {
+    const useFunc = async (value: any) => {
       if (called)
         throw new Error(`Cannot provide fixture value for the second time`);
       called = true;
       this.value = value;
-      setupFenceFulfill();
-      return await teardownFence;
-    }, this.registration.scope === 'worker' ? workerInfo : testInfo)).catch((e: any) => {
-      if (!this._setup)
-        setupFenceReject(e);
+      this._useFuncFinished = new ManualPromise<void>();
+      useFuncStarted.resolve();
+      await this._useFuncFinished;
+    };
+    const info = this.registration.scope === 'worker' ? workerInfo : testInfo;
+    this._selfTeardownComplete = wrapInPromise(this.registration.fn(params, useFunc, info)).catch((e: any) => {
+      if (!useFuncStarted.isDone())
+        useFuncStarted.reject(e);
       else
         throw e;
     });
-    await setupFence;
-    this._setup = true;
+    await useFuncStarted;
   }
 
   async teardown() {
-    if (this._teardown)
-      return;
-    this._teardown = true;
+    if (!this._teardownWithDepsComplete)
+      this._teardownWithDepsComplete = this._teardownInternal();
+    await this._teardownWithDepsComplete;
+  }
+
+  private async _teardownInternal() {
     if (typeof this.registration.fn !== 'function')
       return;
     for (const fixture of this.usages)
       await fixture.teardown();
     this.usages.clear();
-    if (this._setup) {
+    if (this._useFuncFinished) {
       debugTest(`teardown ${this.registration.name}`);
-      this._teardownFenceCallback();
-      await this._tearDownComplete;
+      this._useFuncFinished.resolve();
+      await this._selfTeardownComplete;
     }
     this.runner.instanceForId.delete(this.registration.id);
   }
 }
 
-function isFixtureTuple(value: any): value is [any, any] {
+function isFixtureTuple(value: any): value is FixtureTuple {
   return Array.isArray(value) && typeof value[1] === 'object' && ('scope' in value[1] || 'auto' in value[1] || 'option' in value[1]);
 }
 
-export function isFixtureOption(value: any): value is [any, any] {
+export function isFixtureOption(value: any): value is FixtureTuple {
   return isFixtureTuple(value) && !!value[1].option;
 }
 
@@ -122,11 +127,12 @@ export class FixturePool {
       for (const entry of Object.entries(fixtures)) {
         const name = entry[0];
         let value = entry[1];
-        let options: { auto: boolean, scope: FixtureScope } | undefined;
+        let options: Required<FixtureOptions> | undefined;
         if (isFixtureTuple(value)) {
           options = {
             auto: !!value[1].auto,
-            scope: value[1].scope || 'test'
+            scope: value[1].scope || 'test',
+            option: !!value[1].option,
           };
           value = value[0];
         }
@@ -139,9 +145,9 @@ export class FixturePool {
           if (previous.auto !== options.auto)
             throw errorWithLocations(`Fixture "${name}" has already been registered as a { auto: '${previous.scope}' } fixture.`, { location, name }, previous);
         } else if (previous) {
-          options = { auto: previous.auto, scope: previous.scope };
+          options = { auto: previous.auto, scope: previous.scope, option: previous.option };
         } else if (!options) {
-          options = { auto: false, scope: 'test' };
+          options = { auto: false, scope: 'test', option: false };
         }
 
         if (options.scope !== 'test' && options.scope !== 'worker')
@@ -150,7 +156,7 @@ export class FixturePool {
           throw errorWithLocations(`Cannot use({ ${name} }) in a describe group, because it forces a new worker.\nMake it top-level in the test file or put in the configuration file.`, { location, name });
 
         const deps = fixtureParameterNames(fn, location);
-        const registration: FixtureRegistration = { id: '', name, location, scope: options.scope, fn, auto: options.auto, deps, super: previous };
+        const registration: FixtureRegistration = { id: '', name, location, scope: options.scope, fn, auto: options.auto, option: options.option, deps, super: previous };
         registrationId(registration);
         this.registrations.set(name, registration);
       }

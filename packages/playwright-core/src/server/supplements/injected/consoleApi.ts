@@ -14,12 +14,40 @@
  * limitations under the License.
  */
 
+import { escapeWithQuotes } from '../../../utils/stringUtils';
 import type InjectedScript from '../../injected/injectedScript';
 import { generateSelector } from '../../injected/selectorGenerator';
+
+function createLocator(injectedScript: InjectedScript, initial: string, options?: { hasText?: string | RegExp }) {
+  class Locator {
+    selector: string;
+    element: Element | undefined;
+    elements: Element[];
+
+    constructor(selector: string, options?: { hasText?: string | RegExp }) {
+      this.selector = selector;
+      if (options?.hasText) {
+        const text = options.hasText;
+        const matcher = text instanceof RegExp ? 'text-matches' : 'has-text';
+        const source = escapeWithQuotes(text instanceof RegExp ? text.source : text, '"');
+        this.selector += ` >> :scope:${matcher}(${source})`;
+      }
+      const parsed = injectedScript.parseSelector(this.selector);
+      this.element = injectedScript.querySelector(parsed, document, false);
+      this.elements = injectedScript.querySelectorAll(parsed, document);
+    }
+
+    locator(selector: string, options?: { hasText: string | RegExp }): Locator {
+      return new Locator(this.selector ? this.selector + ' >> ' + selector : selector, options);
+    }
+  }
+  return new Locator(initial, options);
+}
 
 type ConsoleAPIInterface = {
   $: (selector: string) => void;
   $$: (selector: string) => void;
+  locator: (selector: string) => any;
   inspect: (selector: string) => void;
   selector: (element: Element) => void;
   resume: () => void;
@@ -43,6 +71,7 @@ export class ConsoleAPI {
     window.playwright = {
       $: (selector: string, strict?: boolean) => this._querySelector(selector, !!strict),
       $$: (selector: string) => this._querySelectorAll(selector),
+      locator: (selector: string, options?: { hasText?: string | RegExp }) => createLocator(this._injectedScript, selector, options),
       inspect: (selector: string) => this._inspect(selector),
       selector: (element: Element) => this._selector(element),
       resume: () => this._resume(),

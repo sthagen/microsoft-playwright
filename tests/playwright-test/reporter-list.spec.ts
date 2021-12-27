@@ -83,6 +83,25 @@ test('render steps', async ({ runInlineTest }) => {
   ]);
 });
 
+test('render retries', async ({ runInlineTest }) => {
+  const result = await runInlineTest({
+    'a.test.ts': `
+      const { test } = pwt;
+      test('flaky', async ({}, testInfo) => {
+        expect(testInfo.retry).toBe(1);
+      });
+    `,
+  }, { reporter: 'list', retries: '1' });
+  const text = stripAscii(result.output);
+  const lines = text.split('\n').filter(l => l.startsWith('0 :') || l.startsWith('1 :')).map(l => l.replace(/[\dm]+s/, 'XXms'));
+  const positiveStatusMarkPrefix = process.platform === 'win32' ? 'ok' : '✓ ';
+  const negativateStatusMarkPrefix = process.platform === 'win32' ? 'x ' : '✘ ';
+  expect(lines).toEqual([
+    `0 :   ${negativateStatusMarkPrefix} a.test.ts:6:7 › flaky (XXms)`,
+    `1 :   ${positiveStatusMarkPrefix} a.test.ts:6:7 › flaky (retry #1) (XXms)`,
+  ]);
+});
+
 test('should truncate long test names', async ({ runInlineTest }) => {
   const result = await runInlineTest({
     'playwright.config.ts': `
@@ -92,26 +111,26 @@ test('should truncate long test names', async ({ runInlineTest }) => {
     `,
     'a.test.ts': `
       const { test } = pwt;
-      test('fails long name', async ({}) => {
+      test('fails very long name', async ({}) => {
         expect(1).toBe(0);
       });
       test('passes', async ({}) => {
       });
       test('passes 2 long name', async () => {
       });
-      test.skip('skipped long name', async () => {
+      test.skip('skipped very long name', async () => {
       });
     `,
-  }, { reporter: 'list', retries: 0 }, { PWTEST_TTY_WIDTH: 40, PWTEST_SKIP_TEST_OUTPUT: undefined });
+  }, { reporter: 'list', retries: 0 }, { PWTEST_TTY_WIDTH: 50, PWTEST_SKIP_TEST_OUTPUT: undefined });
   const text = stripAscii(result.output);
   const positiveStatusMarkPrefix = process.platform === 'win32' ? 'ok' : '✓ ';
   const negativateStatusMarkPrefix = process.platform === 'win32' ? 'x ' : '✘ ';
-  expect(text).toContain(`${negativateStatusMarkPrefix} [foo] › a.test.ts:6:7 › fails long`);
-  expect(text).not.toContain(`${negativateStatusMarkPrefix} [foo] › a.test.ts:6:7 › fails long n`);
+  expect(text).toContain(`${negativateStatusMarkPrefix} [foo] › a.test.ts:6:7 › fails very`);
+  expect(text).not.toContain(`${negativateStatusMarkPrefix} [foo] › a.test.ts:6:7 › fails very long name (`);
   expect(text).toContain(`${positiveStatusMarkPrefix} [foo] › a.test.ts:9:7 › passes (`);
-  expect(text).toContain(`${positiveStatusMarkPrefix} [foo] › a.test.ts:11:7 › passes 2 l`);
-  expect(text).not.toContain(`${positiveStatusMarkPrefix} [foo] › a.test.ts:11:7 › passes 2 lo`);
-  expect(text).toContain(`-  [foo] › a.test.ts:13:12 › skipped l`);
-  expect(text).not.toContain(`-  [foo] › a.test.ts:13:12 › skipped lo`);
+  expect(text).toContain(`${positiveStatusMarkPrefix} [foo] › a.test.ts:11:7 › passes 2 long`);
+  expect(text).not.toContain(`${positiveStatusMarkPrefix} [foo] › a.test.ts:11:7 › passes 2 long name (`);
+  expect(text).toContain(`-  [foo] › a.test.ts:13:12 › skipped very long n`);
+  expect(text).not.toContain(`-  [foo] › a.test.ts:13:12 › skipped very long na`);
   expect(result.exitCode).toBe(1);
 });

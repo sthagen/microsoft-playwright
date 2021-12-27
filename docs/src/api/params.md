@@ -250,7 +250,7 @@ state is still returned, but won't be saved to the disk.
 ## context-option-acceptdownloads
 - `acceptDownloads` <[boolean]>
 
-Whether to automatically download all the attachments. Defaults to `false` where all the downloads are canceled.
+Whether to automatically download all the attachments. Defaults to `true` where all the downloads are accepted.
 
 ## context-option-ignorehttpserrors
 - `ignoreHTTPSErrors` <[boolean]>
@@ -868,3 +868,12 @@ Slows down Playwright operations by the specified amount of milliseconds. Useful
 - %%-browser-option-proxy-%%
 - %%-browser-option-timeout-%%
 - %%-browser-option-tracesdir-%%
+
+## locator-option-has-text
+- `hasText` <[string]|[RegExp]>
+
+Matches elements containing specified text somewhere inside, possibly in a child or a descendant element.
+For example, `"Playwright"` matches `<article><div>Playwright</div></article>`.
+
+## locator-options-list
+- %%-locator-option-has-text-%%

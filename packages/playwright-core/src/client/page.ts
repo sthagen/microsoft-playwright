@@ -238,12 +238,16 @@ export class Page extends ChannelOwner<channels.PageChannel> implements api.Page
 
   setDefaultNavigationTimeout(timeout: number) {
     this._timeoutSettings.setDefaultNavigationTimeout(timeout);
-    this._channel.setDefaultNavigationTimeoutNoReply({ timeout });
+    this._wrapApiCall(async () => {
+      this._channel.setDefaultNavigationTimeoutNoReply({ timeout });
+    }, true);
   }
 
   setDefaultTimeout(timeout: number) {
     this._timeoutSettings.setDefaultTimeout(timeout);
-    this._channel.setDefaultTimeoutNoReply({ timeout });
+    this._wrapApiCall(async () => {
+      this._channel.setDefaultTimeoutNoReply({ timeout });
+    }, true);
   }
 
   private _forceVideo(): Video {
@@ -359,7 +363,7 @@ export class Page extends ChannelOwner<channels.PageChannel> implements api.Page
     };
     const trimmedUrl = trimUrl(urlOrPredicate);
     const logLine = trimmedUrl ? `waiting for request ${trimmedUrl}` : undefined;
-    return this._waitForEvent(this._channel, Events.Page.Request, { predicate, timeout: options.timeout }, logLine);
+    return this._waitForEvent(Events.Page.Request, { predicate, timeout: options.timeout }, logLine);
   }
 
   async waitForResponse(urlOrPredicate: string | RegExp | ((r: Response) => boolean | Promise<boolean>), options: { timeout?: number } = {}): Promise<Response> {
@@ -370,20 +374,20 @@ export class Page extends ChannelOwner<channels.PageChannel> implements api.Page
     };
     const trimmedUrl = trimUrl(urlOrPredicate);
     const logLine = trimmedUrl ? `waiting for response ${trimmedUrl}` : undefined;
-    return this._waitForEvent(this._channel, Events.Page.Response, { predicate, timeout: options.timeout }, logLine);
+    return this._waitForEvent(Events.Page.Response, { predicate, timeout: options.timeout }, logLine);
   }
 
   async waitForEvent(event: string, optionsOrPredicate: WaitForEventOptions = {}): Promise<any> {
-    return this._waitForEvent(this._channel, event, optionsOrPredicate, `waiting for event "${event}"`);
+    return this._waitForEvent(event, optionsOrPredicate, `waiting for event "${event}"`);
   }
 
-  private async _waitForEvent(channel: channels.EventTargetChannel, event: string, optionsOrPredicate: WaitForEventOptions, logLine?: string): Promise<any> {
+  private async _waitForEvent(event: string, optionsOrPredicate: WaitForEventOptions, logLine?: string): Promise<any> {
     const timeout = this._timeoutSettings.timeout(typeof optionsOrPredicate === 'function' ? {} : optionsOrPredicate);
     const predicate = typeof optionsOrPredicate === 'function' ? optionsOrPredicate : optionsOrPredicate.predicate;
-    const waiter = Waiter.createForEvent(channel, event);
+    const waiter = Waiter.createForEvent(this, event);
     if (logLine)
       waiter.log(logLine);
-    waiter.rejectOnTimeout(timeout, `Timeout while waiting for event "${event}"`);
+    waiter.rejectOnTimeout(timeout, `Timeout ${timeout}ms exceeded while waiting for event "${event}"`);
     if (event !== Events.Page.Crash)
       waiter.rejectOnEvent(this, Events.Page.Crash, new Error('Page crashed'));
     if (event !== Events.Page.Close)
@@ -505,8 +509,8 @@ export class Page extends ChannelOwner<channels.PageChannel> implements api.Page
     return this._mainFrame.fill(selector, value, options);
   }
 
-  locator(selector: string): Locator {
-    return this.mainFrame().locator(selector);
+  locator(selector: string, options?: { hasText?: string | RegExp }): Locator {
+    return this.mainFrame().locator(selector, options);
   }
 
   frameLocator(selector: string): FrameLocator {

@@ -73,6 +73,55 @@ it('should work with IP:PORT notion', async ({ browserType, server }) => {
   await browser.close();
 });
 
+it.describe('should proxy local network requests', () => {
+  for (const additionalBypass of [false, true]) {
+    it.describe(additionalBypass ? 'with other bypasses' : 'by default', () => {
+      for (const params of [
+        {
+          target: 'localhost',
+          description: 'localhost',
+        },
+        {
+          target: '127.0.0.1',
+          description: 'loopback address',
+        },
+        {
+          target: '169.254.3.4',
+          description: 'link-local'
+        }
+      ]) {
+        it(`${params.description}`, async ({ platform, browserName, browserType, server, proxyServer }) => {
+          it.fail(browserName === 'webkit' && platform === 'darwin' && additionalBypass && ['localhost', '127.0.0.1'].includes(params.target), 'WK fails to proxy 127.0.0.1 and localhost if additional bypasses are present');
+
+          const path = `/target-${additionalBypass}-${params.target}.html`;
+          server.setRoute(path, async (req, res) => {
+            res.end('<html><title>Served by the proxy</title></html>');
+          });
+
+          const url = `http://${params.target}:${server.PORT}${path}`;
+          proxyServer.forwardTo(server.PORT, { skipConnectRequests: true });
+          const browser = await browserType.launch({
+            proxy: { server: `localhost:${proxyServer.PORT}`, bypass: additionalBypass ? '1.non.existent.domain.for.the.test' : undefined }
+          });
+
+          const page = await browser.newPage();
+          await page.goto(url);
+          expect(proxyServer.requestUrls).toContain(url);
+          expect(await page.title()).toBe('Served by the proxy');
+
+          await page.goto('http://1.non.existent.domain.for.the.test/foo.html').catch(() => {});
+          if (additionalBypass)
+            expect(proxyServer.requestUrls).not.toContain('http://1.non.existent.domain.for.the.test/foo.html');
+          else
+            expect(proxyServer.requestUrls).toContain('http://1.non.existent.domain.for.the.test/foo.html');
+
+          await browser.close();
+        });
+      }
+    });
+  }
+});
+
 it('should authenticate', async ({ browserType, server }) => {
   server.setRoute('/target.html', async (req, res) => {
     const auth = req.headers['proxy-authorization'];
@@ -91,6 +140,39 @@ it('should authenticate', async ({ browserType, server }) => {
   const page = await browser.newPage();
   await page.goto('http://non-existent.com/target.html');
   expect(await page.title()).toBe('Basic ' + Buffer.from('user:secret').toString('base64'));
+  await browser.close();
+});
+
+it('should work with authenticate followed by redirect', async ({ browserName, browserType, server }) => {
+  it.fixme(browserName === 'firefox', 'https://github.com/microsoft/playwright/issues/10095');
+  function hasAuth(req, res) {
+    const auth = req.headers['proxy-authorization'];
+    if (!auth) {
+      res.writeHead(407, 'Proxy Authentication Required', {
+        'Proxy-Authenticate': 'Basic realm="Access to internal site"'
+      });
+      res.end();
+      return false;
+    }
+    return true;
+  }
+  server.setRoute('/page1.html', async (req, res) => {
+    if (!hasAuth(req, res))
+      return;
+    res.writeHead(302, { location: '/page2.html' });
+    res.end();
+  });
+  server.setRoute('/page2.html', async (req, res) => {
+    if (!hasAuth(req, res))
+      return;
+    res.end('<html><title>Served by the proxy</title></html>');
+  });
+  const browser = await browserType.launch({
+    proxy: { server: `localhost:${server.PORT}`, username: 'user', password: 'secret' }
+  });
+  const page = await browser.newPage();
+  await page.goto('http://non-existent.com/page1.html');
+  expect(await page.title()).toBe('Served by the proxy');
   await browser.close();
 });
 

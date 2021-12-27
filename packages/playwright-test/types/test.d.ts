@@ -2599,6 +2599,11 @@ export interface TestType<TestArgs extends KeyValue, WorkerArgs extends KeyValue
    */
   extend<T, W extends KeyValue = {}>(fixtures: Fixtures<T, W, TestArgs, WorkerArgs>): TestType<TestArgs & T, WorkerArgs & W>;
   extendTest<T, W>(other: TestType<T, W>): TestType<TestArgs & T, WorkerArgs & W>;
+  /**
+   * Returns information about the currently running test. This method can only be called during the test execution,
+   * otherwise it throws.
+   */
+  info(): TestInfo;
 }
 
 type KeyValue = { [key: string]: any };
@@ -2715,6 +2720,8 @@ export interface PlaywrightWorkerOptions {
    * - `'retain-on-failure'`: Record trace for each test, but remove all traces from successful test runs.
    * - `'on-first-retry'`: Record trace only when retrying a test for the first time.
    *
+   * For more control, pass an object that specifies `mode` and trace features to enable.
+   *
    * Learn more about [recording trace](https://playwright.dev/docs/test-configuration#record-test-trace).
    */
   trace: TraceMode | /** deprecated */ 'retry-with-trace' | { mode: TraceMode, snapshots?: boolean, screenshots?: boolean, sources?: boolean };
@@ -2724,6 +2731,11 @@ export interface PlaywrightWorkerOptions {
    * - `'on'`: Record video for each test.
    * - `'retain-on-failure'`: Record video for each test, but remove all videos from successful test runs.
    * - `'on-first-retry'`: Record video only when retrying a test for the first time.
+   *
+   * To control video size, pass an object with `mode` and `size` properties. If video size is not specified, it will be
+   * equal to [testOptions.viewport](https://playwright.dev/docs/api/class-testoptions#test-options-viewport) scaled down to
+   * fit into 800x800. If `viewport` is not configured explicitly the video size defaults to 800x450. Actual picture of each
+   * page will be scaled down if necessary to fit the specified size.
    *
    * Learn more about [recording video](https://playwright.dev/docs/test-configuration#record-video).
    */
@@ -2771,7 +2783,7 @@ export type VideoMode = 'off' | 'on' | 'retain-on-failure' | 'on-first-retry';
  */
 export interface PlaywrightTestOptions {
   /**
-   * Whether to automatically download all the attachments. Defaults to `false` where all the downloads are canceled.
+   * Whether to automatically download all the attachments. Defaults to `true` where all the downloads are accepted.
    */
   acceptDownloads: boolean | undefined;
   /**

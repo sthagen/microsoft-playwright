@@ -21,7 +21,7 @@ trap "cd $(pwd -P)" EXIT
 cd "$(dirname $0)"
 
 if [[ ("$1" == "-h") || ("$1" == "--help") ]]; then
-  echo "usage: $(basename $0) [--mac|--linux|--cross-compile-win64]"
+  echo "usage: $(basename $0) [--mac|--linux|--cross-compile-win64] [--full]"
   echo
   echo "Build ffmpeg for the given platform"
   echo
@@ -54,7 +54,7 @@ function ensure_docker_or_die() {
 }
 
 if [[ "$1" == "--mac" ]]; then
-  bash ./build-mac.sh
+  bash ./build-mac.sh $2
   cd output && zip ffmpeg.zip ffmpeg-mac "${LICENSE_FILE}"
 elif [[ "$1" == "--linux" ]]; then
   ensure_docker_or_die
@@ -69,8 +69,8 @@ elif [[ "$1" == --cross-compile-win64 ]]; then
 elif [[ "$1" == "--cross-compile-linux-arm64" ]]; then
   ensure_docker_or_die
 
-  time docker run --init --rm -v"${PWD}":/host ${dockerflags} ubuntu:18.04 bash /host/crosscompile-from-linux.sh --linux-arm64 /host/output/ffmpeg-linux-arm64
-  cd output && zip ffmpeg.zip ffmpeg-linux-arm64 "${LICENSE_FILE}"
+  time docker run --init --rm -v"${PWD}":/host ${dockerflags} ubuntu:18.04 bash /host/crosscompile-from-linux.sh --linux-arm64 /host/output/ffmpeg-linux
+  cd output && zip ffmpeg.zip ffmpeg-linux "${LICENSE_FILE}"
 else
   echo "ERROR: unsupported platform - $1"
   exit 1

@@ -27,7 +27,7 @@ import { ConnectionTransport, ProtocolRequest, WebSocketTransport } from '../tra
 import { CRDevTools } from './crDevTools';
 import { Browser, BrowserOptions, BrowserProcess, PlaywrightOptions } from '../browser';
 import * as types from '../types';
-import { debugMode, fetchData, headersArrayToObject, HTTPRequestParams, removeFolders, streamToString } from '../../utils/utils';
+import { debugMode, fetchData, getUserAgent, headersArrayToObject, HTTPRequestParams, removeFolders, streamToString } from '../../utils/utils';
 import { RecentLogsCollector } from '../../utils/debugLogger';
 import { Progress, ProgressController } from '../progress';
 import { TimeoutSettings } from '../../utils/timeoutSettings';
@@ -62,6 +62,11 @@ export class Chromium extends BrowserType {
     let headersMap: { [key: string]: string; } | undefined;
     if (options.headers)
       headersMap = headersArrayToObject(options.headers, false);
+
+    if (!headersMap)
+      headersMap = { 'User-Agent': getUserAgent() };
+    else if (headersMap && !Object.keys(headersMap).some(key => key.toLowerCase() === 'user-agent'))
+      headersMap['User-Agent'] = getUserAgent();
 
     const artifactsDir = await fs.promises.mkdtemp(ARTIFACTS_FOLDER);
 
@@ -129,7 +134,7 @@ export class Chromium extends BrowserType {
       `Chromium sandboxing failed!`,
       `================================`,
       `To workaround sandboxing issues, do either of the following:`,
-      `  - (preferred): Configure environment to support sandboxing: https://github.com/microsoft/playwright/blob/master/docs/troubleshooting.md`,
+      `  - (preferred): Configure environment to support sandboxing: https://playwright.dev/docs/troubleshooting`,
       `  - (alternative): Launch Chromium without sandbox using 'chromiumSandbox: false' option`,
       `================================`,
       ``,
@@ -151,7 +156,16 @@ export class Chromium extends BrowserType {
 
     const args = this._innerDefaultArgs(options);
     args.push('--remote-debugging-port=0');
-    const desiredCapabilities = { 'browserName': 'chrome', 'goog:chromeOptions': { args } };
+    let desiredCapabilities = { 'browserName': 'chrome', 'goog:chromeOptions': { args } };
+    try {
+      if (process.env.SELENIUM_REMOTE_CAPABILITIES) {
+        const parsed = JSON.parse(process.env.SELENIUM_REMOTE_CAPABILITIES);
+        desiredCapabilities = { ...desiredCapabilities, ...parsed };
+        progress.log(`<selenium> using additional capabilities "${process.env.SELENIUM_REMOTE_CAPABILITIES}"`);
+      }
+    } catch (e) {
+      progress.log(`<selenium> ignoring additional capabilities "${process.env.SELENIUM_REMOTE_CAPABILITIES}": ${e}`);
+    }
 
     progress.log(`<selenium> connecting to ${hubUrl}`);
     const response = await fetchData({
@@ -184,12 +198,15 @@ export class Chromium extends BrowserType {
 
       if (capabilities['se:cdp']) {
         // Selenium 4 - use built-in CDP websocket proxy.
+        progress.log(`<selenium> using selenium v4`);
         const endpointURLString = addProtocol(capabilities['se:cdp']);
         endpointURL = new URL(endpointURLString);
-        endpointURL.hostname = new URL(hubUrl).hostname;
+        if (endpointURL.hostname === 'localhost' || endpointURL.hostname === '127.0.0.1')
+          endpointURL.hostname = new URL(hubUrl).hostname;
         progress.log(`<selenium> retrieved endpoint ${endpointURL.toString()} for sessionId=${sessionId}`);
       } else {
         // Selenium 3 - resolve target node IP to use instead of localhost ws url.
+        progress.log(`<selenium> using selenium v3`);
         const maybeChromeOptions = capabilities['goog:chromeOptions'];
         const chromeOptions = maybeChromeOptions && typeof maybeChromeOptions === 'object' ? maybeChromeOptions : undefined;
         const debuggerAddress = chromeOptions && typeof chromeOptions.debuggerAddress === 'string' ? chromeOptions.debuggerAddress : undefined;
@@ -277,6 +294,8 @@ export class Chromium extends BrowserType {
         proxyBypassRules.push('<-loopback>');
       if (proxy.bypass)
         proxyBypassRules.push(...proxy.bypass.split(',').map(t => t.trim()).map(t => t.startsWith('.') ? '*' + t : t));
+      if (!process.env.PLAYWRIGHT_DISABLE_FORCED_CHROMIUM_PROXIED_LOOPBACK && !proxyBypassRules.includes('<-loopback>'))
+        proxyBypassRules.push('<-loopback>');
       if (proxyBypassRules.length > 0)
         chromeArguments.push(`--proxy-bypass-list=${proxyBypassRules.join(';')}`);
     }
@@ -312,6 +331,7 @@ const DEFAULT_ARGS = [
   '--use-mock-keychain',
   // See https://chromium-review.googlesource.com/c/chromium/src/+/2436773
   '--no-service-autorun',
+  '--export-tagged-pdf'
 ];
 
 async function urlToWSEndpoint(progress: Progress, endpointURL: string) {
