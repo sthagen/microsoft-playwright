@@ -97,6 +97,7 @@ export type JsonTestStep = {
   steps: JsonTestStep[];
   location?: Location;
   snippet?: string;
+  count: number;
 };
 
 class RawReporter {
@@ -181,8 +182,8 @@ class RawReporter {
   }
 
   private _serializeSuite(suite: Suite): JsonSuite {
-    const fileId = calculateSha1(suite.location!.file.split(path.sep).join('/'));
     const location = this._relativeLocation(suite.location);
+    const fileId = calculateSha1(location!.file.split(path.sep).join('/'));
     return {
       title: suite.title,
       fileId,
@@ -195,7 +196,7 @@ class RawReporter {
 
   private _serializeTest(test: TestCase, fileId: string): JsonTestCase {
     const [, projectName, , ...titles] = test.titlePath();
-    const testIdExpression = `project:${projectName}|path:${titles.join('>')}`;
+    const testIdExpression = `project:${projectName}|path:${titles.join('>')}|repeat:${test.repeatEachIndex}`;
     const testId = fileId + '-' + calculateSha1(testIdExpression);
     return {
       testId,
@@ -218,9 +219,9 @@ class RawReporter {
       startTime: result.startTime.toISOString(),
       duration: result.duration,
       status: result.status,
-      error: formatResultFailure(test, result, '', true).tokens.join('').trim(),
+      error: formatResultFailure(this.config, test, result, '', true).tokens.join('').trim(),
       attachments: this._createAttachments(result),
-      steps: result.steps.map(step => this._serializeStep(test, step))
+      steps: dedupeSteps(result.steps.map(step => this._serializeStep(test, step)))
     };
   }
 
@@ -232,7 +233,8 @@ class RawReporter {
       duration: step.duration,
       error: step.error?.message,
       location: this._relativeLocation(step.location),
-      steps: step.steps.map(step => this._serializeStep(test, step)),
+      steps: dedupeSteps(step.steps.map(step => this._serializeStep(test, step))),
+      count: 1
     };
 
     if (step.location)
@@ -290,6 +292,22 @@ class RawReporter {
       column: location.column,
     };
   }
+}
+
+function dedupeSteps(steps: JsonTestStep[]): JsonTestStep[] {
+  const result: JsonTestStep[] = [];
+  let lastStep: JsonTestStep | undefined;
+  for (const step of steps) {
+    const canDedupe = !step.error && step.duration >= 0 && step.location?.file && !step.steps.length;
+    if (canDedupe && lastStep && step.category === lastStep.category && step.title === lastStep.title && step.location?.file === lastStep.location?.file && step.location?.line === lastStep.location?.line && step.location?.column === lastStep.location?.column) {
+      ++lastStep.count;
+      lastStep.duration += step.duration;
+      continue;
+    }
+    result.push(step);
+    lastStep = canDedupe ? step : undefined;
+  }
+  return result;
 }
 
 export default RawReporter;

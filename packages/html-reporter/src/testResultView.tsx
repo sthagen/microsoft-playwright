@@ -49,6 +49,7 @@ export const TestResultView: React.FC<{
   const expected = attachmentsMap.get('expected');
   const actual = attachmentsMap.get('actual');
   const diff = attachmentsMap.get('diff');
+  const hasImages = [actual?.contentType, expected?.contentType, diff?.contentType].some(v => v && /^image\//i.test(v));
   return <div className='test-result'>
     {result.error && <AutoChip header='Errors'>
       <ErrorMessage key='test-result-error-message' error={result.error}></ErrorMessage>
@@ -57,8 +58,8 @@ export const TestResultView: React.FC<{
       {result.steps.map((step, i) => <StepTreeItem key={`step-${i}`} step={step} depth={0}></StepTreeItem>)}
     </AutoChip>}
 
-    {expected && actual && <AutoChip header='Image mismatch'>
-      <ImageDiff actual={actual} expected={expected} diff={diff}></ImageDiff>
+    {expected && actual && <AutoChip header={`${hasImages ? 'Image' : 'Snapshot'} mismatch`}>
+      {hasImages && <ImageDiff actual={actual} expected={expected} diff={diff}></ImageDiff>}
       <AttachmentLink key={`expected`} attachment={expected}></AttachmentLink>
       <AttachmentLink key={`actual`} attachment={actual}></AttachmentLink>
       {diff && <AttachmentLink key={`diff`} attachment={diff}></AttachmentLink>}
@@ -105,6 +106,7 @@ const StepTreeItem: React.FC<{
     <span style={{ float: 'right' }}>{msToString(step.duration)}</span>
     {statusIcon(step.error || step.duration === -1 ? 'failed' : 'passed')}
     <span>{step.title}</span>
+    {step.count > 1 && <> ✕ <span className='test-result-counter'>{step.count}</span></>}
     {step.location && <span className='test-result-path'>— {step.location.file}:{step.location.line}</span>}
   </span>} loadChildren={step.steps.length + (step.snippet ? 1 : 0) ? () => {
     const children = step.steps.map((s, i) => <StepTreeItem key={i} step={s} depth={depth + 1}></StepTreeItem>);
@@ -120,16 +122,23 @@ const ImageDiff: React.FunctionComponent<{
  diff?: TestAttachment,
 }> = ({ actual, expected, diff }) => {
   const [selectedTab, setSelectedTab] = React.useState<string>('actual');
+  const diffElement = React.useRef<HTMLImageElement>(null);
   const tabs = [];
   tabs.push({
     id: 'actual',
     title: 'Actual',
-    render: () => <img src={actual.path}/>
+    render: () => <img src={actual.path} onLoad={() => {
+      if (diffElement.current)
+        diffElement.current.style.minHeight = diffElement.current.offsetHeight + 'px';
+    }}/>
   });
   tabs.push({
     id: 'expected',
     title: 'Expected',
-    render: () => <img src={expected.path}/>
+    render: () => <img src={expected.path} onLoad={() => {
+      if (diffElement.current)
+        diffElement.current.style.minHeight = diffElement.current.offsetHeight + 'px';
+    }}/>
   });
   if (diff) {
     tabs.push({
@@ -138,7 +147,7 @@ const ImageDiff: React.FunctionComponent<{
       render: () => <img src={diff.path}/>
     });
   }
-  return <div className='vbox' data-testid='test-result-image-mismatch'>
+  return <div className='vbox' data-testid='test-result-image-mismatch' ref={diffElement}>
     <TabbedPane tabs={tabs} selectedTab={selectedTab} setSelectedTab={setSelectedTab} />
   </div>;
 };

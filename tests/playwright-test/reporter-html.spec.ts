@@ -88,7 +88,7 @@ test('should not throw when attachment is missing', async ({ runInlineTest, page
   await page.click('text=passes');
   await page.locator('text=Missing attachment "screenshot"').click();
   const screenshotFile = testInfo.outputPath('test-results' , 'a-passes', 'screenshot.png');
-  await expect(page.locator('.attachment-link')).toHaveText(`Attachment file ${screenshotFile} is missing`);
+  await expect(page.locator('.attachment-body')).toHaveText(`Attachment file ${screenshotFile} is missing`);
 });
 
 test('should include image diff', async ({ runInlineTest, page, showReport }) => {
@@ -114,6 +114,8 @@ test('should include image diff', async ({ runInlineTest, page, showReport }) =>
 
   await showReport();
   await page.click('text=fails');
+  await expect(page.locator('text=Image mismatch')).toBeVisible();
+  await expect(page.locator('text=Snapshot mismatch')).toHaveCount(0);
   const imageDiff = page.locator('data-testid=test-result-image-mismatch');
   const image = imageDiff.locator('img');
   await expect(image).toHaveAttribute('src', /.*png/);
@@ -124,6 +126,34 @@ test('should include image diff', async ({ runInlineTest, page, showReport }) =>
   const diffSrc = await image.getAttribute('src');
   const set = new Set([expectedSrc, actualSrc, diffSrc]);
   expect(set.size).toBe(3);
+});
+
+test('should not include image diff with non-images', async ({ runInlineTest, page, showReport }) => {
+  const expected = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAMgAAADICAYAAACtWK6eAAAAAXNSR0IArs4c6QAAAhVJREFUeJzt07ERwCAQwLCQ/Xd+FuDcQiFN4MZrZuYDjv7bAfAyg0AwCASDQDAIBINAMAgEg0AwCASDQDAIBINAMAgEg0AwCASDQDAIBINAMAgEg0AwCASDQDAIBINAMAgEg0AwCASDQDAIBINAMAgEg0AwCASDQDAIBINAMAgEg0AwCASDQDAIBINAMAgEg0AwCASDQDAIBINAMAgEg0AwCASDQDAIBINAMAgEg0AwCASDQDAIBINAMAgEg0AwCASDQDAIBINAMAgEg0AwCASDQDAIBINAMAgEg0AwCASDQDAIBINAMAgEg0AwCASDQDAIBINAMAgEg0AwCASDQDAIBINAMAgEg0AwCASDQDAIBINAMAgEg0AwCASDQDAIBINAMAgEg0AwCASDQDAIBINAMAgEg0AwCASDQDAIBINAMAgEg0AwCASDQDAIBINAMAgEg0AwCASDQDAIBINAMAgEg0AwCASDQDAIBINAMAgEg0AwCASDQDAIBINAMAgEg0AwCASDQDAIBINAMAgEg0AwCASDQDAIBINAMAgEg0AwCASDQDAIBINAMAgEg0AwCASDQDAIBINAMAgEg0AwCASDQDAIBINAMAgEg0AwCASDQDAIBINAMAgEg0AwCASDQDAIBINAMAgEg0AwCASDQDAIBINAMAgEg0AwCASDQDAIBINAMAgEg0AwCASDQDAIBINAMAiEDVPZBYx6ffy+AAAAAElFTkSuQmCC', 'base64');
+  const result = await runInlineTest({
+    'playwright.config.ts': `
+      module.exports = { use: { viewport: { width: 200, height: 200 }} };
+    `,
+    'a.test.js-snapshots/expected-linux': expected,
+    'a.test.js-snapshots/expected-darwin': expected,
+    'a.test.js-snapshots/expected-win32': expected,
+    'a.test.js': `
+      const { test } = pwt;
+      test('fails', async ({ page }, testInfo) => {
+        await page.setContent('<html>Hello World</html>');
+        const screenshot = await page.screenshot();
+        await expect(screenshot).toMatchSnapshot('expected');
+      });
+    `,
+  }, { reporter: 'dot,html' });
+  expect(result.exitCode).toBe(1);
+  expect(result.failed).toBe(1);
+
+  await showReport();
+  await page.click('text=fails');
+  await expect(page.locator('text=Snapshot mismatch')).toBeVisible();
+  await expect(page.locator('text=Image mismatch')).toHaveCount(0);
+  await expect(page.locator('img')).toHaveCount(0);
 });
 
 test('should include screenshot on failure', async ({ runInlineTest, page, showReport }) => {
@@ -173,9 +203,9 @@ test('should include stdio', async ({ runInlineTest, page, showReport }) => {
   await showReport();
   await page.click('text=fails');
   await page.locator('text=stdout').click();
-  await expect(page.locator('.attachment-link')).toHaveText('First line\nSecond line');
+  await expect(page.locator('.attachment-body')).toHaveText('First line\nSecond line');
   await page.locator('text=stderr').click();
-  await expect(page.locator('.attachment-link').nth(1)).toHaveText('Third line');
+  await expect(page.locator('.attachment-body').nth(1)).toHaveText('Third line');
 });
 
 test('should highlight error', async ({ runInlineTest, page, showReport }) => {
@@ -372,7 +402,7 @@ test('should render text attachments as text', async ({ runInlineTest, page, sho
   await page.click('text=example.txt');
   await page.click('text=example.json');
   await page.click('text=example-utf16.txt');
-  await expect(page.locator('.attachment-link')).toHaveText(['foo', '{"foo":1}', 'utf16 encoded']);
+  await expect(page.locator('.attachment-body')).toHaveText(['foo', '{"foo":1}', 'utf16 encoded']);
 });
 
 test('should strikethough textual diff', async ({ runInlineTest, showReport, page }) => {
@@ -423,4 +453,50 @@ test('should strikethough textual diff with commonalities', async ({ runInlineTe
   await page.click('text="is a test"');
   const stricken = await page.locator('css=strike').innerText();
   expect(stricken).toBe('old');
+});
+
+test('should differentiate repeat-each test cases', async ({ runInlineTest, showReport, page }) => {
+  test.info().annotations.push({ type: 'issue', description: 'https://github.com/microsoft/playwright/issues/10859' });
+  const result = await runInlineTest({
+    'a.spec.js': `
+      const { test } = pwt;
+      test('sample', async ({}, testInfo) => {
+        if (testInfo.repeatEachIndex === 2)
+          throw new Error('ouch');
+      });
+    `
+  }, { 'reporter': 'dot,html', 'repeat-each': 3 });
+  expect(result.exitCode).toBe(1);
+  await showReport();
+
+  await page.locator('text=sample').first().click();
+  await expect(page.locator('text=ouch')).toBeVisible();
+  await page.locator('text=All').first().click();
+
+  await page.locator('text=sample').nth(1).click();
+  await expect(page.locator('text=Before Hooks')).toBeVisible();
+  await expect(page.locator('text=ouch')).toBeHidden();
+});
+
+test('should group similar / loop steps', async ({ runInlineTest, showReport, page }) => {
+  test.info().annotations.push({ type: 'issue', description: 'https://github.com/microsoft/playwright/issues/10098' });
+  const result = await runInlineTest({
+    'a.spec.js': `
+      const { test } = pwt;
+      test('sample', async ({}, testInfo) => {
+        for (let i = 0; i < 10; ++i)
+          expect(1).toBe(1);
+        for (let i = 0; i < 20; ++i)
+          expect(2).toEqual(2);
+      });
+    `
+  }, { 'reporter': 'dot,html' });
+  expect(result.exitCode).toBe(0);
+  await showReport();
+
+  await page.locator('text=sample').first().click();
+  await expect(page.locator('.tree-item-title')).toContainText([
+    /expect\.toBe.*10/,
+    /expect\.toEqual.*20/,
+  ]);
 });

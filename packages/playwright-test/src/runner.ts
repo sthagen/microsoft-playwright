@@ -35,24 +35,67 @@ import EmptyReporter from './reporters/empty';
 import HtmlReporter from './reporters/html';
 import { ProjectImpl } from './project';
 import { Minimatch } from 'minimatch';
-import { FullConfig } from './types';
+import { Config, FullConfig } from './types';
 import { WebServer } from './webServer';
 import { raceAgainstDeadline } from 'playwright-core/lib/utils/async';
 
 const removeFolderAsync = promisify(rimraf);
 const readDirAsync = promisify(fs.readdir);
 const readFileAsync = promisify(fs.readFile);
+export const kDefaultConfigFiles = ['playwright.config.ts', 'playwright.config.js', 'playwright.config.mjs'];
 
 type InternalGlobalSetupFunction = () => Promise<() => Promise<void>>;
 
+type RunOptions = {
+  listOnly?: boolean;
+  filePatternFilter?: FilePatternFilter[];
+  projectFilter?: string[];
+};
+
 export class Runner {
   private _loader: Loader;
+  private _printResolvedConfig: boolean;
   private _reporter!: Reporter;
   private _didBegin = false;
   private _internalGlobalSetups: Array<InternalGlobalSetupFunction> = [];
 
-  constructor(loader: Loader) {
-    this._loader = loader;
+  constructor(configOverrides: Config, options: { defaultConfig?: Config, printResolvedConfig?: boolean } = {}) {
+    this._printResolvedConfig = !!options.printResolvedConfig;
+    this._loader = new Loader(options.defaultConfig || {}, configOverrides);
+  }
+
+  async loadConfigFromFile(configFileOrDirectory: string): Promise<Config> {
+    const loadConfig = async (configFile: string) => {
+      if (fs.existsSync(configFile)) {
+        if (this._printResolvedConfig)
+          console.log(`Using config at ` + configFile);
+        const config = await this._loader.loadConfigFile(configFile);
+        return config;
+      }
+    };
+
+    const loadConfigFromDirectory = async (directory: string) => {
+      for (const configName of kDefaultConfigFiles) {
+        const config = await loadConfig(path.resolve(directory, configName));
+        if (config)
+          return config;
+      }
+    };
+
+    if (!fs.existsSync(configFileOrDirectory))
+      throw new Error(`${configFileOrDirectory} does not exist`);
+    if (fs.statSync(configFileOrDirectory).isDirectory()) {
+      // When passed a directory, look for a config file inside.
+      const config = await loadConfigFromDirectory(configFileOrDirectory);
+      if (config)
+        return config;
+      // If there is no config, assume this as a root testing directory.
+      return this._loader.loadEmptyConfig(configFileOrDirectory);
+    } else {
+      // When passed a file, it must be a config file.
+      const config = await loadConfig(configFileOrDirectory);
+      return config!;
+    }
   }
 
   private async _createReporter(list: boolean) {
@@ -95,12 +138,12 @@ export class Runner {
     this._internalGlobalSetups.push(internalGlobalSetup);
   }
 
-  async run(list: boolean, filePatternFilters: FilePatternFilter[], projectNames?: string[]): Promise<FullResult> {
-    this._reporter = await this._createReporter(list);
+  async runAllTests(options: RunOptions = {}): Promise<FullResult> {
+    this._reporter = await this._createReporter(!!options.listOnly);
     try {
       const config = this._loader.fullConfig();
       const globalDeadline = config.globalTimeout ? config.globalTimeout + monotonicTime() : 0;
-      const result = await raceAgainstDeadline(this._run(list, filePatternFilters, projectNames), globalDeadline);
+      const result = await raceAgainstDeadline(this._run(!!options.listOnly, options.filePatternFilter || [], options.projectFilter), globalDeadline);
       if (result.timedOut) {
         const actualResult: FullResult = { status: 'timedout' };
         if (this._didBegin)
@@ -117,6 +160,12 @@ export class Runner {
       } catch (ignored) {
       }
       return result;
+    } finally {
+      // Calling process.exit() might truncate large stdout/stderr output.
+      // See https://github.com/nodejs/node/issues/6456.
+      // See https://github.com/nodejs/node/issues/12921
+      await new Promise<void>(resolve => process.stdout.write('', () => resolve()));
+      await new Promise<void>(resolve => process.stderr.write('', () => resolve()));
     }
   }
 
@@ -178,12 +227,9 @@ export class Runner {
     if (config.globalSetup && !list)
       globalSetupResult = await (await this._loader.loadGlobalHook(config.globalSetup, 'globalSetup'))(this._loader.fullConfig());
     try {
-      for (const file of allTestFiles)
-        await this._loader.loadTestFile(file);
-
       const preprocessRoot = new Suite('');
-      for (const fileSuite of this._loader.fileSuites().values())
-        preprocessRoot._addSuite(fileSuite);
+      for (const file of allTestFiles)
+        preprocessRoot._addSuite(await this._loader.loadTestFile(file));
       if (config.forbidOnly) {
         const onlyTestsAndSuites = preprocessRoot._getOnlyItems();
         if (onlyTestsAndSuites.length > 0) {
@@ -475,7 +521,7 @@ function createTestGroups(rootSuite: Suite): TestGroup[] {
     return {
       workerHash: test._workerHash,
       requireFile: test._requireFile,
-      repeatEachIndex: test._repeatEachIndex,
+      repeatEachIndex: test.repeatEachIndex,
       projectIndex: test._projectIndex,
       tests: [],
     };
