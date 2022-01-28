@@ -517,7 +517,21 @@ function toHeadersArray(rawHeaders: string[]): types.HeadersArray {
 const redirectStatus = [301, 302, 303, 307, 308];
 
 function parseCookie(header: string): types.NetworkCookie | null {
-  const pairs = header.split(';').filter(s => s.trim().length > 0).map(p => p.split('=').map(s => s.trim()));
+  const pairs = header.split(';').filter(s => s.trim().length > 0).map(p => {
+    let key = '';
+    let value = '';
+    const separatorPos = p.indexOf('=');
+    if (separatorPos === -1) {
+      // If only a key is specified, the value is left undefined.
+      key = p.trim();
+    } else {
+      // Otherwise we assume that the key is the element before the first `=`
+      key = p.slice(0, separatorPos).trim();
+      // And the value is the rest of the string.
+      value = p.slice(separatorPos + 1).trim();
+    }
+    return [key, value];
+  });
   if (!pairs.length)
     return null;
   const [name, value] = pairs[0];
@@ -579,7 +593,7 @@ function isJsonParsable(value: any) {
 
 function serializePostData(params: channels.APIRequestContextFetchParams, headers: { [name: string]: string }): Buffer | undefined {
   assert((params.postData ? 1 : 0) + (params.jsonData ? 1 : 0) + (params.formData ? 1 : 0) + (params.multipartData ? 1 : 0) <= 1, `Only one of 'data', 'form' or 'multipart' can be specified`);
-  if (params.jsonData) {
+  if (params.jsonData !== undefined) {
     const json = isJsonParsable(params.jsonData) ? params.jsonData : JSON.stringify(params.jsonData);
     headers['content-type'] ??= 'application/json';
     return Buffer.from(json, 'utf8');
@@ -599,7 +613,7 @@ function serializePostData(params: channels.APIRequestContextFetchParams, header
     }
     headers['content-type'] ??= formData.contentTypeHeader();
     return formData.finish();
-  } else if (params.postData) {
+  } else if (params.postData !== undefined) {
     headers['content-type'] ??= 'application/octet-stream';
     return Buffer.from(params.postData, 'base64');
   }

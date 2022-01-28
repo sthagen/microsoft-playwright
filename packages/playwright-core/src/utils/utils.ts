@@ -325,6 +325,8 @@ const debugEnv = getFromENV('PWDEBUG') || '';
 export function debugMode() {
   if (debugEnv === 'console')
     return 'console';
+  if (debugEnv === '0' || debugEnv === 'false')
+    return '';
   return debugEnv ? 'inspector' : '';
 }
 
@@ -475,12 +477,12 @@ function determineUserAgent(): string {
 
   let langName = 'unknown';
   let langVersion = 'unknown';
-  if (!process.env.PW_CLI_TARGET_LANG) {
+  if (!process.env.PW_LANG_NAME) {
     langName = 'node';
     langVersion = process.version.substring(1).split('.').slice(0, 2).join('.');
-  } else if (['node', 'python', 'java', 'csharp'].includes(process.env.PW_CLI_TARGET_LANG)) {
-    langName = process.env.PW_CLI_TARGET_LANG;
-    langVersion = process.env.PW_CLI_TARGET_LANG_VERSION ?? 'unknown';
+  } else if (['node', 'python', 'java', 'csharp'].includes(process.env.PW_LANG_NAME)) {
+    langName = process.env.PW_LANG_NAME;
+    langVersion = process.env.PW_LANG_NAME_VERSION ?? 'unknown';
   }
 
   return `Playwright/${getPlaywrightVersion()} (${os.arch()}; ${osIdentifier} ${osVersion}) ${langName}/${langVersion}`;

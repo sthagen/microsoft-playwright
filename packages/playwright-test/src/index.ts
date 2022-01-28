@@ -19,7 +19,7 @@ import * as path from 'path';
 import type { LaunchOptions, BrowserContextOptions, Page, BrowserContext, BrowserType, Video, Browser, APIRequestContext } from 'playwright-core';
 import type { TestType, PlaywrightTestArgs, PlaywrightTestOptions, PlaywrightWorkerArgs, PlaywrightWorkerOptions, TestInfo } from '../types/test';
 import { rootTestType } from './testType';
-import { createGuid, removeFolders } from 'playwright-core/lib/utils/utils';
+import { createGuid, removeFolders, debugMode } from 'playwright-core/lib/utils/utils';
 import { GridClient } from 'playwright-core/lib/grid/gridClient';
 import { prependToTestError } from './util';
 export { expect } from './expect';
@@ -58,8 +58,10 @@ export const test = _baseTest.extend<TestFixtures, WorkerFixtures>({
       const gridClient = await GridClient.connect(process.env.PW_GRID);
       await use(gridClient.playwright() as any);
       gridClient.close();
-    } else if (process.env.PW_OUT_OF_PROCESS) {
-      const impl = await outOfProcess.start();
+    } else if (process.env.PW_OUT_OF_PROCESS_DRIVER) {
+      const impl = await outOfProcess.start({
+        NODE_OPTIONS: undefined  // Hide driver process while debugging.
+      });
       await use(impl.playwright as any);
       await impl.stop();
     } else {
@@ -190,7 +192,7 @@ export const test = _baseTest.extend<TestFixtures, WorkerFixtures>({
 
   _setupContextOptionsAndArtifacts: [async ({ playwright, _snapshotSuffix, _combinedContextOptions, _artifactsDir, trace, screenshot, actionTimeout, navigationTimeout }, use, testInfo) => {
     testInfo.snapshotSuffix = _snapshotSuffix;
-    if (process.env.PWDEBUG)
+    if (debugMode())
       testInfo.setTimeout(0);
 
     let traceMode = typeof trace === 'string' ? trace : trace.mode;
@@ -392,6 +394,7 @@ export const test = _baseTest.extend<TestFixtures, WorkerFixtures>({
     const prependToError = testInfo.status === 'timedOut' ?
       formatPendingCalls((browser as any)._connection.pendingProtocolCalls()) : '';
 
+    let counter = 0;
     await Promise.all([...contexts.keys()].map(async context => {
       await context.close();
 
@@ -402,8 +405,8 @@ export const test = _baseTest.extend<TestFixtures, WorkerFixtures>({
         const videos = pages.map(p => p.video()).filter(Boolean) as Video[];
         await Promise.all(videos.map(async v => {
           try {
-            const videoPath = await v.path();
-            const savedPath = testInfo.outputPath(path.basename(videoPath));
+            const savedPath = testInfo.outputPath(`video${counter ? '-' + counter : ''}.webm`);
+            ++counter;
             await v.saveAs(savedPath);
             testInfo.attachments.push({ name: 'video', path: savedPath, contentType: 'video/webm' });
           } catch (e) {

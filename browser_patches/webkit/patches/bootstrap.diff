@@ -943,7 +943,7 @@ index 882a2d56befef0aba460cc8ff041969e0d2c1ed3..9aecd6067741af596e5ec7fdf9c832ea
      ],
      "events": [
 diff --git a/Source/JavaScriptCore/inspector/protocol/Page.json b/Source/JavaScriptCore/inspector/protocol/Page.json
-index db52479a72d459be23d4d8d080c0ed15ea9fc4c0..cf8c009d5591c4eac1a65e2c0de15533cb40b236 100644
+index db52479a72d459be23d4d8d080c0ed15ea9fc4c0..658937fdc58425b9a164d9bc368a9e61ed836918 100644
 --- a/Source/JavaScriptCore/inspector/protocol/Page.json
 +++ b/Source/JavaScriptCore/inspector/protocol/Page.json
 @@ -21,13 +21,20 @@
@@ -1264,26 +1264,40 @@ index db52479a72d459be23d4d8d080c0ed15ea9fc4c0..cf8c009d5591c4eac1a65e2c0de15533
          {
              "name": "defaultAppearanceDidChange",
              "description": "Fired when page's default appearance changes, even if there is a forced appearance.",
-@@ -385,6 +589,28 @@
+@@ -385,6 +589,42 @@
              "parameters": [
                  { "name": "appearance", "$ref": "Appearance", "description": "Name of the appearance that is active (not considering any forced appearance.)" }
              ]
 +        },
 +        {
-+          "name": "willRequestOpenWindow",
-+          "description": "Fired when page tries to open a new window.",
-+          "parameters": [
-+              { "name": "url", "type": "string" }
-+          ]
-+        },
-+        {
-+          "name": "didRequestOpenWindow",
-+          "description": "Fired after page did try to open a new window.",
-+          "parameters": [
-+              { "name": "opened", "type": "boolean" }
-+          ]
-+        },
-+        {
++            "name": "willCheckNavigationPolicy",
++            "description": "Fired when page is about to check policy for newly triggered navigation.",
++            "parameters": [
++                {
++                    "name": "frameId",
++                    "description": "Id of the frame.",
++                    "$ref": "Network.FrameId"
++                }
++            ]
++          },
++          {
++            "name": "didCheckNavigationPolicy",
++            "description": "Fired when page has received navigation policy decision.",
++            "parameters": [
++                {
++                    "name": "frameId",
++                    "description": "Id of the frame.",
++                    "$ref": "Network.FrameId"
++                },
++                {
++                    "name": "cancel",
++                    "description": "True if the navigation will not continue in this frame.",
++                    "type": "boolean",
++                    "optional": true
++                }
++            ]
++          },
++          {
 +            "name": "fileChooserOpened",
 +            "description": "Fired when the page shows file chooser for it's <input type=file>.",
 +            "parameters": [
@@ -2964,7 +2978,7 @@ index f6fec7cfbcbd2d7fba30bdd3138e0edfb3f69054..519786c307944a5ca4ba468513ba257b
  
  } // namespace WebCore
 diff --git a/Source/WebCore/inspector/InspectorInstrumentation.cpp b/Source/WebCore/inspector/InspectorInstrumentation.cpp
-index 3c978e3f4421cf35a2061dfce0d1e0aae511349a..065b18a11d25066139aae51b8c534b9020cbf108 100644
+index 3c978e3f4421cf35a2061dfce0d1e0aae511349a..236f45965debfe32fdb7a9fd75f5d7ee0439cb51 100644
 --- a/Source/WebCore/inspector/InspectorInstrumentation.cpp
 +++ b/Source/WebCore/inspector/InspectorInstrumentation.cpp
 @@ -572,6 +572,13 @@ void InspectorInstrumentation::applyUserAgentOverrideImpl(InstrumentingAgents& i
@@ -3066,16 +3080,16 @@ index 3c978e3f4421cf35a2061dfce0d1e0aae511349a..065b18a11d25066139aae51b8c534b90
 +    return false;
 +}
 +
-+void InspectorInstrumentation::willCheckNewWindowPolicyImpl(InstrumentingAgents& instrumentingAgents, const URL& url)
++void InspectorInstrumentation::willCheckNavigationPolicyImpl(InstrumentingAgents& instrumentingAgents, Frame& frame)
 +{
 +    if (InspectorPageAgent* pageAgent = instrumentingAgents.enabledPageAgent())
-+        pageAgent->willCheckNewWindowPolicy(url);
++        pageAgent->willCheckNavigationPolicy(frame);
 +}
 +
-+void InspectorInstrumentation::didCheckNewWindowPolicyImpl(InstrumentingAgents& instrumentingAgents, bool allowed)
++void InspectorInstrumentation::didCheckNavigationPolicyImpl(InstrumentingAgents& instrumentingAgents, Frame& frame, bool cancel)
 +{
 +    if (InspectorPageAgent* pageAgent = instrumentingAgents.enabledPageAgent())
-+        pageAgent->didCheckNewWindowPolicy(allowed);
++        pageAgent->didCheckNavigationPolicy(frame, cancel);
 +}
 +
  InstrumentingAgents& InspectorInstrumentation::instrumentingAgents(WorkerOrWorkletGlobalScope& globalScope)
@@ -3096,7 +3110,7 @@ index 3c978e3f4421cf35a2061dfce0d1e0aae511349a..065b18a11d25066139aae51b8c534b90
  {
      if (is<Document>(context))
 diff --git a/Source/WebCore/inspector/InspectorInstrumentation.h b/Source/WebCore/inspector/InspectorInstrumentation.h
-index 82acced20cfd5131b2502f099a9c4fa2fdd616eb..af1f80b79646bee52e19af88e84efc5d2f488e21 100644
+index 82acced20cfd5131b2502f099a9c4fa2fdd616eb..38accfb77a0e47dd8213fe9a4b6abf25c812d3d0 100644
 --- a/Source/WebCore/inspector/InspectorInstrumentation.h
 +++ b/Source/WebCore/inspector/InspectorInstrumentation.h
 @@ -31,6 +31,7 @@
@@ -3159,8 +3173,8 @@ index 82acced20cfd5131b2502f099a9c4fa2fdd616eb..af1f80b79646bee52e19af88e84efc5d
 +    static void runOpenPanel(Frame*, HTMLInputElement*, bool*);
 +    static void frameAttached(Frame*);
 +    static bool shouldBypassCSP(ScriptExecutionContext*);
-+    static void willCheckNewWindowPolicy(Frame&, const URL&);
-+    static void didCheckNewWindowPolicy(Frame&, bool allowed);
++    static void willCheckNavigationPolicy(Frame&);
++    static void didCheckNavigationPolicy(Frame&, bool cancel);
 +
      static void frontendCreated();
      static void frontendDeleted();
@@ -3210,8 +3224,8 @@ index 82acced20cfd5131b2502f099a9c4fa2fdd616eb..af1f80b79646bee52e19af88e84efc5d
 +    static void runOpenPanelImpl(InstrumentingAgents&, HTMLInputElement*, bool*);
 +    static void frameAttachedImpl(InstrumentingAgents&, Frame&);
 +    static bool shouldBypassCSPImpl(InstrumentingAgents&);
-+    static void willCheckNewWindowPolicyImpl(InstrumentingAgents&, const URL&);
-+    static void didCheckNewWindowPolicyImpl(InstrumentingAgents&, bool allowed);
++    static void willCheckNavigationPolicyImpl(InstrumentingAgents&, Frame&);
++    static void didCheckNavigationPolicyImpl(InstrumentingAgents&, Frame&, bool cancel);
 +
      static InstrumentingAgents& instrumentingAgents(Page&);
      static InstrumentingAgents& instrumentingAgents(WorkerOrWorkletGlobalScope&);
@@ -3298,18 +3312,18 @@ index 82acced20cfd5131b2502f099a9c4fa2fdd616eb..af1f80b79646bee52e19af88e84efc5d
 +    return false;
 +}
 +
-+inline void InspectorInstrumentation::willCheckNewWindowPolicy(Frame& frame, const URL& url)
++inline void InspectorInstrumentation::willCheckNavigationPolicy(Frame& frame)
 +{
 +    FAST_RETURN_IF_NO_FRONTENDS(void());
 +    if (auto* agents = instrumentingAgents(frame))
-+        willCheckNewWindowPolicyImpl(*agents, url);
++        willCheckNavigationPolicyImpl(*agents, frame);
 +}
 +
-+inline void InspectorInstrumentation::didCheckNewWindowPolicy(Frame& frame, bool allowed)
++inline void InspectorInstrumentation::didCheckNavigationPolicy(Frame& frame, bool cancel)
 +{
 +    FAST_RETURN_IF_NO_FRONTENDS(void());
 +    if (auto* agents = instrumentingAgents(frame))
-+        didCheckNewWindowPolicyImpl(*agents, allowed);
++        didCheckNavigationPolicyImpl(*agents, frame, cancel);
 +}
 +
  inline InstrumentingAgents* InspectorInstrumentation::instrumentingAgents(ScriptExecutionContext* context)
@@ -3862,7 +3876,7 @@ index 72f423ff61277eef4bd356328c46d3bd9131ff65..ede5b6605b1e661b9d5d73e02fe6ae4c
      // InspectorInstrumentation
      void willRecalculateStyle();
 diff --git a/Source/WebCore/inspector/agents/InspectorPageAgent.cpp b/Source/WebCore/inspector/agents/InspectorPageAgent.cpp
-index a4ffd1361cdde5ab7d973cd00d19a910ae9ed29f..21efdf28e98c3209e294eba34e01f91f4495b502 100644
+index a4ffd1361cdde5ab7d973cd00d19a910ae9ed29f..80d24823328eb8377327ce5c828a3556a3c60087 100644
 --- a/Source/WebCore/inspector/agents/InspectorPageAgent.cpp
 +++ b/Source/WebCore/inspector/agents/InspectorPageAgent.cpp
 @@ -32,20 +32,28 @@
@@ -4262,14 +4276,14 @@ index a4ffd1361cdde5ab7d973cd00d19a910ae9ed29f..21efdf28e98c3209e294eba34e01f91f
 +    return m_bypassCSP;
 +}
 +
-+void InspectorPageAgent::willCheckNewWindowPolicy(const URL& url)
++void InspectorPageAgent::willCheckNavigationPolicy(Frame& frame)
 +{
-+    m_frontendDispatcher->willRequestOpenWindow(url.string());
++    m_frontendDispatcher->willCheckNavigationPolicy(frameId(&frame));
 +}
 +
-+void InspectorPageAgent::didCheckNewWindowPolicy(bool allowed)
++void InspectorPageAgent::didCheckNavigationPolicy(Frame& frame, bool cancel)
 +{
-+    m_frontendDispatcher->didRequestOpenWindow(allowed);
++    m_frontendDispatcher->didCheckNavigationPolicy(frameId(&frame), cancel);
 +}
 +
  Ref<Protocol::Page::Frame> InspectorPageAgent::buildObjectForFrame(Frame* frame)
@@ -4991,7 +5005,7 @@ index a4ffd1361cdde5ab7d973cd00d19a910ae9ed29f..21efdf28e98c3209e294eba34e01f91f
  
  } // namespace WebCore
 diff --git a/Source/WebCore/inspector/agents/InspectorPageAgent.h b/Source/WebCore/inspector/agents/InspectorPageAgent.h
-index 3d5e566dbe0c5ec11d9e8df67fcf0a70988a2f8f..48c39d5217f09c4a2cec26308deeb6bac063e538 100644
+index 3d5e566dbe0c5ec11d9e8df67fcf0a70988a2f8f..9db71cc22000a6dc6ddc157cbb0c9a90e0c9fa36 100644
 --- a/Source/WebCore/inspector/agents/InspectorPageAgent.h
 +++ b/Source/WebCore/inspector/agents/InspectorPageAgent.h
 @@ -34,17 +34,23 @@
@@ -5109,8 +5123,8 @@ index 3d5e566dbe0c5ec11d9e8df67fcf0a70988a2f8f..48c39d5217f09c4a2cec26308deeb6ba
 +    void runOpenPanel(HTMLInputElement* element, bool* intercept);
 +    void frameAttached(Frame&);
 +    bool shouldBypassCSP();
-+    void willCheckNewWindowPolicy(const URL&);
-+    void didCheckNewWindowPolicy(bool allowed);
++    void willCheckNavigationPolicy(Frame&);
++    void didCheckNavigationPolicy(Frame&, bool cancel);
 +    bool doingAccessibilitySnapshot() const { return m_doingAccessibilitySnapshot; };
  
      Frame* frameForId(const Inspector::Protocol::Network::FrameId&);
@@ -5405,7 +5419,7 @@ index c2bea6f6a69b836472c0aff7a0d7070396ba6c2b..80af07d2f4327a400c85b65b640bcfa2
      DocumentWriter& writer() const { return m_writer; }
  
 diff --git a/Source/WebCore/loader/FrameLoader.cpp b/Source/WebCore/loader/FrameLoader.cpp
-index 2df49958f62b72ff357f2ba8ff380c9ea5760019..8092eb4df3635a0729398de23114ac0a21686be1 100644
+index 2df49958f62b72ff357f2ba8ff380c9ea5760019..50a13cbc13a42476aad8be56017ff994f451eba5 100644
 --- a/Source/WebCore/loader/FrameLoader.cpp
 +++ b/Source/WebCore/loader/FrameLoader.cpp
 @@ -1154,6 +1154,7 @@ void FrameLoader::loadInSameDocument(const URL& url, SerializedScriptValue* stat
@@ -5416,16 +5430,7 @@ index 2df49958f62b72ff357f2ba8ff380c9ea5760019..8092eb4df3635a0729398de23114ac0a
  
      m_frame.document()->statePopped(stateObject ? Ref<SerializedScriptValue> { *stateObject } : SerializedScriptValue::nullValue());
      m_client->dispatchDidPopStateWithinPage();
-@@ -1489,6 +1490,8 @@ void FrameLoader::loadWithNavigationAction(const ResourceRequest& request, Navig
-         return completionHandler();
-     }
- 
-+    InspectorInstrumentation::frameScheduledNavigation(m_frame, Seconds(0));
-+
-     Ref<DocumentLoader> loader = m_client->createDocumentLoader(request, defaultSubstituteDataForURL(request.url()));
-     applyShouldOpenExternalURLsPolicyToNewDocumentLoader(m_frame, loader, action.initiatedByMainFrame(), action.shouldOpenExternalURLsPolicy());
- 
-@@ -1590,6 +1593,8 @@ void FrameLoader::loadWithDocumentLoader(DocumentLoader* loader, FrameLoadType t
+@@ -1590,6 +1591,8 @@ void FrameLoader::loadWithDocumentLoader(DocumentLoader* loader, FrameLoadType t
      const String& httpMethod = loader->request().httpMethod();
  
      if (shouldPerformFragmentNavigation(isFormSubmission, httpMethod, policyChecker().loadType(), newURL)) {
@@ -5434,6 +5439,16 @@ index 2df49958f62b72ff357f2ba8ff380c9ea5760019..8092eb4df3635a0729398de23114ac0a
          RefPtr<DocumentLoader> oldDocumentLoader = m_documentLoader;
          NavigationAction action { *m_frame.document(), loader->request(), InitiatedByMainFrame::Unknown, policyChecker().loadType(), isFormSubmission };
  
+@@ -1632,7 +1635,9 @@ void FrameLoader::loadWithDocumentLoader(DocumentLoader* loader, FrameLoadType t
+     }
+ 
+     RELEASE_ASSERT(!isBackForwardLoadType(policyChecker().loadType()) || history().provisionalItem());
++    InspectorInstrumentation::willCheckNavigationPolicy(m_frame);
+     policyChecker().checkNavigationPolicy(ResourceRequest(loader->request()), ResourceResponse { } /* redirectResponse */, loader, WTFMove(formState), [this, protectedFrame = Ref { m_frame }, allowNavigationToInvalidURL, completionHandler = completionHandlerCaller.release()] (const ResourceRequest& request, WeakPtr<FormState>&& formState, NavigationPolicyDecision navigationPolicyDecision) mutable {
++        InspectorInstrumentation::didCheckNavigationPolicy(m_frame, navigationPolicyDecision != NavigationPolicyDecision::ContinueLoad);
+         continueLoadAfterNavigationPolicy(request, formState.get(), navigationPolicyDecision, allowNavigationToInvalidURL);
+         completionHandler();
+     }, PolicyDecisionMode::Asynchronous);
 @@ -2797,12 +2802,17 @@ String FrameLoader::userAgent(const URL& url) const
  
  String FrameLoader::navigatorPlatform() const
@@ -5506,7 +5521,7 @@ index 29d2e3f46140aaa51160e6a28562f370e371eb21..676ddc9369050c19454fbf5faffac2b2
      virtual bool shouldPerformSecurityChecks() const { return false; }
      virtual bool havePerformedSecurityChecks(const ResourceResponse&) const { return false; }
 diff --git a/Source/WebCore/loader/PolicyChecker.cpp b/Source/WebCore/loader/PolicyChecker.cpp
-index c3fbb569999a0667188eabe1a460e6f076684f0d..06fc4aa4b23661befa9e689a8010c6826826eb2d 100644
+index c3fbb569999a0667188eabe1a460e6f076684f0d..ab5d5925c91e92d2510246aaffa06b1f35af7ac9 100644
 --- a/Source/WebCore/loader/PolicyChecker.cpp
 +++ b/Source/WebCore/loader/PolicyChecker.cpp
 @@ -46,6 +46,7 @@
@@ -5517,40 +5532,6 @@ index c3fbb569999a0667188eabe1a460e6f076684f0d..06fc4aa4b23661befa9e689a8010c682
  #include "Logging.h"
  #include "ThreadableBlobRegistry.h"
  #include <wtf/CompletionHandler.h>
-@@ -252,26 +253,32 @@ void FrameLoader::PolicyChecker::checkNewWindowPolicy(NavigationAction&& navigat
- 
-     auto blobURLLifetimeExtension = extendBlobURLLifetimeIfNecessary(request);
- 
-+    InspectorInstrumentation::willCheckNewWindowPolicy(m_frame, request.url());
-     auto requestIdentifier = PolicyCheckIdentifier::create();
-     m_frame.loader().client().dispatchDecidePolicyForNewWindowAction(navigationAction, request, formState.get(), frameName, requestIdentifier, [frame = Ref { m_frame }, request,
-         formState = WTFMove(formState), frameName, navigationAction, function = WTFMove(function), blobURLLifetimeExtension = WTFMove(blobURLLifetimeExtension),
-         requestIdentifier] (PolicyAction policyAction, PolicyCheckIdentifier responseIdentifier) mutable {
- 
--        if (!responseIdentifier.isValidFor(requestIdentifier))
-+        if (!responseIdentifier.isValidFor(requestIdentifier)) {
-+            InspectorInstrumentation::didCheckNewWindowPolicy(frame.get(), false);
-             return function({ }, nullptr, { }, { }, ShouldContinuePolicyCheck::No);
-+        }
- 
-         switch (policyAction) {
-         case PolicyAction::Download:
-             frame->loader().client().startDownload(request);
-             FALLTHROUGH;
-         case PolicyAction::Ignore:
-+            InspectorInstrumentation::didCheckNewWindowPolicy(frame.get(), false);
-             function({ }, nullptr, { }, { }, ShouldContinuePolicyCheck::No);
-             return;
-         case PolicyAction::StopAllLoads:
-             ASSERT_NOT_REACHED();
-+            InspectorInstrumentation::didCheckNewWindowPolicy(frame.get(), false);
-             function({ }, nullptr, { }, { }, ShouldContinuePolicyCheck::No);
-             return;
-         case PolicyAction::Use:
-+            InspectorInstrumentation::didCheckNewWindowPolicy(frame.get(), true);
-             function(request, formState, frameName, navigationAction, ShouldContinuePolicyCheck::Yes);
-             return;
-         }
 diff --git a/Source/WebCore/loader/ProgressTracker.cpp b/Source/WebCore/loader/ProgressTracker.cpp
 index fa84c366c63175f9fb4730eb85c4677fc3d6368f..ecf5b8dc97e35910baf493424e673155cfa7d7a4 100644
 --- a/Source/WebCore/loader/ProgressTracker.cpp
@@ -21458,7 +21439,7 @@ index 1c84f30b2ea96dd0c168918f9d63773b8e2548a3..55603437900a65de7bef70563c9ec039
  }
  
 diff --git a/Tools/MiniBrowser/gtk/BrowserWindow.c b/Tools/MiniBrowser/gtk/BrowserWindow.c
-index 881609c9fe8f2b5ed6158a5972438c14fd650cf5..4a032f5cc0808087405f2f9dd9614b5cbf85252a 100644
+index 881609c9fe8f2b5ed6158a5972438c14fd650cf5..566568382a2983a8a823cf0a0cf2634a9848d607 100644
 --- a/Tools/MiniBrowser/gtk/BrowserWindow.c
 +++ b/Tools/MiniBrowser/gtk/BrowserWindow.c
 @@ -70,7 +70,7 @@ struct _BrowserWindowClass {
@@ -21487,7 +21468,22 @@ index 881609c9fe8f2b5ed6158a5972438c14fd650cf5..4a032f5cc0808087405f2f9dd9614b5c
      gtk_window_set_title(GTK_WINDOW(window), privateTitle ? privateTitle : title);
      g_free(privateTitle);
  }
-@@ -1445,6 +1443,12 @@ static gboolean browserWindowDeleteEvent(GtkWidget *widget, GdkEventAny* event)
+@@ -493,8 +491,12 @@ static gboolean webViewDecidePolicy(WebKitWebView *webView, WebKitPolicyDecision
+         return FALSE;
+ 
+     WebKitNavigationAction *navigationAction = webkit_navigation_policy_decision_get_navigation_action(WEBKIT_NAVIGATION_POLICY_DECISION(decision));
+-    if (webkit_navigation_action_get_navigation_type(navigationAction) != WEBKIT_NAVIGATION_TYPE_LINK_CLICKED
+-        || webkit_navigation_action_get_mouse_button(navigationAction) != GDK_BUTTON_MIDDLE)
++    if (webkit_navigation_action_get_navigation_type(navigationAction) != WEBKIT_NAVIGATION_TYPE_LINK_CLICKED)
++        return FALSE;
++
++    guint modifiers = webkit_navigation_action_get_modifiers(navigationAction);
++    if (webkit_navigation_action_get_mouse_button(navigationAction) != GDK_BUTTON_MIDDLE &&
++        (webkit_navigation_action_get_mouse_button(navigationAction) != GDK_BUTTON_PRIMARY || (modifiers & (GDK_CONTROL_MASK | GDK_SHIFT_MASK)) == 0))
+         return FALSE;
+ 
+     /* Multiple tabs are not allowed in editor mode. */
+@@ -1445,6 +1447,12 @@ static gboolean browserWindowDeleteEvent(GtkWidget *widget, GdkEventAny* event)
  }
  #endif
  
@@ -21500,7 +21496,7 @@ index 881609c9fe8f2b5ed6158a5972438c14fd650cf5..4a032f5cc0808087405f2f9dd9614b5c
  static void browser_window_class_init(BrowserWindowClass *klass)
  {
      GObjectClass *gobjectClass = G_OBJECT_CLASS(klass);
-@@ -1458,6 +1462,14 @@ static void browser_window_class_init(BrowserWindowClass *klass)
+@@ -1458,6 +1466,14 @@ static void browser_window_class_init(BrowserWindowClass *klass)
      GtkWidgetClass *widgetClass = GTK_WIDGET_CLASS(klass);
      widgetClass->delete_event = browserWindowDeleteEvent;
  #endif
@@ -21680,7 +21676,7 @@ index 9e7863b61b3e9db76e04e14f45116684dae44e37..fb47d231744d578bcbef125df9011a80
  
      return exitAfterLoad && webProcessCrashed ? 1 : 0;
 diff --git a/Tools/MiniBrowser/wpe/main.cpp b/Tools/MiniBrowser/wpe/main.cpp
-index 4584d9573ba7d11d2249f17552ee5c947af539d2..9244a803a40e4d2ecd76f87282837660587142dd 100644
+index 4584d9573ba7d11d2249f17552ee5c947af539d2..d5247a28b5374aef79e515fb701f1db7232711bc 100644
 --- a/Tools/MiniBrowser/wpe/main.cpp
 +++ b/Tools/MiniBrowser/wpe/main.cpp
 @@ -41,6 +41,9 @@ static gboolean headlessMode;
@@ -21703,7 +21699,7 @@ index 4584d9573ba7d11d2249f17552ee5c947af539d2..9244a803a40e4d2ecd76f87282837660
      { G_OPTION_REMAINING, 0, 0, G_OPTION_ARG_FILENAME_ARRAY, &uriArguments, nullptr, "[URL]" },
      { nullptr, 0, 0, G_OPTION_ARG_NONE, nullptr, nullptr, nullptr }
  };
-@@ -148,13 +154,34 @@ static void filterSavedCallback(WebKitUserContentFilterStore *store, GAsyncResul
+@@ -148,13 +154,36 @@ static void filterSavedCallback(WebKitUserContentFilterStore *store, GAsyncResul
      g_main_loop_quit(data->mainLoop);
  }
  
@@ -21733,13 +21729,15 @@ index 4584d9573ba7d11d2249f17552ee5c947af539d2..9244a803a40e4d2ecd76f87282837660
 +    return TRUE;
 +}
 +
++static gboolean webViewDecidePolicy(WebKitWebView *webView, WebKitPolicyDecision *decision, WebKitPolicyDecisionType decisionType, gpointer);
++
 +static WebKitWebView* createWebView(WebKitWebView* webView, WebKitNavigationAction*, gpointer);
 +
 +static WebKitWebView* createWebViewImpl(WebKitWebView* webView, WebKitWebContext *webContext)
  {
      auto backend = createViewBackend(1280, 720);
      struct wpe_view_backend* wpeBackend = backend->backend();
-@@ -166,17 +193,66 @@ static WebKitWebView* createWebView(WebKitWebView* webView, WebKitNavigationActi
+@@ -166,17 +195,88 @@ static WebKitWebView* createWebView(WebKitWebView* webView, WebKitNavigationActi
              delete static_cast<WPEToolingBackends::ViewBackend*>(data);
          }, backend.release());
  
@@ -21771,13 +21769,35 @@ index 4584d9573ba7d11d2249f17552ee5c947af539d2..9244a803a40e4d2ecd76f87282837660
 +    g_signal_connect(newWebView, "load-failed", G_CALLBACK(webViewLoadFailed), nullptr);
 +    g_signal_connect(newWebView, "script-dialog", G_CALLBACK(scriptDialog), nullptr);
 +    g_signal_connect(newWebView, "script-dialog-handled", G_CALLBACK(scriptDialogHandled), nullptr);
-+    g_signal_connect(newWebView, "create", G_CALLBACK(createWebView), nullptr);
++    g_signal_connect(newWebView, "decide-policy", G_CALLBACK(webViewDecidePolicy), nullptr);
      return newWebView;
  }
  
 +static WebKitWebView* createWebView(WebKitWebView* webView, WebKitNavigationAction*, gpointer)
 +{
 +    return createWebViewImpl(webView, nullptr);
++}
++
++static gboolean webViewDecidePolicy(WebKitWebView *webView, WebKitPolicyDecision *decision, WebKitPolicyDecisionType decisionType, gpointer)
++{
++    if (decisionType != WEBKIT_POLICY_DECISION_TYPE_NAVIGATION_ACTION)
++        return FALSE;
++
++    WebKitNavigationAction *navigationAction = webkit_navigation_policy_decision_get_navigation_action(WEBKIT_NAVIGATION_POLICY_DECISION(decision));
++    if (webkit_navigation_action_get_navigation_type(navigationAction) != WEBKIT_NAVIGATION_TYPE_LINK_CLICKED)
++        return FALSE;
++
++    guint modifiers = webkit_navigation_action_get_modifiers(navigationAction);
++    if (webkit_navigation_action_get_mouse_button(navigationAction) != 2 /* GDK_BUTTON_MIDDLE */ &&
++        (webkit_navigation_action_get_mouse_button(navigationAction) != 1 /* GDK_BUTTON_PRIMARY */ || (modifiers & (wpe_input_keyboard_modifier_control | wpe_input_keyboard_modifier_shift)) == 0))
++        return FALSE;
++
++    /* Open a new tab if link clicked with the middle button, shift+click or ctrl+click. */
++    WebKitWebView* newWebView = createWebViewImpl(nullptr, webkit_web_view_get_context(webView));
++    webkit_web_view_load_request(newWebView, webkit_navigation_action_get_request(navigationAction));
++
++    webkit_policy_decision_ignore(decision);
++    return TRUE;
 +}
 +
 +static WebKitWebContext *persistentWebContext = NULL;
@@ -21808,7 +21828,7 @@ index 4584d9573ba7d11d2249f17552ee5c947af539d2..9244a803a40e4d2ecd76f87282837660
  int main(int argc, char *argv[])
  {
  #if ENABLE_DEVELOPER_MODE
-@@ -208,6 +284,16 @@ int main(int argc, char *argv[])
+@@ -208,6 +308,16 @@ int main(int argc, char *argv[])
      }
  
      auto* loop = g_main_loop_new(nullptr, FALSE);
@@ -21825,7 +21845,7 @@ index 4584d9573ba7d11d2249f17552ee5c947af539d2..9244a803a40e4d2ecd76f87282837660
  
      auto backend = createViewBackend(1280, 720);
      struct wpe_view_backend* wpeBackend = backend->backend();
-@@ -217,7 +303,15 @@ int main(int argc, char *argv[])
+@@ -217,7 +327,15 @@ int main(int argc, char *argv[])
          return 1;
      }
  
@@ -21842,7 +21862,7 @@ index 4584d9573ba7d11d2249f17552ee5c947af539d2..9244a803a40e4d2ecd76f87282837660
      webkit_website_data_manager_set_itp_enabled(manager, enableITP);
  
      if (proxy) {
-@@ -229,7 +323,8 @@ int main(int argc, char *argv[])
+@@ -229,7 +347,8 @@ int main(int argc, char *argv[])
      if (ignoreTLSErrors)
          webkit_website_data_manager_set_tls_errors_policy(manager, WEBKIT_TLS_ERRORS_POLICY_IGNORE);
  
@@ -21852,7 +21872,7 @@ index 4584d9573ba7d11d2249f17552ee5c947af539d2..9244a803a40e4d2ecd76f87282837660
      g_object_unref(manager);
  
      if (cookiesPolicy) {
-@@ -288,7 +383,14 @@ int main(int argc, char *argv[])
+@@ -288,7 +407,14 @@ int main(int argc, char *argv[])
      auto* viewBackend = webkit_web_view_backend_new(wpeBackend, [](gpointer data) {
          delete static_cast<WPEToolingBackends::ViewBackend*>(data);
      }, backend.release());
@@ -21868,7 +21888,7 @@ index 4584d9573ba7d11d2249f17552ee5c947af539d2..9244a803a40e4d2ecd76f87282837660
      auto* webView = WEBKIT_WEB_VIEW(g_object_new(WEBKIT_TYPE_WEB_VIEW,
          "backend", viewBackend,
          "web-context", webContext,
-@@ -305,8 +407,6 @@ int main(int argc, char *argv[])
+@@ -305,8 +431,6 @@ int main(int argc, char *argv[])
          backendPtr->setAccessibleChild(ATK_OBJECT(accessible));
  #endif
  
@@ -21877,7 +21897,7 @@ index 4584d9573ba7d11d2249f17552ee5c947af539d2..9244a803a40e4d2ecd76f87282837660
      webkit_web_context_set_automation_allowed(webContext, automationMode);
      g_signal_connect(webContext, "automation-started", G_CALLBACK(automationStartedCallback), webView);
      g_signal_connect(webView, "permission-request", G_CALLBACK(decidePermissionRequest), nullptr);
-@@ -319,16 +419,9 @@ int main(int argc, char *argv[])
+@@ -319,16 +443,9 @@ int main(int argc, char *argv[])
          webkit_web_view_set_background_color(webView, &color);
  
      if (uriArguments) {
@@ -21897,7 +21917,7 @@ index 4584d9573ba7d11d2249f17552ee5c947af539d2..9244a803a40e4d2ecd76f87282837660
          webkit_web_view_load_uri(webView, "about:blank");
      else
          webkit_web_view_load_uri(webView, "https://wpewebkit.org");
-@@ -338,8 +431,7 @@ int main(int argc, char *argv[])
+@@ -338,8 +455,7 @@ int main(int argc, char *argv[])
      g_hash_table_destroy(openViews);
  
  

@@ -18,7 +18,7 @@ import { test, expect, stripAscii } from './playwright-test-fixtures';
 import fs from 'fs';
 import path from 'path';
 import { spawnSync } from 'child_process';
-import { registry } from 'playwright-core/lib/utils/registry';
+import { registry } from '../../packages/playwright-core/lib/utils/registry';
 
 const ffmpeg = registry.findExecutable('ffmpeg')!.executablePath();
 
@@ -491,4 +491,30 @@ test('should work with video size', async ({ runInlineTest }, testInfo) => {
   const videoPlayer = new VideoPlayer(path.join(folder, file));
   expect(videoPlayer.videoWidth).toBe(220);
   expect(videoPlayer.videoHeight).toBe(110);
+});
+
+test('should work with video.path() throwing', async ({ runInlineTest }, testInfo) => {
+  // When running remotely, video.path() is not available, so we must not use it.
+  const result = await runInlineTest({
+    'playwright.config.js': `
+      module.exports = {
+        use: { video: { mode: 'on' } },
+        name: 'chromium',
+        preserveOutput: 'always',
+      };
+    `,
+    'a.test.ts': `
+      const { test } = pwt;
+      test('pass', async ({ page }) => {
+        page.video().path = () => { throw new Error('No-no!'); };
+        await page.setContent('<div>PASS</div>');
+        await page.waitForTimeout(3000);
+      });
+    `,
+  }, { workers: 1 });
+  expect(result.exitCode).toBe(0);
+  expect(result.passed).toBe(1);
+  const dir = testInfo.outputPath(`test-results/a-pass-chromium/`);
+  const video = fs.readdirSync(dir).find(file => file.endsWith('webm'));
+  expect(video).toBeTruthy();
 });
