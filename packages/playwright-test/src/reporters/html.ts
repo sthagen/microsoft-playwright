@@ -93,7 +93,7 @@ export type TestResult = {
   startTime: string;
   duration: number;
   steps: TestStep[];
-  error?: string;
+  errors: string[];
   attachments: TestAttachment[];
   status: 'passed' | 'failed' | 'timedOut' | 'skipped';
 };
@@ -125,7 +125,7 @@ class HtmlReporter implements Reporter {
   constructor(options: { outputFolder?: string, open?: 'always' | 'never' | 'on-failure' } = {}) {
     // TODO: resolve relative to config.
     this._outputFolder = options.outputFolder;
-    this._open = options.open || 'on-failure';
+    this._open = process.env.PW_TEST_HTML_REPORT_OPEN as any || options.open || 'on-failure';
   }
 
   printsToStdio() {
@@ -393,7 +393,7 @@ class HtmlBuilder {
       startTime: result.startTime,
       retry: result.retry,
       steps: result.steps.map(s => this._createTestStep(s)),
-      error: result.error,
+      errors: result.errors,
       status: result.status,
       attachments: result.attachments.map(a => {
         if (a.name === 'trace')

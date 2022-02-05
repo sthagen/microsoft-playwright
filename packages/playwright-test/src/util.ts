@@ -21,9 +21,43 @@ import type { TestError, Location } from './types';
 import { default as minimatch } from 'minimatch';
 import debug from 'debug';
 import { calculateSha1, isRegExp } from 'playwright-core/lib/utils/utils';
+import { isInternalFileName } from 'playwright-core/lib/utils/stackTrace';
+
+const PLAYWRIGHT_CORE_PATH = path.dirname(require.resolve('playwright-core'));
+const EXPECT_PATH = path.dirname(require.resolve('expect'));
+const PLAYWRIGHT_TEST_PATH = path.join(__dirname, '..');
+
+function filterStackTrace(e: Error) {
+  // This method filters internal stack frames using Error.prepareStackTrace
+  // hook. Read more about the hook: https://v8.dev/docs/stack-trace-api
+  //
+  // NOTE: Error.prepareStackTrace will only be called if `e.stack` has not
+  // been accessed before. This is the case for Jest Expect and simple throw
+  // statements.
+  //
+  // If `e.stack` has been accessed, this method will be NOOP.
+  const oldPrepare = Error.prepareStackTrace;
+  const stackFormatter = oldPrepare || ((error, structuredStackTrace) => [
+    `${error.name}: ${error.message}`,
+    ...structuredStackTrace.map(callSite => '    at ' + callSite.toString()),
+  ].join('\n'));
+  Error.prepareStackTrace = (error, structuredStackTrace) => {
+    return stackFormatter(error, structuredStackTrace.filter(callSite => {
+      const fileName = callSite.getFileName();
+      const functionName = callSite.getFunctionName() || undefined;
+      if (!fileName)
+        return true;
+      return !fileName.startsWith(PLAYWRIGHT_TEST_PATH) && !fileName.startsWith(PLAYWRIGHT_CORE_PATH) && !fileName.startsWith(EXPECT_PATH) && !isInternalFileName(fileName, functionName);
+    }));
+  };
+  // eslint-disable-next-line
+  e.stack; // trigger Error.prepareStackTrace
+  Error.prepareStackTrace = oldPrepare;
+}
 
 export function serializeError(error: Error | any): TestError {
   if (error instanceof Error) {
+    filterStackTrace(error);
     return {
       message: error.message,
       stack: error.stack
@@ -65,7 +99,7 @@ export function createFileMatcher(patterns: string | RegExp | (string | RegExp)[
       if (re.test(filePath))
         return true;
     }
-    // Windows might still recieve unix style paths from Cygwin or Git Bash.
+    // Windows might still receive unix style paths from Cygwin or Git Bash.
     // Check against the file url as well.
     if (path.sep === '\\') {
       const fileURL = url.pathToFileURL(filePath).href;
@@ -104,10 +138,6 @@ export function mergeObjects<A extends object, B extends object>(a: A | undefine
     }
   }
   return result as any;
-}
-
-export async function wrapInPromise(value: any) {
-  return value;
 }
 
 export function forceRegExp(pattern: string): RegExp {
@@ -173,9 +203,7 @@ export function getContainedPath(parentPath: string, subPath: string = ''): stri
 
 export const debugTest = debug('pw:test');
 
-export function prependToTestError(testError: TestError | undefined, message: string | undefined, location?: Location) {
-  if (!message)
-    return testError;
+export function prependToTestError(testError: TestError | undefined, message: string, location?: Location): TestError {
   if (!testError) {
     if (!location)
       return { value: message };

@@ -27,6 +27,7 @@ import { ProjectImpl } from './project';
 import { Reporter } from '../types/testReporter';
 import { BuiltInReporter, builtInReporters } from './runner';
 import { isRegExp } from 'playwright-core/lib/utils/utils';
+import { serializeError } from './util';
 
 // To allow multiple loaders in the same process without clearing require cache,
 // we make these maps global.
@@ -113,20 +114,46 @@ export class Loader {
     this._fullConfig.projects = this._projects.map(p => p.config);
   }
 
-  async loadTestFile(file: string) {
+  async loadTestFile(file: string, environment: 'runner' | 'worker') {
     if (cachedFileSuites.has(file))
       return cachedFileSuites.get(file)!;
+    const suite = new Suite(path.relative(this._fullConfig.rootDir, file) || path.basename(file));
+    suite._requireFile = file;
+    suite.location = { file, line: 0, column: 0 };
+
+    setCurrentlyLoadingFileSuite(suite);
     try {
-      const suite = new Suite(path.relative(this._fullConfig.rootDir, file) || path.basename(file));
-      suite._requireFile = file;
-      suite.location = { file, line: 0, column: 0 };
-      setCurrentlyLoadingFileSuite(suite);
       await this._requireOrImport(file);
       cachedFileSuites.set(file, suite);
-      return suite;
+    } catch (e) {
+      if (environment === 'worker')
+        throw e;
+      suite._loadError = serializeError(e);
     } finally {
       setCurrentlyLoadingFileSuite(undefined);
     }
+
+    {
+      // Test locations that we discover potentially have different file name.
+      // This could be due to either
+      //   a) use of source maps or due to
+      //   b) require of one file from another.
+      // Try fixing (a) w/o regressing (b).
+
+      const files = new Set<string>();
+      suite.allTests().map(t => files.add(t.location.file));
+      if (files.size === 1) {
+        // All tests point to one file.
+        const mappedFile = files.values().next().value;
+        if (suite.location.file !== mappedFile) {
+          // The file is different, check for a likely source map case.
+          if (path.extname(mappedFile) !== path.extname(suite.location.file))
+            suite.location.file = mappedFile;
+        }
+      }
+    }
+
+    return suite;
   }
 
   async loadGlobalHook(file: string, name: string): Promise<(config: FullConfig) => any> {

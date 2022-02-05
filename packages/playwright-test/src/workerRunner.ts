@@ -94,8 +94,12 @@ export class WorkerRunner extends EventEmitter {
     // a test runner. In the latter case, the worker state could be messed up,
     // and continuing to run tests in the same worker is problematic. Therefore,
     // we turn this into a fatal error and restart the worker anyway.
-    if (this._currentTest && this._currentTest._test._type === 'test' && this._currentTest.expectedStatus !== 'failed') {
-      this._currentTest._failWithError(serializeError(error));
+    // The only exception is the expect() error that we still consider ok.
+    const isExpectError = (error instanceof Error) && !!(error as any).matcherResult;
+    const isCurrentTestExpectedToFail = this._currentTest?.expectedStatus === 'failed';
+    const shouldConsiderAsTestError = isExpectError || !isCurrentTestExpectedToFail;
+    if (this._currentTest && this._currentTest._test._type === 'test' && shouldConsiderAsTestError) {
+      this._currentTest._failWithError(serializeError(error), true /* isHardError */);
     } else {
       // No current test - fatal error.
       if (!this._fatalError)
@@ -125,7 +129,7 @@ export class WorkerRunner extends EventEmitter {
     try {
       this._entries = new Map(runPayload.entries.map(e => [ e.testId, e ]));
       await this._loadIfNeeded();
-      const fileSuite = await this._loader.loadTestFile(runPayload.file);
+      const fileSuite = await this._loader.loadTestFile(runPayload.file, 'worker');
       const suite = this._project.cloneFileSuite(fileSuite, this._params.repeatEachIndex, test => {
         if (!this._entries.has(test._id))
           return false;
@@ -395,7 +399,7 @@ function buildTestEndPayload(testInfo: TestInfoImpl): TestEndPayload {
     testId: testInfo._test._id,
     duration: testInfo.duration,
     status: testInfo.status!,
-    error: testInfo.error,
+    errors: testInfo.errors,
     expectedStatus: testInfo.expectedStatus,
     annotations: testInfo.annotations,
     timeout: testInfo.timeout,

@@ -216,6 +216,7 @@ export interface TestInfo {
   duration: number;
   status?: TestStatus;
   error?: TestError;
+  errors: TestError[];
   stdout: (string | Buffer)[];
   stderr: (string | Buffer)[];
   snapshotSuffix: string;
@@ -243,6 +244,7 @@ export interface TestType<TestArgs extends KeyValue, WorkerArgs extends KeyValue
     parallel: SuiteFunction & {
       only: SuiteFunction;
     };
+    configure: (options: { mode?: 'parallel' | 'serial' }) => void;
   };
   skip(title: string, testFunction: (args: TestArgs & WorkerArgs, testInfo: TestInfo) => Promise<void> | void): void;
   skip(): void;

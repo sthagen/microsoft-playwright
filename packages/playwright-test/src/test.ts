@@ -52,6 +52,7 @@ export class Suite extends Base implements reporterTypes.Suite {
   _modifiers: Modifier[] = [];
   _parallelMode: 'default' | 'serial' | 'parallel' = 'default';
   _projectConfig: FullProject | undefined;
+  _loadError?: reporterTypes.TestError;
 
   _addTest(test: TestCase) {
     test.parent = this;
@@ -190,7 +191,8 @@ export class TestCase extends Base implements reporterTypes.TestCase {
       stderr: [],
       attachments: [],
       status: 'skipped',
-      steps: []
+      steps: [],
+      errors: [],
     };
     this.results.push(result);
     return result;

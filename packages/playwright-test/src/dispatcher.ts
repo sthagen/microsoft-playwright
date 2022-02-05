@@ -199,7 +199,8 @@ export class Dispatcher {
       const { result } = data.resultByWorkerIndex.get(worker.workerIndex)!;
       data.resultByWorkerIndex.delete(worker.workerIndex);
       result.duration = params.duration;
-      result.error = params.error;
+      result.errors = params.errors;
+      result.error = result.errors[0];
       result.attachments = params.attachments.map(a => ({
         name: a.name,
         path: a.path,
@@ -292,7 +293,8 @@ export class Dispatcher {
         if (runningHookId) {
           const data = this._testById.get(runningHookId)!;
           const { result } = data.resultByWorkerIndex.get(worker.workerIndex)!;
-          result.error = params.fatalError;
+          result.errors = [params.fatalError];
+          result.error = result.errors[0];
           result.status = 'failed';
           this._reporter.onTestEnd?.(data.test, result);
         }
@@ -312,7 +314,8 @@ export class Dispatcher {
             if (test._type === 'test')
               this._reporter.onTestBegin?.(test, result);
           }
-          result.error = params.fatalError;
+          result.errors = [params.fatalError];
+          result.error = result.errors[0];
           result.status = first ? 'failed' : 'skipped';
           this._reportTestEnd(test, result);
           failedTestIds.add(test._id);
@@ -474,7 +477,7 @@ class Worker extends EventEmitter {
     this.process = child_process.fork(path.join(__dirname, 'worker.js'), {
       detached: false,
       env: {
-        FORCE_COLOR: process.stdout.isTTY ? '1' : '0',
+        FORCE_COLOR: '1',
         DEBUG_COLORS: process.stdout.isTTY ? '1' : '0',
         TEST_WORKER_INDEX: String(this.workerIndex),
         TEST_PARALLEL_INDEX: String(this.parallelIndex),

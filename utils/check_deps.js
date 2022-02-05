@@ -67,7 +67,7 @@ async function innerCheckDeps(root, checkDepsFile) {
   }
 
   for (const dep of deps) {
-    const resolved = require.resolve(dep);
+    const resolved = require.resolve(dep, { paths: [root] });
     if (dep === resolved || !resolved.includes('node_modules'))
       deps.delete(dep);
   }
@@ -181,7 +181,7 @@ DEPS['src/protocol/'] = ['src/utils/'];
 
 // Client depends on chromium protocol for types.
 DEPS['src/client/'] = ['src/common/', 'src/utils/', 'src/protocol/', 'src/server/chromium/protocol.d.ts'];
-DEPS['src/outofprocess.ts'] = ['src/client/', 'src/protocol/'];
+DEPS['src/outofprocess.ts'] = ['src/client/', 'src/protocol/', 'src/utils/'];
 
 DEPS['src/dispatchers/'] = ['src/common/', 'src/utils/', 'src/protocol/', 'src/server/**'];
 

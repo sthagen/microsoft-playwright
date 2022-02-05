@@ -33,11 +33,6 @@ type Annotation = {
   location?: Location;
 };
 
-type FailureDetails = {
-  tokens: string[];
-  location?: Location;
-};
-
 type ErrorDetails = {
   message: string;
   location?: Location;
@@ -99,7 +94,7 @@ export class BaseReporter implements Reporter  {
   }
 
   onError(error: TestError) {
-    console.log(formatError(this.config, error, colors.enabled).message);
+    console.log('\n' + formatError(this.config, error, colors.enabled).message);
   }
 
   async onEnd(result: FullResult) {
@@ -232,14 +227,16 @@ export function formatFailure(config: FullConfig, test: TestCase, options: {inde
   lines.push(colors.red(header));
   for (const result of test.results) {
     const resultLines: string[] = [];
-    const { tokens: resultTokens, location } = formatResultFailure(config, test, result, '    ', colors.enabled);
-    if (!resultTokens.length)
+    const errors = formatResultFailure(config, test, result, '    ', colors.enabled);
+    if (!errors.length)
       continue;
+    const retryLines = [];
     if (result.retry) {
-      resultLines.push('');
-      resultLines.push(colors.gray(pad(`    Retry #${result.retry}`, '-')));
+      retryLines.push('');
+      retryLines.push(colors.gray(pad(`    Retry #${result.retry}`, '-')));
     }
-    resultLines.push(...resultTokens);
+    resultLines.push(...retryLines);
+    resultLines.push(...errors.map(error => '\n' + error.message));
     if (includeAttachments) {
       for (let i = 0; i < result.attachments.length; ++i) {
         const attachment = result.attachments[i];
@@ -277,11 +274,13 @@ export function formatFailure(config: FullConfig, test: TestCase, options: {inde
       resultLines.push('');
       resultLines.push(colors.gray(pad('--- Test output', '-')) + '\n\n' + outputText + '\n' + pad('', '-'));
     }
-    annotations.push({
-      location,
-      title,
-      message: [header, ...resultLines].join('\n'),
-    });
+    for (const error of errors) {
+      annotations.push({
+        location: error.location,
+        title,
+        message: [header, ...retryLines, error.message].join('\n'),
+      });
+    }
     lines.push(...resultLines);
   }
   lines.push('');
@@ -291,25 +290,27 @@ export function formatFailure(config: FullConfig, test: TestCase, options: {inde
   };
 }
 
-export function formatResultFailure(config: FullConfig, test: TestCase, result: TestResult, initialIndent: string, highlightCode: boolean): FailureDetails {
-  const resultTokens: string[] = [];
+export function formatResultFailure(config: FullConfig, test: TestCase, result: TestResult, initialIndent: string, highlightCode: boolean): ErrorDetails[] {
+  const errorDetails: ErrorDetails[] = [];
+
   if (result.status === 'timedOut') {
-    resultTokens.push('');
-    resultTokens.push(indent(colors.red(`Timeout of ${test.timeout}ms exceeded.`), initialIndent));
+    errorDetails.push({
+      message: indent(colors.red(`Timeout of ${test.timeout}ms exceeded.`), initialIndent),
+    });
+  } else if (result.status === 'passed' && test.expectedStatus === 'failed') {
+    errorDetails.push({
+      message: indent(colors.red(`Expected to fail, but passed.`), initialIndent),
+    });
   }
-  if (result.status === 'passed' && test.expectedStatus === 'failed') {
-    resultTokens.push('');
-    resultTokens.push(indent(colors.red(`Expected to fail, but passed.`), initialIndent));
+
+  for (const error of result.errors) {
+    const formattedError = formatError(config, error, highlightCode, test.location.file);
+    errorDetails.push({
+      message: indent(formattedError.message, initialIndent),
+      location: formattedError.location,
+    });
   }
-  let error: ErrorDetails | undefined = undefined;
-  if (result.error !== undefined) {
-    error = formatError(config, result.error, highlightCode, test.location.file);
-    resultTokens.push(indent(error.message, initialIndent));
-  }
-  return {
-    tokens: resultTokens,
-    location: error?.location,
-  };
+  return errorDetails;
 }
 
 function relativeFilePath(config: FullConfig, file: string): string {
@@ -341,7 +342,7 @@ function formatTestHeader(config: FullConfig, test: TestCase, indent: string, in
 
 export function formatError(config: FullConfig, error: TestError, highlightCode: boolean, file?: string): ErrorDetails {
   const stack = error.stack;
-  const tokens = [''];
+  const tokens = [];
   let location: Location | undefined;
   if (stack) {
     const parsed = prepareErrorStack(stack, file);
@@ -419,9 +420,9 @@ function monotonicTime(): number {
   return seconds * 1000 + (nanoseconds / 1000000 | 0);
 }
 
-const asciiRegex = new RegExp('[\\u001B\\u009B][[\\]()#;?]*(?:(?:(?:[a-zA-Z\\d]*(?:;[-a-zA-Z\\d\\/#&.:=?%@~_]*)*)?\\u0007)|(?:(?:\\d{1,4}(?:;\\d{0,4})*)?[\\dA-PR-TZcf-ntqry=><~]))', 'g');
+const ansiRegex = new RegExp('[\\u001B\\u009B][[\\]()#;?]*(?:(?:(?:[a-zA-Z\\d]*(?:;[-a-zA-Z\\d\\/#&.:=?%@~_]*)*)?\\u0007)|(?:(?:\\d{1,4}(?:;\\d{0,4})*)?[\\dA-PR-TZcf-ntqry=><~]))', 'g');
 export function stripAnsiEscapes(str: string): string {
-  return str.replace(asciiRegex, '');
+  return str.replace(ansiRegex, '');
 }
 
 // Leaves enough space for the "suffix" to also fit.
@@ -432,8 +433,8 @@ export function fitToScreen(line: string, width: number, suffix?: string): strin
     return line;
   let m;
   let ansiLen = 0;
-  asciiRegex.lastIndex = 0;
-  while ((m = asciiRegex.exec(line)) !== null) {
+  ansiRegex.lastIndex = 0;
+  while ((m = ansiRegex.exec(line)) !== null) {
     const visibleLen = m.index - ansiLen;
     if (visibleLen >= width)
       break;
