@@ -47,8 +47,8 @@ export class BrowserType extends ChannelOwner<channels.BrowserTypeChannel> imple
   _playwright!: Playwright;
 
   // Instrumentation.
-  _defaultContextOptions: BrowserContextOptions = {};
-  _defaultLaunchOptions: LaunchOptions = {};
+  _defaultContextOptions?: BrowserContextOptions;
+  _defaultLaunchOptions?: LaunchOptions;
   _onDidCreateContext?: (context: BrowserContext) => Promise<void>;
   _onWillCloseContext?: (context: BrowserContext) => Promise<void>;
 
@@ -67,7 +67,7 @@ export class BrowserType extends ChannelOwner<channels.BrowserTypeChannel> imple
   }
 
   async launch(options: LaunchOptions = {}): Promise<Browser> {
-    const logger = options.logger || this._defaultLaunchOptions.logger;
+    const logger = options.logger || this._defaultLaunchOptions?.logger;
     assert(!(options as any).userDataDir, 'userDataDir option is not supported in `browserType.launch`. Use `browserType.launchPersistentContext` instead');
     assert(!(options as any).port, 'Cannot specify a port without launching as a server.');
     options = { ...this._defaultLaunchOptions, ...options };
@@ -92,7 +92,7 @@ export class BrowserType extends ChannelOwner<channels.BrowserTypeChannel> imple
   }
 
   async launchPersistentContext(userDataDir: string, options: LaunchPersistentContextOptions = {}): Promise<BrowserContext> {
-    const logger = options.logger || this._defaultLaunchOptions.logger;
+    const logger = options.logger || this._defaultLaunchOptions?.logger;
     assert(!(options as any).port, 'Cannot specify a port without launching as a server.');
     options = { ...this._defaultLaunchOptions, ...this._defaultContextOptions, ...options };
     const contextParams = await prepareBrowserContextParams(options);
@@ -168,10 +168,12 @@ export class BrowserType extends ChannelOwner<channels.BrowserTypeChannel> imple
           throw new Error('Malformed endpoint. Did you use launchServer method?');
         }
         playwright._setSelectors(this._playwright.selectors);
+        if ((params as any).__testHookPortForwarding)
+          playwright._enablePortForwarding((params as any).__testHookPortForwarding.redirectPortForTest);
         browser = Browser.from(playwright._initializer.preLaunchedBrowser!);
         browser._logger = logger;
         browser._shouldCloseConnectionOnClose = true;
-        browser._setBrowserType((playwright as any)[browser._name]);
+        browser._setBrowserType(this);
         browser._localUtils = this._playwright._utils;
         browser.on(Events.Browser.Disconnected, closePipe);
         return browser;

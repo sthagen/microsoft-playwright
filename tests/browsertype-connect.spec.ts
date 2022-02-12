@@ -532,7 +532,8 @@ test('should save har', async ({ browserType, startRemoteServer, server }, testI
   expect(entry.request.url).toBe(server.EMPTY_PAGE);
 });
 
-test('should record trace with sources', async ({ browserType, startRemoteServer, server }, testInfo) => {
+test('should record trace with sources', async ({ browserType, startRemoteServer, server, trace }, testInfo) => {
+  test.skip(trace === 'on');
   const remoteServer = await startRemoteServer();
   const browser = await browserType.connect(remoteServer.wsEndpoint());
   const context = await browser.newContext();
@@ -553,4 +554,20 @@ test('should record trace with sources', async ({ browserType, startRemoteServer
   const sourceFile = resources.get(sourceNames[0]);
   const thisFile = await fs.promises.readFile(__filename);
   expect(sourceFile).toEqual(thisFile);
+});
+
+test('should fulfill with global fetch result', async ({ browserType, startRemoteServer, playwright, server }) => {
+  const remoteServer = await startRemoteServer();
+  const browser = await browserType.connect(remoteServer.wsEndpoint());
+  const context = await browser.newContext();
+  const page = await context.newPage();
+
+  await page.route('**/*', async route => {
+    const request = await playwright.request.newContext();
+    const response = await request.get(server.PREFIX + '/simple.json');
+    route.fulfill({ response });
+  });
+  const response = await page.goto(server.EMPTY_PAGE);
+  expect(response.status()).toBe(200);
+  expect(await response.json()).toEqual({ 'foo': 'bar' });
 });

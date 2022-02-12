@@ -219,17 +219,17 @@ program
     });
 
 program
-    .command('show-trace [trace]')
+    .command('show-trace [trace...]')
     .option('-b, --browser <browserType>', 'browser to use, one of cr, chromium, ff, firefox, wk, webkit', 'chromium')
     .description('Show trace viewer')
-    .action(function(trace, options) {
+    .action(function(traces, options) {
       if (options.browser === 'cr')
         options.browser = 'chromium';
       if (options.browser === 'ff')
         options.browser = 'firefox';
       if (options.browser === 'wk')
         options.browser = 'webkit';
-      showTraceViewer(trace, options.browser, false, 9322).catch(logErrorAndExit);
+      showTraceViewer(traces, options.browser, false, 9322).catch(logErrorAndExit);
     }).addHelpText('afterAll', `
 Examples:
 
@@ -611,7 +611,7 @@ function buildBasePlaywrightCLICommand(cliTargetLang: string | undefined): strin
     case 'java':
       return `mvn exec:java -e -Dexec.mainClass=com.microsoft.playwright.CLI -Dexec.args="...options.."`;
     case 'csharp':
-      return `playwright`;
+      return `pwsh bin\\Debug\\netX\\playwright.ps1`;
     default:
       return `npx playwright`;
   }

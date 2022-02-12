@@ -86,6 +86,11 @@ export class BaseReporter implements Reporter  {
   }
 
   onTestEnd(test: TestCase, result: TestResult) {
+    // Ignore any tests that are run in parallel.
+    for (let suite: Suite | undefined = test.parent; suite; suite = suite.parent) {
+      if ((suite as any)._parallelMode === 'parallel')
+        return;
+    }
     const projectName = test.titlePath()[1];
     const relativePath = relativeTestPath(this.config, test);
     const fileAndProject = (projectName ? `[${projectName}] › ` : '') + relativePath;
@@ -102,8 +107,13 @@ export class BaseReporter implements Reporter  {
     this.result = result;
   }
 
-  protected ttyWidth() {
-    return this._ttyWidthForTest || (process.env.PWTEST_SKIP_TEST_OUTPUT ? 80 : process.stdout.columns || 0);
+  protected fitToScreen(line: string, suffix?: string): string {
+    const ttyWidth = this._ttyWidthForTest || (process.env.PWTEST_SKIP_TEST_OUTPUT ? 80 : process.stdout.columns || 0);
+    if (!ttyWidth) {
+      // Guard against the case where we cannot determine available width.
+      return line;
+    }
+    return fitToWidth(line, ttyWidth, suffix);
   }
 
   protected generateStartingMessage() {
@@ -253,8 +263,8 @@ export function formatFailure(config: FullConfig, test: TestCase, options: {inde
             resultLines.push('');
           }
         } else {
-          if (attachment.contentType.startsWith('text/')) {
-            let text = attachment.body!.toString();
+          if (attachment.contentType.startsWith('text/') && attachment.body) {
+            let text = attachment.body.toString();
             if (text.length > 300)
               text = text.slice(0, 300) + '...';
             resultLines.push(colors.cyan(`    ${text}`));
@@ -426,7 +436,7 @@ export function stripAnsiEscapes(str: string): string {
 }
 
 // Leaves enough space for the "suffix" to also fit.
-export function fitToScreen(line: string, width: number, suffix?: string): string {
+function fitToWidth(line: string, width: number, suffix?: string): string {
   const suffixLength = suffix ? stripAnsiEscapes(suffix).length : 0;
   width -= suffixLength;
   if (line.length <= width)
