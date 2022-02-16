@@ -249,7 +249,6 @@ export function createScheme(tChannel: (name: string) => Validator): Scheme {
     headers: tOptional(tAny),
     slowMo: tOptional(tNumber),
     timeout: tOptional(tNumber),
-    enableSocksProxy: tOptional(tBoolean),
     socksProxyRedirectPortForTest: tOptional(tNumber),
   });
   scheme.BrowserTypeLaunchParams = tObject({
@@ -549,6 +548,10 @@ export function createScheme(tChannel: (name: string) => Validator): Scheme {
     fullPage: tOptional(tBoolean),
     disableAnimations: tOptional(tBoolean),
     clip: tOptional(tType('Rect')),
+    mask: tOptional(tArray(tObject({
+      frame: tChannel('Frame'),
+      selector: tString,
+    }))),
   });
   scheme.PageSetExtraHTTPHeadersParams = tObject({
     headers: tArray(tType('NameValue')),
@@ -1039,6 +1042,10 @@ export function createScheme(tChannel: (name: string) => Validator): Scheme {
     quality: tOptional(tNumber),
     omitBackground: tOptional(tBoolean),
     disableAnimations: tOptional(tBoolean),
+    mask: tOptional(tArray(tObject({
+      frame: tChannel('Frame'),
+      selector: tString,
+    }))),
   });
   scheme.ElementHandleScrollIntoViewIfNeededParams = tObject({
     timeout: tOptional(tNumber),

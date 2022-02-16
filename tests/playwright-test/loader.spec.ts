@@ -267,6 +267,24 @@ test('should import esm from ts when package.json has type module in experimenta
   expect(result.exitCode).toBe(0);
 });
 
+test('should propagate subprocess exit code in experimental mode', async ({ runInlineTest }) => {
+  // We only support experimental esm mode on Node 16+
+  test.skip(parseInt(process.version.slice(1), 10) < 16);
+  const result = await runInlineTest({
+    'package.json': JSON.stringify({ type: 'module' }),
+    'a.test.ts': `
+      const { test } = pwt;
+      test('failing test', ({}, testInfo) => {
+        expect(1).toBe(2);
+      });
+    `,
+  }, {}, {
+    PW_EXPERIMENTAL_TS_ESM: true
+  });
+
+  expect(result.exitCode).toBe(1);
+});
+
 test('should filter stack trace for simple expect', async ({ runInlineTest }) => {
   const result = await runInlineTest({
     'expect-test.spec.ts': `
@@ -312,6 +330,21 @@ test('should filter out event emitter from stack traces', async ({ runInlineTest
   expect(result.exitCode).toBe(1);
   const outputWithoutGoodStackFrames = stripAnsi(result.output).split('\n').filter(line => !line.includes(testInfo.outputPath())).join('\n');
   expect(outputWithoutGoodStackFrames).not.toContain('EventEmitter.emit');
+});
+
+test('should filter out syntax error stack traces', async ({ runInlineTest }, testInfo) => {
+  const result = await runInlineTest({
+    'expect-test.spec.ts': `
+      const { test } = pwt;
+      test('should work', ({}) => {
+        // syntax error: cannot have await in non-async function
+        await Proimse.resolve();
+      });
+    `
+  });
+  expect(result.exitCode).toBe(1);
+  expect(stripAnsi(result.output)).not.toContain('babel');
+  expect(stripAnsi(result.output)).not.toContain('    at ');
 });
 
 test('should filter stack trace for raw errors', async ({ runInlineTest }) => {

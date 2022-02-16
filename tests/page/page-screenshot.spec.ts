@@ -16,9 +16,10 @@
  */
 
 import { test as it, expect } from './pageTest';
-import { verifyViewport } from '../config/utils';
+import { verifyViewport, attachFrame } from '../config/utils';
 import path from 'path';
 import fs from 'fs';
+import os from 'os';
 
 it.describe('page screenshot', () => {
   it.skip(({ browserName, headless }) => browserName === 'firefox' && !headless, 'Firefox headed produces a different image.');
@@ -188,7 +189,8 @@ it.describe('page screenshot', () => {
     expect(screenshot).toMatchSnapshot('screenshot-canvas.png', { threshold: 0.4 });
   });
 
-  it('should capture canvas changes', async ({ page, isElectron }) => {
+  it('should capture canvas changes', async ({ page, isElectron, browserName, isMac }) => {
+    it.fail(browserName === 'webkit' && isMac && parseInt(os.release(), 10) <= 20, 'https://github.com/microsoft/playwright/issues/8796');
     it.skip(isElectron);
     await page.goto('data:text/html,<canvas></canvas>');
     await page.evaluate(() => {
@@ -337,6 +339,86 @@ it.describe('page screenshot', () => {
       reloadSeveralTimes(),
       screenshotSeveralTimes()
     ]);
+  });
+
+  it.describe('mask option', () => {
+    it('should work', async ({ page, server }) => {
+      await page.setViewportSize({ width: 500, height: 500 });
+      await page.goto(server.PREFIX + '/grid.html');
+      expect(await page.screenshot({
+        mask: [ page.locator('div').nth(5) ],
+      })).toMatchSnapshot('mask-should-work.png');
+    });
+
+    it('should work with locator', async ({ page, server }) => {
+      await page.setViewportSize({ width: 500, height: 500 });
+      await page.goto(server.PREFIX + '/grid.html');
+      const bodyLocator = page.locator('body');
+      expect(await bodyLocator.screenshot({
+        mask: [ page.locator('div').nth(5) ],
+      })).toMatchSnapshot('mask-should-work-with-locator.png');
+    });
+
+    it('should work with elementhandle', async ({ page, server }) => {
+      await page.setViewportSize({ width: 500, height: 500 });
+      await page.goto(server.PREFIX + '/grid.html');
+      const bodyHandle = await page.$('body');
+      expect(await bodyHandle.screenshot({
+        mask: [ page.locator('div').nth(5) ],
+      })).toMatchSnapshot('mask-should-work-with-elementhandle.png');
+    });
+
+    it('should mask multiple elements', async ({ page, server }) => {
+      await page.setViewportSize({ width: 500, height: 500 });
+      await page.goto(server.PREFIX + '/grid.html');
+      expect(await page.screenshot({
+        mask: [
+          page.locator('div').nth(5),
+          page.locator('div').nth(12),
+        ],
+      })).toMatchSnapshot('should-mask-multiple-elements.png');
+    });
+
+    it('should mask inside iframe', async ({ page, server }) => {
+      await page.setViewportSize({ width: 500, height: 500 });
+      await page.goto(server.PREFIX + '/grid.html');
+      await attachFrame(page, 'frame1', server.PREFIX + '/grid.html');
+      await page.addStyleTag({ content: 'iframe { border: none; }' });
+      expect(await page.screenshot({
+        mask: [
+          page.locator('div').nth(5),
+          page.frameLocator('#frame1').locator('div').nth(12),
+        ],
+      })).toMatchSnapshot('should-mask-inside-iframe.png');
+    });
+
+    it('should mask in parallel', async ({ page, server }) => {
+      await page.setViewportSize({ width: 500, height: 500 });
+      await attachFrame(page, 'frame1', server.PREFIX + '/grid.html');
+      await attachFrame(page, 'frame2', server.PREFIX + '/grid.html');
+      await page.addStyleTag({ content: 'iframe { border: none; }' });
+      const screenshots = await Promise.all([
+        page.screenshot({
+          mask: [ page.frameLocator('#frame1').locator('div').nth(1) ],
+        }),
+        page.screenshot({
+          mask: [ page.frameLocator('#frame2').locator('div').nth(3) ],
+        }),
+      ]);
+      expect(screenshots[0]).toMatchSnapshot('should-mask-in-parallel-1.png');
+      expect(screenshots[1]).toMatchSnapshot('should-mask-in-parallel-2.png');
+    });
+
+    it('should remove mask after screenshot', async ({ page, server }) => {
+      await page.setViewportSize({ width: 500, height: 500 });
+      await page.goto(server.PREFIX + '/grid.html');
+      const screenshot1 = await page.screenshot();
+      await page.screenshot({
+        mask: [ page.locator('div').nth(1) ],
+      });
+      const screenshot2 = await page.screenshot();
+      expect(screenshot1.equals(screenshot2)).toBe(true);
+    });
   });
 });
 
@@ -518,6 +600,7 @@ it.describe('page screenshot animations', () => {
     await page.goto(server.PREFIX + '/rotate-z.html');
     await page.evaluate(async () => {
       window.animation = document.getAnimations()[0];
+      await window.animation.ready;
       window.animation.updatePlaybackRate(0);
       await window.animation.ready;
       window.animation.currentTime = 500;
@@ -615,3 +698,4 @@ it.describe('page screenshot animations', () => {
     ]);
   });
 });
+

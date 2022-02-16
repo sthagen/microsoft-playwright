@@ -603,14 +603,12 @@ export type BrowserTypeConnectParams = {
   headers?: any,
   slowMo?: number,
   timeout?: number,
-  enableSocksProxy?: boolean,
   socksProxyRedirectPortForTest?: number,
 };
 export type BrowserTypeConnectOptions = {
   headers?: any,
   slowMo?: number,
   timeout?: number,
-  enableSocksProxy?: boolean,
   socksProxyRedirectPortForTest?: number,
 };
 export type BrowserTypeConnectResult = {
@@ -1496,6 +1494,10 @@ export type PageScreenshotParams = {
   fullPage?: boolean,
   disableAnimations?: boolean,
   clip?: Rect,
+  mask?: {
+    frame: FrameChannel,
+    selector: string,
+  }[],
 };
 export type PageScreenshotOptions = {
   timeout?: number,
@@ -1505,6 +1507,10 @@ export type PageScreenshotOptions = {
   fullPage?: boolean,
   disableAnimations?: boolean,
   clip?: Rect,
+  mask?: {
+    frame: FrameChannel,
+    selector: string,
+  }[],
 };
 export type PageScreenshotResult = {
   binary: Binary,
@@ -2800,6 +2806,10 @@ export type ElementHandleScreenshotParams = {
   quality?: number,
   omitBackground?: boolean,
   disableAnimations?: boolean,
+  mask?: {
+    frame: FrameChannel,
+    selector: string,
+  }[],
 };
 export type ElementHandleScreenshotOptions = {
   timeout?: number,
@@ -2807,6 +2817,10 @@ export type ElementHandleScreenshotOptions = {
   quality?: number,
   omitBackground?: boolean,
   disableAnimations?: boolean,
+  mask?: {
+    frame: FrameChannel,
+    selector: string,
+  }[],
 };
 export type ElementHandleScreenshotResult = {
   binary: Binary,
