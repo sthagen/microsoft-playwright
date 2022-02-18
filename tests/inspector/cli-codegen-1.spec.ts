@@ -435,6 +435,26 @@ test.describe('cli codegen', () => {
     expect(message.text()).toBe('true');
   });
 
+  test('should check a radio button', async ({ page, openRecorder }) => {
+    const recorder = await openRecorder();
+
+    await recorder.setContentAndWait(`<input id="checkbox" type="radio" name="accept" onchange="console.log(checkbox.checked)"></input>`);
+
+    const selector = await recorder.focusElement('input');
+    expect(selector).toBe('input[name="accept"]');
+
+    const [message, sources] = await Promise.all([
+      page.waitForEvent('console', msg => msg.type() !== 'error'),
+      recorder.waitForOutput('JavaScript', 'check'),
+      page.click('input')
+    ]);
+
+    expect(sources.get('JavaScript').text).toContain(`
+  // Check input[name="accept"]
+  await page.locator('input[name="accept"]').check();`);
+    expect(message.text()).toBe('true');
+  });
+
   test('should check with keyboard', async ({ page, openRecorder }) => {
     const recorder = await openRecorder();
 
@@ -604,17 +624,17 @@ test.describe('cli codegen', () => {
     expect(sources.get('Java').text).toContain(`
       // Click text=link
       page.locator("text=link").click();
-      // assert page.url().equals("about:blank#foo");`);
+      // assertThat(page).hasURL("about:blank#foo");`);
 
     expect(sources.get('Python').text).toContain(`
     # Click text=link
     page.locator(\"text=link\").click()
-    # assert page.url == \"about:blank#foo\"`);
+    # expect(page).to_have_url(\"about:blank#foo\")`);
 
     expect(sources.get('Python Async').text).toContain(`
     # Click text=link
     await page.locator(\"text=link\").click()
-    # assert page.url == \"about:blank#foo\"`);
+    # await expect(page).to_have_url(\"about:blank#foo\")`);
 
     expect(sources.get('C#').text).toContain(`
         // Click text=link

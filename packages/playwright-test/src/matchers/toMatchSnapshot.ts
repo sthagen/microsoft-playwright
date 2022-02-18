@@ -17,7 +17,7 @@
 import type { Expect } from '../types';
 import { currentTestInfo } from '../globals';
 import { compare } from './golden';
-import { addSuffixToFilePath } from '../util';
+import { addSuffixToFilePath, sanitizeForFilePath, trimLongString } from '../util';
 
 // from expect/build/types
 type SyncExpectationResult = {
@@ -26,8 +26,9 @@ type SyncExpectationResult = {
 };
 
 type NameOrSegments = string | string[];
-export function toMatchSnapshot(this: ReturnType<Expect['getState']>, received: Buffer | string, nameOrOptions: NameOrSegments | { name: NameOrSegments, threshold?: number }, optOptions: { threshold?: number } = {}): SyncExpectationResult {
-  let options: { name: NameOrSegments, threshold?: number };
+const SNAPSHOT_COUNTER = Symbol('noname-snapshot-counter');
+export function toMatchSnapshot(this: ReturnType<Expect['getState']>, received: Buffer | string, nameOrOptions: NameOrSegments | { name: NameOrSegments, threshold?: number }, optOptions: { threshold?: number, pixelCount?: number, pixelRatio?: number } = {}): SyncExpectationResult {
+  let options: { name: NameOrSegments, threshold?: number, pixelCount?: number, pixelRatio?: number };
   const testInfo = currentTestInfo();
   if (!testInfo)
     throw new Error(`toMatchSnapshot() must be called during the test`);
@@ -35,12 +36,25 @@ export function toMatchSnapshot(this: ReturnType<Expect['getState']>, received: 
     options = { name: nameOrOptions, ...optOptions };
   else
     options = { ...nameOrOptions };
-  if (!options.name)
-    throw new Error(`toMatchSnapshot() requires a "name" parameter`);
+  if (!options.name) {
+    (testInfo as any)[SNAPSHOT_COUNTER] = ((testInfo as any)[SNAPSHOT_COUNTER] || 0) + 1;
+    const fullTitleWithoutSpec = [
+      ...testInfo.titlePath.slice(1),
+      (testInfo as any)[SNAPSHOT_COUNTER],
+    ].join(' ');
+    options.name = sanitizeForFilePath(trimLongString(fullTitleWithoutSpec)) + determineFileExtension(received);
+  }
 
-  const projectThreshold = testInfo.project.expect?.toMatchSnapshot?.threshold;
-  if (options.threshold === undefined && projectThreshold !== undefined)
-    options.threshold = projectThreshold;
+  options = {
+    ...(testInfo.project.expect?.toMatchSnapshot || {}),
+    ...options,
+  };
+
+  if (options.pixelCount !== undefined && options.pixelCount < 0)
+    throw new Error('`pixelCount` option value must be non-negative integer');
+
+  if (options.pixelRatio !== undefined && (options.pixelRatio < 0 || options.pixelRatio > 1))
+    throw new Error('`pixelRatio` option value must be between 0 and 1');
 
   // sanitizes path if string
   const pathSegments = Array.isArray(options.name) ? options.name : [addSuffixToFilePath(options.name, '', undefined, true)];
@@ -64,4 +78,19 @@ export function toMatchSnapshot(this: ReturnType<Expect['getState']>, received: 
   if (diffPath)
     testInfo.attachments.push({ name: 'diff', contentType, path: diffPath });
   return { pass, message: () => message || '' };
+}
+
+
+function determineFileExtension(file: string | Buffer): string {
+  if (typeof file === 'string')
+    return '.txt';
+  if (compareMagicBytes(file, [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))
+    return '.png';
+  if (compareMagicBytes(file, [0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46, 0x00, 0x01, 0x01]))
+    return '.jpg';
+  return '.bin';
+}
+
+function compareMagicBytes(file: Buffer, magicBytes: number[]): boolean {
+  return Buffer.compare(Buffer.from(magicBytes), file.slice(0, magicBytes.length)) === 0;
 }
