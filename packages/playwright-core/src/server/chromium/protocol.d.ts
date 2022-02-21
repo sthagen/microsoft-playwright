@@ -675,7 +675,7 @@ may be used by the front-end as additional context.
       request?: AffectedRequest;
     }
     export type MixedContentResolutionStatus = "MixedContentBlocked"|"MixedContentAutomaticallyUpgraded"|"MixedContentWarning";
-    export type MixedContentResourceType = "Audio"|"Beacon"|"CSPReport"|"Download"|"EventSource"|"Favicon"|"Font"|"Form"|"Frame"|"Image"|"Import"|"Manifest"|"Ping"|"PluginData"|"PluginResource"|"Prefetch"|"Resource"|"Script"|"ServiceWorker"|"SharedWorker"|"Stylesheet"|"Track"|"Video"|"Worker"|"XMLHttpRequest"|"XSLT";
+    export type MixedContentResourceType = "AttributionSrc"|"Audio"|"Beacon"|"CSPReport"|"Download"|"EventSource"|"Favicon"|"Font"|"Form"|"Frame"|"Image"|"Import"|"Manifest"|"Ping"|"PluginData"|"PluginResource"|"Prefetch"|"Resource"|"Script"|"ServiceWorker"|"SharedWorker"|"Stylesheet"|"Track"|"Video"|"Worker"|"XMLHttpRequest"|"XSLT";
     export interface MixedContentIssueDetails {
       /**
        * The type of resource causing the mixed content issue (css, js, iframe,
@@ -880,10 +880,10 @@ https://www.chromestatus.com/feature/5684870116278272 for more details."
     /**
      * Represents the failure reason when a federated authentication reason fails.
 Should be updated alongside RequestIdTokenStatus in
-third_party/blink/public/mojom/webid/federated_auth_request.mojom to include
+third_party/blink/public/mojom/devtools/inspector_issue.mojom to include
 all cases except for success.
      */
-    export type FederatedAuthRequestIssueReason = "ApprovalDeclined"|"TooManyRequests"|"WellKnownHttpNotFound"|"WellKnownNoResponse"|"WellKnownInvalidResponse"|"ClientIdMetadataHttpNotFound"|"ClientIdMetadataNoResponse"|"ClientIdMetadataInvalidResponse"|"ErrorFetchingSignin"|"InvalidSigninResponse"|"AccountsHttpNotFound"|"AccountsNoResponse"|"AccountsInvalidResponse"|"IdTokenHttpNotFound"|"IdTokenNoResponse"|"IdTokenInvalidResponse"|"IdTokenInvalidRequest"|"ErrorIdToken"|"Canceled";
+    export type FederatedAuthRequestIssueReason = "ApprovalDeclined"|"TooManyRequests"|"ManifestHttpNotFound"|"ManifestNoResponse"|"ManifestInvalidResponse"|"ClientMetadataHttpNotFound"|"ClientMetadataNoResponse"|"ClientMetadataInvalidResponse"|"ErrorFetchingSignin"|"InvalidSigninResponse"|"AccountsHttpNotFound"|"AccountsNoResponse"|"AccountsInvalidResponse"|"IdTokenHttpNotFound"|"IdTokenNoResponse"|"IdTokenInvalidResponse"|"IdTokenInvalidRequest"|"ErrorIdToken"|"Canceled";
     /**
      * This issue tracks client hints related issues. It's used to deprecate old
 features, encourage the use of new ones, and provide general guidance.
@@ -1714,6 +1714,11 @@ starting with the innermost one, going outwards.
 The array enumerates container queries starting with the innermost one, going outwards.
        */
       containerQueries?: CSSContainerQuery[];
+      /**
+       * @supports CSS at-rule array.
+The array enumerates @supports at-rules starting with the innermost one, going outwards.
+       */
+      supports?: CSSSupports[];
     }
     /**
      * CSS coverage information.
@@ -1937,6 +1942,24 @@ available).
        * Optional name for the container.
        */
       name?: string;
+    }
+    /**
+     * CSS Supports at-rule descriptor.
+     */
+    export interface CSSSupports {
+      /**
+       * Supports rule text.
+       */
+      text: string;
+      /**
+       * The associated rule header range in the enclosing stylesheet (if
+available).
+       */
+      range?: SourceRange;
+      /**
+       * Identifier of the stylesheet containing this object (if exists).
+       */
+      styleSheetId?: StyleSheetId;
     }
     /**
      * Information about amount of glyphs that were rendered with given font.
@@ -2395,6 +2418,20 @@ property
        * The resulting CSS container query rule after modification.
        */
       containerQuery: CSSContainerQuery;
+    }
+    /**
+     * Modifies the expression of a supports at-rule.
+     */
+    export type setSupportsTextParameters = {
+      styleSheetId: StyleSheetId;
+      range: SourceRange;
+      text: string;
+    }
+    export type setSupportsTextReturnValue = {
+      /**
+       * The resulting CSS Supports rule after modification.
+       */
+      supports: CSSSupports;
     }
     /**
      * Modifies the rule selector.
@@ -5367,11 +5404,6 @@ virtualTimeBudgetExpired event is sent.
 forwards to prevent deadlock.
        */
       maxVirtualTimeTaskStarvationCount?: number;
-      /**
-       * If set the virtual time policy change should be deferred until any frame starts navigating.
-Note any previous deferred policy change is superseded.
-       */
-      waitForNavigation?: boolean;
       /**
        * If set, base::Time::Now will be overridden to initially return this value.
        */
@@ -10067,7 +10099,7 @@ Backend then generates 'inspectNodeRequested' event upon element selection.
      * All Permissions Policy features. This enum should match the one defined
 in third_party/blink/renderer/core/permissions_policy/permissions_policy_features.json5.
      */
-    export type PermissionsPolicyFeature = "accelerometer"|"ambient-light-sensor"|"attribution-reporting"|"autoplay"|"camera"|"ch-dpr"|"ch-device-memory"|"ch-downlink"|"ch-ect"|"ch-prefers-color-scheme"|"ch-rtt"|"ch-ua"|"ch-ua-arch"|"ch-ua-bitness"|"ch-ua-platform"|"ch-ua-model"|"ch-ua-mobile"|"ch-ua-full"|"ch-ua-full-version"|"ch-ua-full-version-list"|"ch-ua-platform-version"|"ch-ua-reduced"|"ch-ua-wow64"|"ch-viewport-height"|"ch-viewport-width"|"ch-width"|"clipboard-read"|"clipboard-write"|"cross-origin-isolated"|"direct-sockets"|"display-capture"|"document-domain"|"encrypted-media"|"execution-while-out-of-viewport"|"execution-while-not-rendered"|"focus-without-user-activation"|"fullscreen"|"frobulate"|"gamepad"|"geolocation"|"gyroscope"|"hid"|"idle-detection"|"interest-cohort"|"join-ad-interest-group"|"keyboard-map"|"magnetometer"|"microphone"|"midi"|"otp-credentials"|"payment"|"picture-in-picture"|"publickey-credentials-get"|"run-ad-auction"|"screen-wake-lock"|"serial"|"shared-autofill"|"storage-access-api"|"sync-xhr"|"trust-token-redemption"|"usb"|"vertical-scroll"|"web-share"|"window-placement"|"xr-spatial-tracking";
+    export type PermissionsPolicyFeature = "accelerometer"|"ambient-light-sensor"|"attribution-reporting"|"autoplay"|"camera"|"ch-dpr"|"ch-device-memory"|"ch-downlink"|"ch-ect"|"ch-prefers-color-scheme"|"ch-rtt"|"ch-ua"|"ch-ua-arch"|"ch-ua-bitness"|"ch-ua-platform"|"ch-ua-model"|"ch-ua-mobile"|"ch-ua-full"|"ch-ua-full-version"|"ch-ua-full-version-list"|"ch-ua-platform-version"|"ch-ua-reduced"|"ch-ua-wow64"|"ch-viewport-height"|"ch-viewport-width"|"ch-width"|"ch-partitioned-cookies"|"clipboard-read"|"clipboard-write"|"cross-origin-isolated"|"direct-sockets"|"display-capture"|"document-domain"|"encrypted-media"|"execution-while-out-of-viewport"|"execution-while-not-rendered"|"focus-without-user-activation"|"fullscreen"|"frobulate"|"gamepad"|"geolocation"|"gyroscope"|"hid"|"idle-detection"|"join-ad-interest-group"|"keyboard-map"|"magnetometer"|"microphone"|"midi"|"otp-credentials"|"payment"|"picture-in-picture"|"publickey-credentials-get"|"run-ad-auction"|"screen-wake-lock"|"serial"|"shared-autofill"|"storage-access-api"|"sync-xhr"|"trust-token-redemption"|"usb"|"vertical-scroll"|"web-share"|"window-placement"|"xr-spatial-tracking";
     /**
      * Reason for a permissions policy feature to be disabled.
      */
@@ -17219,6 +17251,7 @@ Error was thrown.
     "CSS.setKeyframeKey": CSS.setKeyframeKeyParameters;
     "CSS.setMediaText": CSS.setMediaTextParameters;
     "CSS.setContainerQueryText": CSS.setContainerQueryTextParameters;
+    "CSS.setSupportsText": CSS.setSupportsTextParameters;
     "CSS.setRuleSelector": CSS.setRuleSelectorParameters;
     "CSS.setStyleSheetText": CSS.setStyleSheetTextParameters;
     "CSS.setStyleTexts": CSS.setStyleTextsParameters;
@@ -17745,6 +17778,7 @@ Error was thrown.
     "CSS.setKeyframeKey": CSS.setKeyframeKeyReturnValue;
     "CSS.setMediaText": CSS.setMediaTextReturnValue;
     "CSS.setContainerQueryText": CSS.setContainerQueryTextReturnValue;
+    "CSS.setSupportsText": CSS.setSupportsTextReturnValue;
     "CSS.setRuleSelector": CSS.setRuleSelectorReturnValue;
     "CSS.setStyleSheetText": CSS.setStyleSheetTextReturnValue;
     "CSS.setStyleTexts": CSS.setStyleTextsReturnValue;
