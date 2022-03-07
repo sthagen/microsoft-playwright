@@ -8066,10 +8066,12 @@ export interface ElementHandle<T=Node> extends JSHandle<T> {
    */
   screenshot(options?: {
     /**
-     * When true, stops CSS animations, CSS transitions and Web Animations. Animations get different treatment depending on
-     * their duration:
+     * When set to `"disabled"`, stops CSS animations, CSS transitions and Web Animations. Animations get different treatment
+     * depending on their duration:
+     * - finite animations are fast-forwarded to completion, so they'll fire `transitionend` event.
+     * - infinite animations are canceled to initial state, and then played over after the screenshot.
      */
-    disableAnimations?: boolean;
+    animations?: "disabled";
 
     /**
      * Specify locators that should be masked when the screenshot is taken. Masked elements will be overlayed with a pink box
@@ -9108,6 +9110,12 @@ export interface Locator {
   }): Promise<null|string>;
 
   /**
+   * Highlight the corresponding element(s) on the screen. Useful for debugging, don't commit the code that uses
+   * [locator.highlight()](https://playwright.dev/docs/api/class-locator#locator-highlight).
+   */
+  highlight(): Promise<void>;
+
+  /**
    * This method hovers over the element by performing the following steps:
    * 1. Wait for [actionability](https://playwright.dev/docs/actionability) checks on the element, unless `force` option is set.
    * 1. Scroll the element into view if needed.
@@ -9373,50 +9381,7 @@ export interface Locator {
    * screenshot. If the element is detached from DOM, the method throws an error.
    * @param options
    */
-  screenshot(options?: {
-    /**
-     * When true, stops CSS animations, CSS transitions and Web Animations. Animations get different treatment depending on
-     * their duration:
-     */
-    disableAnimations?: boolean;
-
-    /**
-     * Specify locators that should be masked when the screenshot is taken. Masked elements will be overlayed with a pink box
-     * `#FF00FF` that completely covers its bounding box.
-     */
-    mask?: Array<Locator>;
-
-    /**
-     * Hides default white background and allows capturing screenshots with transparency. Not applicable to `jpeg` images.
-     * Defaults to `false`.
-     */
-    omitBackground?: boolean;
-
-    /**
-     * The file path to save the image to. The screenshot type will be inferred from file extension. If `path` is a relative
-     * path, then it is resolved relative to the current working directory. If no path is provided, the image won't be saved to
-     * the disk.
-     */
-    path?: string;
-
-    /**
-     * The quality of the image, between 0-100. Not applicable to `png` images.
-     */
-    quality?: number;
-
-    /**
-     * Maximum time in milliseconds, defaults to 30 seconds, pass `0` to disable timeout. The default value can be changed by
-     * using the
-     * [browserContext.setDefaultTimeout(timeout)](https://playwright.dev/docs/api/class-browsercontext#browser-context-set-default-timeout)
-     * or [page.setDefaultTimeout(timeout)](https://playwright.dev/docs/api/class-page#page-set-default-timeout) methods.
-     */
-    timeout?: number;
-
-    /**
-     * Specify screenshot type, defaults to `png`.
-     */
-    type?: "png"|"jpeg";
-  }): Promise<Buffer>;
+  screenshot(options?: LocatorScreenshotOptions): Promise<Buffer>;
 
   /**
    * This method waits for [actionability](https://playwright.dev/docs/actionability) checks, then tries to scroll element into view, unless it is
@@ -11055,8 +11020,14 @@ export {};
 export interface Android {
   /**
    * Returns the list of detected Android devices.
+   * @param options
    */
-  devices(): Promise<Array<AndroidDevice>>;
+  devices(options?: {
+    /**
+     * Optional port to establish ADB server connection.
+     */
+    port?: number;
+  }): Promise<Array<AndroidDevice>>;
 
   /**
    * This setting will change the default maximum time for all the methods accepting `timeout` option.
@@ -11067,7 +11038,7 @@ export interface Android {
 
 /**
  * [AndroidDevice] represents a connected device, either real hardware or emulated. Devices can be obtained using
- * [android.devices()](https://playwright.dev/docs/api/class-android#android-devices).
+ * [android.devices([options])](https://playwright.dev/docs/api/class-android#android-devices).
  */
 export interface AndroidDevice {
   /**
@@ -15607,6 +15578,53 @@ export interface ConnectOptions {
   timeout?: number;
 }
 
+export interface LocatorScreenshotOptions {
+  /**
+   * When set to `"disabled"`, stops CSS animations, CSS transitions and Web Animations. Animations get different treatment
+   * depending on their duration:
+   * - finite animations are fast-forwarded to completion, so they'll fire `transitionend` event.
+   * - infinite animations are canceled to initial state, and then played over after the screenshot.
+   */
+  animations?: "disabled";
+
+  /**
+   * Specify locators that should be masked when the screenshot is taken. Masked elements will be overlayed with a pink box
+   * `#FF00FF` that completely covers its bounding box.
+   */
+  mask?: Array<Locator>;
+
+  /**
+   * Hides default white background and allows capturing screenshots with transparency. Not applicable to `jpeg` images.
+   * Defaults to `false`.
+   */
+  omitBackground?: boolean;
+
+  /**
+   * The file path to save the image to. The screenshot type will be inferred from file extension. If `path` is a relative
+   * path, then it is resolved relative to the current working directory. If no path is provided, the image won't be saved to
+   * the disk.
+   */
+  path?: string;
+
+  /**
+   * The quality of the image, between 0-100. Not applicable to `png` images.
+   */
+  quality?: number;
+
+  /**
+   * Maximum time in milliseconds, defaults to 30 seconds, pass `0` to disable timeout. The default value can be changed by
+   * using the
+   * [browserContext.setDefaultTimeout(timeout)](https://playwright.dev/docs/api/class-browsercontext#browser-context-set-default-timeout)
+   * or [page.setDefaultTimeout(timeout)](https://playwright.dev/docs/api/class-page#page-set-default-timeout) methods.
+   */
+  timeout?: number;
+
+  /**
+   * Specify screenshot type, defaults to `png`.
+   */
+  type?: "png"|"jpeg";
+}
+
 interface ElementHandleWaitForSelectorOptions {
   /**
    * Defaults to `'visible'`. Can be either:
@@ -15699,6 +15717,14 @@ interface PageWaitForFunctionOptions {
 
 export interface PageScreenshotOptions {
   /**
+   * When set to `"disabled"`, stops CSS animations, CSS transitions and Web Animations. Animations get different treatment
+   * depending on their duration:
+   * - finite animations are fast-forwarded to completion, so they'll fire `transitionend` event.
+   * - infinite animations are canceled to initial state, and then played over after the screenshot.
+   */
+  animations?: "disabled";
+
+  /**
    * An object which specifies clipping of the resulting image. Should have the following fields:
    */
   clip?: {
@@ -15722,12 +15748,6 @@ export interface PageScreenshotOptions {
      */
     height: number;
   };
-
-  /**
-   * When true, stops CSS animations, CSS transitions and Web Animations. Animations get different treatment depending on
-   * their duration:
-   */
-  disableAnimations?: boolean;
 
   /**
    * When true, takes a screenshot of the full scrollable page, instead of the currently visible viewport. Defaults to

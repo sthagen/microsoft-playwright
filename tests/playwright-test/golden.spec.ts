@@ -17,7 +17,7 @@
 import colors from 'colors/safe';
 import * as fs from 'fs';
 import * as path from 'path';
-import { test, expect, stripAnsi, createWhiteImage, paintBlackPixels } from './playwright-test-fixtures';
+import { test, expect, stripAnsi } from './playwright-test-fixtures';
 
 const files = {
   'helper.ts': `
@@ -74,13 +74,11 @@ test('should generate default name', async ({ runInlineTest }, testInfo) => {
 
 test('should compile with different option combinations', async ({ runTSC }) => {
   const result = await runTSC({
-    'a.spec.js': `
-      const { test, expect } = pwt;
+    'a.spec.ts': `
+      const { test } = pwt;
       test('is a test', async ({ page }) => {
         expect('foo').toMatchSnapshot();
         expect('foo').toMatchSnapshot({ threshold: 0.2 });
-        expect('foo').toMatchSnapshot({ pixelRatio: 0.2 });
-        expect('foo').toMatchSnapshot({ pixelCount: 0.2 });
       });
     `
   });
@@ -396,190 +394,6 @@ test('should compare binary', async ({ runInlineTest }) => {
   expect(result.exitCode).toBe(0);
 });
 
-test('should throw for invalid pixelCount values', async ({ runInlineTest }) => {
-  expect((await runInlineTest({
-    ...files,
-    'a.spec.js': `
-      const { test } = require('./helper');
-      test('is a test', ({}) => {
-        expect(Buffer.from([1,2,3,4])).toMatchSnapshot({
-          pixelCount: -1,
-        });
-      });
-    `
-  })).exitCode).toBe(1);
-});
-
-test('should throw for invalid pixelRatio values', async ({ runInlineTest }) => {
-  expect((await runInlineTest({
-    ...files,
-    'a.spec.js': `
-      const { test } = require('./helper');
-      test('is a test', ({}) => {
-        expect(Buffer.from([1,2,3,4])).toMatchSnapshot({
-          pixelRatio: 12,
-        });
-      });
-    `
-  })).exitCode).toBe(1);
-});
-
-test('should respect pixelCount option', async ({ runInlineTest }) => {
-  const width = 20, height = 20;
-  const BAD_PIXELS = 120;
-  const image1 = createWhiteImage(width, height);
-  const image2 = paintBlackPixels(image1, BAD_PIXELS);
-
-  expect((await runInlineTest({
-    ...files,
-    'a.spec.js-snapshots/snapshot.png': image1,
-    'a.spec.js': `
-      const { test } = require('./helper');
-      test('is a test', ({}) => {
-        expect(Buffer.from('${image2.toString('base64')}', 'base64')).toMatchSnapshot('snapshot.png');
-      });
-    `
-  })).exitCode, 'make sure default comparison fails').toBe(1);
-
-  expect((await runInlineTest({
-    ...files,
-    'a.spec.js-snapshots/snapshot.png': image1,
-    'a.spec.js': `
-      const { test } = require('./helper');
-      test('is a test', ({}) => {
-        expect(Buffer.from('${image2.toString('base64')}', 'base64')).toMatchSnapshot('snapshot.png', {
-          pixelCount: ${BAD_PIXELS}
-        });
-      });
-    `
-  })).exitCode, 'make sure pixelCount option is respected').toBe(0);
-
-  expect((await runInlineTest({
-    ...files,
-    'playwright.config.ts': `
-      module.exports = { projects: [
-        { expect: { toMatchSnapshot: { pixelCount: ${BAD_PIXELS} } } },
-      ]};
-    `,
-    'a.spec.js-snapshots/snapshot.png': image1,
-    'a.spec.js': `
-      const { test } = require('./helper');
-      test('is a test', ({}) => {
-        expect(Buffer.from('${image2.toString('base64')}', 'base64')).toMatchSnapshot('snapshot.png');
-      });
-    `
-  })).exitCode, 'make sure pixelCount option in project config is respected').toBe(0);
-});
-
-test('should respect pixelRatio option', async ({ runInlineTest }) => {
-  const width = 20, height = 20;
-  const BAD_RATIO = 0.25;
-  const BAD_PIXELS = Math.floor(width * height * BAD_RATIO);
-  const image1 = createWhiteImage(width, height);
-  const image2 = paintBlackPixels(image1, BAD_PIXELS);
-
-  expect((await runInlineTest({
-    ...files,
-    'a.spec.js-snapshots/snapshot.png': image1,
-    'a.spec.js': `
-      const { test } = require('./helper');
-      test('is a test', ({}) => {
-        expect(Buffer.from('${image2.toString('base64')}', 'base64')).toMatchSnapshot('snapshot.png');
-      });
-    `
-  })).exitCode, 'make sure default comparison fails').toBe(1);
-
-  expect((await runInlineTest({
-    ...files,
-    'a.spec.js-snapshots/snapshot.png': image1,
-    'a.spec.js': `
-      const { test } = require('./helper');
-      test('is a test', ({}) => {
-        expect(Buffer.from('${image2.toString('base64')}', 'base64')).toMatchSnapshot('snapshot.png', {
-          pixelRatio: ${BAD_RATIO}
-        });
-      });
-    `
-  })).exitCode, 'make sure pixelRatio option is respected').toBe(0);
-
-  expect((await runInlineTest({
-    ...files,
-    'playwright.config.ts': `
-      module.exports = { projects: [
-        { expect: { toMatchSnapshot: { pixelRatio: ${BAD_RATIO} } } },
-      ]};
-    `,
-    'a.spec.js-snapshots/snapshot.png': image1,
-    'a.spec.js': `
-      const { test } = require('./helper');
-      test('is a test', ({}) => {
-        expect(Buffer.from('${image2.toString('base64')}', 'base64')).toMatchSnapshot('snapshot.png');
-      });
-    `
-  })).exitCode, 'make sure pixelCount option in project config is respected').toBe(0);
-});
-
-test('should satisfy both pixelRatio and pixelCount', async ({ runInlineTest }) => {
-  const width = 20, height = 20;
-  const BAD_RATIO = 0.25;
-  const BAD_COUNT = Math.floor(width * height * BAD_RATIO);
-  const image1 = createWhiteImage(width, height);
-  const image2 = paintBlackPixels(image1, BAD_COUNT);
-
-  expect((await runInlineTest({
-    ...files,
-    'a.spec.js-snapshots/snapshot.png': image1,
-    'a.spec.js': `
-      const { test } = require('./helper');
-      test('is a test', ({}) => {
-        expect(Buffer.from('${image2.toString('base64')}', 'base64')).toMatchSnapshot('snapshot.png');
-      });
-    `
-  })).exitCode, 'make sure default comparison fails').toBe(1);
-
-  expect((await runInlineTest({
-    ...files,
-    'a.spec.js-snapshots/snapshot.png': image1,
-    'a.spec.js': `
-      const { test } = require('./helper');
-      test('is a test', ({}) => {
-        expect(Buffer.from('${image2.toString('base64')}', 'base64')).toMatchSnapshot('snapshot.png', {
-          pixelCount: ${Math.floor(BAD_COUNT / 2)},
-          pixelRatio: ${BAD_RATIO},
-        });
-      });
-    `
-  })).exitCode, 'make sure it fails when pixelCount < actualBadPixels < pixelRatio').toBe(1);
-
-  expect((await runInlineTest({
-    ...files,
-    'a.spec.js-snapshots/snapshot.png': image1,
-    'a.spec.js': `
-      const { test } = require('./helper');
-      test('is a test', ({}) => {
-        expect(Buffer.from('${image2.toString('base64')}', 'base64')).toMatchSnapshot('snapshot.png', {
-          pixelCount: ${BAD_COUNT},
-          pixelRatio: ${BAD_RATIO / 2},
-        });
-      });
-    `
-  })).exitCode, 'make sure it fails when pixelRatio < actualBadPixels < pixelCount').toBe(1);
-
-  expect((await runInlineTest({
-    ...files,
-    'a.spec.js-snapshots/snapshot.png': image1,
-    'a.spec.js': `
-      const { test } = require('./helper');
-      test('is a test', ({}) => {
-        expect(Buffer.from('${image2.toString('base64')}', 'base64')).toMatchSnapshot('snapshot.png', {
-          pixelCount: ${BAD_COUNT},
-          pixelRatio: ${BAD_RATIO},
-        });
-      });
-    `
-  })).exitCode, 'make sure it passes when actualBadPixels < pixelRatio && actualBadPixels < pixelCount').toBe(0);
-});
-
 test('should compare PNG images', async ({ runInlineTest }) => {
   const result = await runInlineTest({
     ...files,
@@ -610,7 +424,7 @@ test('should compare different PNG images', async ({ runInlineTest }, testInfo) 
 
   const outputText = stripAnsi(result.output);
   expect(result.exitCode).toBe(1);
-  expect(outputText).toContain('Snapshot comparison failed:');
+  expect(outputText).toContain('Screenshot comparison failed:');
   const expectedSnapshotArtifactPath = testInfo.outputPath('test-results', 'a-is-a-test', 'snapshot-expected.png');
   const actualSnapshotArtifactPath = testInfo.outputPath('test-results', 'a-is-a-test', 'snapshot-actual.png');
   const diffSnapshotArtifactPath = testInfo.outputPath('test-results', 'a-is-a-test', 'snapshot-diff.png');
@@ -915,7 +729,7 @@ test('should attach expected/actual and no diff', async ({ runInlineTest }, test
   });
 
   const outputText = stripAnsi(result.output);
-  expect(outputText).toContain('Sizes differ; expected image 2px X 2px, but got 1px X 1px.');
+  expect(outputText).toContain('Expected an image 2px by 2px, received 1px by 1px.');
   const attachments = outputText.split('\n').filter(l => l.startsWith('## ')).map(l => l.substring(3)).map(l => JSON.parse(l))[0];
   for (const attachment of attachments)
     attachment.path = attachment.path.replace(/\\/g, '/').replace(/.*test-results\//, '');

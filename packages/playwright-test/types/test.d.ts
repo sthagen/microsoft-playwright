@@ -43,18 +43,23 @@ type ExpectSettings = {
    * Default timeout for async expect matchers in milliseconds, defaults to 5000ms.
    */
   timeout?: number;
-  toMatchSnapshot?: {
-    /** An acceptable percieved color difference in the [YIQ color space](https://en.wikipedia.org/wiki/YIQ) between pixels in compared images, between zero (strict) and one (lax). Defaults to `0.2`.
+  toHaveScreenshot?: {
+    /** An acceptable perceived color difference in the [YIQ color space](https://en.wikipedia.org/wiki/YIQ) between pixels in compared images, between zero (strict) and one (lax). Defaults to `0.2`.
      */
     threshold?: number,
     /**
      * An acceptable amount of pixels that could be different, unset by default.
      */
-    pixelCount?: number,
+    maxDiffPixels?: number,
     /**
      * An acceptable ratio of pixels that are different to the total amount of pixels, between `0` and `1` , unset by default.
      */
-    pixelRatio?: number,
+    maxDiffPixelRatio?: number,
+  }
+  toMatchSnapshot?: {
+    /** An acceptable perceived color difference in the [YIQ color space](https://en.wikipedia.org/wiki/YIQ) between pixels in compared images, between zero (strict) and one (lax). Defaults to `0.2`.
+     */
+    threshold?: number,
   }
 };
 
@@ -126,6 +131,29 @@ interface TestProject {
    */
   expect?: ExpectSettings;
   /**
+   * Playwright Test runs tests in parallel. In order to achieve that, it runs several worker processes that run at the same
+   * time. By default, **test files** are run in parallel. Tests in a single file are run in order, in the same worker
+   * process.
+   *
+   * You can configure entire test project to concurrently run all tests in all files using this option.
+   */
+  fullyParallel?: boolean;
+  /**
+   * Filter to only run tests with a title matching one of the patterns. For example, passing `grep: /cart/` should only run
+   * tests with "cart" in the title. Also available globally and in the [command line](https://playwright.dev/docs/test-cli) with the `-g` option.
+   *
+   * `grep` option is also useful for [tagging tests](https://playwright.dev/docs/test-annotations#tag-tests).
+   */
+  grep?: RegExp | RegExp[];
+  /**
+   * Filter to only run tests with a title **not** matching one of the patterns. This is the opposite of
+   * [testProject.grep](https://playwright.dev/docs/api/class-testproject#test-project-grep). Also available globally and in
+   * the [command line](https://playwright.dev/docs/test-cli) with the `--grep-invert` option.
+   *
+   * `grepInvert` option is also useful for [tagging tests](https://playwright.dev/docs/test-annotations#tag-tests).
+   */
+  grepInvert?: RegExp | RegExp[] | null;
+  /**
    * Any JSON-serializable metadata that will be put directly to the test report.
    */
   metadata?: any;
@@ -134,7 +162,8 @@ interface TestProject {
    */
   name?: string;
   /**
-   * The base directory, relative to the config file, for snapshot files created with `toMatchSnapshot`. Defaults to
+   * The base directory, relative to the config file, for snapshot files created with `toMatchSnapshot` and
+   * `toHaveScreenshot`. Defaults to
    * [testProject.testDir](https://playwright.dev/docs/api/class-testproject#test-project-test-dir).
    *
    * The directory for each test can be accessed by
@@ -438,6 +467,14 @@ interface TestConfig {
    */
   forbidOnly?: boolean;
   /**
+   * Playwright Test runs tests in parallel. In order to achieve that, it runs several worker processes that run at the same
+   * time. By default, **test files** are run in parallel. Tests in a single file are run in order, in the same worker
+   * process.
+   *
+   * You can configure entire test run to concurrently execute all tests in all files using this option.
+   */
+  fullyParallel?: boolean;
+  /**
    * Path to the global setup file. This file will be required and run before all the tests. It must export a single function
    * that takes a [`TestConfig`] argument.
    *
@@ -664,8 +701,8 @@ interface TestConfig {
    * const config: PlaywrightTestConfig = {
    *   expect: {
    *     timeout: 10000,
-   *     toMatchSnapshot: {
-   *       threshold: 0.3,
+   *     toHaveScreenshot: {
+   *       maxDiffPixels: 10,
    *     },
    *   },
    * };
@@ -680,7 +717,8 @@ interface TestConfig {
   metadata?: any;
   name?: string;
   /**
-   * The base directory, relative to the config file, for snapshot files created with `toMatchSnapshot`. Defaults to
+   * The base directory, relative to the config file, for snapshot files created with `toMatchSnapshot` and
+   * `toHaveScreenshot`. Defaults to
    * [testConfig.testDir](https://playwright.dev/docs/api/class-testconfig#test-config-test-dir).
    *
    * The directory for each test can be accessed by
@@ -907,6 +945,14 @@ export interface FullConfig<TestArgs = {}, WorkerArgs = {}> {
    *
    */
   forbidOnly: boolean;
+  /**
+   * Playwright Test runs tests in parallel. In order to achieve that, it runs several worker processes that run at the same
+   * time. By default, **test files** are run in parallel. Tests in a single file are run in order, in the same worker
+   * process.
+   *
+   * You can configure entire test run to concurrently execute all tests in all files using this option.
+   */
+  fullyParallel: boolean;
   /**
    * Path to the global setup file. This file will be required and run before all the tests. It must export a single function
    * that takes a [`TestConfig`] argument.
@@ -1525,9 +1571,9 @@ export interface TestInfo {
   stderr: (string | Buffer)[];
   /**
    * Suffix used to differentiate snapshots between multiple test configurations. For example, if snapshots depend on the
-   * platform, you can set `testInfo.snapshotSuffix` equal to `process.platform`. In this case
-   * `expect(value).toMatchSnapshot(snapshotName)` will use different snapshots depending on the platform. Learn more about
-   * [snapshots](https://playwright.dev/docs/test-snapshots).
+   * platform, you can set `testInfo.snapshotSuffix` equal to `process.platform`. In this case both
+   * `expect(value).toMatchSnapshot(snapshotName)` and `expect(page).toHaveScreenshot(snapshotName)` will use different
+   * snapshots depending on the platform. Learn more about [snapshots](https://playwright.dev/docs/test-snapshots).
    */
   snapshotSuffix: string;
   /**

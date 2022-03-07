@@ -703,17 +703,35 @@ The default value can be changed by using the [`method: BrowserContext.setDefaul
 Maximum time in milliseconds, defaults to 30 seconds, pass `0` to disable timeout. The default value can be changed by
 using the [`method: AndroidDevice.setDefaultTimeout`] method.
 
-## assertions-timeout
+## js-assertions-timeout
 * langs: js
 - `timeout` <[float]>
 
-Time to retry the assertion for. Defaults to `timeout` in [`property: TestConfig.expect`].
+Time to retry the assertion for. Defaults to `timeout` in `TestConfig.expect`.
 
-## assertions-timeout
+## csharp-java-python-assertions-timeout
 * langs: java, python, csharp
 - `timeout` <[float]>
 
 Time to retry the assertion for.
+
+## assertions-max-diff-pixels
+* langs: js
+- `maxDiffPixels` <[int]>
+
+An acceptable amount of pixels that could be different, default is configurable with `TestConfig.expect`. Default is configurable with `TestConfig.expect`. Unset by default.
+
+## assertions-max-diff-pixel-ratio
+* langs: js
+- `maxDiffPixelRatio` <[float]>
+
+An acceptable ratio of pixels that are different to the total amount of pixels, between `0` and `1`. Default is configurable with `TestConfig.expect`. Unset by default.
+
+## assertions-threshold
+* langs: js
+- `threshold` <[float]>
+
+An acceptable perceived color difference in the [YIQ color space](https://en.wikipedia.org/wiki/YIQ) between the same pixel in compared images, between zero (strict) and one (lax), default is configurable with `TestConfig.expect`. Defaults to `0.2`.
 
 ## shared-context-params-list
 - %%-context-option-acceptdownloads-%%
@@ -883,12 +901,12 @@ Note that outer and inner locators must belong to the same frame. Inner locator 
 - %%-locator-option-has-text-%%
 - %%-locator-option-has-%%
 
-## screenshot-option-disable-animations
-- `disableAnimations` <[boolean]>
+## screenshot-option-animations
+- `animations` <"disabled">
 
-When true, stops CSS animations, CSS transitions and Web Animations. Animations get different treatment depending on their duration:
-- finite animations are fast-forwarded to completion, so they'll fire `transitionend` event.
-- infinite animations are canceled to initial state, and then played over after the screenshot.
+When set to `"disabled"`, stops CSS animations, CSS transitions and Web Animations. Animations get different treatment depending on their duration:
+* finite animations are fast-forwarded to completion, so they'll fire `transitionend` event.
+* infinite animations are canceled to initial state, and then played over after the screenshot.
 
 ## screenshot-option-omit-background
 - `omitBackground` <[boolean]>
@@ -919,8 +937,23 @@ Specify screenshot type, defaults to `png`.
 Specify locators that should be masked when the screenshot is taken. Masked elements will be overlayed with
 a pink box `#FF00FF` that completely covers its bounding box.
 
+## screenshot-option-full-page
+- `fullPage` <[boolean]>
+
+When true, takes a screenshot of the full scrollable page, instead of the currently visible viewport. Defaults to
+`false`.
+
+## screenshot-option-clip
+- `clip` <[Object]>
+  - `x` <[float]> x-coordinate of top-left corner of clip area
+  - `y` <[float]> y-coordinate of top-left corner of clip area
+  - `width` <[float]> width of clipping area
+  - `height` <[float]> height of clipping area
+
+An object which specifies clipping of the resulting image. Should have the following fields:
+
 ## screenshot-options-common-list
-- %%-screenshot-option-disable-animations-%%
+- %%-screenshot-option-animations-%%
 - %%-screenshot-option-omit-background-%%
 - %%-screenshot-option-quality-%%
 - %%-screenshot-option-path-%%

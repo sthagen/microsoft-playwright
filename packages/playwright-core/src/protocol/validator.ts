@@ -540,13 +540,37 @@ export function createScheme(tChannel: (name: string) => Validator): Scheme {
     timeout: tOptional(tNumber),
     waitUntil: tOptional(tType('LifecycleEvent')),
   });
+  scheme.PageExpectScreenshotParams = tObject({
+    expected: tOptional(tBinary),
+    timeout: tOptional(tNumber),
+    isNot: tBoolean,
+    locator: tOptional(tObject({
+      frame: tChannel('Frame'),
+      selector: tString,
+    })),
+    comparatorOptions: tOptional(tObject({
+      maxDiffPixels: tOptional(tNumber),
+      maxDiffPixelRatio: tOptional(tNumber),
+      threshold: tOptional(tNumber),
+    })),
+    screenshotOptions: tOptional(tObject({
+      omitBackground: tOptional(tBoolean),
+      fullPage: tOptional(tBoolean),
+      animations: tOptional(tEnum(['disabled'])),
+      clip: tOptional(tType('Rect')),
+      mask: tOptional(tArray(tObject({
+        frame: tChannel('Frame'),
+        selector: tString,
+      }))),
+    })),
+  });
   scheme.PageScreenshotParams = tObject({
     timeout: tOptional(tNumber),
     type: tOptional(tEnum(['png', 'jpeg'])),
     quality: tOptional(tNumber),
     omitBackground: tOptional(tBoolean),
     fullPage: tOptional(tBoolean),
-    disableAnimations: tOptional(tBoolean),
+    animations: tOptional(tEnum(['disabled'])),
     clip: tOptional(tType('Rect')),
     mask: tOptional(tArray(tObject({
       frame: tChannel('Frame'),
@@ -1041,7 +1065,7 @@ export function createScheme(tChannel: (name: string) => Validator): Scheme {
     type: tOptional(tEnum(['png', 'jpeg'])),
     quality: tOptional(tNumber),
     omitBackground: tOptional(tBoolean),
-    disableAnimations: tOptional(tBoolean),
+    animations: tOptional(tEnum(['disabled'])),
     mask: tOptional(tArray(tObject({
       frame: tChannel('Frame'),
       selector: tString,
@@ -1247,7 +1271,9 @@ export function createScheme(tChannel: (name: string) => Validator): Scheme {
     arg: tType('SerializedArgument'),
   });
   scheme.ElectronApplicationCloseParams = tOptional(tObject({}));
-  scheme.AndroidDevicesParams = tOptional(tObject({}));
+  scheme.AndroidDevicesParams = tObject({
+    port: tOptional(tNumber),
+  });
   scheme.AndroidSetDefaultTimeoutNoReplyParams = tObject({
     timeout: tNumber,
   });
@@ -1335,7 +1361,15 @@ export function createScheme(tChannel: (name: string) => Validator): Scheme {
     steps: tNumber,
   });
   scheme.AndroidDeviceLaunchBrowserParams = tObject({
-    pkg: tOptional(tString),
+    noDefaultViewport: tOptional(tBoolean),
+    viewport: tOptional(tObject({
+      width: tNumber,
+      height: tNumber,
+    })),
+    screen: tOptional(tObject({
+      width: tNumber,
+      height: tNumber,
+    })),
     ignoreHTTPSErrors: tOptional(tBoolean),
     javaScriptEnabled: tOptional(tBoolean),
     bypassCSP: tOptional(tBoolean),
@@ -1361,6 +1395,7 @@ export function createScheme(tChannel: (name: string) => Validator): Scheme {
     reducedMotion: tOptional(tEnum(['reduce', 'no-preference'])),
     forcedColors: tOptional(tEnum(['active', 'none'])),
     acceptDownloads: tOptional(tBoolean),
+    baseURL: tOptional(tString),
     recordVideo: tOptional(tObject({
       dir: tString,
       size: tOptional(tObject({
@@ -1373,6 +1408,7 @@ export function createScheme(tChannel: (name: string) => Validator): Scheme {
       path: tString,
     })),
     strictSelectors: tOptional(tBoolean),
+    pkg: tOptional(tString),
     proxy: tOptional(tObject({
       server: tString,
       bypass: tOptional(tString),

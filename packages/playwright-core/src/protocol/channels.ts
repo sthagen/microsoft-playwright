@@ -1330,6 +1330,7 @@ export interface PageChannel extends PageEventTarget, EventTargetChannel {
   goBack(params: PageGoBackParams, metadata?: Metadata): Promise<PageGoBackResult>;
   goForward(params: PageGoForwardParams, metadata?: Metadata): Promise<PageGoForwardResult>;
   reload(params: PageReloadParams, metadata?: Metadata): Promise<PageReloadResult>;
+  expectScreenshot(params: PageExpectScreenshotParams, metadata?: Metadata): Promise<PageExpectScreenshotResult>;
   screenshot(params: PageScreenshotParams, metadata?: Metadata): Promise<PageScreenshotResult>;
   setExtraHTTPHeaders(params: PageSetExtraHTTPHeadersParams, metadata?: Metadata): Promise<PageSetExtraHTTPHeadersResult>;
   setNetworkInterceptionEnabled(params: PageSetNetworkInterceptionEnabledParams, metadata?: Metadata): Promise<PageSetNetworkInterceptionEnabledResult>;
@@ -1486,13 +1487,67 @@ export type PageReloadOptions = {
 export type PageReloadResult = {
   response?: ResponseChannel,
 };
+export type PageExpectScreenshotParams = {
+  expected?: Binary,
+  timeout?: number,
+  isNot: boolean,
+  locator?: {
+    frame: FrameChannel,
+    selector: string,
+  },
+  comparatorOptions?: {
+    maxDiffPixels?: number,
+    maxDiffPixelRatio?: number,
+    threshold?: number,
+  },
+  screenshotOptions?: {
+    omitBackground?: boolean,
+    fullPage?: boolean,
+    animations?: 'disabled',
+    clip?: Rect,
+    mask?: {
+      frame: FrameChannel,
+      selector: string,
+    }[],
+  },
+};
+export type PageExpectScreenshotOptions = {
+  expected?: Binary,
+  timeout?: number,
+  locator?: {
+    frame: FrameChannel,
+    selector: string,
+  },
+  comparatorOptions?: {
+    maxDiffPixels?: number,
+    maxDiffPixelRatio?: number,
+    threshold?: number,
+  },
+  screenshotOptions?: {
+    omitBackground?: boolean,
+    fullPage?: boolean,
+    animations?: 'disabled',
+    clip?: Rect,
+    mask?: {
+      frame: FrameChannel,
+      selector: string,
+    }[],
+  },
+};
+export type PageExpectScreenshotResult = {
+  diff?: Binary,
+  errorMessage?: string,
+  actual?: Binary,
+  previous?: Binary,
+  log?: string[],
+};
 export type PageScreenshotParams = {
   timeout?: number,
   type?: 'png' | 'jpeg',
   quality?: number,
   omitBackground?: boolean,
   fullPage?: boolean,
-  disableAnimations?: boolean,
+  animations?: 'disabled',
   clip?: Rect,
   mask?: {
     frame: FrameChannel,
@@ -1505,7 +1560,7 @@ export type PageScreenshotOptions = {
   quality?: number,
   omitBackground?: boolean,
   fullPage?: boolean,
-  disableAnimations?: boolean,
+  animations?: 'disabled',
   clip?: Rect,
   mask?: {
     frame: FrameChannel,
@@ -2805,7 +2860,7 @@ export type ElementHandleScreenshotParams = {
   type?: 'png' | 'jpeg',
   quality?: number,
   omitBackground?: boolean,
-  disableAnimations?: boolean,
+  animations?: 'disabled',
   mask?: {
     frame: FrameChannel,
     selector: string,
@@ -2816,7 +2871,7 @@ export type ElementHandleScreenshotOptions = {
   type?: 'png' | 'jpeg',
   quality?: number,
   omitBackground?: boolean,
-  disableAnimations?: boolean,
+  animations?: 'disabled',
   mask?: {
     frame: FrameChannel,
     selector: string,
@@ -3537,11 +3592,15 @@ export interface AndroidEventTarget {
 }
 export interface AndroidChannel extends AndroidEventTarget, Channel {
   _type_Android: boolean;
-  devices(params?: AndroidDevicesParams, metadata?: Metadata): Promise<AndroidDevicesResult>;
+  devices(params: AndroidDevicesParams, metadata?: Metadata): Promise<AndroidDevicesResult>;
   setDefaultTimeoutNoReply(params: AndroidSetDefaultTimeoutNoReplyParams, metadata?: Metadata): Promise<AndroidSetDefaultTimeoutNoReplyResult>;
 }
-export type AndroidDevicesParams = {};
-export type AndroidDevicesOptions = {};
+export type AndroidDevicesParams = {
+  port?: number,
+};
+export type AndroidDevicesOptions = {
+  port?: number,
+};
 export type AndroidDevicesResult = {
   devices: AndroidDeviceChannel[],
 };
@@ -3788,7 +3847,15 @@ export type AndroidDeviceInputDragOptions = {
 };
 export type AndroidDeviceInputDragResult = void;
 export type AndroidDeviceLaunchBrowserParams = {
-  pkg?: string,
+  noDefaultViewport?: boolean,
+  viewport?: {
+    width: number,
+    height: number,
+  },
+  screen?: {
+    width: number,
+    height: number,
+  },
   ignoreHTTPSErrors?: boolean,
   javaScriptEnabled?: boolean,
   bypassCSP?: boolean,
@@ -3814,6 +3881,7 @@ export type AndroidDeviceLaunchBrowserParams = {
   reducedMotion?: 'reduce' | 'no-preference',
   forcedColors?: 'active' | 'none',
   acceptDownloads?: boolean,
+  baseURL?: string,
   recordVideo?: {
     dir: string,
     size?: {
@@ -3826,6 +3894,7 @@ export type AndroidDeviceLaunchBrowserParams = {
     path: string,
   },
   strictSelectors?: boolean,
+  pkg?: string,
   proxy?: {
     server: string,
     bypass?: string,
@@ -3834,7 +3903,15 @@ export type AndroidDeviceLaunchBrowserParams = {
   },
 };
 export type AndroidDeviceLaunchBrowserOptions = {
-  pkg?: string,
+  noDefaultViewport?: boolean,
+  viewport?: {
+    width: number,
+    height: number,
+  },
+  screen?: {
+    width: number,
+    height: number,
+  },
   ignoreHTTPSErrors?: boolean,
   javaScriptEnabled?: boolean,
   bypassCSP?: boolean,
@@ -3860,6 +3937,7 @@ export type AndroidDeviceLaunchBrowserOptions = {
   reducedMotion?: 'reduce' | 'no-preference',
   forcedColors?: 'active' | 'none',
   acceptDownloads?: boolean,
+  baseURL?: string,
   recordVideo?: {
     dir: string,
     size?: {
@@ -3872,6 +3950,7 @@ export type AndroidDeviceLaunchBrowserOptions = {
     path: string,
   },
   strictSelectors?: boolean,
+  pkg?: string,
   proxy?: {
     server: string,
     bypass?: string,
@@ -4034,6 +4113,8 @@ export const commandsWithTracingSnapshots = new Set([
   'Page.goBack',
   'Page.goForward',
   'Page.reload',
+  'Page.expectScreenshot',
+  'Page.screenshot',
   'Page.setViewportSize',
   'Page.keyboardDown',
   'Page.keyboardUp',
@@ -4105,6 +4186,7 @@ export const commandsWithTracingSnapshots = new Set([
   'ElementHandle.isHidden',
   'ElementHandle.isVisible',
   'ElementHandle.press',
+  'ElementHandle.screenshot',
   'ElementHandle.scrollIntoViewIfNeeded',
   'ElementHandle.selectOption',
   'ElementHandle.selectText',

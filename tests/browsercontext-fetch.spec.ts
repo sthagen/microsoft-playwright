@@ -570,7 +570,7 @@ it('should support gzip compression', async function({ context, server }) {
   expect(await response.text()).toBe('Hello, world!');
 });
 
-it('should throw informatibe error on corrupted gzip body', async function({ context, server }) {
+it('should throw informative error on corrupted gzip body', async function({ context, server }) {
   server.setRoute('/corrupted', (req, res) => {
     res.writeHead(200, {
       'Content-Encoding': 'gzip',
@@ -604,7 +604,7 @@ it('should support brotli compression', async function({ context, server }) {
   expect(await response.text()).toBe('Hello, world!');
 });
 
-it('should throw informatibe error on corrupted brotli body', async function({ context, server }) {
+it('should throw informative error on corrupted brotli body', async function({ context, server }) {
   server.setRoute('/corrupted', (req, res) => {
     res.writeHead(200, {
       'Content-Encoding': 'br',
@@ -638,7 +638,7 @@ it('should support deflate compression', async function({ context, server }) {
   expect(await response.text()).toBe('Hello, world!');
 });
 
-it('should throw informatibe error on corrupted deflate body', async function({ context, server }) {
+it('should throw informative error on corrupted deflate body', async function({ context, server }) {
   server.setRoute('/corrupted', (req, res) => {
     res.writeHead(200, {
       'Content-Encoding': 'deflate',
@@ -898,6 +898,19 @@ it('context request should export same storage state as context', async ({ conte
   expect(requestState).toEqual(contextState);
   const pageState = await page.request.storageState();
   expect(pageState).toEqual(contextState);
+});
+
+it('should send secure cookie over http for localhost', async ({ page, server }) => {
+  server.setRoute('/setcookie.html', (req, res) => {
+    res.setHeader('Set-Cookie', ['a=v; secure']);
+    res.end();
+  });
+  await page.request.get(`${server.PREFIX}/setcookie.html`);
+  const [serverRequest] = await Promise.all([
+    server.waitForRequest('/empty.html'),
+    page.request.get(server.EMPTY_PAGE)
+  ]);
+  expect(serverRequest.headers.cookie).toBe('a=v');
 });
 
 it('should accept bool and numeric params', async ({ page, server }) => {

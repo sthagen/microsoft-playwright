@@ -42,23 +42,31 @@ type ExpectSettings = {
    * Default timeout for async expect matchers in milliseconds, defaults to 5000ms.
    */
   timeout?: number;
-  toMatchSnapshot?: {
-    /** An acceptable percieved color difference in the [YIQ color space](https://en.wikipedia.org/wiki/YIQ) between pixels in compared images, between zero (strict) and one (lax). Defaults to `0.2`.
+  toHaveScreenshot?: {
+    /** An acceptable perceived color difference in the [YIQ color space](https://en.wikipedia.org/wiki/YIQ) between pixels in compared images, between zero (strict) and one (lax). Defaults to `0.2`.
      */
     threshold?: number,
     /**
      * An acceptable amount of pixels that could be different, unset by default.
      */
-    pixelCount?: number,
+    maxDiffPixels?: number,
     /**
      * An acceptable ratio of pixels that are different to the total amount of pixels, between `0` and `1` , unset by default.
      */
-    pixelRatio?: number,
+    maxDiffPixelRatio?: number,
+  }
+  toMatchSnapshot?: {
+    /** An acceptable perceived color difference in the [YIQ color space](https://en.wikipedia.org/wiki/YIQ) between pixels in compared images, between zero (strict) and one (lax). Defaults to `0.2`.
+     */
+    threshold?: number,
   }
 };
 
 interface TestProject {
   expect?: ExpectSettings;
+  fullyParallel?: boolean;
+  grep?: RegExp | RegExp[];
+  grepInvert?: RegExp | RegExp[] | null;
   metadata?: any;
   name?: string;
   snapshotDir?: string;
@@ -117,6 +125,7 @@ type LiteralUnion<T extends U, U = string> = T | (U & { zz_IGNORE_ME?: never });
 
 interface TestConfig {
   forbidOnly?: boolean;
+  fullyParallel?: boolean;
   globalSetup?: string;
   globalTeardown?: string;
   globalTimeout?: number;
@@ -153,6 +162,7 @@ export interface Config<TestArgs = {}, WorkerArgs = {}> extends TestConfig {
 
 export interface FullConfig<TestArgs = {}, WorkerArgs = {}> {
   forbidOnly: boolean;
+  fullyParallel: boolean;
   globalSetup: string | null;
   globalTeardown: string | null;
   globalTimeout: number;

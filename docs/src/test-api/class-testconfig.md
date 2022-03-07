@@ -36,10 +36,12 @@ export default config;
 ## property: TestConfig.expect
 - type: <[Object]>
   - `timeout` <[int]> Default timeout for async expect matchers in milliseconds, defaults to 5000ms.
+  - `toHaveScreenshot` <[Object]>
+    - `threshold` <[float]> an acceptable perceived color difference in the [YIQ color space](https://en.wikipedia.org/wiki/YIQ) between the same pixel in compared images, between zero (strict) and one (lax). Defaults to `0.2`.
+    - `maxDiffPixels` <[int]> an acceptable amount of pixels that could be different, unset by default.
+    - `maxDiffPixelRatio` <[float]> an acceptable ratio of pixels that are different to the total amount of pixels, between `0` and `1` , unset by default.
   - `toMatchSnapshot` <[Object]>
-    - `threshold` <[float]> an acceptable percieved color difference in the [YIQ color space](https://en.wikipedia.org/wiki/YIQ) between pixels in compared images, between zero (strict) and one (lax). Defaults to `0.2`.
-    - `pixelCount` <[int]> an acceptable amount of pixels that could be different, unset by default.
-    - `pixelRatio` <[float]> an acceptable ratio of pixels that are different to the total amount of pixels, between `0` and `1` , unset by default.
+    - `threshold` <[float]> an acceptable perceived color difference in the [YIQ color space](https://en.wikipedia.org/wiki/YIQ) between the same pixel in compared images, between zero (strict) and one (lax). Defaults to `0.2`.
 
 Configuration for the `expect` assertion library. Learn more about [various timeouts](./test-timeouts.md).
 
@@ -51,8 +53,8 @@ Configuration for the `expect` assertion library. Learn more about [various time
 const config = {
   expect: {
     timeout: 10000,
-    toMatchSnapshot: {
-      threshold: 0.3,
+    toHaveScreenshot: {
+      maxDiffPixels: 10,
     },
   },
 };
@@ -67,8 +69,8 @@ import { PlaywrightTestConfig } from '@playwright/test';
 const config: PlaywrightTestConfig = {
   expect: {
     timeout: 10000,
-    toMatchSnapshot: {
-      threshold: 0.3,
+    toHaveScreenshot: {
+      maxDiffPixels: 10,
     },
   },
 };
@@ -101,6 +103,14 @@ const config: PlaywrightTestConfig = {
 };
 export default config;
 ```
+
+## property: TestConfig.fullyParallel
+- type: <[boolean]>
+
+Playwright Test runs tests in parallel. In order to achieve that, it runs several worker processes that run at the same time.
+By default, **test files** are run in parallel. Tests in a single file are run in order, in the same worker process.
+
+You can configure entire test run to concurrently execute all tests in all files using this option.
 
 ## property: TestConfig.globalSetup
 - type: <[string]>
@@ -291,7 +301,7 @@ test('example test', async ({}, testInfo) => {
 ## property: TestConfig.snapshotDir
 - type: <[string]>
 
-The base directory, relative to the config file, for snapshot files created with `toMatchSnapshot`. Defaults to [`property: TestConfig.testDir`].
+The base directory, relative to the config file, for snapshot files created with `toMatchSnapshot` and `toHaveScreenshot`. Defaults to [`property: TestConfig.testDir`].
 
 The directory for each test can be accessed by [`property: TestInfo.snapshotDir`] and [`method: TestInfo.snapshotPath`].
 

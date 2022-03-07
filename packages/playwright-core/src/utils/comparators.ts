@@ -23,7 +23,7 @@ import { diff_match_patch, DIFF_INSERT, DIFF_DELETE, DIFF_EQUAL } from '../third
 // Note: we require the pngjs version of pixelmatch to avoid version mismatches.
 const { PNG } = require(require.resolve('pngjs', { paths: [require.resolve('pixelmatch')] })) as typeof import('pngjs');
 
-export type ImageComparatorOptions = { threshold?: number, pixelCount?: number, pixelRatio?: number };
+export type ImageComparatorOptions = { threshold?: number, maxDiffPixels?: number, maxDiffPixelRatio?: number };
 export type ComparatorResult = { diff?: Buffer; errorMessage?: string; } | null;
 export type Comparator = (actualBuffer: Buffer | string, expectedBuffer: Buffer, options?: any) => ComparatorResult;
 export const mimeTypeToComparator: { [key: string]: Comparator } = {
@@ -51,21 +51,26 @@ function compareImages(mimeType: string, actualBuffer: Buffer | string, expected
   const expected = mimeType === 'image/png' ? PNG.sync.read(expectedBuffer) : jpeg.decode(expectedBuffer);
   if (expected.width !== actual.width || expected.height !== actual.height) {
     return {
-      errorMessage: `Sizes differ; expected image ${expected.width}px X ${expected.height}px, but got ${actual.width}px X ${actual.height}px. `
+      errorMessage: `Expected an image ${expected.width}px by ${expected.height}px, received ${actual.width}px by ${actual.height}px. `
     };
   }
   const diff = new PNG({ width: expected.width, height: expected.height });
-  const thresholdOptions = { threshold: 0.2, ...options };
-  const count = pixelmatch(expected.data, actual.data, diff.data, expected.width, expected.height, thresholdOptions);
+  const count = pixelmatch(expected.data, actual.data, diff.data, expected.width, expected.height, {
+    threshold: options.threshold ?? 0.2,
+  });
 
-  const pixelCount1 = options.pixelCount;
-  const pixelCount2 = options.pixelRatio !== undefined ? expected.width * expected.height * options.pixelRatio : undefined;
-  let pixelCount;
-  if (pixelCount1 !== undefined && pixelCount2 !== undefined)
-    pixelCount = Math.min(pixelCount1, pixelCount2);
+  const maxDiffPixels1 = options.maxDiffPixels;
+  const maxDiffPixels2 = options.maxDiffPixelRatio !== undefined ? expected.width * expected.height * options.maxDiffPixelRatio : undefined;
+  let maxDiffPixels;
+  if (maxDiffPixels1 !== undefined && maxDiffPixels2 !== undefined)
+    maxDiffPixels = Math.min(maxDiffPixels1, maxDiffPixels2);
   else
-    pixelCount = pixelCount1 ?? pixelCount2 ?? 0;
-  return count > pixelCount ? { diff: PNG.sync.write(diff) } : null;
+    maxDiffPixels = maxDiffPixels1 ?? maxDiffPixels2 ?? 0;
+  const ratio = Math.ceil(count / (expected.width * expected.height) * 100) / 100;
+  return count > maxDiffPixels ? {
+    errorMessage: `${count} pixels (ratio ${ratio.toFixed(2)} of all image pixels) are different`,
+    diff: PNG.sync.write(diff),
+  } : null;
 }
 
 function compareText(actual: Buffer | string, expectedBuffer: Buffer): ComparatorResult {

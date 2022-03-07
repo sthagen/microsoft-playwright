@@ -21,14 +21,13 @@ it('should return no cookies in pristine browser context', async ({ context, pag
   expect(await context.cookies()).toEqual([]);
 });
 
-it('should get a cookie #smoke', async ({ context, page, server, browserName, browserMajorVersion }) => {
+it('should get a cookie #smoke', async ({ context, page, server, defaultSameSiteCookieValue }) => {
   await page.goto(server.EMPTY_PAGE);
   const documentCookie = await page.evaluate(() => {
     document.cookie = 'username=John Doe';
     return document.cookie;
   });
   expect(documentCookie).toBe('username=John Doe');
-  const defaultSameSiteCookieValue = browserName === 'chromium' || (browserName === 'firefox' && browserMajorVersion >= 96) ? 'Lax' : 'None';
   expect(await context.cookies()).toEqual([{
     name: 'username',
     value: 'John Doe',
@@ -41,7 +40,7 @@ it('should get a cookie #smoke', async ({ context, page, server, browserName, br
   }]);
 });
 
-it('should get a non-session cookie', async ({ context, page, server, browserName, browserMajorVersion }) => {
+it('should get a non-session cookie', async ({ context, page, server, defaultSameSiteCookieValue }) => {
   await page.goto(server.EMPTY_PAGE);
   // @see https://en.wikipedia.org/wiki/Year_2038_problem
   const date = +(new Date('1/1/2038'));
@@ -51,7 +50,6 @@ it('should get a non-session cookie', async ({ context, page, server, browserNam
     return document.cookie;
   }, date);
   expect(documentCookie).toBe('username=John Doe');
-  const defaultSameSiteCookieValue = browserName === 'chromium' || (browserName === 'firefox' && browserMajorVersion >= 96) ? 'Lax' : 'None';
   expect(await context.cookies()).toEqual([{
     name: 'username',
     value: 'John Doe',
@@ -101,7 +99,7 @@ it('should properly report "Lax" sameSite cookie', async ({ context, page, serve
   expect(cookies[0].sameSite).toBe('Lax');
 });
 
-it('should get multiple cookies', async ({ context, page, server, browserName, browserMajorVersion }) => {
+it('should get multiple cookies', async ({ context, page, server, defaultSameSiteCookieValue }) => {
   await page.goto(server.EMPTY_PAGE);
   const documentCookie = await page.evaluate(() => {
     document.cookie = 'username=John Doe';
@@ -109,7 +107,6 @@ it('should get multiple cookies', async ({ context, page, server, browserName, b
     return document.cookie.split('; ').sort().join('; ');
   });
   const cookies = new Set(await context.cookies());
-  const defaultSameSiteCookieValue = browserName === 'chromium' || (browserName === 'firefox' && browserMajorVersion >= 96) ? 'Lax' : 'None';
   expect(documentCookie).toBe('password=1234; username=John Doe');
   expect(cookies).toEqual(new Set([
     {
@@ -266,10 +263,8 @@ it('should return secure cookies based on HTTP(S) protocol', async ({ context, b
   }]);
 });
 
-it('should add cookies with an expiration', async ({ context, browserName, platform }) => {
-  it.info().annotations.push({ type: 'issue', description: 'https://github.com/microsoft/playwright/issues/12226' });
-  it.fixme(browserName === 'webkit' && platform === 'linux', 'Protocol error');
-  const expires = Date.now() + 3600;
+it('should add cookies with an expiration', async ({ context }) => {
+  const expires = Math.floor((Date.now() / 1000)) + 3600;
   await context.addCookies([{
     url: 'https://foo.com',
     name: 'doggo',
@@ -279,9 +274,6 @@ it('should add cookies with an expiration', async ({ context, browserName, platf
   }]);
   const cookies = await context.cookies(['https://foo.com']);
   expect(cookies.length).toBe(1);
-  if (browserName === 'chromium')
-    // Chromium returns them sometimes as floats: https://crbug.com/1300178
-    cookies[0].expires = Math.round(cookies[0].expires);
   expect(cookies).toEqual([{
     name: 'doggo',
     value: 'woofs',
@@ -292,4 +284,29 @@ it('should add cookies with an expiration', async ({ context, browserName, platf
     secure: true,
     sameSite: 'None',
   }]);
+  {
+    // Rollover to 5-digit year
+    await context.addCookies([{
+      url: 'https://foo.com',
+      name: 'doggo',
+      value: 'woofs',
+      sameSite: 'None',
+      expires: 253402300799, // Fri, 31 Dec 9999 23:59:59 +0000 (UTC)
+    }]);
+    await expect(context.addCookies([{
+      url: 'https://foo.com',
+      name: 'doggo',
+      value: 'woofs',
+      sameSite: 'None',
+      expires: 253402300800, // Sat,  1 Jan 1000 00:00:00 +0000 (UTC)
+    }])).rejects.toThrow(/Cookie should have a valid expires/);
+  }
+
+  await expect(context.addCookies([{
+    url: 'https://foo.com',
+    name: 'doggo',
+    value: 'woofs',
+    sameSite: 'None',
+    expires: -42,
+  }])).rejects.toThrow(/Cookie should have a valid expires/);
 });
