@@ -55,11 +55,40 @@ type ExpectSettings = {
      * An acceptable ratio of pixels that are different to the total amount of pixels, between `0` and `1` , unset by default.
      */
     maxDiffPixelRatio?: number,
+    /**
+     * When set to `"disabled"`, stops CSS animations, CSS transitions and Web Animations. Animations get different treatment
+     * depending on their duration:
+     * - finite animations are fast-forwarded to completion, so they'll fire `transitionend` event.
+     * - infinite animations are canceled to initial state, and then played over after the screenshot.
+     *
+     * Defaults to `"disabled"` that leaves animations untouched.
+     */
+    animations?: 'allow'|'disabled',
+    /**
+     * When set to `"ready"`, screenshot will wait for
+     * [`document.fonts.ready`](https://developer.mozilla.org/en-US/docs/Web/API/FontFaceSet/ready) promise to resolve in all
+     * frames. Defaults to `"ready"`.
+     */
+    fonts?: 'ready'|'nowait',
+    /**
+     * When set to `"css"`, screenshot will have a single pixel per each css pixel on the page. For high-dpi devices, this will
+     * keep screenshots small. Using `"device"` option will produce a single pixel per each device pixel, so screenhots of
+     * high-dpi devices will be twice as large or even larger. Defaults to `"css"`.
+     */
+    size?: 'css'|'device',
   }
   toMatchSnapshot?: {
     /** An acceptable perceived color difference in the [YIQ color space](https://en.wikipedia.org/wiki/YIQ) between pixels in compared images, between zero (strict) and one (lax). Defaults to `0.2`.
      */
     threshold?: number,
+    /**
+     * An acceptable amount of pixels that could be different, unset by default.
+     */
+    maxDiffPixels?: number,
+    /**
+     * An acceptable ratio of pixels that are different to the total amount of pixels, between `0` and `1` , unset by default.
+     */
+    maxDiffPixelRatio?: number,
   }
 };
 
@@ -162,8 +191,7 @@ interface TestProject {
    */
   name?: string;
   /**
-   * The base directory, relative to the config file, for snapshot files created with `toMatchSnapshot` and
-   * `toHaveScreenshot`. Defaults to
+   * The base directory, relative to the config file, for snapshot files created with `toMatchSnapshot`. Defaults to
    * [testProject.testDir](https://playwright.dev/docs/api/class-testproject#test-project-test-dir).
    *
    * The directory for each test can be accessed by
@@ -175,6 +203,41 @@ interface TestProject {
    * resolve to `snapshots/a.spec.js-snapshots`.
    */
   snapshotDir?: string;
+  /**
+   * The base directory, relative to the config file, for screenshot files created with `toHaveScreenshot`. Defaults to
+   *
+   * ```
+   * <directory-of-configuration-file>/__screenshots__/<platform name>/<project name>
+   * ```
+   *
+   * This path will serve as the base directory for each test file screenshot directory. For example, the following test
+   * structure:
+   *
+   * ```
+   * smoke-tests/
+   * └── basic.spec.ts
+   * ```
+   *
+   * will result in the following screenshots folder structure:
+   *
+   * ```
+   * __screenshots__/
+   * └── darwin/
+   *     ├── Mobile Safari/
+   *     │   └── smoke-tests/
+   *     │       └── basic.spec.ts/
+   *     │           └── screenshot-expectation.png
+   *     └── Desktop Chrome/
+   *         └── smoke-tests/
+   *             └── basic.spec.ts/
+   *                 └── screenshot-expectation.png
+   * ```
+   *
+   * where:
+   * - `darwin/` - a platform name folder
+   * - `Mobile Safari` and `Desktop Chrome` - project names
+   */
+  screenshotsDir?: string;
   /**
    * The output directory for files created during test execution. Defaults to `test-results`.
    *
@@ -717,8 +780,7 @@ interface TestConfig {
   metadata?: any;
   name?: string;
   /**
-   * The base directory, relative to the config file, for snapshot files created with `toMatchSnapshot` and
-   * `toHaveScreenshot`. Defaults to
+   * The base directory, relative to the config file, for snapshot files created with `toMatchSnapshot`. Defaults to
    * [testConfig.testDir](https://playwright.dev/docs/api/class-testconfig#test-config-test-dir).
    *
    * The directory for each test can be accessed by
@@ -730,6 +792,41 @@ interface TestConfig {
    * resolve to `snapshots/a.spec.js-snapshots`.
    */
   snapshotDir?: string;
+  /**
+   * The base directory, relative to the config file, for screenshot files created with `toHaveScreenshot`. Defaults to
+   *
+   * ```
+   * <directory-of-configuration-file>/__screenshots__/<platform name>/<project name>
+   * ```
+   *
+   * This path will serve as the base directory for each test file screenshot directory. For example, the following test
+   * structure:
+   *
+   * ```
+   * smoke-tests/
+   * └── basic.spec.ts
+   * ```
+   *
+   * will result in the following screenshots folder structure:
+   *
+   * ```
+   * __screenshots__/
+   * └── darwin/
+   *     ├── Mobile Safari/
+   *     │   └── smoke-tests/
+   *     │       └── basic.spec.ts/
+   *     │           └── screenshot-expectation.png
+   *     └── Desktop Chrome/
+   *         └── smoke-tests/
+   *             └── basic.spec.ts/
+   *                 └── screenshot-expectation.png
+   * ```
+   *
+   * where:
+   * - `darwin/` - a platform name folder
+   * - `Mobile Safari` and `Desktop Chrome` - project names
+   */
+  screenshotsDir?: string;
   /**
    * The output directory for files created during test execution. Defaults to `test-results`.
    *
@@ -1571,9 +1668,9 @@ export interface TestInfo {
   stderr: (string | Buffer)[];
   /**
    * Suffix used to differentiate snapshots between multiple test configurations. For example, if snapshots depend on the
-   * platform, you can set `testInfo.snapshotSuffix` equal to `process.platform`. In this case both
-   * `expect(value).toMatchSnapshot(snapshotName)` and `expect(page).toHaveScreenshot(snapshotName)` will use different
-   * snapshots depending on the platform. Learn more about [snapshots](https://playwright.dev/docs/test-snapshots).
+   * platform, you can set `testInfo.snapshotSuffix` equal to `process.platform`. In this case
+   * `expect(value).toMatchSnapshot(snapshotName)` will use different snapshots depending on the platform. Learn more about
+   * [snapshots](https://playwright.dev/docs/test-snapshots).
    */
   snapshotSuffix: string;
   /**
@@ -2467,7 +2564,7 @@ export interface TestType<TestArgs extends KeyValue, WorkerArgs extends KeyValue
    * Declares a `beforeEach` hook that is executed before each test. When called in the scope of a test file, runs before
    * each test in the file. When called inside a
    * [test.describe(title, callback)](https://playwright.dev/docs/api/class-test#test-describe) group, runs before each test
-   * in the group.
+   * in the group.  If multiple `beforeEach` hooks are added, they will run in the order of their registration.
    *
    * You can access all the same [Fixtures] as the test function itself, and also the [TestInfo] object that gives a lot of
    * useful information. For example, you can navigate the page before starting the test.
@@ -2495,7 +2592,7 @@ export interface TestType<TestArgs extends KeyValue, WorkerArgs extends KeyValue
    * Declares an `afterEach` hook that is executed after each test. When called in the scope of a test file, runs after each
    * test in the file. When called inside a
    * [test.describe(title, callback)](https://playwright.dev/docs/api/class-test#test-describe) group, runs after each test
-   * in the group.
+   * in the group. If multiple `afterEach` hooks are added, they will run in the order of their registration.
    *
    * You can access all the same [Fixtures] as the test function itself, and also the [TestInfo] object that gives a lot of
    * useful information. For example, you can check whether the test succeeded or failed.
@@ -2523,7 +2620,7 @@ export interface TestType<TestArgs extends KeyValue, WorkerArgs extends KeyValue
    * Declares a `beforeAll` hook that is executed once per worker process before all tests. When called in the scope of a
    * test file, runs before all tests in the file. When called inside a
    * [test.describe(title, callback)](https://playwright.dev/docs/api/class-test#test-describe) group, runs before all tests
-   * in the group.
+   * in the group. If multiple `beforeAll` hooks are added, they will run in the order of their registration.
    *
    * ```ts
    * // example.spec.ts
@@ -2554,7 +2651,7 @@ export interface TestType<TestArgs extends KeyValue, WorkerArgs extends KeyValue
    * Declares an `afterAll` hook that is executed once per worker after all tests. When called in the scope of a test file,
    * runs after all tests in the file. When called inside a
    * [test.describe(title, callback)](https://playwright.dev/docs/api/class-test#test-describe) group, runs after all tests
-   * in the group.
+   * in the group. If multiple `afterAll` hooks are added, they will run in the order of their registration.
    *
    * Note that worker process is restarted on test failures, and `afterAll` hook runs again in the new worker. Learn more
    * about [workers and failures](https://playwright.dev/docs/test-retries).

@@ -241,7 +241,7 @@ test('should fail to load ts from esm when package.json has type module', async 
   expect(result.output).toContain('Cannot import a typescript file from an esmodule');
 });
 
-test('should import esm from ts when package.json has type module in experimental mode', async ({ runInlineTest }) => {
+test('should import esm from ts when package.json has type module in experimental mode @esm', async ({ runInlineTest }) => {
   // We only support experimental esm mode on Node 16+
   test.skip(parseInt(process.version.slice(1), 10) < 16);
   const result = await runInlineTest({
@@ -260,14 +260,12 @@ test('should import esm from ts when package.json has type module in experimenta
     'b.ts': `
       export const foo: string = 'foo';
     `
-  }, {}, {
-    PW_EXPERIMENTAL_TS_ESM: true
-  });
+  }, {});
 
   expect(result.exitCode).toBe(0);
 });
 
-test('should propagate subprocess exit code in experimental mode', async ({ runInlineTest }) => {
+test('should propagate subprocess exit code in experimental mode @esm', async ({ runInlineTest }) => {
   // We only support experimental esm mode on Node 16+
   test.skip(parseInt(process.version.slice(1), 10) < 16);
   const result = await runInlineTest({
@@ -278,9 +276,7 @@ test('should propagate subprocess exit code in experimental mode', async ({ runI
         expect(1).toBe(2);
       });
     `,
-  }, {}, {
-    PW_EXPERIMENTAL_TS_ESM: true
-  });
+  }, {});
 
   expect(result.exitCode).toBe(1);
 });
@@ -407,3 +403,52 @@ test('should filter stack even without default Error.prepareStackTrace', async (
   expect(stackLines.length).toBe(1);
 });
 
+test('should work with cross-imports - 1', async ({ runInlineTest }) => {
+  const result = await runInlineTest({
+    'test1.spec.ts': `
+      const { test } = pwt;
+      test('test 1', async ({}) => {
+        await new Promise(x => setTimeout(x, 500));
+        console.log('running TEST-1');
+      });
+    `,
+    'test2.spec.ts': `
+      import * as _ from './test1.spec';
+      const { test } = pwt;
+      test('test 2', async ({}) => {
+        await new Promise(x => setTimeout(x, 500));
+        console.log('running TEST-2');
+      });
+    `
+  }, { workers: 2 });
+  expect(result.exitCode).toBe(0);
+  expect(result.passed).toBe(2);
+  expect(result.failed).toBe(0);
+  expect(result.output).toContain('TEST-1');
+  expect(result.output).toContain('TEST-2');
+});
+
+test('should work with cross-imports - 2', async ({ runInlineTest }) => {
+  const result = await runInlineTest({
+    'test1.spec.ts': `
+      const { test } = pwt;
+      import * as _ from './test2.spec';
+      test('test 1', async ({}) => {
+        await new Promise(x => setTimeout(x, 500));
+        console.log('running TEST-1');
+      });
+    `,
+    'test2.spec.ts': `
+      const { test } = pwt;
+      test('test 2', async ({}) => {
+        await new Promise(x => setTimeout(x, 500));
+        console.log('running TEST-2');
+      });
+    `
+  }, { workers: 2, reporter: 'list' });
+  expect(result.exitCode).toBe(0);
+  expect(result.passed).toBe(2);
+  expect(result.failed).toBe(0);
+  expect(result.output).toContain('TEST-1');
+  expect(result.output).toContain('TEST-2');
+});

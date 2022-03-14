@@ -25,8 +25,15 @@ import { WorkerInitParams } from './ipc';
 import { Loader } from './loader';
 import { ProjectImpl } from './project';
 import { TestCase } from './test';
-import { Annotations, TestStepInternal } from './types';
-import { addSuffixToFilePath, formatLocation, getContainedPath, monotonicTime, sanitizeForFilePath, serializeError, trimLongString } from './util';
+import { Annotation, TestStepInternal, Location } from './types';
+import { addSuffixToFilePath, getContainedPath, monotonicTime, sanitizeForFilePath, serializeError, trimLongString } from './util';
+
+type RunnableDescription = {
+  type: 'test' | 'beforeAll' | 'afterAll' | 'beforeEach' | 'afterEach' | 'slow' | 'skip' | 'fail' | 'fixme' | 'teardown';
+  location?: Location;
+  // When runnable has a separate timeout, it does not count into the "shared time pool" for the test.
+  timeout?: number;
+};
 
 export class TestInfoImpl implements TestInfo {
   private _projectImpl: ProjectImpl;
@@ -36,6 +43,10 @@ export class TestInfoImpl implements TestInfo {
   readonly _startTime: number;
   readonly _startWallTime: number;
   private _hasHardError: boolean = false;
+  private _currentRunnable: RunnableDescription = { type: 'test' };
+  // Holds elapsed time of the "time pool" shared between fixtures, each hooks and test itself.
+  private _elapsedTestTime = 0;
+  readonly _screenshotsDir: string;
 
   // ------------ TestInfo fields ------------
   readonly repeatEachIndex: number;
@@ -52,7 +63,7 @@ export class TestInfoImpl implements TestInfo {
   readonly fn: Function;
   expectedStatus: TestStatus;
   duration: number = 0;
-  readonly annotations: Annotations = [];
+  readonly annotations: Annotation[] = [];
   readonly attachments: TestInfo['attachments'] = [];
   status: TestStatus = 'passed';
   readonly stdout: TestInfo['stdout'] = [];
@@ -116,7 +127,7 @@ export class TestInfoImpl implements TestInfo {
 
       const relativeTestFilePath = path.relative(this.project.testDir, test._requireFile.replace(/\.(spec|test)\.(js|ts|mjs)$/, ''));
       const sanitizedRelativePath = relativeTestFilePath.replace(process.platform === 'win32' ? new RegExp('\\\\', 'g') : new RegExp('/', 'g'), '-');
-      const fullTitleWithoutSpec = test.titlePath().slice(1).join(' ') + (test._type === 'test' ? '' : '-worker' + this.workerIndex);
+      const fullTitleWithoutSpec = test.titlePath().slice(1).join(' ');
 
       let testOutputDir = trimLongString(sanitizedRelativePath + '-' + sanitizeForFilePath(fullTitleWithoutSpec));
       if (uniqueProjectNamePathSegment)
@@ -131,6 +142,10 @@ export class TestInfoImpl implements TestInfo {
     this.snapshotDir = (() => {
       const relativeTestFilePath = path.relative(this.project.testDir, test._requireFile);
       return path.join(this.project.snapshotDir, relativeTestFilePath + '-snapshots');
+    })();
+    this._screenshotsDir = (() => {
+      const relativeTestFilePath = path.relative(this.project.testDir, test._requireFile);
+      return path.join(this.project.screenshotsDir, relativeTestFilePath);
     })();
   }
 
@@ -161,6 +176,16 @@ export class TestInfoImpl implements TestInfo {
     }
   }
 
+  _setCurrentRunnable(runnable: RunnableDescription) {
+    if (this._currentRunnable.timeout === undefined)
+      this._elapsedTestTime = this._timeoutRunner.elapsed();
+    this._currentRunnable = runnable;
+    if (runnable.timeout === undefined)
+      this._timeoutRunner.updateTimeout(this.timeout, this._elapsedTestTime);
+    else
+      this._timeoutRunner.updateTimeout(runnable.timeout, 0);
+  }
+
   async _runWithTimeout(cb: () => Promise<any>): Promise<void> {
     try {
       await this._timeoutRunner.run(cb);
@@ -170,13 +195,15 @@ export class TestInfoImpl implements TestInfo {
       // Do not overwrite existing failure upon hook/teardown timeout.
       if (this.status === 'passed') {
         this.status = 'timedOut';
-        if (this._test._type === 'test') {
-          this.errors.push({ message: colors.red(`Timeout of ${this.timeout}ms exceeded.`) });
-        } else {
-          // Include location for the hook to distinguish between multiple hooks.
-          const message = colors.red(`Timeout of ${this.timeout}ms exceeded in ${this._test._type} hook.`);
-          this.errors.push({ message: message, stack: message + `\n    at ${formatLocation(this._test.location)}.` });
-        }
+        const title = titleForRunnable(this._currentRunnable);
+        const suffix = title ? ` in ${title}` : '';
+        const message = colors.red(`Timeout of ${this._currentRunnable.timeout ?? this.timeout}ms exceeded${suffix}.`);
+        const location = this._currentRunnable.location;
+        this.errors.push({
+          message,
+          // Include location for hooks and modifiers to distinguish between them.
+          stack: location ? message + `\n    at ${location.file}:${location.line}:${location.column}` : undefined,
+        });
       }
     }
     this.duration = monotonicTime() - this._startTime;
@@ -256,6 +283,14 @@ export class TestInfoImpl implements TestInfo {
     throw new Error(`The snapshotPath is not allowed outside of the parent directory. Please fix the defined path.\n\n\tsnapshotPath: ${subPath}`);
   }
 
+  _screenshotPath(...pathSegments: string[]) {
+    const subPath = path.join(...pathSegments);
+    const screenshotPath = getContainedPath(this._screenshotsDir, subPath);
+    if (screenshotPath)
+      return screenshotPath;
+    throw new Error(`Screenshot name "${subPath}" should not point outside of the parent directory.`);
+  }
+
   skip(...args: [arg?: any, description?: string]) {
     this._modifier('skip', args);
   }
@@ -273,12 +308,38 @@ export class TestInfoImpl implements TestInfo {
   }
 
   setTimeout(timeout: number) {
-    if (!this.timeout)
-      return; // Zero timeout means some debug mode - do not set a timeout.
-    this.timeout = timeout;
-    this._timeoutRunner.updateTimeout(timeout);
+    if (this._currentRunnable.timeout !== undefined) {
+      if (!this._currentRunnable.timeout)
+        return; // Zero timeout means some debug mode - do not set a timeout.
+      this._currentRunnable.timeout = timeout;
+      this._timeoutRunner.updateTimeout(timeout);
+    } else {
+      if (!this.timeout)
+        return; // Zero timeout means some debug mode - do not set a timeout.
+      this.timeout = timeout;
+      this._timeoutRunner.updateTimeout(timeout);
+    }
   }
 }
 
 class SkipError extends Error {
+}
+
+function titleForRunnable(runnable: RunnableDescription): string {
+  switch (runnable.type) {
+    case 'test':
+      return '';
+    case 'beforeAll':
+    case 'beforeEach':
+    case 'afterAll':
+    case 'afterEach':
+      return runnable.type + ' hook';
+    case 'teardown':
+      return 'fixtures teardown';
+    case 'skip':
+    case 'slow':
+    case 'fixme':
+    case 'fail':
+      return runnable.type + ' modifier';
+  }
 }

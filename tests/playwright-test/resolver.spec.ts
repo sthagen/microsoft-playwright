@@ -164,7 +164,7 @@ test('should respect baseurl w/o paths', async ({ runInlineTest }) => {
   expect(result.output).not.toContain(`Could not`);
 });
 
-test('should respect path resolver in experimental mode', async ({ runInlineTest }) => {
+test('should respect path resolver in experimental mode @esm', async ({ runInlineTest }) => {
   // We only support experimental esm mode on Node 16+
   test.skip(parseInt(process.version.slice(1), 10) < 16);
   const result = await runInlineTest({
@@ -195,9 +195,7 @@ test('should respect path resolver in experimental mode', async ({ runInlineTest
     'foo/bar/util/b.ts': `
       export const foo: string = 'foo';
     `,
-  }, {}, {
-    PW_EXPERIMENTAL_TS_ESM: true
-  });
+  }, {});
 
   expect(result.exitCode).toBe(0);
 });

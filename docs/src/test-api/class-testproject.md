@@ -111,8 +111,13 @@ export default config;
     - `threshold` <[float]> an acceptable perceived color difference in the [YIQ color space](https://en.wikipedia.org/wiki/YIQ) between the same pixel in compared images, between zero (strict) and one (lax). Defaults to `0.2`.
     - `maxDiffPixels` <[int]> an acceptable amount of pixels that could be different, unset by default.
     - `maxDiffPixelRatio` <[float]> an acceptable ratio of pixels that are different to the total amount of pixels, between `0` and `1` , unset by default.
+    - `animations` <[ScreenshotAnimations]<"allow"|"disable">> See [`option: animations`] in [`method: Page.screenshot`]. Defaults to `"disable"`.
+    - `fonts` <[ScreenshotFonts]<"ready"|"nowait">> See [`option: fonts`] in [`method: Page.screenshot`]. Defaults to `"ready"`.
+    - `size` <[ScreenshotSize]<"css"|"device">> See [`option: size`] in [`method: Page.screenshot`]. Defaults to `"css"`.
   - `toMatchSnapshot` <[Object]>
     - `threshold` <[float]> an acceptable perceived color difference in the [YIQ color space](https://en.wikipedia.org/wiki/YIQ) between the same pixel in compared images, between zero (strict) and one (lax). Defaults to `0.2`.
+    - `maxDiffPixels` <[int]> an acceptable amount of pixels that could be different, unset by default.
+    - `maxDiffPixelRatio` <[float]> an acceptable ratio of pixels that are different to the total amount of pixels, between `0` and `1` , unset by default.
 
 Configuration for the `expect` assertion library.
 
@@ -150,10 +155,45 @@ Any JSON-serializable metadata that will be put directly to the test report.
 
 Project name is visible in the report and during test execution.
 
+## property: TestProject.screenshotsDir
+- type: <[string]>
+
+The base directory, relative to the config file, for screenshot files created with `toHaveScreenshot`. Defaults to
+
+```
+<directory-of-configuration-file>/__screenshots__/<platform name>/<project name>
+```
+
+This path will serve as the base directory for each test file screenshot directory. For example, the following test structure:
+
+```
+smoke-tests/
+└── basic.spec.ts
+```
+
+will result in the following screenshots folder structure:
+
+```
+__screenshots__/
+└── darwin/
+    ├── Mobile Safari/
+    │   └── smoke-tests/
+    │       └── basic.spec.ts/
+    │           └── screenshot-expectation.png
+    └── Desktop Chrome/
+        └── smoke-tests/
+            └── basic.spec.ts/
+                └── screenshot-expectation.png
+```
+
+where:
+* `darwin/` - a platform name folder
+* `Mobile Safari` and `Desktop Chrome` - project names
+
 ## property: TestProject.snapshotDir
 - type: <[string]>
 
-The base directory, relative to the config file, for snapshot files created with `toMatchSnapshot` and `toHaveScreenshot`. Defaults to [`property: TestProject.testDir`].
+The base directory, relative to the config file, for snapshot files created with `toMatchSnapshot`. Defaults to [`property: TestProject.testDir`].
 
 The directory for each test can be accessed by [`property: TestInfo.snapshotDir`] and [`method: TestInfo.snapshotPath`].
 

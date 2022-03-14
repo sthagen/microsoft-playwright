@@ -18,7 +18,9 @@
 
 import { Command } from 'commander';
 import fs from 'fs';
+import url from 'url';
 import path from 'path';
+import os from 'os';
 import type { Config } from './types';
 import { Runner, builtInReporters, BuiltInReporter, kDefaultConfigFiles } from './runner';
 import { stopProfiling, startProfiling } from './profiler';
@@ -26,7 +28,7 @@ import { FilePatternFilter } from './util';
 import { showHTMLReport } from './reporters/html';
 import { GridServer } from 'playwright-core/lib/grid/gridServer';
 import dockerFactory from 'playwright-core/lib/grid/dockerGridFactory';
-import { createGuid } from 'playwright-core/lib/utils/utils';
+import { createGuid, hostPlatform } from 'playwright-core/lib/utils/utils';
 import { fileIsModule } from './loader';
 
 const defaultTimeout = 30000;
@@ -106,13 +108,16 @@ Examples:
 async function runTests(args: string[], opts: { [key: string]: any }) {
   await startProfiling();
 
+  const cpus = os.cpus().length;
+  const workers = hostPlatform.startsWith('mac') && hostPlatform.endsWith('arm64') ? cpus : Math.ceil(cpus / 2);
+
   const defaultConfig: Config = {
     preserveOutput: 'always',
     reporter: [ [defaultReporter] ],
     reportSlowTests: { max: 5, threshold: 15000 },
     timeout: defaultTimeout,
     updateSnapshots: 'missing',
-    workers: Math.ceil(require('os').cpus().length / 2),
+    workers,
   };
 
   if (opts.browser) {
@@ -237,20 +242,20 @@ async function launchDockerContainer(): Promise<() => Promise<void>> {
 function restartWithExperimentalTsEsm(configFile: string | null): boolean {
   if (!configFile)
     return false;
-  if (!process.env.PW_EXPERIMENTAL_TS_ESM)
+  if (process.env.PW_DISABLE_TS_ESM)
     return false;
-  if (process.env.PW_EXPERIMENTAL_TS_ESM_ON)
+  if (process.env.PW_TS_ESM_ON)
     return false;
   if (!configFile.endsWith('.ts'))
     return false;
   if (!fileIsModule(configFile))
     return false;
-  const NODE_OPTIONS = (process.env.NODE_OPTIONS || '') + ` --experimental-loader=${require.resolve('@playwright/test/lib/experimentalLoader')}`;
+  const NODE_OPTIONS = (process.env.NODE_OPTIONS || '') + ` --experimental-loader=${url.pathToFileURL(require.resolve('@playwright/test/lib/experimentalLoader')).toString()}`;
   const innerProcess = require('child_process').fork(require.resolve('playwright-core/cli'), process.argv.slice(2), {
     env: {
       ...process.env,
       NODE_OPTIONS,
-      PW_EXPERIMENTAL_TS_ESM_ON: '1',
+      PW_TS_ESM_ON: '1',
     }
   });
 

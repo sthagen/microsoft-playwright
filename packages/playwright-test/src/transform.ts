@@ -25,7 +25,7 @@ import type { Location } from './types';
 import { tsConfigLoader, TsConfigLoaderResult } from './third_party/tsconfig-loader';
 import Module from 'module';
 
-const version = 7;
+const version = 8;
 const cacheDir = process.env.PWTEST_CACHE_DIR || path.join(os.tmpdir(), 'playwright-transform-cache');
 const sourceMaps: Map<string, string> = new Map();
 
@@ -54,10 +54,10 @@ sourceMapSupport.install({
   }
 });
 
-function calculateCachePath(content: string, filePath: string): string {
+function calculateCachePath(content: string, filePath: string, isModule: boolean): string {
   const hash = crypto.createHash('sha1')
       .update(process.env.PW_TEST_SOURCE_TRANSFORM || '')
-      .update(process.env.PW_EXPERIMENTAL_TS_ESM ? 'esm' : 'no_esm')
+      .update(isModule ? 'esm' : 'no_esm')
       .update(content)
       .update(filePath)
       .update(String(version))
@@ -134,7 +134,7 @@ export function transformHook(code: string, filename: string, isModule = false):
   if (!isTypeScript && !hasPreprocessor)
     return code;
 
-  const cachePath = calculateCachePath(code, filename);
+  const cachePath = calculateCachePath(code, filename, isModule);
   const codePath = cachePath + '.js';
   const sourceMapPath = cachePath + '.map';
   sourceMaps.set(filename, sourceMapPath);

@@ -76,6 +76,7 @@ export type RunPayload = {
 
 export type DonePayload = {
   fatalErrors: TestError[];
+  skipTestsDueToSetupFailure: string[];  // test ids
 };
 
 export type TestOutputPayload = {

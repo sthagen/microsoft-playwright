@@ -36,10 +36,12 @@ export type ScreenshotOptions = {
   type?: 'png' | 'jpeg',
   quality?: number,
   omitBackground?: boolean,
-  animations?: 'disabled',
+  animations?: 'disabled' | 'allow',
   mask?: { frame: Frame, selector: string}[],
   fullPage?: boolean,
   clip?: Rect,
+  size?: 'css' | 'device',
+  fonts?: 'ready' | 'nowait',
 };
 
 export class Screenshotter {
@@ -82,8 +84,9 @@ export class Screenshotter {
   async screenshotPage(progress: Progress, options: ScreenshotOptions): Promise<Buffer> {
     const format = validateScreenshotOptions(options);
     return this._queue.postTask(async () => {
+      progress.log('taking page screenshot');
       const { viewportSize } = await this._originalViewportSize(progress);
-      await this._preparePageForScreenshot(progress, options.animations === 'disabled');
+      await this._preparePageForScreenshot(progress, options.animations === 'disabled', options.fonts === 'ready');
       progress.throwIfAborted(); // Avoid restoring after failure - should be done by cleanup.
 
       if (options.fullPage) {
@@ -109,9 +112,10 @@ export class Screenshotter {
   async screenshotElement(progress: Progress, handle: dom.ElementHandle, options: ScreenshotOptions): Promise<Buffer> {
     const format = validateScreenshotOptions(options);
     return this._queue.postTask(async () => {
+      progress.log('taking element screenshot');
       const { viewportSize } = await this._originalViewportSize(progress);
 
-      await this._preparePageForScreenshot(progress, options.animations === 'disabled');
+      await this._preparePageForScreenshot(progress, options.animations === 'disabled', options.fonts === 'ready');
       progress.throwIfAborted(); // Do not do extra work.
 
       await handle._waitAndScrollIntoViewIfNeeded(progress);
@@ -135,9 +139,13 @@ export class Screenshotter {
     });
   }
 
-  async _preparePageForScreenshot(progress: Progress, disableAnimations: boolean) {
+  async _preparePageForScreenshot(progress: Progress, disableAnimations: boolean, waitForFonts: boolean) {
+    if (disableAnimations)
+      progress.log('  disabled all CSS animations');
+    if (waitForFonts)
+      progress.log('  waiting for fonts to load...');
     await Promise.all(this._page.frames().map(async frame => {
-      await frame.nonStallingEvaluateInExistingContext('(' + (function(disableAnimations: boolean) {
+      await frame.nonStallingEvaluateInExistingContext('(' + (async function(disableAnimations: boolean, waitForFonts: boolean) {
         const styleTag = document.createElement('style');
         styleTag.textContent = `
           *:not(#playwright-aaaaaaaaaa.playwright-bbbbbbbbbbb.playwright-cccccccccc.playwright-dddddddddd.playwright-eeeeeeeee) {
@@ -211,8 +219,13 @@ export class Screenshotter {
             cleanupCallback();
           delete window.__cleanupScreenshot;
         };
-      }).toString() + `)(${disableAnimations || false})`, false, 'utility').catch(() => {});
+
+        if (waitForFonts)
+          await document.fonts.ready;
+      }).toString() + `)(${disableAnimations}, ${waitForFonts})`, false, 'utility').catch(() => {});
     }));
+    if (waitForFonts)
+      progress.log('  fonts in all frames are loaded');
     progress.cleanupWhenAborted(() => this._restorePageAfterScreenshot());
   }
 
@@ -237,7 +250,7 @@ export class Screenshotter {
     progress.cleanupWhenAborted(() => this._page.hideHighlight());
   }
 
-  private async _screenshot(progress: Progress, format: 'png' | 'jpeg', documentRect: types.Rect | undefined, viewportRect: types.Rect | undefined, fitsViewport: boolean | undefined, options: ScreenshotOptions): Promise<Buffer> {
+  private async _screenshot(progress: Progress, format: 'png' | 'jpeg', documentRect: types.Rect | undefined, viewportRect: types.Rect | undefined, fitsViewport: boolean, options: ScreenshotOptions): Promise<Buffer> {
     if ((options as any).__testHookBeforeScreenshot)
       await (options as any).__testHookBeforeScreenshot();
     progress.throwIfAborted(); // Screenshotting is expensive - avoid extra work.
@@ -251,7 +264,7 @@ export class Screenshotter {
     await this._maskElements(progress, options);
     progress.throwIfAborted(); // Avoid extra work.
 
-    const buffer = await this._page._delegate.takeScreenshot(progress, format, documentRect, viewportRect, options.quality, fitsViewport);
+    const buffer = await this._page._delegate.takeScreenshot(progress, format, documentRect, viewportRect, options.quality, fitsViewport, options.size || 'device');
     progress.throwIfAborted(); // Avoid restoring after failure - should be done by cleanup.
 
     await this._page.hideHighlight();

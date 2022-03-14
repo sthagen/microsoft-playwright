@@ -22,8 +22,6 @@
  */
 const fs = require('fs');
 const path = require('path');
-const util = require('util');
-const url = require('url');
 
 const readJSON = async (filePath) => JSON.parse(await fs.promises.readFile(filePath, 'utf8'));
 const writeJSON = async (filePath, json) => {
@@ -170,6 +168,21 @@ const workspace = new Workspace(ROOT_PATH, [
     name: 'html-reporter',
     path: path.join(ROOT_PATH, 'packages', 'html-reporter'),
     files: [],
+  }),
+  new PWPackage({
+    name: '@playwright/experimental-ct-react',
+    path: path.join(ROOT_PATH, 'packages', 'playwright-ct-react'),
+    files: ['LICENSE'],
+  }),
+  new PWPackage({
+    name: '@playwright/experimental-ct-svelte',
+    path: path.join(ROOT_PATH, 'packages', 'playwright-ct-svelte'),
+    files: ['LICENSE'],
+  }),
+  new PWPackage({
+    name: '@playwright/experimental-ct-vue',
+    path: path.join(ROOT_PATH, 'packages', 'playwright-ct-vue'),
+    files: ['LICENSE'],
   }),
 ]);
 

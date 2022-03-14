@@ -17,7 +17,7 @@
 import colors from 'colors/safe';
 import * as fs from 'fs';
 import * as path from 'path';
-import { test, expect, stripAnsi } from './playwright-test-fixtures';
+import { test, expect, stripAnsi, createWhiteImage, paintBlackPixels } from './playwright-test-fixtures';
 
 const files = {
   'helper.ts': `
@@ -79,6 +79,8 @@ test('should compile with different option combinations', async ({ runTSC }) => 
       test('is a test', async ({ page }) => {
         expect('foo').toMatchSnapshot();
         expect('foo').toMatchSnapshot({ threshold: 0.2 });
+        expect('foo').toMatchSnapshot({ maxDiffPixelRatio: 0.2 });
+        expect('foo').toMatchSnapshot({ maxDiffPixels: 0.2 });
       });
     `
   });
@@ -394,6 +396,106 @@ test('should compare binary', async ({ runInlineTest }) => {
   expect(result.exitCode).toBe(0);
 });
 
+test('should respect maxDiffPixels option', async ({ runInlineTest }) => {
+  const width = 20, height = 20;
+  const BAD_PIXELS = 120;
+  const image1 = createWhiteImage(width, height);
+  const image2 = paintBlackPixels(image1, BAD_PIXELS);
+
+  await test.step('make sure default comparison fails', async () => {
+    const result = await runInlineTest({
+      ...files,
+      'a.spec.js-snapshots/snapshot.png': image1,
+      'a.spec.js': `
+        const { test } = require('./helper');
+        test('is a test', ({}) => {
+          expect(Buffer.from('${image2.toString('base64')}', 'base64')).toMatchSnapshot('snapshot.png');
+        });
+      `
+    });
+    expect(stripAnsi(result.output)).toContain('120 pixels');
+    expect(stripAnsi(result.output)).toContain('ratio 0.30');
+    expect(result.exitCode).toBe(1);
+  });
+
+  expect((await runInlineTest({
+    ...files,
+    'a.spec.js-snapshots/snapshot.png': image1,
+    'a.spec.js': `
+      const { test } = require('./helper');
+      test('is a test', ({}) => {
+        expect(Buffer.from('${image2.toString('base64')}', 'base64')).toMatchSnapshot('snapshot.png', {
+          maxDiffPixels: ${BAD_PIXELS}
+        });
+      });
+    `
+  })).exitCode, 'make sure maxDiffPixels option is respected').toBe(0);
+
+  expect((await runInlineTest({
+    ...files,
+    'playwright.config.ts': `
+      module.exports = { projects: [
+        { expect: { toMatchSnapshot: { maxDiffPixels: ${BAD_PIXELS} } } },
+      ]};
+    `,
+    'a.spec.js-snapshots/snapshot.png': image1,
+    'a.spec.js': `
+      const { test } = require('./helper');
+      test('is a test', ({}) => {
+        expect(Buffer.from('${image2.toString('base64')}', 'base64')).toMatchSnapshot('snapshot.png');
+      });
+    `
+  })).exitCode, 'make sure maxDiffPixels option in project config is respected').toBe(0);
+});
+
+test('should respect maxDiffPixelRatio option', async ({ runInlineTest }) => {
+  const width = 20, height = 20;
+  const BAD_RATIO = 0.25;
+  const BAD_PIXELS = Math.floor(width * height * BAD_RATIO);
+  const image1 = createWhiteImage(width, height);
+  const image2 = paintBlackPixels(image1, BAD_PIXELS);
+
+  expect((await runInlineTest({
+    ...files,
+    'a.spec.js-snapshots/snapshot.png': image1,
+    'a.spec.js': `
+      const { test } = require('./helper');
+      test('is a test', ({}) => {
+        expect(Buffer.from('${image2.toString('base64')}', 'base64')).toMatchSnapshot('snapshot.png');
+      });
+    `
+  })).exitCode, 'make sure default comparison fails').toBe(1);
+
+  expect((await runInlineTest({
+    ...files,
+    'a.spec.js-snapshots/snapshot.png': image1,
+    'a.spec.js': `
+      const { test } = require('./helper');
+      test('is a test', ({}) => {
+        expect(Buffer.from('${image2.toString('base64')}', 'base64')).toMatchSnapshot('snapshot.png', {
+          maxDiffPixelRatio: ${BAD_RATIO}
+        });
+      });
+    `
+  })).exitCode, 'make sure maxDiffPixelRatio option is respected').toBe(0);
+
+  expect((await runInlineTest({
+    ...files,
+    'playwright.config.ts': `
+      module.exports = { projects: [
+        { expect: { toMatchSnapshot: { maxDiffPixelRatio: ${BAD_RATIO} } } },
+      ]};
+    `,
+    'a.spec.js-snapshots/snapshot.png': image1,
+    'a.spec.js': `
+      const { test } = require('./helper');
+      test('is a test', ({}) => {
+        expect(Buffer.from('${image2.toString('base64')}', 'base64')).toMatchSnapshot('snapshot.png');
+      });
+    `
+  })).exitCode, 'make sure maxDiffPixels option in project config is respected').toBe(0);
+});
+
 test('should compare PNG images', async ({ runInlineTest }) => {
   const result = await runInlineTest({
     ...files,
@@ -656,17 +758,17 @@ test('should attach expected/actual/diff with snapshot path', async ({ runInline
     attachment.path = attachment.path.replace(/\\/g, '/').replace(/.*test-results\//, '');
   expect(attachments).toEqual([
     {
-      name: 'expected',
+      name: 'snapshot-expected.png',
       contentType: 'image/png',
       path: 'a-is-a-test/test/path/snapshot-expected.png'
     },
     {
-      name: 'actual',
+      name: 'snapshot-actual.png',
       contentType: 'image/png',
       path: 'a-is-a-test/test/path/snapshot-actual.png'
     },
     {
-      name: 'diff',
+      name: 'snapshot-diff.png',
       contentType: 'image/png',
       path: 'a-is-a-test/test/path/snapshot-diff.png'
     }
@@ -695,17 +797,17 @@ test('should attach expected/actual/diff', async ({ runInlineTest }, testInfo) =
     attachment.path = attachment.path.replace(/\\/g, '/').replace(/.*test-results\//, '');
   expect(attachments).toEqual([
     {
-      name: 'expected',
+      name: 'snapshot-expected.png',
       contentType: 'image/png',
       path: 'a-is-a-test/snapshot-expected.png'
     },
     {
-      name: 'actual',
+      name: 'snapshot-actual.png',
       contentType: 'image/png',
       path: 'a-is-a-test/snapshot-actual.png'
     },
     {
-      name: 'diff',
+      name: 'snapshot-diff.png',
       contentType: 'image/png',
       path: 'a-is-a-test/snapshot-diff.png'
     }
@@ -735,12 +837,12 @@ test('should attach expected/actual and no diff', async ({ runInlineTest }, test
     attachment.path = attachment.path.replace(/\\/g, '/').replace(/.*test-results\//, '');
   expect(attachments).toEqual([
     {
-      name: 'expected',
+      name: 'snapshot-expected.png',
       contentType: 'image/png',
       path: 'a-is-a-test/snapshot-expected.png'
     },
     {
-      name: 'actual',
+      name: 'snapshot-actual.png',
       contentType: 'image/png',
       path: 'a-is-a-test/snapshot-actual.png'
     },

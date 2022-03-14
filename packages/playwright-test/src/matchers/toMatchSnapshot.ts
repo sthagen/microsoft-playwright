@@ -21,7 +21,7 @@ import type { Expect } from '../types';
 import { currentTestInfo } from '../globals';
 import { mimeTypeToComparator, ImageComparatorOptions, Comparator } from 'playwright-core/lib/utils/comparators';
 import type { PageScreenshotOptions } from 'playwright-core/types/types';
-import { addSuffixToFilePath, serializeError, sanitizeForFilePath, trimLongString, callLogText, currentExpectTimeout } from '../util';
+import { addSuffixToFilePath, serializeError, sanitizeForFilePath, trimLongString, callLogText, currentExpectTimeout, expectTypes } from '../util';
 import { UpdateSnapshots } from '../types';
 import colors from 'colors/safe';
 import fs from 'fs';
@@ -38,9 +38,32 @@ type SyncExpectationResult = {
 type NameOrSegments = string | string[];
 const SNAPSHOT_COUNTER = Symbol('noname-snapshot-counter');
 
+export function getSnapshotName(
+  testInfo: TestInfoImpl,
+  received: any,
+  nameOrOptions: NameOrSegments | { name?: NameOrSegments } = {},
+  optOptions: any = {}
+) {
+  const [
+    anonymousSnapshotExtension,
+    snapshotPathResolver,
+  ] = typeof received === 'string' || Buffer.isBuffer(received) ? [
+    determineFileExtension(received),
+    testInfo.snapshotPath.bind(testInfo),
+  ] : [
+    'png',
+    testInfo._screenshotPath.bind(testInfo),
+  ];
+  const helper = new SnapshotHelper(
+      testInfo, snapshotPathResolver, anonymousSnapshotExtension, {},
+      nameOrOptions, optOptions, true /* dryRun */);
+  return path.basename(helper.snapshotPath);
+}
+
 class SnapshotHelper<T extends ImageComparatorOptions> {
   readonly testInfo: TestInfoImpl;
   readonly expectedPath: string;
+  readonly previousPath: string;
   readonly snapshotPath: string;
   readonly actualPath: string;
   readonly diffPath: string;
@@ -52,10 +75,12 @@ class SnapshotHelper<T extends ImageComparatorOptions> {
 
   constructor(
     testInfo: TestInfoImpl,
+    snapshotPathResolver: (...pathSegments: string[]) => string,
     anonymousSnapshotExtension: string,
     configOptions: ImageComparatorOptions,
     nameOrOptions: NameOrSegments | { name?: NameOrSegments } & T,
     optOptions: T,
+    dryRun: boolean = false,
   ) {
     let options: T;
     let name: NameOrSegments | undefined;
@@ -68,11 +93,13 @@ class SnapshotHelper<T extends ImageComparatorOptions> {
       delete (options as any).name;
     }
     if (!name) {
-      (testInfo as any)[SNAPSHOT_COUNTER] = ((testInfo as any)[SNAPSHOT_COUNTER] || 0) + 1;
+      (testInfo as any)[SNAPSHOT_COUNTER] = ((testInfo as any)[SNAPSHOT_COUNTER] || 0);
       const fullTitleWithoutSpec = [
         ...testInfo.titlePath.slice(1),
-        (testInfo as any)[SNAPSHOT_COUNTER],
+        (testInfo as any)[SNAPSHOT_COUNTER] + 1,
       ].join(' ');
+      if (!dryRun)
+        ++(testInfo as any)[SNAPSHOT_COUNTER];
       name = sanitizeForFilePath(trimLongString(fullTitleWithoutSpec)) + '.' + anonymousSnapshotExtension;
     }
 
@@ -89,27 +116,22 @@ class SnapshotHelper<T extends ImageComparatorOptions> {
 
     // sanitizes path if string
     const pathSegments = Array.isArray(name) ? name : [addSuffixToFilePath(name, '', undefined, true)];
-    const snapshotPath = testInfo.snapshotPath(...pathSegments);
+    this.snapshotPath = snapshotPathResolver(...pathSegments);
     const outputFile = testInfo.outputPath(...pathSegments);
-    const expectedPath = addSuffixToFilePath(outputFile, '-expected');
-    const actualPath = addSuffixToFilePath(outputFile, '-actual');
-    const diffPath = addSuffixToFilePath(outputFile, '-diff');
+    this.expectedPath = addSuffixToFilePath(outputFile, '-expected');
+    this.previousPath = addSuffixToFilePath(outputFile, '-previous');
+    this.actualPath = addSuffixToFilePath(outputFile, '-actual');
+    this.diffPath = addSuffixToFilePath(outputFile, '-diff');
 
-    let updateSnapshots = testInfo.config.updateSnapshots;
-    if (updateSnapshots === 'missing' && testInfo.retry < testInfo.project.retries)
-      updateSnapshots = 'none';
-    const mimeType = mime.getType(path.basename(snapshotPath)) ?? 'application/octet-string';
-    const comparator: Comparator = mimeTypeToComparator[mimeType];
+    this.updateSnapshots = testInfo.config.updateSnapshots;
+    if (this.updateSnapshots === 'missing' && testInfo.retry < testInfo.project.retries)
+      this.updateSnapshots = 'none';
+    this.mimeType = mime.getType(path.basename(this.snapshotPath)) ?? 'application/octet-string';
+    const comparator: Comparator = mimeTypeToComparator[this.mimeType];
     if (!comparator)
-      throw new Error('Failed to find comparator with type ' + mimeType + ': ' + snapshotPath);
+      throw new Error('Failed to find comparator with type ' + this.mimeType + ': ' + this.snapshotPath);
 
     this.testInfo = testInfo;
-    this.mimeType = mimeType;
-    this.actualPath = actualPath;
-    this.expectedPath = expectedPath;
-    this.diffPath = diffPath;
-    this.snapshotPath = snapshotPath;
-    this.updateSnapshots = updateSnapshots;
     this.allOptions = options;
     this.comparatorOptions = {
       maxDiffPixels: options.maxDiffPixels,
@@ -166,6 +188,7 @@ class SnapshotHelper<T extends ImageComparatorOptions> {
   handleDifferent(
     actual: Buffer | string | undefined,
     expected: Buffer | string | undefined,
+    previous: Buffer | string | undefined,
     diff: Buffer | string | undefined,
     diffError: string | undefined,
     log: string[] | undefined,
@@ -174,28 +197,31 @@ class SnapshotHelper<T extends ImageComparatorOptions> {
       colors.red(title),
       '',
     ];
-    if (diffError) {
-      output.push(...[
-        indent(diffError, '  '),
-        '',
-      ]);
-    }
+    if (diffError)
+      output.push(indent(diffError, '  '));
     if (log?.length)
       output.push(callLogText(log));
+    else
+      output.push('');
 
     if (expected !== undefined) {
       writeFileSync(this.expectedPath, expected);
-      this.testInfo.attachments.push({ name: 'expected', contentType: this.mimeType, path: this.expectedPath });
+      this.testInfo.attachments.push({ name: path.basename(this.expectedPath), contentType: this.mimeType, path: this.expectedPath });
       output.push(`Expected: ${colors.yellow(this.expectedPath)}`);
+    }
+    if (previous !== undefined) {
+      writeFileSync(this.previousPath, previous);
+      this.testInfo.attachments.push({ name: path.basename(this.previousPath), contentType: this.mimeType, path: this.previousPath });
+      output.push(`Previous: ${colors.yellow(this.previousPath)}`);
     }
     if (actual !== undefined) {
       writeFileSync(this.actualPath, actual);
-      this.testInfo.attachments.push({ name: 'actual', contentType: this.mimeType, path: this.actualPath });
+      this.testInfo.attachments.push({ name: path.basename(this.actualPath), contentType: this.mimeType, path: this.actualPath });
       output.push(`Received: ${colors.yellow(this.actualPath)}`);
     }
     if (diff !== undefined) {
       writeFileSync(this.diffPath, diff);
-      this.testInfo.attachments.push({ name: 'diff', contentType: this.mimeType, path: this.diffPath });
+      this.testInfo.attachments.push({ name: path.basename(this.diffPath), contentType: this.mimeType, path: this.diffPath });
       output.push(`    Diff: ${colors.yellow(this.diffPath)}`);
     }
     return { pass: false, message: () => output.join('\n'), };
@@ -206,19 +232,17 @@ class SnapshotHelper<T extends ImageComparatorOptions> {
   }
 }
 
-type MatchSnapshotOptions = Omit<ImageComparatorOptions, 'maxDiffPixels' | 'maxDiffPixelRatio'>;
-
 export function toMatchSnapshot(
   this: ReturnType<Expect['getState']>,
   received: Buffer | string,
-  nameOrOptions: NameOrSegments | { name?: NameOrSegments } & MatchSnapshotOptions = {},
-  optOptions: MatchSnapshotOptions = {}
+  nameOrOptions: NameOrSegments | { name?: NameOrSegments } & ImageComparatorOptions = {},
+  optOptions: ImageComparatorOptions = {}
 ): SyncExpectationResult {
   const testInfo = currentTestInfo();
   if (!testInfo)
     throw new Error(`toMatchSnapshot() must be called during the test`);
   const helper = new SnapshotHelper(
-      testInfo, determineFileExtension(received),
+      testInfo, testInfo.snapshotPath.bind(testInfo), determineFileExtension(received),
       testInfo.project.expect?.toMatchSnapshot || {},
       nameOrOptions, optOptions);
   const comparator: Comparator = mimeTypeToComparator[helper.mimeType];
@@ -247,7 +271,7 @@ export function toMatchSnapshot(
     return { pass: true, message: () => helper.snapshotPath + ' running with --update-snapshots, writing actual.' };
   }
 
-  return helper.handleDifferent(received, expected, result.diff, result.errorMessage, undefined);
+  return helper.handleDifferent(received, expected, undefined, result.diff, result.errorMessage, undefined);
 }
 
 type HaveScreenshotOptions = ImageComparatorOptions & Omit<PageScreenshotOptions, 'type' | 'quality' | 'path'>;
@@ -261,12 +285,23 @@ export async function toHaveScreenshot(
   const testInfo = currentTestInfo();
   if (!testInfo)
     throw new Error(`toHaveScreenshot() must be called during the test`);
+  const config = testInfo.project.expect?.toHaveScreenshot;
   const helper = new SnapshotHelper(
-      testInfo, 'png',
-      testInfo.project.expect?.toHaveScreenshot || {},
+      testInfo, testInfo._screenshotPath.bind(testInfo), 'png',
+      {
+        maxDiffPixels: config?.maxDiffPixels,
+        maxDiffPixelRatio: config?.maxDiffPixelRatio,
+        threshold: config?.threshold,
+      },
       nameOrOptions, optOptions);
+  if (!helper.snapshotPath.toLowerCase().endsWith('.png'))
+    throw new Error(`Screenshot name "${path.basename(helper.snapshotPath)}" must have '.png' extension`);
+  expectTypes(pageOrLocator, ['Page', 'Locator'], 'toHaveScreenshot');
   const [page, locator] = pageOrLocator.constructor.name === 'Page' ? [(pageOrLocator as PageEx), undefined] : [(pageOrLocator as Locator).page() as PageEx, pageOrLocator as LocatorEx];
   const screenshotOptions = {
+    animations: config?.animations ?? 'disabled',
+    fonts: config?.fonts ?? 'ready',
+    size: config?.size ?? 'css',
     ...helper.allOptions,
     mask: (helper.allOptions.mask || []) as LocatorEx[],
     name: undefined,
@@ -312,11 +347,10 @@ export async function toHaveScreenshot(
     // We tried re-generating new snapshot but failed.
     // This can be due to e.g. spinning animation, so we want to show it as a diff.
     if (errorMessage) {
-      // TODO(aslushnikov): rename attachments to "actual" and "previous". They still should be somehow shown in HTML reporter.
       const title = actual && previous ?
-        `Timeout ${timeout}ms exceeded while generating screenshot because ${locator ? 'element' : 'page'} kept changing:` :
-        `Timeout ${timeout}ms exceeded while generating screenshot:`;
-      return helper.handleDifferent(actual, previous, diff, undefined, log, title);
+        `Timeout ${timeout}ms exceeded while generating screenshot because ${locator ? 'element' : 'page'} kept changing` :
+        `Timeout ${timeout}ms exceeded while generating screenshot`;
+      return helper.handleDifferent(actual, undefined, previous, diff, undefined, log, title);
     }
 
     // We successfully (re-)generated new screenshot.
@@ -347,7 +381,7 @@ export async function toHaveScreenshot(
   });
 
   return errorMessage ?
-    helper.handleDifferent(actual, expected, diff, errorMessage, log) :
+    helper.handleDifferent(actual, expected, undefined, diff, errorMessage, log) :
     helper.handleMatching();
 }
 

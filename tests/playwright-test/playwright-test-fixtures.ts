@@ -255,6 +255,10 @@ export function stripAnsi(str: string): string {
   return str.replace(asciiRegex, '');
 }
 
+export function trimLineEnds(text: string): string {
+  return text.split('\n').map(line => line.trimEnd()).join('\n');
+}
+
 export function countTimes(s: string, sub: string): number {
   let result = 0;
   for (let index = 0; index !== -1;) {
@@ -284,10 +288,10 @@ export function createWhiteImage(width: number, height: number) {
 }
 
 export function paintBlackPixels(image: Buffer, blackPixelsCount: number): Buffer {
-  image = PNG.sync.read(image);
+  const png = PNG.sync.read(image);
   for (let i = 0; i < blackPixelsCount; ++i) {
     for (let j = 0; j < 3; ++j)
-      image.data[i * 4 + j] = 0;
+      png.data[i * 4 + j] = 0;
   }
-  return PNG.sync.write(image);
+  return PNG.sync.write(png);
 }

@@ -25,7 +25,7 @@ it.describe('page screenshot', () => {
   it.skip(({ browserName, headless }) => browserName === 'firefox' && !headless, 'Firefox headed produces a different image.');
   it.skip(({ isAndroid }) => isAndroid, 'Different viewport');
 
-  it('should work #smoke', async ({ page, server }) => {
+  it('should work @smoke', async ({ page, server }) => {
     await page.setViewportSize({ width: 500, height: 500 });
     await page.goto(server.PREFIX + '/grid.html');
     const screenshot = await page.screenshot();
@@ -478,7 +478,8 @@ it.describe('page screenshot animations', () => {
     }
   });
 
-  it('should not capture css animations in shadow DOM', async ({ page, server }) => {
+  it('should not capture css animations in shadow DOM', async ({ page, server, isAndroid }) => {
+    it.skip(isAndroid, 'Different viewport');
     await page.goto(server.PREFIX + '/rotate-z-shadow-dom.html');
     const screenshot = await page.screenshot({
       animations: 'disabled',
@@ -492,8 +493,9 @@ it.describe('page screenshot animations', () => {
     }
   });
 
-  it('should stop animations that happen right before screenshot', async ({ page, server, mode }) => {
+  it('should stop animations that happen right before screenshot', async ({ page, server, mode, isAndroid }) => {
     it.skip(mode !== 'default');
+    it.skip(isAndroid, 'Different viewport');
     await page.goto(server.PREFIX + '/rotate-z.html');
     // Stop rotating bar.
     await page.$eval('div', el => el.style.setProperty('animation', 'none'));
@@ -562,7 +564,7 @@ it.describe('page screenshot animations', () => {
     });
     await rafraf(page);
     // Make sure finite transition is not restarted.
-    const screenshot2 = await div.screenshot();
+    const screenshot2 = await div.screenshot({ animations: 'allow' });
     expect(screenshot1.equals(screenshot2)).toBe(true);
 
     expect(await page.evaluate(() => window['__TRANSITION_END'])).toBe(true);
@@ -606,7 +608,8 @@ it.describe('page screenshot animations', () => {
     expect(screenshot1.equals(screenshot2)).toBe(true);
   });
 
-  it('should not change animation with playbackRate equal to 0', async ({ page, server }) => {
+  it('should not change animation with playbackRate equal to 0', async ({ page, server, isAndroid }) => {
+    it.skip(isAndroid, 'Different viewport');
     await page.goto(server.PREFIX + '/rotate-z.html');
     await page.evaluate(async () => {
       window.animation = document.getAnimations()[0];
@@ -707,5 +710,39 @@ it.describe('page screenshot animations', () => {
       'onfinish', 'animationend'
     ]);
   });
+
+  it('should respect fonts option', async ({ page, server, isWindows }) => {
+    it.fixme(isWindows, 'This requires a windows-specific test expectations. https://github.com/microsoft/playwright/issues/12707');
+    await page.setViewportSize({ width: 500, height: 500 });
+    let serverRequest, serverResponse;
+    // Stall font loading.
+    server.setRoute('/webfont/iconfont.woff2', (req, res) => {
+      serverRequest = req;
+      serverResponse = res;
+    });
+    await page.goto(server.PREFIX + '/webfont/webfont.html', {
+      waitUntil: 'domcontentloaded', // 'load' will not happen if webfont is pending
+    });
+    // Make sure we can take screenshot.
+    const noIconsScreenshot = await page.screenshot();
+    // Make sure screenshot times out while webfont is stalled.
+    const error = await page.screenshot({
+      fonts: 'ready',
+      timeout: 200,
+    }).catch(e => e);
+    expect(error.message).toContain('waiting for fonts to load...');
+    expect(error.message).toContain('Timeout 200ms exceeded');
+    const [iconsScreenshot] = await Promise.all([
+      page.screenshot({ fonts: 'ready' }),
+      server.serveFile(serverRequest, serverResponse),
+    ]);
+    expect(iconsScreenshot).toMatchSnapshot('screenshot-web-font.png', {
+      maxDiffPixels: 3,
+    });
+    expect(noIconsScreenshot).not.toMatchSnapshot('screenshot-web-font.png', {
+      maxDiffPixels: 3,
+    });
+  });
+
 });
 

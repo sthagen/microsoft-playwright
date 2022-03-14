@@ -18,7 +18,7 @@
 import { Route } from 'playwright-core';
 import { test as it, expect } from './pageTest';
 
-it('should intercept #smoke', async ({ page, server }) => {
+it('should intercept @smoke', async ({ page, server }) => {
   let intercepted = false;
   await page.route('**/empty.html', (route, request) => {
     expect(route.request()).toBe(request);
@@ -423,7 +423,7 @@ it('should work with encoded server - 2', async ({ page, server, browserName, br
   });
   const response = await page.goto(`data:text/html,<link rel="stylesheet" href="${server.PREFIX}/fonts?helvetica|arial"/>`);
   expect(response).toBe(null);
-  if (browserName === 'firefox' && browserMajorVersion >= 98)
+  if (browserName === 'firefox' && browserMajorVersion >= 97)
     expect(requests.length).toBe(2); // Firefox DevTools report to navigations in this case as well.
   else
     expect(requests.length).toBe(1);
