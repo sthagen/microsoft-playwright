@@ -109,6 +109,10 @@ export class WKPage implements PageDelegate {
     }
   }
 
+  potentiallyUninitializedPage(): Page {
+    return this._page;
+  }
+
   private async _initializePageProxySession() {
     const promises: Promise<any>[] = [
       this._pageProxySession.send('Dialog.enable'),
@@ -924,6 +928,10 @@ export class WKPage implements PageDelegate {
       data: file.buffer,
     }));
     await this._session.send('DOM.setInputFiles', { objectId, files: protocolFiles });
+  }
+
+  async setInputFilePaths(handle: dom.ElementHandle<HTMLInputElement>, files: string[]): Promise<void> {
+    throw new Error('Not implemented');
   }
 
   async adoptElementHandle<T extends Node>(handle: dom.ElementHandle<T>, to: dom.FrameExecutionContext): Promise<dom.ElementHandle<T>> {

@@ -17,6 +17,7 @@
 
 import { test as it, expect } from './pageTest';
 import { verifyViewport, attachFrame } from '../config/utils';
+import type { Route } from 'playwright-core';
 import path from 'path';
 import fs from 'fs';
 import os from 'os';
@@ -429,6 +430,20 @@ it.describe('page screenshot', () => {
       const screenshot2 = await page.screenshot();
       expect(screenshot1.equals(screenshot2)).toBe(true);
     });
+
+    it('should work when subframe has stalled navigation', async ({ page, server }) => {
+      let cb;
+      const routeReady = new Promise<Route>(f => cb = f);
+      await page.route('**/subframe.html', cb); // Stalling subframe.
+
+      await page.goto(server.EMPTY_PAGE);
+      const done = page.setContent(`<iframe src='/subframe.html'></iframe>`);
+      const route = await routeReady;
+
+      await page.screenshot({ mask: [ page.locator('non-existent') ] });
+      await route.fulfill({ body: '' });
+      await done;
+    });
   });
 });
 
@@ -711,7 +726,8 @@ it.describe('page screenshot animations', () => {
     ]);
   });
 
-  it('should respect fonts option', async ({ page, server, isWindows }) => {
+  it('should respect fonts option', async ({ page, server, isWindows, browserName, isLinux }) => {
+    it.fixme(browserName === 'webkit' && isLinux, 'https://github.com/microsoft/playwright/issues/12839');
     it.fixme(isWindows, 'This requires a windows-specific test expectations. https://github.com/microsoft/playwright/issues/12707');
     await page.setViewportSize({ width: 500, height: 500 });
     let serverRequest, serverResponse;

@@ -116,6 +116,10 @@ export class FFPage implements PageDelegate {
     this.evaluateOnNewDocument('', UTILITY_WORLD_NAME).catch(e => this._markAsError(e));
   }
 
+  potentiallyUninitializedPage(): Page {
+    return this._page;
+  }
+
   async _markAsError(error: Error) {
     // Same error may be report twice: channer disconnected and session.send fails.
     if (this._initializationFailed)
@@ -526,6 +530,10 @@ export class FFPage implements PageDelegate {
   async setInputFiles(handle: dom.ElementHandle<HTMLInputElement>, files: types.FilePayload[]): Promise<void> {
     await handle.evaluateInUtility(([injected, node, files]) =>
       injected.setInputFiles(node, files), files);
+  }
+
+  async setInputFilePaths(handle: dom.ElementHandle<HTMLInputElement>, files: string[]): Promise<void> {
+    throw new Error('Not implemented');
   }
 
   async adoptElementHandle<T extends Node>(handle: dom.ElementHandle<T>, to: dom.FrameExecutionContext): Promise<dom.ElementHandle<T>> {

@@ -28,7 +28,8 @@ import { Progress } from './progress';
 import { Selectors } from './selectors';
 import * as types from './types';
 import path from 'path';
-import { CallMetadata, internalCallMetadata, SdkObject } from './instrumentation';
+import fs from 'fs';
+import { CallMetadata, serverSideCallMetadata, SdkObject } from './instrumentation';
 import { Debugger } from './supplements/debugger';
 import { Tracing } from './trace/recorder/tracing';
 import { HarRecorder } from './supplements/har/harRecorder';
@@ -66,6 +67,7 @@ export abstract class BrowserContext extends SdkObject {
   readonly tracing: Tracing;
   readonly fetchRequest: BrowserContextAPIRequestContext;
   private _customCloseHandler?: () => Promise<any>;
+  readonly _tempDirs: string[] = [];
 
   constructor(browser: Browser, options: types.BrowserContextOptions, browserContextId: string | undefined) {
     super(browser, 'browser-context');
@@ -97,7 +99,7 @@ export abstract class BrowserContext extends SdkObject {
   }
 
   async _initialize() {
-    if (this.attribution.isInternal)
+    if (this.attribution.isInternalPlaywright)
       return;
     // Debugger will pause execution upon page.pause in headed mode.
     const contextDebugger = new Debugger(this);
@@ -274,6 +276,10 @@ export abstract class BrowserContext extends SdkObject {
     await Promise.all(Array.from(this._downloads).map(download => download.artifact.deleteOnContextClose()));
   }
 
+  private async _deleteAllTempDirs(): Promise<void> {
+    await Promise.all(this._tempDirs.map(async dir => await fs.promises.unlink(dir).catch(e => {})));
+  }
+
   setCustomCloseHandler(handler: (() => Promise<any>) | undefined) {
     this._customCloseHandler = handler;
   }
@@ -308,6 +314,7 @@ export abstract class BrowserContext extends SdkObject {
       // We delete downloads after context closure
       // so that browser does not write to the download file anymore.
       promises.push(this._deleteAllDownloads());
+      promises.push(this._deleteAllTempDirs());
       await Promise.all(promises);
 
       // Custom handler should trigger didCloseInternal itself.
@@ -326,6 +333,8 @@ export abstract class BrowserContext extends SdkObject {
 
   async newPage(metadata: CallMetadata): Promise<Page> {
     const pageDelegate = await this.newPageDelegate();
+    if (metadata.isServerSide)
+      pageDelegate.potentiallyUninitializedPage().markAsServerSideOnly();
     const pageOrError = await pageDelegate.pageOrError();
     if (pageOrError instanceof Page) {
       if (pageOrError.isClosed())
@@ -345,7 +354,7 @@ export abstract class BrowserContext extends SdkObject {
       origins: []
     };
     if (this._origins.size)  {
-      const internalMetadata = internalCallMetadata();
+      const internalMetadata = serverSideCallMetadata();
       const page = await this.newPage(internalMetadata);
       await page._setServerRequestInterceptor(handler => {
         handler.fulfill({ body: '<html></html>' }).catch(() => {});
@@ -370,7 +379,7 @@ export abstract class BrowserContext extends SdkObject {
     if (state.cookies)
       await this.addCookies(state.cookies);
     if (state.origins && state.origins.length)  {
-      const internalMetadata = internalCallMetadata();
+      const internalMetadata = serverSideCallMetadata();
       const page = await this.newPage(internalMetadata);
       await page._setServerRequestInterceptor(handler => {
         handler.fulfill({ body: '<html></html>' }).catch(() => {});
