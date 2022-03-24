@@ -3131,7 +3131,11 @@ might return multiple quads for inline nodes.
       /**
        * Files to set
        */
-      files: FilePayload[];
+      files?: FilePayload[];
+      /**
+       * File paths to set
+       */
+      paths?: string[];
     }
     export type setInputFilesReturnValue = {
     }
@@ -7259,6 +7263,21 @@ the top of the viewport and Y increases as it proceeds towards the bottom of the
       loaderId?: Network.LoaderId;
     }
     /**
+     * Grants read access for the specified files to the web process of the page.
+     */
+    export type grantFileReadAccessParameters = {
+      /**
+       * Unique identifier of the page proxy.
+       */
+      pageProxyId: PageProxyID;
+      /**
+       * Id of the frame to navigate.
+       */
+      paths: string[];
+    }
+    export type grantFileReadAccessReturnValue = {
+    }
+    /**
      * Change whether all certificate errors should be ignored.
      */
     export type setIgnoreCertificateErrorsParameters = {
@@ -9092,6 +9111,7 @@ the top of the viewport and Y increases as it proceeds towards the bottom of the
     "Playwright.deleteContext": Playwright.deleteContextParameters;
     "Playwright.createPage": Playwright.createPageParameters;
     "Playwright.navigate": Playwright.navigateParameters;
+    "Playwright.grantFileReadAccess": Playwright.grantFileReadAccessParameters;
     "Playwright.setIgnoreCertificateErrors": Playwright.setIgnoreCertificateErrorsParameters;
     "Playwright.getAllCookies": Playwright.getAllCookiesParameters;
     "Playwright.setCookies": Playwright.setCookiesParameters;
@@ -9393,6 +9413,7 @@ the top of the viewport and Y increases as it proceeds towards the bottom of the
     "Playwright.deleteContext": Playwright.deleteContextReturnValue;
     "Playwright.createPage": Playwright.createPageReturnValue;
     "Playwright.navigate": Playwright.navigateReturnValue;
+    "Playwright.grantFileReadAccess": Playwright.grantFileReadAccessReturnValue;
     "Playwright.setIgnoreCertificateErrors": Playwright.setIgnoreCertificateErrorsReturnValue;
     "Playwright.getAllCookies": Playwright.getAllCookiesReturnValue;
     "Playwright.setCookies": Playwright.setCookiesReturnValue;

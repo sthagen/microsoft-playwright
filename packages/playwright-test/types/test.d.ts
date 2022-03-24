@@ -239,7 +239,7 @@ interface TestProject {
    */
   screenshotsDir?: string;
   /**
-   * The output directory for files created during test execution. Defaults to `test-results`.
+   * The output directory for files created during test execution. Defaults to `<package.json-directory>/test-results`.
    *
    * This directory is cleaned at the start. When running a test, a unique subdirectory inside the
    * [testProject.outputDir](https://playwright.dev/docs/api/class-testproject#test-project-output-dir) is created,
@@ -828,7 +828,7 @@ interface TestConfig {
    */
   screenshotsDir?: string;
   /**
-   * The output directory for files created during test execution. Defaults to `test-results`.
+   * The output directory for files created during test execution. Defaults to `<package.json-directory>/test-results`.
    *
    * ```ts
    * // playwright.config.ts
@@ -1268,6 +1268,15 @@ export interface FullConfig<TestArgs = {}, WorkerArgs = {}> {
    *
    */
   webServer: WebServerConfig | null;
+  /**
+   * > NOTE: This does not include test-level attachments. See
+   * [testInfo.attach(name[, options])](https://playwright.dev/docs/api/class-testinfo#test-info-attach) and
+   * [testInfo.attachments](https://playwright.dev/docs/api/class-testinfo#test-info-attachments) for working with test-level
+   * attachments.
+   *
+   * The list of files or buffers attached for the overall Playwright Test run. Some reporters show attachments.
+   */
+  attachments: { name: string, path?: string, body?: Buffer, contentType: string }[];
 }
 
 export type TestStatus = 'passed' | 'failed' | 'timedOut' | 'skipped';
@@ -1794,6 +1803,24 @@ export interface TestType<TestArgs extends KeyValue, WorkerArgs extends KeyValue
    * this callback will belong to the group.
    */
   only: SuiteFunction;
+    /**
+   * Declares a skipped test group, similarly to
+   * [test.describe(title, callback)](https://playwright.dev/docs/api/class-test#test-describe). Tests in the skipped group
+   * are never run.
+   *
+   * ```ts
+   * test.describe.skip('skipped group', () => {
+   *   test('example', async ({ page }) => {
+   *     // This test will not run
+   *   });
+   * });
+   * ```
+   *
+   * @param title Group title.
+   * @param callback A callback that is run immediately when calling [test.describe.skip(title, callback)](https://playwright.dev/docs/api/class-test#test-describe-skip). Any tests added in
+   * this callback will belong to the group, and will not be run.
+   */
+  skip: SuiteFunction;
     /**
    * Declares a group of tests that should always be run serially. If one of the tests fails, all subsequent tests are
    * skipped. All tests in a group are retried together.

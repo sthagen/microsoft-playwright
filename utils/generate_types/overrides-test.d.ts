@@ -211,6 +211,7 @@ export interface FullConfig<TestArgs = {}, WorkerArgs = {}> {
   updateSnapshots: UpdateSnapshots;
   workers: number;
   webServer: WebServerConfig | null;
+  attachments: { name: string, path?: string, body?: Buffer, contentType: string }[];
 }
 
 export type TestStatus = 'passed' | 'failed' | 'timedOut' | 'skipped';
@@ -290,6 +291,7 @@ export interface TestType<TestArgs extends KeyValue, WorkerArgs extends KeyValue
   only: TestFunction<TestArgs & WorkerArgs>;
   describe: SuiteFunction & {
     only: SuiteFunction;
+    skip: SuiteFunction;
     serial: SuiteFunction & {
       only: SuiteFunction;
     };

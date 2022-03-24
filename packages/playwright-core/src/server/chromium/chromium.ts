@@ -22,12 +22,12 @@ import { CRBrowser } from './crBrowser';
 import { Env, gracefullyCloseSet } from '../../utils/processLauncher';
 import { kBrowserCloseMessageId } from './crConnection';
 import { rewriteErrorMessage } from '../../utils/stackTrace';
-import { BrowserType } from '../browserType';
+import { BrowserType, kNoXServerRunningError } from '../browserType';
 import { ConnectionTransport, ProtocolRequest, WebSocketTransport } from '../transport';
 import { CRDevTools } from './crDevTools';
 import { Browser, BrowserOptions, BrowserProcess, PlaywrightOptions } from '../browser';
 import * as types from '../types';
-import { debugMode, fetchData, getUserAgent, headersArrayToObject, HTTPRequestParams, removeFolders, streamToString } from '../../utils/utils';
+import { debugMode, fetchData, getUserAgent, headersArrayToObject, HTTPRequestParams, removeFolders, streamToString, wrapInASCIIBox } from '../../utils/utils';
 import { RecentLogsCollector } from '../../utils/debugLogger';
 import { Progress, ProgressController } from '../progress';
 import { TimeoutSettings } from '../../utils/timeoutSettings';
@@ -126,6 +126,8 @@ export class Chromium extends BrowserType {
   }
 
   _rewriteStartupError(error: Error): Error {
+    if (error.message.includes('Missing X server'))
+      return rewriteErrorMessage(error, '\n' + wrapInASCIIBox(kNoXServerRunningError, 1));
     // These error messages are taken from Chromium source code as of July, 2020:
     // https://github.com/chromium/chromium/blob/70565f67e79f79e17663ad1337dc6e63ee207ce9/content/browser/zygote_host/zygote_host_impl_linux.cc
     if (!error.message.includes('crbug.com/357670') && !error.message.includes('No usable sandbox!') && !error.message.includes('crbug.com/638180'))
@@ -157,7 +159,10 @@ export class Chromium extends BrowserType {
     const args = this._innerDefaultArgs(options);
     args.push('--remote-debugging-port=0');
     const isEdge = options.channel && options.channel.startsWith('msedge');
-    let desiredCapabilities = { 'browserName': isEdge ? 'MicrosoftEdge' : 'chrome', 'goog:chromeOptions': { args } };
+    let desiredCapabilities = {
+      'browserName': isEdge ? 'MicrosoftEdge' : 'chrome',
+      [isEdge ? 'ms:edgeOptions' : 'goog:chromeOptions']: { args }
+    };
     try {
       if (process.env.SELENIUM_REMOTE_CAPABILITIES) {
         const parsed = JSON.parse(process.env.SELENIUM_REMOTE_CAPABILITIES);
@@ -316,7 +321,7 @@ const DEFAULT_ARGS = [
   '--disable-default-apps',
   '--disable-dev-shm-usage',
   '--disable-extensions',
-  '--disable-features=ImprovedCookieControls,LazyFrameLoading,GlobalMediaControls,DestroyProfileOnBrowserClose,MediaRouter,AcceptCHFrame,AutoExpandDetailsElement',
+  '--disable-features=ImprovedCookieControls,LazyFrameLoading,GlobalMediaControls,DestroyProfileOnBrowserClose,MediaRouter,AcceptCHFrame,AutoExpandDetailsElement,CertificateTransparencyComponentUpdater',
   '--allow-pre-commit-input',
   '--disable-hang-monitor',
   '--disable-ipc-flooding-protection',

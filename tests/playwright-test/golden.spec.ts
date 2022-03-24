@@ -44,6 +44,22 @@ test('should support golden', async ({ runInlineTest }) => {
   expect(result.exitCode).toBe(0);
 });
 
+test('should work with non-txt extensions', async ({ runInlineTest }) => {
+  const result = await runInlineTest({
+    ...files,
+    'a.spec.js-snapshots/snapshot.csv': `1,2,3`,
+    'a.spec.js': `
+      const { test } = require('./helper');
+      test('is a test', ({}) => {
+        expect('1,2,4').toMatchSnapshot('snapshot.csv');
+      });
+    `
+  });
+  expect(result.exitCode).toBe(1);
+  expect(stripAnsi(result.output)).toContain(`1,2,34`);
+});
+
+
 test('should generate default name', async ({ runInlineTest }, testInfo) => {
   const result = await runInlineTest({
     ...files,
@@ -905,4 +921,18 @@ test('should allow comparing text with text without file extension', async ({ ru
     `
   });
   expect(result.exitCode).toBe(0);
+});
+
+test('should throw if a Promise was passed to toMatchSnapshot', async ({ runInlineTest }) => {
+  const result = await runInlineTest({
+    ...files,
+    'a.spec.js': `
+      const { test } = require('./helper');
+      test('is a test', ({}) => {
+        expect(() => expect(new Promise(() => {})).toMatchSnapshot('foobar')).toThrow(/An unresolved Promise was passed to toMatchSnapshot\\(\\), make sure to resolve it by adding await to it./);
+      });
+    `
+  });
+  expect(result.exitCode).toBe(0);
+  expect(result.passed).toBe(1);
 });

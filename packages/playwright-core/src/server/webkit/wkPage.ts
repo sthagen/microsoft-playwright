@@ -114,6 +114,8 @@ export class WKPage implements PageDelegate {
   }
 
   private async _initializePageProxySession() {
+    if (this._page._browserContext.isSettingStorageState())
+      return;
     const promises: Promise<any>[] = [
       this._pageProxySession.send('Dialog.enable'),
       this._pageProxySession.send('Emulation.setActiveAndFocused', { active: true }),
@@ -182,6 +184,10 @@ export class WKPage implements PageDelegate {
     if (this._page._needsRequestInterception()) {
       promises.push(session.send('Network.setInterceptionEnabled', { enabled: true }));
       promises.push(session.send('Network.addInterception', { url: '.*', stage: 'request', isRegex: true }));
+    }
+    if (this._page._browserContext.isSettingStorageState()) {
+      await Promise.all(promises);
+      return;
     }
 
     const contextOptions = this._browserContext._options;
@@ -918,16 +924,6 @@ export class WKPage implements PageDelegate {
       { x: quad[4], y: quad[5] },
       { x: quad[6], y: quad[7] }
     ]);
-  }
-
-  async setInputFiles(handle: dom.ElementHandle<HTMLInputElement>, files: types.FilePayload[]): Promise<void> {
-    const objectId = handle._objectId;
-    const protocolFiles = files.map(file => ({
-      name: file.name,
-      type: file.mimeType,
-      data: file.buffer,
-    }));
-    await this._session.send('DOM.setInputFiles', { objectId, files: protocolFiles });
   }
 
   async setInputFilePaths(handle: dom.ElementHandle<HTMLInputElement>, files: string[]): Promise<void> {
