@@ -926,8 +926,23 @@ export class WKPage implements PageDelegate {
     ]);
   }
 
-  async setInputFilePaths(handle: dom.ElementHandle<HTMLInputElement>, files: string[]): Promise<void> {
-    throw new Error('Not implemented');
+  async setInputFiles(handle: dom.ElementHandle<HTMLInputElement>, files: types.FilePayload[]): Promise<void> {
+    const objectId = handle._objectId;
+    const protocolFiles = files.map(file => ({
+      name: file.name,
+      type: file.mimeType,
+      data: file.buffer,
+    }));
+    await this._session.send('DOM.setInputFiles', { objectId, files: protocolFiles });
+  }
+
+  async setInputFilePaths(handle: dom.ElementHandle<HTMLInputElement>, paths: string[]): Promise<void> {
+    const pageProxyId = this._pageProxySession.sessionId;
+    const objectId = handle._objectId;
+    await Promise.all([
+      this._pageProxySession.connection.browserSession.send('Playwright.grantFileReadAccess', { pageProxyId, paths }),
+      this._session.send('DOM.setInputFiles', { objectId, paths })
+    ]);
   }
 
   async adoptElementHandle<T extends Node>(handle: dom.ElementHandle<T>, to: dom.FrameExecutionContext): Promise<dom.ElementHandle<T>> {

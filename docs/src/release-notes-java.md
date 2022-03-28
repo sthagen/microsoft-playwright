@@ -243,7 +243,7 @@ Previously it was not possible to get multiple header values of a response. This
 - [Response.allHeaders()](https://playwright.dev/java/docs/api/class-response#response-all-headers)
 - [Response.headersArray()](https://playwright.dev/java/docs/api/class-response#response-headers-array)
 - [Response.headerValue(name: string)](https://playwright.dev/java/docs/api/class-response#response-header-value)
-- [Response.headerValues(name: string)](https://playwright.dev/java/docs/api/class-response/#response-header-values)
+- [Response.headerValues(name: string)](https://playwright.dev/java/docs/api/class-response#response-header-values)
 
 ### 🌈 Forced-Colors emulation
 
@@ -499,7 +499,7 @@ This version of Playwright was also tested against the following stable channels
 
 - [Selecting elements based on layout](./selectors.md#selecting-elements-based-on-layout) with `:left-of()`, `:right-of()`, `:above()` and `:below()`.
 - Playwright now includes [command line interface](./cli.md), former playwright-cli.
-  ```bash js
+  ```bash java
   mvn exec:java -e -Dexec.mainClass=com.microsoft.playwright.CLI -Dexec.args="--help"
   ```
 - [`method: Page.selectOption`] now waits for the options to be present.

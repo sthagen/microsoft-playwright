@@ -178,6 +178,9 @@ async function runTests(args: string[], opts: { [key: string]: any }) {
 
 
 async function listTestFiles(opts: { [key: string]: any }) {
+  // Redefine process.stdout.write in case config decides to pollute stdio.
+  const write = process.stdout.write.bind(process.stdout);
+  process.stdout.write = (() => {}) as any;
   const configFileOrDirectory = opts.config ? path.resolve(process.cwd(), opts.config) : process.cwd();
   const resolvedConfigFile = Runner.resolveConfigFile(configFileOrDirectory)!;
   if (restartWithExperimentalTsEsm(resolvedConfigFile))
@@ -186,7 +189,7 @@ async function listTestFiles(opts: { [key: string]: any }) {
   const runner = new Runner({}, { defaultConfig: {} });
   await runner.loadConfigFromResolvedFile(resolvedConfigFile);
   const report = await runner.listTestFiles(resolvedConfigFile, opts.project);
-  process.stdout.write(JSON.stringify(report), () => {
+  write(JSON.stringify(report), () => {
     process.exit(0);
   });
 }
@@ -240,6 +243,10 @@ async function launchDockerContainer(): Promise<() => Promise<void>> {
 }
 
 function restartWithExperimentalTsEsm(configFile: string | null): boolean {
+  const nodeVersion = +process.versions.node.split('.')[0];
+  // New experimental loader is only supported on Node 16+.
+  if (nodeVersion < 16)
+    return false;
   if (!configFile)
     return false;
   if (process.env.PW_DISABLE_TS_ESM)
