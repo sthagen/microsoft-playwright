@@ -8147,6 +8147,12 @@ export interface ElementHandle<T=Node> extends JSHandle<T> {
     animations?: "disabled"|"allow";
 
     /**
+     * When set to `"hide"`, screenshot will hide text caret. When set to `"initial"`, text caret behavior will not be changed.
+     * Defaults to `"hide"`.
+     */
+    caret?: "hide"|"initial";
+
+    /**
      * When set to `"ready"`, screenshot will wait for
      * [`document.fonts.ready`](https://developer.mozilla.org/en-US/docs/Web/API/FontFaceSet/ready) promise to resolve in all
      * frames. Defaults to `"nowait"`.
@@ -14723,15 +14729,6 @@ export interface Route {
     contentType?: string;
 
     /**
-     * Wheb set to "allow" or omitted, the fulfilled response will have
-     * ["Access-Control-Allow-Origin"](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Access-Control-Allow-Origin)
-     * header set to request's origin. If the option is set to "none" then
-     * [CORS](https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS) headers won't be added to the response. Note that all
-     * CORS headers configured via `headers` option will take precedence.
-     */
-    cors?: "allow"|"none";
-
-    /**
      * Response headers. Header values will be converted to a string.
      */
     headers?: { [key: string]: string; };
@@ -15715,8 +15712,7 @@ export interface ConnectOptions {
   slowMo?: number;
 
   /**
-   * Maximum time in milliseconds to wait for the connection to be established. Defaults to `30000` (30 seconds). Pass `0` to
-   * disable timeout.
+   * Maximum time in milliseconds to wait for the connection to be established. Defaults to `0` (no timeout).
    */
   timeout?: number;
 }
@@ -15731,6 +15727,12 @@ export interface LocatorScreenshotOptions {
    * Defaults to `"allow"` that leaves animations untouched.
    */
   animations?: "disabled"|"allow";
+
+  /**
+   * When set to `"hide"`, screenshot will hide text caret. When set to `"initial"`, text caret behavior will not be changed.
+   * Defaults to `"hide"`.
+   */
+  caret?: "hide"|"initial";
 
   /**
    * When set to `"ready"`, screenshot will wait for
@@ -15884,6 +15886,12 @@ export interface PageScreenshotOptions {
    * Defaults to `"allow"` that leaves animations untouched.
    */
   animations?: "disabled"|"allow";
+
+  /**
+   * When set to `"hide"`, screenshot will hide text caret. When set to `"initial"`, text caret behavior will not be changed.
+   * Defaults to `"hide"`.
+   */
+  caret?: "hide"|"initial";
 
   /**
    * An object which specifies clipping of the resulting image. Should have the following fields:

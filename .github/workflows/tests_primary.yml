@@ -80,6 +80,7 @@ jobs:
       if: matrix.os == 'ubuntu-latest'
     - run: ./utils/upload_flakiness_dashboard.sh ./test-results/report.json
       if: always()
+      shell: bash
 
   test_test_runner_esm:
     name: Test Runner ESM
@@ -99,23 +100,26 @@ jobs:
         DEBUG: pw:install
     - run: npm run build
     - run: npx playwright install --with-deps
-    - run: npm run ttest -- --grep=@esm
+    - run: npm run ttest -- esm.spec.ts
 
-  test_html_report:
-    name: HTML Report
+  test_web_components:
+    name: Web Components
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v2
     - uses: actions/setup-node@v2
       with:
-        node-version: 12
-    - run: npm i -g npm@8.3
+        node-version: 16
     - run: npm ci
       env:
         DEBUG: pw:install
     - run: npm run build
     - run: npx playwright install --with-deps
-    - run: npm run htest
-      if: matrix.os != 'ubuntu-latest'
-    - run: xvfb-run npm run htest
-      if: matrix.os == 'ubuntu-latest'
+    - run: npm run test-html-reporter
+      if: always() && matrix.os != 'ubuntu-latest'
+    - run: xvfb-run npm run test-html-reporter
+      if: always() && matrix.os == 'ubuntu-latest'
+    - run: npm run test-web
+      if: always() && matrix.os != 'ubuntu-latest'
+    - run: xvfb-run npm run test-web
+      if: always() && matrix.os == 'ubuntu-latest'

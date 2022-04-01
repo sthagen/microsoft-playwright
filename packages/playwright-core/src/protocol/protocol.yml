@@ -313,6 +313,11 @@ CommonScreenshotOptions:
   type: mixin
   properties:
     omitBackground: boolean?
+    caret:
+      type: enum?
+      literals:
+      - hide
+      - initial
     animations:
       type: enum?
       literals:
@@ -2449,11 +2454,6 @@ Route:
         headers:
           type: array?
           items: NameValue
-        cors:
-          type: enum?
-          literals:
-          - allow
-          - none
         body: string?
         isBase64: boolean?
         fetchResponseUid: string?

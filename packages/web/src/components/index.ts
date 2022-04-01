@@ -14,16 +14,16 @@
  * limitations under the License.
  */
 
-import { AutoChip, Chip } from '../src/chip';
-import { HeaderView } from '../src/headerView';
-import { TestCaseView } from '../src/testCaseView';
-import '../src/theme.css';
+import { Expandable } from './expandable';
+import { Source } from './source';
+import { SplitView } from './splitView';
+import '../common.css';
+import '../third_party/vscode/codicon.css';
 
 import register from '@playwright/experimental-ct-react/register';
 
 register({
-  AutoChip,
-  Chip,
-  HeaderView,
-  TestCaseView,
+  Expandable,
+  Source,
+  SplitView,
 });

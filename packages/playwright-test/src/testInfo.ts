@@ -18,7 +18,8 @@ import fs from 'fs';
 import * as mime from 'mime';
 import path from 'path';
 import { calculateSha1 } from 'playwright-core/lib/utils/utils';
-import type { FullConfig, FullProject, TestError, TestInfo, TestStatus } from '../types/test';
+import type { FullProject, TestError, TestInfo, TestStatus } from '../types/test';
+import type { FullConfigInternal } from './types';
 import { WorkerInitParams } from './ipc';
 import { Loader } from './loader';
 import { ProjectImpl } from './project';
@@ -43,7 +44,7 @@ export class TestInfoImpl implements TestInfo {
   readonly workerIndex: number;
   readonly parallelIndex: number;
   readonly project: FullProject;
-  config: FullConfig;
+  config: FullConfigInternal;
   readonly title: string;
   readonly titlePath: string[];
   readonly file: string;
@@ -218,10 +219,10 @@ export class TestInfoImpl implements TestInfo {
     const step = this._addStep(stepInfo);
     try {
       const result = await cb();
-      step.complete();
+      step.complete({});
       return result;
     } catch (e) {
-      step.complete(e instanceof SkipError ? undefined : serializeError(e));
+      step.complete({ error: e instanceof SkipError ? undefined : serializeError(e) });
       throw e;
     }
   }
@@ -298,4 +299,3 @@ export class TestInfoImpl implements TestInfo {
 
 class SkipError extends Error {
 }
-

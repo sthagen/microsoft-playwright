@@ -115,7 +115,8 @@ export const test = _baseTest.extend<TestFixtures, WorkerFixtures>({
           'x-playwright-browser': channel || browserName,
           'x-playwright-headless': headless ? '1' : '0',
           ...connectOptions.headers,
-        }
+        },
+        timeout: connectOptions.timeout,
       });
       await use(browser);
       await browser.close();
@@ -263,7 +264,7 @@ export const test = _baseTest.extend<TestFixtures, WorkerFixtures>({
         },
         onApiCallEnd: (userData: any, error?: Error) => {
           const step = userData.userObject;
-          step?.complete(error);
+          step?.complete({ error });
         },
       };
     };

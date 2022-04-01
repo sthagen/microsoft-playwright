@@ -16,8 +16,9 @@
 
 import type { Fixtures, TestError } from '../types/test';
 import type { Location } from '../types/testReporter';
+import type { FullConfig as FullConfigPublic } from './types';
 export * from '../types/test';
-export { Location } from '../types/testReporter';
+export type { Location } from '../types/testReporter';
 
 export type FixturesWithLocation = {
   fixtures: Fixtures;
@@ -26,10 +27,17 @@ export type FixturesWithLocation = {
 export type Annotation = { type: string, description?: string };
 
 export interface TestStepInternal {
-  complete(error?: Error | TestError): void;
+  complete(result: { refinedTitle?: string, error?: Error | TestError }): void;
   title: string;
   category: string;
   canHaveChildren: boolean;
   forceNoParent: boolean;
   location?: Location;
+}
+
+/**
+ * FullConfigInternal allows the plumbing of configuration details throughout the Test Runner without
+ * increasing the surface area of the public API type called FullConfig.
+ */
+export interface FullConfigInternal extends FullConfigPublic {
 }

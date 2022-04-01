@@ -13,17 +13,17 @@
     },
     {
       "name": "firefox",
-      "revision": "1321",
+      "revision": "1322",
       "installByDefault": true
     },
     {
       "name": "firefox-beta",
-      "revision": "1320",
+      "revision": "1321",
       "installByDefault": false
     },
     {
       "name": "webkit",
-      "revision": "1621",
+      "revision": "1623",
       "installByDefault": true,
       "revisionOverrides": {
         "mac10.14": "1446",
