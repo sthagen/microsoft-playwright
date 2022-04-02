@@ -18,20 +18,13 @@ import type { TestAttachment, TestCase, TestResult, TestStep } from '@playwright
 import ansi2html from 'ansi-to-html';
 import * as React from 'react';
 import { TreeItem } from './treeItem';
-import { TabbedPane } from './tabbedPane';
 import { msToString } from './uiUtils';
 import { AutoChip } from './chip';
 import { traceImage } from './images';
 import { AttachmentLink } from './links';
 import { statusIcon } from './statusIcon';
+import { ImageDiff, ImageDiffView } from './imageDiffView';
 import './testResultView.css';
-
-type ImageDiff = {
-  name: string,
-  left?: { attachment: TestAttachment, title: string },
-  right?: { attachment: TestAttachment, title: string },
-  diff?: { attachment: TestAttachment, title: string },
-};
 
 function groupImageDiffs(screenshots: Set<TestAttachment>): ImageDiff[] {
   const snapshotNameToImageDiff = new Map<string, ImageDiff>();
@@ -47,20 +40,20 @@ function groupImageDiffs(screenshots: Set<TestAttachment>): ImageDiff[] {
       snapshotNameToImageDiff.set(snapshotName, imageDiff);
     }
     if (category === 'actual')
-      imageDiff.left = { attachment, title: 'Actual' };
+      imageDiff.actual = { attachment };
     if (category === 'expected')
-      imageDiff.right = { attachment, title: 'Expected' };
+      imageDiff.expected = { attachment, title: 'Expected' };
     if (category === 'previous')
-      imageDiff.right = { attachment, title: 'Previous' };
+      imageDiff.expected = { attachment, title: 'Previous' };
     if (category === 'diff')
-      imageDiff.diff = { attachment, title: 'Diff' };
+      imageDiff.diff = { attachment };
   }
   for (const [name, diff] of snapshotNameToImageDiff) {
-    if (!diff.left || !diff.right) {
+    if (!diff.actual || !diff.expected) {
       snapshotNameToImageDiff.delete(name);
     } else {
-      screenshots.delete(diff.left.attachment);
-      screenshots.delete(diff.right.attachment);
+      screenshots.delete(diff.actual.attachment);
+      screenshots.delete(diff.expected.attachment);
       screenshots.delete(diff.diff?.attachment!);
     }
   }
@@ -146,43 +139,6 @@ const StepTreeItem: React.FC<{
       children.unshift(<ErrorMessage key='line' error={step.snippet}></ErrorMessage>);
     return children;
   } : undefined} depth={depth}></TreeItem>;
-};
-
-const ImageDiffView: React.FunctionComponent<{
- imageDiff: ImageDiff,
-}> = ({ imageDiff: diff }) => {
-  // Pre-select a tab called "actual", if any.
-  const [selectedTab, setSelectedTab] = React.useState<string>('left');
-  const diffElement = React.useRef<HTMLImageElement>(null);
-  const setMinHeight = () => {
-    if (diffElement.current)
-      diffElement.current.style.minHeight = diffElement.current.offsetHeight + 'px';
-  };
-  const tabs = [
-    {
-      id: 'left',
-      title: diff.left!.title,
-      render: () => <img src={diff.left!.attachment.path!} onLoad={setMinHeight}/>
-    },
-    {
-      id: 'right',
-      title: diff.right!.title,
-      render: () => <img src={diff.right!.attachment.path!} onLoad={setMinHeight}/>
-    },
-  ];
-  if (diff.diff) {
-    tabs.push({
-      id: 'diff',
-      title: diff.diff.title,
-      render: () => <img src={diff.diff!.attachment.path} onLoad={setMinHeight}/>
-    });
-  }
-  return <div className='vbox' data-testid='test-result-image-mismatch' ref={diffElement}>
-    <TabbedPane tabs={tabs} selectedTab={selectedTab} setSelectedTab={setSelectedTab} />
-    <AttachmentLink attachment={diff.left!.attachment}></AttachmentLink>
-    <AttachmentLink attachment={diff.right!.attachment}></AttachmentLink>
-    {diff.diff && <AttachmentLink attachment={diff.diff.attachment}></AttachmentLink>}
-  </div>;
 };
 
 const ErrorMessage: React.FC<{

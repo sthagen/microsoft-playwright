@@ -99,7 +99,7 @@ export class Loader {
     const configUse = mergeObjects(this._defaultConfig.use, config.use);
     config = mergeObjects(mergeObjects(this._defaultConfig, config), { use: configUse });
 
-    (this._fullConfig as any).__configDir = configDir;
+    this._fullConfig._configDir = configDir;
     this._fullConfig.rootDir = config.testDir || this._configDir;
     this._fullConfig.forbidOnly = takeFirst(this._configOverrides.forbidOnly, config.forbidOnly, baseFullConfig.forbidOnly);
     this._fullConfig.fullyParallel = takeFirst(this._configOverrides.fullyParallel, config.fullyParallel, baseFullConfig.fullyParallel);
@@ -473,7 +473,9 @@ const baseFullConfig: FullConfigInternal = {
   version: require('../package.json').version,
   workers: 1,
   webServer: null,
-  attachments: [],
+  _attachments: [],
+  _configDir: '',
+  _testGroupsCount: 0,
 };
 
 function resolveReporters(reporters: Config['reporter'], rootDir: string): ReporterDescription[]|undefined {
