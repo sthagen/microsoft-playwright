@@ -18,20 +18,21 @@
 import { Page, BindingCall } from './page';
 import { Frame } from './frame';
 import * as network from './network';
-import * as channels from '../protocol/channels';
+import type * as channels from '../protocol/channels';
 import fs from 'fs';
 import { ChannelOwner } from './channelOwner';
 import { evaluationScript } from './clientHelper';
 import { Browser } from './browser';
 import { Worker } from './worker';
 import { Events } from './events';
-import { TimeoutSettings } from '../utils/timeoutSettings';
+import { TimeoutSettings } from '../common/timeoutSettings';
 import { Waiter } from './waiter';
-import { URLMatch, Headers, WaitForEventOptions, BrowserContextOptions, StorageState, LaunchOptions } from './types';
-import { headersObjectToArray, mkdirIfNeeded } from '../utils/utils';
-import { isSafeCloseError } from '../utils/errors';
-import * as api from '../../types/types';
-import * as structs from '../../types/structs';
+import type { URLMatch, Headers, WaitForEventOptions, BrowserContextOptions, StorageState, LaunchOptions } from './types';
+import { headersObjectToArray } from '../utils';
+import { mkdirIfNeeded } from '../utils/fileUtils';
+import { isSafeCloseError } from '../common/errors';
+import type * as api from '../../types/types';
+import type * as structs from '../../types/structs';
 import { CDPSession } from './cdpSession';
 import { Tracing } from './tracing';
 import type { BrowserType } from './browserType';
@@ -242,9 +243,18 @@ export class BrowserContext extends ChannelOwner<channels.BrowserContextChannel>
     await this._channel.addInitScript({ source });
   }
 
+  async _removeInitScripts() {
+    await this._channel.removeInitScripts();
+  }
+
   async exposeBinding(name: string, callback: (source: structs.BindingSource, ...args: any[]) => any, options: { handle?: boolean } = {}): Promise<void> {
     await this._channel.exposeBinding({ name, needsHandle: options.handle });
     this._bindings.set(name, callback);
+  }
+
+  async _removeExposedBindings() {
+    this._bindings.clear();
+    await this._channel.removeExposedBindings();
   }
 
   async exposeFunction(name: string, callback: Function): Promise<void> {
@@ -263,6 +273,11 @@ export class BrowserContext extends ChannelOwner<channels.BrowserContextChannel>
     this._routes = this._routes.filter(route => route.url !== url || (handler && route.handler !== handler));
     if (!this._routes.length)
       await this._disableInterception();
+  }
+
+  async _unrouteAll() {
+    this._routes = [];
+    await this._disableInterception();
   }
 
   private async _disableInterception() {
@@ -345,6 +360,12 @@ export class BrowserContext extends ChannelOwner<channels.BrowserContextChannel>
       outputFile?: string
   }) {
     await this._channel.recorderSupplementEnable(params);
+  }
+
+  async _resetForReuse() {
+    await this._unrouteAll();
+    await this._removeInitScripts();
+    await this._removeExposedBindings();
   }
 }
 

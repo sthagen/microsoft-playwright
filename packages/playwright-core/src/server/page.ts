@@ -15,28 +15,33 @@
  * limitations under the License.
  */
 
-import * as dom from './dom';
+import type * as dom from './dom';
 import * as frames from './frames';
 import * as input from './input';
 import * as js from './javascript';
 import * as network from './network';
-import { Screenshotter, ScreenshotOptions } from './screenshotter';
-import { TimeoutSettings } from '../utils/timeoutSettings';
-import * as types from './types';
+import type { ScreenshotOptions } from './screenshotter';
+import { Screenshotter } from './screenshotter';
+import { TimeoutSettings } from '../common/timeoutSettings';
+import type * as types from './types';
 import { BrowserContext } from './browserContext';
 import { ConsoleMessage } from './console';
 import * as accessibility from './accessibility';
 import { FileChooser } from './fileChooser';
-import { Progress, ProgressController } from './progress';
-import { assert, isError } from '../utils/utils';
-import { ManualPromise } from '../utils/async';
-import { debugLogger } from '../utils/debugLogger';
-import { getComparator, ImageComparatorOptions } from '../utils/comparators';
-import { SelectorInfo, Selectors } from './selectors';
-import { CallMetadata, SdkObject } from './instrumentation';
-import { Artifact } from './artifact';
-import { TimeoutOptions } from '../common/types';
-import { isInvalidSelectorError, ParsedSelector } from './common/selectorParser';
+import type { Progress } from './progress';
+import { ProgressController } from './progress';
+import { assert, isError } from '../utils';
+import { ManualPromise } from '../utils/manualPromise';
+import { debugLogger } from '../common/debugLogger';
+import type { ImageComparatorOptions } from '../utils/comparators';
+import { getComparator } from '../utils/comparators';
+import type { SelectorInfo, Selectors } from './selectors';
+import type { CallMetadata } from './instrumentation';
+import { SdkObject } from './instrumentation';
+import type { Artifact } from './artifact';
+import type { TimeoutOptions } from '../common/types';
+import type { ParsedSelector } from './isomorphic/selectorParser';
+import { isInvalidSelectorError } from './isomorphic/selectorParser';
 
 export interface PageDelegate {
   readonly rawMouse: input.RawMouse;
@@ -47,7 +52,9 @@ export interface PageDelegate {
   goBack(): Promise<boolean>;
   goForward(): Promise<boolean>;
   exposeBinding(binding: PageBinding): Promise<void>;
-  evaluateOnNewDocument(source: string): Promise<void>;
+  removeExposedBindings(): Promise<void>;
+  addInitScript(source: string): Promise<void>;
+  removeInitScripts(): Promise<void>;
   closePage(runBeforeUnload: boolean): Promise<void>;
   potentiallyUninitializedPage(): Page;
   pageOrError(): Promise<Page | Error>;
@@ -145,7 +152,7 @@ export class Page extends SdkObject {
   readonly _delegate: PageDelegate;
   readonly _state: PageState;
   private readonly _pageBindings = new Map<string, PageBinding>();
-  readonly _evaluateOnNewDocumentSources: string[] = [];
+  readonly initScripts: string[] = [];
   readonly _screenshotter: Screenshotter;
   readonly _frameManager: frames.FrameManager;
   readonly accessibility: accessibility.Accessibility;
@@ -308,6 +315,11 @@ export class Page extends SdkObject {
     await this._delegate.exposeBinding(binding);
   }
 
+  async removeExposedBindings() {
+    this._pageBindings.clear();
+    await this._delegate.removeExposedBindings();
+  }
+
   setExtraHTTPHeaders(headers: types.HeadersArray) {
     this._state.extraHTTPHeaders = headers;
     return this._delegate.updateExtraHTTPHeaders();
@@ -411,16 +423,21 @@ export class Page extends SdkObject {
     await this._delegate.bringToFront();
   }
 
-  async _addInitScriptExpression(source: string) {
-    this._evaluateOnNewDocumentSources.push(source);
-    await this._delegate.evaluateOnNewDocument(source);
+  async addInitScript(source: string) {
+    this.initScripts.push(source);
+    await this._delegate.addInitScript(source);
+  }
+
+  async removeInitScripts() {
+    this.initScripts.splice(0, this.initScripts.length);
+    await this._delegate.removeInitScripts();
   }
 
   _needsRequestInterception(): boolean {
     return !!this._clientRequestInterceptor || !!this._serverRequestInterceptor || !!this._browserContext._requestInterceptor;
   }
 
-  async _setClientRequestInterceptor(handler: network.RouteHandler | undefined): Promise<void> {
+  async setClientRequestInterceptor(handler: network.RouteHandler | undefined): Promise<void> {
     this._clientRequestInterceptor = handler;
     await this._delegate.updateRequestInterception();
   }
@@ -591,7 +608,7 @@ export class Page extends SdkObject {
     }
   }
 
-  async _setFileChooserIntercepted(enabled: boolean): Promise<void> {
+  async setFileChooserIntercepted(enabled: boolean): Promise<void> {
     await this._delegate.setFileChooserIntercepted(enabled);
   }
 

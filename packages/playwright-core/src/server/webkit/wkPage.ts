@@ -19,29 +19,32 @@ import * as jpeg from 'jpeg-js';
 import path from 'path';
 import * as png from 'pngjs';
 import { splitErrorMessage } from '../../utils/stackTrace';
-import { assert, createGuid, debugAssert, headersArrayToObject, headersObjectToArray, hostPlatform } from '../../utils/utils';
-import * as accessibility from '../accessibility';
+import { assert, createGuid, debugAssert, headersArrayToObject, headersObjectToArray } from '../../utils';
+import { hostPlatform } from '../../utils/hostPlatform';
+import type * as accessibility from '../accessibility';
 import * as dialog from '../dialog';
 import * as dom from '../dom';
-import * as frames from '../frames';
-import { eventsHelper, RegisteredListener } from '../../utils/eventsHelper';
+import type * as frames from '../frames';
+import type { RegisteredListener } from '../../utils/eventsHelper';
+import { eventsHelper } from '../../utils/eventsHelper';
 import { helper } from '../helper';
-import { JSHandle } from '../javascript';
+import type { JSHandle } from '../javascript';
 import * as network from '../network';
-import { Page, PageBinding, PageDelegate } from '../page';
-import { Progress } from '../progress';
-import * as types from '../types';
-import { Protocol } from './protocol';
+import type { PageBinding, PageDelegate } from '../page';
+import { Page } from '../page';
+import type { Progress } from '../progress';
+import type * as types from '../types';
+import type { Protocol } from './protocol';
 import { getAccessibilityTree } from './wkAccessibility';
-import { WKBrowserContext } from './wkBrowser';
+import type { WKBrowserContext } from './wkBrowser';
 import { WKSession } from './wkConnection';
 import { WKExecutionContext } from './wkExecutionContext';
 import { RawKeyboardImpl, RawMouseImpl, RawTouchscreenImpl } from './wkInput';
 import { WKInterceptableRequest, WKRouteImpl } from './wkInterceptableRequest';
 import { WKProvisionalPage } from './wkProvisionalPage';
 import { WKWorkers } from './wkWorkers';
-import { debugLogger } from '../../utils/debugLogger';
-import { ManualPromise } from '../../utils/async';
+import { debugLogger } from '../../common/debugLogger';
+import { ManualPromise } from '../../utils/manualPromise';
 
 const UTILITY_WORLD_NAME = '__playwright_utility_world__';
 const BINDING_CALL_MESSAGE = '__playwright_binding_call__';
@@ -753,12 +756,20 @@ export class WKPage implements PageDelegate {
     await this._evaluateBindingScript(binding);
   }
 
+  async removeExposedBindings(): Promise<void> {
+    await this._updateBootstrapScript();
+  }
+
   private async _evaluateBindingScript(binding: PageBinding): Promise<void> {
     const script = this._bindingToScript(binding);
     await Promise.all(this._page.frames().map(frame => frame.evaluateExpression(script, false, {}).catch(e => {})));
   }
 
-  async evaluateOnNewDocument(script: string): Promise<void> {
+  async addInitScript(script: string): Promise<void> {
+    await this._updateBootstrapScript();
+  }
+
+  async removeInitScripts() {
     await this._updateBootstrapScript();
   }
 
@@ -775,9 +786,9 @@ export class WKPage implements PageDelegate {
     }
     for (const binding of this._page.allBindings())
       scripts.push(this._bindingToScript(binding));
-    scripts.push(...this._browserContext._evaluateOnNewDocumentSources);
-    scripts.push(...this._page._evaluateOnNewDocumentSources);
-    return scripts.join(';');
+    scripts.push(...this._browserContext.initScripts);
+    scripts.push(...this._page.initScripts);
+    return scripts.join(';\n');
   }
 
   async _updateBootstrapScript(): Promise<void> {
