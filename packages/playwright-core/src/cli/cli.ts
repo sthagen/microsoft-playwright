@@ -33,7 +33,7 @@ import type { BrowserType } from '../client/browserType';
 import type { BrowserContextOptions, LaunchOptions } from '../client/types';
 import { spawn } from 'child_process';
 import { getPlaywrightVersion } from '../common/userAgent';
-import { wrapInASCIIBox } from '../utils';
+import { wrapInASCIIBox, isLikelyNpxGlobal } from '../utils';
 import { spawnAsync } from '../utils/spawnAsync';
 import { launchGridAgent } from '../grid/gridAgent';
 import type { GridFactory } from '../grid/gridServer';
@@ -119,8 +119,7 @@ program
     .option('--with-deps', 'install system dependencies for browsers')
     .option('--force', 'force reinstall of stable browser channels')
     .action(async function(args: string[], options: { withDeps?: boolean, force?: boolean }) {
-      const isLikelyNpxGlobal = process.argv.length >= 2 && process.argv[1].includes('_npx');
-      if (isLikelyNpxGlobal) {
+      if (isLikelyNpxGlobal()) {
         console.error(wrapInASCIIBox([
           `WARNING: It looks like you are running 'npx playwright install' without first`,
           `installing your project's dependencies.`,
@@ -659,7 +658,7 @@ async function launchGridServer(factoryPathOrPackageName: string, port: number, 
   factory.name = factory.name || factoryPathOrPackageName;
   const gridServer = new GridServer(factory as GridFactory, authToken, address);
   await gridServer.start(port);
-  console.log('Grid server is running at ' + gridServer.urlPrefix());
+  console.log('Grid server is running at ' + gridServer.gridURL());
 }
 
 function buildBasePlaywrightCLICommand(cliTargetLang: string | undefined): string {
