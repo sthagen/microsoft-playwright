@@ -20,7 +20,7 @@ import * as readline from 'readline';
 import { eventsHelper } from './eventsHelper';
 import { isUnderTest } from './';
 import { removeFolders } from './fileUtils';
-import rimraf from 'rimraf';
+import { rimraf } from '../utilsBundle';
 
 export type Env = {[key: string]: string | number | boolean | undefined};
 

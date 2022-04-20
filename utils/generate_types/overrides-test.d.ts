@@ -35,48 +35,29 @@ export type UpdateSnapshots = 'all' | 'none' | 'missing';
 
 type UseOptions<TestArgs, WorkerArgs> = { [K in keyof WorkerArgs]?: WorkerArgs[K] } & { [K in keyof TestArgs]?: TestArgs[K] };
 
-type ExpectSettings = {
-  /**
-   * Default timeout for async expect matchers in milliseconds, defaults to 5000ms.
-   */
-  timeout?: number;
-  toMatchSnapshot?: {
-    /** An acceptable perceived color difference in the [YIQ color space](https://en.wikipedia.org/wiki/YIQ) between pixels in compared images, between zero (strict) and one (lax). Defaults to `0.2`.
-     */
-    threshold?: number,
-    /**
-     * An acceptable amount of pixels that could be different, unset by default.
-     */
-    maxDiffPixels?: number,
-    /**
-     * An acceptable ratio of pixels that are different to the total amount of pixels, between `0` and `1` , unset by default.
-     */
-    maxDiffPixelRatio?: number,
-  }
-};
-
-interface TestProject {
-  expect?: ExpectSettings;
-  fullyParallel?: boolean;
-  grep?: RegExp | RegExp[];
-  grepInvert?: RegExp | RegExp[] | null;
-  metadata?: any;
-  name?: string;
-  snapshotDir?: string;
-  outputDir?: string;
-  repeatEach?: number;
-  retries?: number;
-  testDir?: string;
-  testIgnore?: string | RegExp | (string | RegExp)[];
-  testMatch?: string | RegExp | (string | RegExp)[];
-  timeout?: number;
-}
-
 export interface Project<TestArgs = {}, WorkerArgs = {}> extends TestProject {
   use?: UseOptions<TestArgs, WorkerArgs>;
 }
 
-export type FullProject<TestArgs = {}, WorkerArgs = {}> = Required<Project<PlaywrightTestOptions & TestArgs, PlaywrightWorkerOptions & WorkerArgs>>;
+// [internal] !!! DO NOT ADD TO THIS !!!
+// [internal] It is part of the public API and is computed from the user's config.
+// [internal] If you need new fields internally, add them to FullConfigInternal instead.
+export interface FullProject<TestArgs = {}, WorkerArgs = {}> {
+  grep: RegExp | RegExp[];
+  grepInvert: RegExp | RegExp[] | null;
+  metadata: any;
+  name: string;
+  snapshotDir: string;
+  outputDir: string;
+  repeatEach: number;
+  retries: number;
+  testDir: string;
+  testIgnore: string | RegExp | (string | RegExp)[];
+  testMatch: string | RegExp | (string | RegExp)[];
+  timeout: number;
+  use: UseOptions<PlaywrightTestOptions & TestArgs, PlaywrightWorkerOptions & WorkerArgs>;
+  // [internal] !!! DO NOT ADD TO THIS !!! See prior note.
+}
 
 export type WebServerConfig = {
   /**
@@ -121,35 +102,7 @@ export type WebServerConfig = {
 type LiteralUnion<T extends U, U = string> = T | (U & { zz_IGNORE_ME?: never });
 
 interface TestConfig {
-  forbidOnly?: boolean;
-  fullyParallel?: boolean;
-  globalSetup?: string;
-  globalTeardown?: string;
-  globalTimeout?: number;
-  grep?: RegExp | RegExp[];
-  grepInvert?: RegExp | RegExp[];
-  maxFailures?: number;
-  preserveOutput?: PreserveOutput;
-  projects?: Project[];
-  quiet?: boolean;
   reporter?: LiteralUnion<'list'|'dot'|'line'|'github'|'json'|'junit'|'null'|'html', string> | ReporterDescription[];
-  reportSlowTests?: ReportSlowTests;
-  shard?: Shard;
-  updateSnapshots?: UpdateSnapshots;
-  webServer?: WebServerConfig;
-  workers?: number;
-
-  expect?: ExpectSettings;
-  metadata?: any;
-  name?: string;
-  snapshotDir?: string;
-  outputDir?: string;
-  repeatEach?: number;
-  retries?: number;
-  testDir?: string;
-  testIgnore?: string | RegExp | (string | RegExp)[];
-  testMatch?: string | RegExp | (string | RegExp)[];
-  timeout?: number;
 }
 
 export interface Config<TestArgs = {}, WorkerArgs = {}> extends TestConfig {
@@ -343,14 +296,14 @@ export interface PlaywrightTestArgs {
 export type PlaywrightTestProject<TestArgs = {}, WorkerArgs = {}> = Project<PlaywrightTestOptions & TestArgs, PlaywrightWorkerOptions & WorkerArgs>;
 export type PlaywrightTestConfig<TestArgs = {}, WorkerArgs = {}> = Config<PlaywrightTestOptions & TestArgs, PlaywrightWorkerOptions & WorkerArgs>;
 
-import type * as expectType from 'expect';
+import type * as expectType from '@playwright/test/types/expect-types';
 
 type AsymmetricMatcher = Record<string, any>;
 
 type IfAny<T, Y, N> = 0 extends (1 & T) ? Y : N;
 type ExtraMatchers<T, Type, Matchers> = T extends Type ? Matchers : IfAny<T, Matchers, {}>;
 
-type BaseMatchers<R, T> = Pick<expectType.Matchers<R>, SupportedExpectProperties> & PlaywrightTest.Matchers<R, T>;
+type BaseMatchers<R, T> = expectType.Matchers<R> & PlaywrightTest.Matchers<R, T>;
 
 type MakeMatchers<R, T> = BaseMatchers<R, T> & {
     /**
@@ -400,56 +353,6 @@ export type Expect = {
 };
 
 type Awaited<T> = T extends PromiseLike<infer U> ? U : T;
-
-/**
- * Removed methods require the jest.fn() integration from Jest to spy on function calls which we don't support:
- * - lastCalledWith()
- * - lastReturnedWith()
- * - nthCalledWith()
- * - nthReturnedWith()
- * - toBeCalled()
- * - toBeCalledTimes()
- * - toBeCalledWith()
- * - toHaveBeenCalled()
- * - toHaveBeenCalledTimes()
- * - toHaveBeenCalledWith()
- * - toHaveBeenLastCalledWith()
- * - toHaveBeenNthCalledWith()
- * - toHaveLastReturnedWith()
- * - toHaveNthReturnedWith()
- * - toHaveReturned()
- * - toHaveReturnedTimes()
- * - toHaveReturnedWith()
- * - toReturn()
- * - toReturnTimes()
- * - toReturnWith()
- * - toThrowErrorMatchingSnapshot()
- * - toThrowErrorMatchingInlineSnapshot()
- */
-type SupportedExpectProperties =
-  'toBe' |
-  'toBeCloseTo' |
-  'toBeDefined' |
-  'toBeFalsy' |
-  'toBeGreaterThan' |
-  'toBeGreaterThanOrEqual' |
-  'toBeInstanceOf' |
-  'toBeLessThan' |
-  'toBeLessThanOrEqual' |
-  'toBeNaN' |
-  'toBeNull' |
-  'toBeTruthy' |
-  'toBeUndefined' |
-  'toContain' |
-  'toContainEqual' |
-  'toEqual' |
-  'toHaveLength' |
-  'toHaveProperty' |
-  'toMatch' |
-  'toMatchObject' |
-  'toStrictEqual' |
-  'toThrow' |
-  'toThrowError'
 
 // --- BEGINGLOBAL ---
 declare global {

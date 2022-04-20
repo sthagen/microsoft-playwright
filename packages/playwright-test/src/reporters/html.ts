@@ -14,9 +14,9 @@
  * limitations under the License.
  */
 
-import colors from 'colors/safe';
+import { colors } from 'playwright-core/lib/utilsBundle';
 import fs from 'fs';
-import open from 'open';
+import { open } from '../utilsBundle';
 import path from 'path';
 import type { TransformCallback } from 'stream';
 import { Transform } from 'stream';
@@ -26,10 +26,11 @@ import { assert, calculateSha1 } from 'playwright-core/lib/utils';
 import { removeFolders } from 'playwright-core/lib/utils/fileUtils';
 import type { JsonAttachment, JsonReport, JsonSuite, JsonTestCase, JsonTestResult, JsonTestStep } from './raw';
 import RawReporter from './raw';
-import yazl from 'yazl';
 import { stripAnsiEscapes } from './base';
 import { getPackageJsonPath } from '../util';
 import type { FullConfigInternal } from '../types';
+import type { ZipFile } from 'playwright-core/lib/zipBundle';
+import { yazl } from 'playwright-core/lib/zipBundle';
 
 export type Stats = {
   total: number;
@@ -245,7 +246,7 @@ class HtmlBuilder {
   private _reportFolder: string;
   private _tests = new Map<string, JsonTestCase>();
   private _testPath = new Map<string, string[]>();
-  private _dataZipFile: yazl.ZipFile;
+  private _dataZipFile: ZipFile;
   private _hasTraces = false;
 
   constructor(outputDir: string) {

@@ -14,11 +14,10 @@
  * limitations under the License.
  */
 
-import debug from 'debug';
+import { debug } from '../utilsBundle';
 import { EventEmitter } from 'events';
 import { URL } from 'url';
-import type { Server as WebSocketServer } from 'ws';
-import type WebSocket from 'ws';
+import type { WebSocketServer, WebSocket, WebSocketRawData } from '../utilsBundle';
 import { HttpServer } from '../utils/httpServer';
 import { assert, createGuid } from '../utils';
 import { getPlaywrightVersion } from '../common/userAgent';
@@ -75,7 +74,7 @@ class GridWorker extends EventEmitter {
   private _workerSocket: WebSocket | undefined;
   private _clientSocket: WebSocket;
   private _log: debug.Debugger;
-  private _bufferedMessages: WebSocket.RawData[] = [];
+  private _bufferedMessages: WebSocketRawData[] = [];
 
   constructor(clientSocket: WebSocket, params: GridWorkerParams) {
     super();
@@ -263,6 +262,7 @@ export class GridServer {
         // shouldHandle claims it accepts promise, except it doesn't.
         return true;
       }
+      this._log('rejecting websocket request');
       return false;
     };
 

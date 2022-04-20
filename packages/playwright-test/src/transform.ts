@@ -14,17 +14,17 @@
  * limitations under the License.
  */
 
-import * as crypto from 'crypto';
-import * as os from 'os';
-import * as path from 'path';
-import * as fs from 'fs';
-import * as pirates from 'pirates';
-import * as sourceMapSupport from 'source-map-support';
-import * as url from 'url';
+import crypto from 'crypto';
+import os from 'os';
+import path from 'path';
+import fs from 'fs';
+import { sourceMapSupport, pirates } from './utilsBundle';
+import url from 'url';
 import type { Location } from './types';
 import type { TsConfigLoaderResult } from './third_party/tsconfig-loader';
 import { tsConfigLoader } from './third_party/tsconfig-loader';
 import Module from 'module';
+import type { BabelTransformFunction } from './babelBundle';
 
 const version = 8;
 const cacheDir = process.env.PWTEST_CACHE_DIR || path.join(os.tmpdir(), 'playwright-transform-cache');
@@ -181,50 +181,10 @@ export function transformHook(code: string, filename: string, isModule = false):
   // We don't use any browserslist data, but babel checks it anyway.
   // Silence the annoying warning.
   process.env.BROWSERSLIST_IGNORE_OLD_DATA = 'true';
-  const babel: typeof import('@babel/core') = require('@babel/core');
-  const plugins = [];
-
-  if (isTypeScript) {
-    plugins.push(
-        [require.resolve('@babel/plugin-proposal-class-properties')],
-        [require.resolve('@babel/plugin-proposal-numeric-separator')],
-        [require.resolve('@babel/plugin-proposal-logical-assignment-operators')],
-        [require.resolve('@babel/plugin-proposal-nullish-coalescing-operator')],
-        [require.resolve('@babel/plugin-proposal-optional-chaining')],
-        [require.resolve('@babel/plugin-proposal-private-methods')],
-        [require.resolve('@babel/plugin-syntax-json-strings')],
-        [require.resolve('@babel/plugin-syntax-optional-catch-binding')],
-        [require.resolve('@babel/plugin-syntax-async-generators')],
-        [require.resolve('@babel/plugin-syntax-object-rest-spread')],
-        [require.resolve('@babel/plugin-proposal-export-namespace-from')]
-    );
-
-    if (!isModule) {
-      plugins.push([require.resolve('@babel/plugin-transform-modules-commonjs')]);
-      plugins.push([require.resolve('@babel/plugin-proposal-dynamic-import')]);
-    }
-  }
-
-  plugins.unshift([require.resolve('./tsxTransform')]);
-
-  if (hasPreprocessor)
-    plugins.push([scriptPreprocessor]);
 
   try {
-    const result = babel.transformFileSync(filename, {
-      babelrc: false,
-      configFile: false,
-      assumptions: {
-        // Without this, babel defines a top level function that
-        // breaks playwright evaluates.
-        setPublicClassFields: true,
-      },
-      presets: [
-        [require.resolve('@babel/preset-typescript'), { onlyRemoveTypeImports: true }],
-      ],
-      plugins,
-      sourceMaps: 'both',
-    } as babel.TransformOptions)!;
+    const { babelTransform }: { babelTransform: BabelTransformFunction } = require('./babelBundle');
+    const result = babelTransform(filename, isTypeScript, isModule, hasPreprocessor ? scriptPreprocessor : undefined, [require.resolve('./tsxTransform')]);
     if (result.code) {
       fs.mkdirSync(path.dirname(cachePath), { recursive: true });
       if (result.map)

@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-import debug from 'debug';
-import WebSocket from 'ws';
+import { debug } from '../utilsBundle';
+import { ws as WebSocket } from '../utilsBundle';
 import { PlaywrightConnection } from '../remote/playwrightConnection';
 import { gracefullyCloseAll } from '../utils/processLauncher';
 

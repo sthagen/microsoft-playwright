@@ -115,7 +115,7 @@ async function runWatch() {
   }
   /** @type{import('child_process').ChildProcess[]} */
   const spawns = [];
-  for (const step of steps)
+  for (const step of steps) {
     spawns.push(child_process.spawn(step.command, step.args, {
       stdio: 'inherit',
       shell: step.shell,
@@ -125,6 +125,7 @@ async function runWatch() {
       },
       cwd: step.cwd,
     }));
+  }
   process.on('exit', () => spawns.forEach(s => s.kill()));
   for (const onChange of onChanges)
     runOnChange(onChange);
@@ -196,7 +197,7 @@ steps.push({
   shell: true,
 });
 
-// Run Babel.
+// Run Babel & Bundles.
 for (const pkg of workspace.packages()) {
   if (!fs.existsSync(path.join(pkg.path, 'src')))
     continue;
@@ -211,7 +212,27 @@ for (const pkg of workspace.packages()) {
       quotePath(path.join(pkg.path, 'src'))],
     shell: true,
   });
+
+  // Build bundles.
+  const bundlesDir = path.join(pkg.path, 'bundles');
+  if (!fs.existsSync(bundlesDir))
+    continue;
+  for (const bundle of fs.readdirSync(bundlesDir)) {
+    steps.push({
+      command: 'npm',
+      args: ['run', 'build'],
+      shell: true,
+      cwd: path.join(bundlesDir, bundle)
+    });
+  }
 }
+
+// Generate third party licenses for bundles.
+steps.push({
+  command: 'node',
+  args: [path.resolve(__dirname, '../generate_third_party_notice.js')],
+  shell: true,
+});
 
 // Generate injected.
 onChanges.push({

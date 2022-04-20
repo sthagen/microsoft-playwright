@@ -22,7 +22,7 @@ import { sanitizeForFilePath } from '../util';
 import { formatResultFailure } from './base';
 import { toPosixPath, serializePatterns } from './json';
 import { MultiMap } from 'playwright-core/lib/utils/multimap';
-import { codeFrameColumns } from '@babel/code-frame';
+import { codeFrameColumns } from '../babelBundle';
 
 export type JsonLocation = Location;
 export type JsonError = string;

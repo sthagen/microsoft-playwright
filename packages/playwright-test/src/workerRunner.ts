@@ -14,8 +14,7 @@
  * limitations under the License.
  */
 
-import colors from 'colors/safe';
-import rimraf from 'rimraf';
+import { colors, rimraf } from 'playwright-core/lib/utilsBundle';
 import util from 'util';
 import { EventEmitter } from 'events';
 import { relativeFilePath, serializeError } from './util';

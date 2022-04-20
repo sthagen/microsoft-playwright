@@ -21,7 +21,6 @@ import type { TestType, PlaywrightTestArgs, PlaywrightTestOptions, PlaywrightWor
 import { rootTestType } from './testType';
 import { createGuid, debugMode } from 'playwright-core/lib/utils';
 import { removeFolders } from 'playwright-core/lib/utils/fileUtils';
-import { GridClient } from 'playwright-core/lib/grid/gridClient';
 export { expect } from './expect';
 export const _baseTest: TestType<{}, {}> = rootTestType.test;
 import * as outOfProcess from 'playwright-core/lib/outofprocess';
@@ -53,12 +52,8 @@ type WorkerFixtures = PlaywrightWorkerArgs & PlaywrightWorkerOptions & {
 export const test = _baseTest.extend<TestFixtures, WorkerFixtures>({
   defaultBrowserType: [ 'chromium', { scope: 'worker', option: true } ],
   browserName: [ ({ defaultBrowserType }, use) => use(defaultBrowserType), { scope: 'worker', option: true } ],
-  playwright: [async ({}, use, workerInfo) => {
-    if (process.env.PW_GRID) {
-      const gridClient = await GridClient.connect(process.env.PW_GRID);
-      await use(gridClient.playwright() as any);
-      gridClient.close();
-    } else if (process.env.PW_OUT_OF_PROCESS_DRIVER) {
+  playwright: [async ({ }, use) => {
+    if (process.env.PW_OUT_OF_PROCESS_DRIVER) {
       const impl = await outOfProcess.start({
         NODE_OPTIONS: undefined  // Hide driver process while debugging.
       });
@@ -235,7 +230,7 @@ export const test = _baseTest.extend<TestFixtures, WorkerFixtures>({
     });
   },
 
-  _snapshotSuffix: [process.env.PLAYWRIGHT_DOCKER ? 'docker' : process.platform, { scope: 'worker' }],
+  _snapshotSuffix: [process.platform, { scope: 'worker' }],
 
   _setupContextOptionsAndArtifacts: [async ({ playwright, _snapshotSuffix, _combinedContextOptions, _browserOptions, _artifactsDir, trace, screenshot, actionTimeout, navigationTimeout }, use, testInfo) => {
     testInfo.snapshotSuffix = _snapshotSuffix;

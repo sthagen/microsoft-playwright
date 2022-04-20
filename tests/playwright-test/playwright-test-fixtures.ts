@@ -14,12 +14,11 @@
  * limitations under the License.
  */
 
-import type { JSONReport, JSONReportSuite } from '@playwright/test/src/reporters/json';
+import type { JSONReport, JSONReportSuite } from '@playwright/test/reporter';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { PNG } from 'pngjs';
-import rimraf from 'rimraf';
+import { rimraf, PNG } from 'playwright-core/lib/utilsBundle';
 import { promisify } from 'util';
 import type { CommonFixtures } from '../config/commonFixtures';
 import { commonFixtures } from '../config/commonFixtures';
@@ -141,8 +140,6 @@ async function runPlaywrightTest(childProcess: CommonFixtures['childProcess'], b
       GITHUB_SHA: undefined,
       // END: Reserved CI
       PW_TEST_HTML_REPORT_OPEN: undefined,
-      PLAYWRIGHT_DOCKER: undefined,
-      PW_GRID: undefined,
       PW_TEST_REPORTER: undefined,
       PW_TEST_REPORTER_WS_ENDPOINT: undefined,
       PW_TEST_SOURCE_TRANSFORM: undefined,

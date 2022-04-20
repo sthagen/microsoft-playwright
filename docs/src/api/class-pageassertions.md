@@ -53,17 +53,16 @@ using System.Threading.Tasks;
 using Microsoft.Playwright.NUnit;
 using NUnit.Framework;
 
-namespace PlaywrightTests
+namespace PlaywrightTests;
+
+public class ExampleTests : PageTest
 {
-    public class ExampleTests : PageTest
+    [Test]
+    public async Task NavigatetoLoginPage()
     {
-        [Test]
-        public async Task NavigatetoLoginPage()
-        {
-            // ..
-            await Page.ClickAsync("#login");
-            await Expect(Page.Locator("div#foobar")).ToHaveURL(new Regex(".*/login"));
-        }
+        // ..
+        await Page.ClickAsync("#login");
+        await Expect(Page.Locator("div#foobar")).ToHaveURL(new Regex(".*/login"));
     }
 }
 ```
@@ -113,6 +112,47 @@ Expected substring or RegExp.
 
 ### option: PageAssertions.NotToHaveURL.timeout = %%-js-assertions-timeout-%%
 ### option: PageAssertions.NotToHaveURL.timeout = %%-csharp-java-python-assertions-timeout-%%
+
+
+## async method: PageAssertions.toHaveScreenshot
+* langs: js
+* experimental
+
+Ensures that the page resolves to a given screenshot. This function will re-take
+screenshots until it matches with the saved expectation.
+
+If there's no expectation yet, it will wait until two consecutive screenshots
+yield the same result, and save the last one as an expectation.
+
+```js
+await expect(page).toHaveScreenshot();
+```
+
+### option: PageAssertions.toHaveScreenshot.timeout = %%-js-assertions-timeout-%%
+### option: PageAssertions.toHaveScreenshot.timeout = %%-csharp-java-python-assertions-timeout-%%
+
+### option: PageAssertions.toHaveScreenshot.animations = %%-screenshot-option-animations-%%
+
+### option: PageAssertions.toHaveScreenshot.caret = %%-screenshot-option-caret-%%
+
+### option: PageAssertions.toHaveScreenshot.clip = %%-screenshot-option-clip-%%
+
+### option: PageAssertions.toHaveScreenshot.fonts = %%-screenshot-option-fonts-%%
+
+### option: PageAssertions.toHaveScreenshot.fullPage = %%-screenshot-option-full-page-%%
+
+### option: PageAssertions.toHaveScreenshot.mask = %%-screenshot-option-mask-%%
+
+### option: PageAssertions.toHaveScreenshot.omitBackground = %%-screenshot-option-omit-background-%%
+
+### option: PageAssertions.toHaveScreenshot.scale = %%-screenshot-option-scale-%%
+
+### option: PageAssertions.toHaveScreenshot.maxDiffPixels = %%-assertions-max-diff-pixels-%%
+
+### option: PageAssertions.toHaveScreenshot.maxDiffPixelRatio = %%-assertions-max-diff-pixel-ratio-%%
+
+### option: PageAssertions.toHaveScreenshot.threshold = %%-assertions-threshold-%%
+
 
 ## async method: PageAssertions.toHaveTitle
 * langs:

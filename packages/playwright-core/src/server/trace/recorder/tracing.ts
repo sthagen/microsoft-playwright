@@ -18,7 +18,6 @@ import type { EventEmitter } from 'events';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import yazl from 'yazl';
 import type { NameValue } from '../../../common/types';
 import type { TracingTracingStopChunkParams } from '../../../protocol/channels';
 import { commandsWithTracingSnapshots } from '../../../protocol/channels';
@@ -42,6 +41,7 @@ import type * as trace from '../common/traceEvents';
 import { VERSION } from '../common/traceEvents';
 import type { SnapshotterBlob, SnapshotterDelegate } from './snapshotter';
 import { Snapshotter } from './snapshotter';
+import { yazl } from '../../../zipBundle';
 
 export type TracerOptions = {
   name?: string;

@@ -25,8 +25,8 @@ import * as path from 'path';
 import * as url from 'url';
 import * as fs from 'fs';
 import { ProjectImpl } from './project';
-import type { Reporter } from '../types/testReporter';
 import type { BuiltInReporter } from './runner';
+import type { Reporter } from '../types/testReporter';
 import { builtInReporters } from './runner';
 import { isRegExp } from 'playwright-core/lib/utils';
 import { serializeError } from './util';
@@ -92,10 +92,12 @@ export class Loader {
       config.testDir = path.resolve(configDir, config.testDir);
     if (config.outputDir !== undefined)
       config.outputDir = path.resolve(configDir, config.outputDir);
-    if ((config as any)._screenshotsDir !== undefined)
-      (config as any)._screenshotsDir = path.resolve(configDir, (config as any)._screenshotsDir);
+    if ((config as any).screenshotsDir !== undefined)
+      (config as any).screenshotsDir = path.resolve(configDir, (config as any).screenshotsDir);
     if (config.snapshotDir !== undefined)
       config.snapshotDir = path.resolve(configDir, config.snapshotDir);
+    if (config.webServer)
+      config.webServer.cwd = config.webServer.cwd ? path.resolve(configDir, config.webServer.cwd) : configDir;
 
     const configUse = mergeObjects(this._defaultConfig.use, config.use);
     config = mergeObjects(mergeObjects(this._defaultConfig, config), { use: configUse });
@@ -210,8 +212,8 @@ export class Loader {
       projectConfig.testDir = path.resolve(this._configDir, projectConfig.testDir);
     if (projectConfig.outputDir !== undefined)
       projectConfig.outputDir = path.resolve(this._configDir, projectConfig.outputDir);
-    if ((projectConfig as any)._screenshotsDir !== undefined)
-      (projectConfig as any)._screenshotsDir = path.resolve(this._configDir, (projectConfig as any)._screenshotsDir);
+    if ((projectConfig as any).screenshotsDir !== undefined)
+      (projectConfig as any).screenshotsDir = path.resolve(this._configDir, (projectConfig as any).screenshotsDir);
     if (projectConfig.snapshotDir !== undefined)
       projectConfig.snapshotDir = path.resolve(this._configDir, projectConfig.snapshotDir);
 
@@ -220,10 +222,10 @@ export class Loader {
     const outputDir = takeFirst(this._configOverrides.outputDir, projectConfig.outputDir, config.outputDir, path.join(throwawayArtifactsPath, 'test-results'));
     const snapshotDir = takeFirst(this._configOverrides.snapshotDir, projectConfig.snapshotDir, config.snapshotDir, testDir);
     const name = takeFirst(this._configOverrides.name, projectConfig.name, config.name, '');
-    const screenshotsDir = takeFirst((this._configOverrides as any)._screenshotsDir, (projectConfig as any)._screenshotsDir, (config as any)._screenshotsDir, path.join(testDir, '__screenshots__', process.platform, name));
+    const screenshotsDir = takeFirst((this._configOverrides as any).screenshotsDir, (projectConfig as any).screenshotsDir, (config as any).screenshotsDir, path.join(testDir, '__screenshots__', process.platform, name));
     const fullProject: FullProjectInternal = {
-      fullyParallel: takeFirst(this._configOverrides.fullyParallel, projectConfig.fullyParallel, config.fullyParallel, undefined),
-      expect: takeFirst(this._configOverrides.expect, projectConfig.expect, config.expect, undefined),
+      _fullyParallel: takeFirst(this._configOverrides.fullyParallel, projectConfig.fullyParallel, config.fullyParallel, undefined),
+      _expect: takeFirst(this._configOverrides.expect, projectConfig.expect, config.expect, undefined),
       grep: takeFirst(this._configOverrides.grep, projectConfig.grep, config.grep, baseFullConfig.grep),
       grepInvert: takeFirst(this._configOverrides.grepInvert, projectConfig.grepInvert, config.grepInvert, baseFullConfig.grepInvert),
       outputDir,
@@ -478,7 +480,6 @@ const baseFullConfig: FullConfigInternal = {
   _globalOutputDir: path.resolve(process.cwd()),
   _configDir: '',
   _testGroupsCount: 0,
-  _screenshotsDir: '',
 };
 
 function resolveReporters(reporters: Config['reporter'], rootDir: string): ReporterDescription[]|undefined {

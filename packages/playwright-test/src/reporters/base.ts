@@ -14,15 +14,13 @@
  * limitations under the License.
  */
 
-import { codeFrameColumns } from '@babel/code-frame';
-import colors from 'colors/safe';
+import { colors, ms as milliseconds } from 'playwright-core/lib/utilsBundle';
 import fs from 'fs';
-import milliseconds from 'ms';
 import path from 'path';
-import StackUtils from 'stack-utils';
+import { StackUtils } from 'playwright-core/lib/utilsBundle';
 import type { FullConfig, TestCase, Suite, TestResult, TestError, Reporter, FullResult, TestStep, Location } from '../../types/testReporter';
 import type { FullConfigInternal } from '../types';
-
+import { codeFrameColumns } from '../babelBundle';
 const stackUtils = new StackUtils();
 
 export type TestResultOutput = { chunk: string | Buffer, type: 'stdout' | 'stderr' };

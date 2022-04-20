@@ -4,6 +4,8 @@
 ../../common/
 ../../protocol/
 ../../utils/**
+../../utilsBundle.ts
+../../zipBundle.ts
 
 [recorderApp.ts]
 ../chromium/crApp.ts

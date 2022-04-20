@@ -244,20 +244,13 @@ with sync_playwright() as playwright:
 
 ```csharp
 using Microsoft.Playwright;
-using System;
 
-class Program
-{
-    public static async Task Main()
-    {
-        using var playwright = await Playwright.CreateAsync();
-        await using var browser = await playwright.Chromium.LaunchAsync();
-        var page = await browser.NewPageAsync();
-        page.Request += (_, request) => Console.WriteLine(">> " + request.Method + " " + request.Url);
-        page.Response += (_, response) => Console.WriteLine("<< " + response.Status + " " + response.Url);
-        await page.GotoAsync("https://example.com");
-    }
-}
+using var playwright = await Playwright.CreateAsync();
+await using var browser = await playwright.Chromium.LaunchAsync();
+var page = await browser.NewPageAsync();
+page.Request += (_, request) => Console.WriteLine(">> " + request.Method + " " + request.Url);
+page.Response += (_, response) => Console.WriteLine("<< " + response.Status + " " + response.Url);
+await page.GotoAsync("https://example.com");
 ```
 
 Or wait for a network response after the button click:
@@ -584,7 +577,7 @@ else
 * langs: js
 
 To modify a response use [APIRequestContext] to get original response and then pass the response to [`method: Route.fulfill`].
-You can override individual fields on the reponse via options:
+You can override individual fields on the response via options:
 
 ```js
 await page.route('**/title.html', async route => {

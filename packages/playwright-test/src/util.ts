@@ -15,14 +15,12 @@
  */
 
 import fs from 'fs';
-import * as mime from 'mime';
+import { mime } from 'playwright-core/lib/utilsBundle';
 import util from 'util';
 import path from 'path';
 import url from 'url';
-import colors from 'colors/safe';
+import { colors, debug, minimatch } from 'playwright-core/lib/utilsBundle';
 import type { TestError, Location } from './types';
-import { default as minimatch } from 'minimatch';
-import debug from 'debug';
 import { calculateSha1, isRegExp } from 'playwright-core/lib/utils';
 import { isInternalFileName } from 'playwright-core/lib/utils/stackTrace';
 import { currentTestInfo } from './globals';
@@ -32,7 +30,8 @@ import { captureStackTrace as coreCaptureStackTrace } from 'playwright-core/lib/
 export type { ParsedStackTrace };
 
 const PLAYWRIGHT_CORE_PATH = path.dirname(require.resolve('playwright-core'));
-const EXPECT_PATH = path.dirname(require.resolve('expect'));
+const EXPECT_PATH = require.resolve('./expectBundle');
+const EXPECT_PATH_IMPL = require.resolve('./expectBundleImpl');
 const PLAYWRIGHT_TEST_PATH = path.join(__dirname, '..');
 
 function filterStackTrace(e: Error) {
@@ -57,7 +56,6 @@ function filterStackTrace(e: Error) {
         return true;
       return !fileName.startsWith(PLAYWRIGHT_TEST_PATH) &&
              !fileName.startsWith(PLAYWRIGHT_CORE_PATH) &&
-             !fileName.startsWith(EXPECT_PATH) &&
              !isInternalFileName(fileName, functionName);
     }));
   };
@@ -72,7 +70,7 @@ export function captureStackTrace(customApiName?: string): ParsedStackTrace {
   const frameTexts = [];
   for (let i = 0; i < stackTrace.frames.length; ++i) {
     const frame = stackTrace.frames[i];
-    if (frame.file.startsWith(EXPECT_PATH))
+    if (frame.file === EXPECT_PATH || frame.file === EXPECT_PATH_IMPL)
       continue;
     frames.push(frame);
     frameTexts.push(stackTrace.frameTexts[i]);
@@ -251,7 +249,7 @@ export function currentExpectTimeout(options: { timeout?: number }) {
   const testInfo = currentTestInfo();
   if (options.timeout !== undefined)
     return options.timeout;
-  let defaultExpectTimeout = testInfo?.project.expect?.timeout;
+  let defaultExpectTimeout = testInfo?.project._expect?.timeout;
   if (typeof defaultExpectTimeout === 'undefined')
     defaultExpectTimeout = 5000;
   return defaultExpectTimeout;
