@@ -26,14 +26,26 @@ export default (components, options) => {
 };
 
 const playwrightMount = component => {
-  const componentCtor = registry.get(component.type);
+  let componentCtor = registry.get(component.type);
+  if (!componentCtor) {
+    // Lookup by shorthand.
+    for (const [name, value] of registry) {
+      if (component.type.endsWith(`_${name}_svelte`)) {
+        componentCtor = value;
+        break;
+      }
+    }
+  }
+
+  if (!componentCtor)
+    throw new Error(`Unregistered component: ${component.type}. Following components are registered: ${[...registry.keys()]}`);
 
   const wrapper = new componentCtor({
-    target: document.getElementById('app'),
+    target: document.getElementById('root'),
     props: component.options?.props,
   });
 
   for (const [key, listener] of Object.entries(component.options?.on || {}))
     wrapper.$on(key, event => listener(event.detail));
-  return '#app > *';
+  return '#root > *';
 };

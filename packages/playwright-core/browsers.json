@@ -3,12 +3,12 @@
   "browsers": [
     {
       "name": "chromium",
-      "revision": "1002",
+      "revision": "1003",
       "installByDefault": true
     },
     {
       "name": "chromium-with-symbols",
-      "revision": "1002",
+      "revision": "1003",
       "installByDefault": false
     },
     {
@@ -23,7 +23,7 @@
     },
     {
       "name": "webkit",
-      "revision": "1631",
+      "revision": "1632",
       "installByDefault": true,
       "revisionOverrides": {
         "mac10.14": "1446",
