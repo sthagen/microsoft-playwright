@@ -2452,7 +2452,10 @@ export interface Page {
   }): Promise<string>;
 
   /**
-   * Returns `input.value` for the selected `<input>` or `<textarea>` or `<select>` element. Throws for non-input elements.
+   * Returns `input.value` for the selected `<input>` or `<textarea>` or `<select>` element.
+   *
+   * Throws for non-input elements. However, if the element is inside the `<label>` element that has an associated
+   * [control](https://developer.mozilla.org/en-US/docs/Web/API/HTMLLabelElement/control), returns the value of the control.
    * @param selector A selector to search for an element. If there are multiple elements satisfying the selector, the first will be used. See [working with selectors](https://playwright.dev/docs/selectors) for more details.
    * @param options
    */
@@ -3189,11 +3192,13 @@ export interface Page {
   setExtraHTTPHeaders(headers: { [key: string]: string; }): Promise<void>;
 
   /**
-   * This method expects `selector` to point to an
-   * [input element](https://developer.mozilla.org/en-US/docs/Web/HTML/Element/input).
-   *
    * Sets the value of the file input to these file paths or files. If some of the `filePaths` are relative paths, then they
    * are resolved relative to the the current working directory. For empty array, clears the selected files.
+   *
+   * This method expects `selector` to point to an
+   * [input element](https://developer.mozilla.org/en-US/docs/Web/HTML/Element/input). However, if the element is inside the
+   * `<label>` element that has an associated
+   * [control](https://developer.mozilla.org/en-US/docs/Web/API/HTMLLabelElement/control), targets the control instead.
    * @param selector A selector to search for an element. If there are multiple elements satisfying the selector, the first will be used. See [working with selectors](https://playwright.dev/docs/selectors) for more details.
    * @param files
    * @param options
@@ -5276,7 +5281,10 @@ export interface Frame {
   }): Promise<string>;
 
   /**
-   * Returns `input.value` for the selected `<input>` or `<textarea>` or `<select>` element. Throws for non-input elements.
+   * Returns `input.value` for the selected `<input>` or `<textarea>` or `<select>` element.
+   *
+   * Throws for non-input elements. However, if the element is inside the `<label>` element that has an associated
+   * [control](https://developer.mozilla.org/en-US/docs/Web/API/HTMLLabelElement/control), returns the value of the control.
    * @param selector A selector to search for an element. If there are multiple elements satisfying the selector, the first will be used. See [working with selectors](https://playwright.dev/docs/selectors) for more details.
    * @param options
    */
@@ -5695,11 +5703,13 @@ export interface Frame {
   }): Promise<void>;
 
   /**
-   * This method expects `selector` to point to an
-   * [input element](https://developer.mozilla.org/en-US/docs/Web/HTML/Element/input).
-   *
    * Sets the value of the file input to these file paths or files. If some of the `filePaths` are relative paths, then they
    * are resolved relative to the the current working directory. For empty array, clears the selected files.
+   *
+   * This method expects `selector` to point to an
+   * [input element](https://developer.mozilla.org/en-US/docs/Web/HTML/Element/input). However, if the element is inside the
+   * `<label>` element that has an associated
+   * [control](https://developer.mozilla.org/en-US/docs/Web/API/HTMLLabelElement/control), targets the control instead.
    * @param selector A selector to search for an element. If there are multiple elements satisfying the selector, the first will be used. See [working with selectors](https://playwright.dev/docs/selectors) for more details.
    * @param files
    * @param options
@@ -8039,7 +8049,10 @@ export interface ElementHandle<T=Node> extends JSHandle<T> {
   innerText(): Promise<string>;
 
   /**
-   * Returns `input.value` for `<input>` or `<textarea>` or `<select>` element. Throws for non-input elements.
+   * Returns `input.value` for the selected `<input>` or `<textarea>` or `<select>` element.
+   *
+   * Throws for non-input elements. However, if the element is inside the `<label>` element that has an associated
+   * [control](https://developer.mozilla.org/en-US/docs/Web/API/HTMLLabelElement/control), returns the value of the control.
    * @param options
    */
   inputValue(options?: {
@@ -8309,6 +8322,10 @@ export interface ElementHandle<T=Node> extends JSHandle<T> {
   /**
    * This method waits for [actionability](https://playwright.dev/docs/actionability) checks, then focuses the element and selects all its text
    * content.
+   *
+   * If the element is inside the `<label>` element that has an associated
+   * [control](https://developer.mozilla.org/en-US/docs/Web/API/HTMLLabelElement/control), focuses and selects text in the
+   * control instead.
    * @param options
    */
   selectText(options?: {
@@ -8381,11 +8398,13 @@ export interface ElementHandle<T=Node> extends JSHandle<T> {
   }): Promise<void>;
 
   /**
-   * This method expects `elementHandle` to point to an
-   * [input element](https://developer.mozilla.org/en-US/docs/Web/HTML/Element/input).
-   *
    * Sets the value of the file input to these file paths or files. If some of the `filePaths` are relative paths, then they
    * are resolved relative to the the current working directory. For empty array, clears the selected files.
+   *
+   * This method expects [`elementHandle`] to point to an
+   * [input element](https://developer.mozilla.org/en-US/docs/Web/HTML/Element/input). However, if the element is inside the
+   * `<label>` element that has an associated
+   * [control](https://developer.mozilla.org/en-US/docs/Web/API/HTMLLabelElement/control), targets the control instead.
    * @param files
    * @param options
    */
@@ -9292,7 +9311,10 @@ export interface Locator {
   }): Promise<string>;
 
   /**
-   * Returns `input.value` for `<input>` or `<textarea>` or `<select>` element. Throws for non-input elements.
+   * Returns `input.value` for the selected `<input>` or `<textarea>` or `<select>` element.
+   *
+   * Throws for non-input elements. However, if the element is inside the `<label>` element that has an associated
+   * [control](https://developer.mozilla.org/en-US/docs/Web/API/HTMLLabelElement/control), returns the value of the control.
    * @param options
    */
   inputValue(options?: {
@@ -9579,6 +9601,10 @@ export interface Locator {
   /**
    * This method waits for [actionability](https://playwright.dev/docs/actionability) checks, then focuses the element and selects all its text
    * content.
+   *
+   * If the element is inside the `<label>` element that has an associated
+   * [control](https://developer.mozilla.org/en-US/docs/Web/API/HTMLLabelElement/control), focuses and selects text in the
+   * control instead.
    * @param options
    */
   selectText(options?: {
@@ -9651,11 +9677,13 @@ export interface Locator {
   }): Promise<void>;
 
   /**
-   * This method expects `element` to point to an
-   * [input element](https://developer.mozilla.org/en-US/docs/Web/HTML/Element/input).
-   *
    * Sets the value of the file input to these file paths or files. If some of the `filePaths` are relative paths, then they
    * are resolved relative to the the current working directory. For empty array, clears the selected files.
+   *
+   * This method expects [`locator`] to point to an
+   * [input element](https://developer.mozilla.org/en-US/docs/Web/HTML/Element/input). However, if the element is inside the
+   * `<label>` element that has an associated
+   * [control](https://developer.mozilla.org/en-US/docs/Web/API/HTMLLabelElement/control), targets the control instead.
    * @param files
    * @param options
    */
@@ -9779,6 +9807,27 @@ export interface Locator {
      */
     timeout?: number;
   }): Promise<null|string>;
+
+  /**
+   * This method narrows existing locator according to the options, for example filters by text.
+   * @param options
+   */
+  that(options?: {
+    /**
+     * Matches elements containing an element that matches an inner locator. Inner locator is queried against the outer one.
+     * For example, `article` that has `text=Playwright` matches `<article><div>Playwright</div></article>`.
+     *
+     * Note that outer and inner locators must belong to the same frame. Inner locator must not contain [FrameLocator]s.
+     */
+    has?: Locator;
+
+    /**
+     * Matches elements containing specified text somewhere inside, possibly in a child or a descendant element. When passed a
+     * [string], matching is case-insensitive and searches for a substring. For example, `"Playwright"` matches
+     * `<article><div>Playwright</div></article>`.
+     */
+    hasText?: string|RegExp;
+  }): Locator;
 
   /**
    * Focuses the element, and then sends a `keydown`, `keypress`/`input`, and `keyup` event for each character in the text.
@@ -16865,6 +16914,8 @@ interface TestConfig {
    */
   snapshotDir?: string;
 
+  plugins?: Array<TestPlugin>;
+
   /**
    * Whether to preserve test output in the
    * [testConfig.outputDir](https://playwright.dev/docs/api/class-testconfig#test-config-output-dir). Defaults to `'always'`.
@@ -17683,14 +17734,25 @@ export interface TestInfo {
    * > NOTE: [testInfo.attach(name[, options])](https://playwright.dev/docs/api/class-testinfo#test-info-attach)
    * automatically takes care of copying attached files to a location that is accessible to reporters. You can safely remove
    * the attachment after awaiting the attach call.
-   * @param name
+   * @param name Attachment name.
    * @param options
    */
   attach(name: string, options?: {
+    /**
+     * Attachment body. Mutually exclusive with `path`.
+     */
     body?: string|Buffer;
 
+    /**
+     * Content type of this attachment to properly present in the report, for example `'application/json'` or `'image/png'`. If
+     * omitted, content type is inferred based on the `path`, or defaults to `text/plain` for [string] attachments and
+     * `application/octet-stream` for [Buffer] attachments.
+     */
     contentType?: string;
 
+    /**
+     * Path on the filesystem to the attached file. Mutually exclusive with `body`.
+     */
     path?: string;
   }): Promise<void>;
 
@@ -17951,84 +18013,6 @@ export interface TestInfo {
    * Playwright Test.
    */
   workerIndex: number;}
-
-/**
- * `GlobalInfo` contains information on the overall test run. The information spans projects and tests. Some reporters show
- * global info.
- *
- * You can write to GlobalInfo via your Global Setup hook, and read from it in a [Custom Reporter](https://playwright.dev/docs/test-reporters):
- *
- * ```ts
- * // global-setup.ts
- * import { chromium, FullConfig, GlobalInfo } from '@playwright/test';
- *
- * async function globalSetup(config: FullConfig, info: GlobalInfo) {
- *   await info.attach('agent.config.txt', { path: './agent.config.txt' });
- * }
- *
- * export default globalSetup;
- * ```
- *
- * Access the attachments from the Root Suite in the Reporter:
- *
- * ```ts
- * // my-awesome-reporter.ts
- * import { Reporter } from '@playwright/test/reporter';
- *
- * class MyReporter implements Reporter {
- *   private _suite;
- *
- *   onBegin(config, suite) {
- *     this._suite = suite;
- *   }
- *
- *   onEnd(result) {
- *     console.log(`Finished the run with ${this._suite.attachments.length} global attachments!`);
- *   }
- * }
- * export default MyReporter;
- * ```
- *
- * Finally, specify `globalSetup` in the configuration file and `reporter`:
- *
- * ```ts
- * // playwright.config.ts
- * import { PlaywrightTestConfig } from '@playwright/test';
- *
- * const config: PlaywrightTestConfig = {
- *   globalSetup: require.resolve('./global-setup'),
- *   reporter: require.resolve('./my-awesome-reporter'),
- * };
- * export default config;
- * ```
- *
- * See [`TestInfo`](https://playwright.dev/docs/api/class-testinfo) for related attachment functionality scoped to the test-level.
- */
-export interface GlobalInfo {
-  /**
-   * The list of files or buffers attached to the overall test run. Some reporters show global attachments.
-   *
-   * To add an attachment, use
-   * [globalInfo.attach(name[, options])](https://playwright.dev/docs/api/class-globalinfo#global-info-attach). See
-   * [testInfo.attachments](https://playwright.dev/docs/api/class-testinfo#test-info-attachments) if you are looking for
-   * test-scoped attachments.
-   */
-  attachments(): { name: string, path?: string, body?: Buffer, contentType: string }[];
-  /**
-   * Attach a value or a file from disk to the overall test run. Some reporters show global attachments. Either `path` or
-   * `body` must be specified, but not both.
-   *
-   * See [testInfo.attach(name[, options])](https://playwright.dev/docs/api/class-testinfo#test-info-attach) if you are
-   * looking for test-scoped attachments.
-   *
-   * > NOTE: [globalInfo.attach(name[, options])](https://playwright.dev/docs/api/class-globalinfo#global-info-attach)
-   * automatically takes care of copying attached files to a location that is accessible to reporters. You can safely remove
-   * the attachment after awaiting the attach call.
-   * @param name
-   * @param options
-   */
-  attach(name: string, options?: { contentType?: string, path?: string, body?: string | Buffer }): Promise<void>;
-}
 
 interface SuiteFunction {
   (title: string, callback: () => void): void;
@@ -20059,6 +20043,122 @@ interface ScreenshotAssertions {
 }
 
 /**
+ * `GlobalInfo` contains information on the overall test run. The information spans projects and tests. Some reporters show
+ * global info.
+ *
+ * You can write to GlobalInfo via your Global Setup hook, and read from it in a [Custom Reporter](https://playwright.dev/docs/test-reporters):
+ *
+ * ```ts
+ * // global-setup.ts
+ * import { chromium, FullConfig, GlobalInfo } from '@playwright/test';
+ *
+ * async function globalSetup(config: FullConfig, info: GlobalInfo) {
+ *   await info.attach('agent.config.txt', { path: './agent.config.txt' });
+ * }
+ *
+ * export default globalSetup;
+ * ```
+ *
+ * Access the attachments from the Root Suite in the Reporter:
+ *
+ * ```ts
+ * // my-awesome-reporter.ts
+ * import { Reporter } from '@playwright/test/reporter';
+ *
+ * class MyReporter implements Reporter {
+ *   private _suite;
+ *
+ *   onBegin(config, suite) {
+ *     this._suite = suite;
+ *   }
+ *
+ *   onEnd(result) {
+ *     console.log(`Finished the run with ${this._suite.attachments.length} global attachments!`);
+ *   }
+ * }
+ * export default MyReporter;
+ * ```
+ *
+ * Finally, specify `globalSetup` in the configuration file and `reporter`:
+ *
+ * ```ts
+ * // playwright.config.ts
+ * import { PlaywrightTestConfig } from '@playwright/test';
+ *
+ * const config: PlaywrightTestConfig = {
+ *   globalSetup: require.resolve('./global-setup'),
+ *   reporter: require.resolve('./my-awesome-reporter'),
+ * };
+ * export default config;
+ * ```
+ *
+ * See [`TestInfo`](https://playwright.dev/docs/api/class-testinfo) for related attachment functionality scoped to the test-level.
+ */
+export interface GlobalInfo {
+  /**
+   * The list of files or buffers attached to the overall test run. Some reporters show global attachments.
+   *
+   * To add an attachment, use
+   * [globalInfo.attach(name[, options])](https://playwright.dev/docs/api/class-globalinfo#global-info-attach). See
+   * [testInfo.attachments](https://playwright.dev/docs/api/class-testinfo#test-info-attachments) if you are looking for
+   * test-scoped attachments.
+   */
+  attachments(): Array<{
+    /**
+     * Attachment name.
+     */
+    name: string;
+
+    /**
+     * Content type of this attachment to properly present in the report, for example `'application/json'` or `'image/png'`.
+     */
+    contentType: string;
+
+    /**
+     * Optional path on the filesystem to the attached file.
+     */
+    path?: string;
+
+    /**
+     * Optional attachment body used instead of a file.
+     */
+    body?: Buffer;
+  }>;
+
+  /**
+   * Attach a value or a file from disk to the overall test run. Some reporters show global attachments. Either `path` or
+   * `body` must be specified, but not both.
+   *
+   * See [testInfo.attach(name[, options])](https://playwright.dev/docs/api/class-testinfo#test-info-attach) if you are
+   * looking for test-scoped attachments.
+   *
+   * > NOTE: [globalInfo.attach(name[, options])](https://playwright.dev/docs/api/class-globalinfo#global-info-attach)
+   * automatically takes care of copying attached files to a location that is accessible to reporters. You can safely remove
+   * the attachment after awaiting the attach call.
+   * @param name Attachment name.
+   * @param options
+   */
+  attach(name: string, options?: {
+    /**
+     * Attachment body. Mutually exclusive with `path`.
+     */
+    body?: string|Buffer;
+
+    /**
+     * Optional content type of this attachment to properly present in the report, for example `'application/json'` or
+     * `'image/png'`. If omitted, content type is inferred based on the `path`, or defaults to `text/plain` for [string]
+     * attachments and `application/octet-stream` for [Buffer] attachments.
+     */
+    contentType?: string;
+
+    /**
+     * Path on the filesystem to the attached file. Mutually exclusive with `body`.
+     */
+    path?: string;
+  }): Promise<void>;
+}
+
+/**
  * Information about an error thrown during test execution.
  */
 export interface TestError {
@@ -20076,6 +20176,18 @@ export interface TestError {
    * The value that was thrown. Set when anything except the [Error] (or its subclass) has been thrown.
    */
   value?: string;
+}
+
+export interface TestPlugin {
+  /**
+   * @param config
+   * @param configDir
+   */
+  configure?(config: TestConfig, configDir: string): Promise<void>;
+
+  setup?(): Promise<void>;
+
+  teardown?(): Promise<void>;
 }
 
 /**
