@@ -14,10 +14,15 @@
  * limitations under the License.
  */
 
-import { TestPlugin } from '@playwright/test';
-import type { InlineConfig } from 'vite';
+import { removeFolders } from './fileUtils';
 
-export default function(options?: {
-  config?: InlineConfig,
-  port?: number,
-}): TestPlugin;
+(async () => {
+  const dirs = process.argv.slice(2);
+  const errors = await removeFolders(dirs);
+  for (let i = 0; i < dirs.length; ++i) {
+    if (errors[i]) {
+      // eslint-disable-next-line no-console
+      console.error(`exception while removing ${dirs[i]}: ${errors[i]}`);
+    }
+  }
+})();

@@ -40,7 +40,6 @@ import HtmlReporter from './reporters/html';
 import type { ProjectImpl } from './project';
 import type { Config } from './types';
 import type { FullConfigInternal } from './types';
-import { WebServer } from './webServer';
 import { raceAgainstTimeout } from 'playwright-core/lib/utils/timeoutRunner';
 import { SigIntWatcher } from './sigIntWatcher';
 import { GlobalInfoImpl } from './globalInfo';
@@ -61,8 +60,8 @@ export class Runner {
   private _reporter!: Reporter;
   private _globalInfo: GlobalInfoImpl;
 
-  constructor(configOverrides: Config, options: { defaultConfig?: Config } = {}) {
-    this._loader = new Loader(options.defaultConfig || {}, configOverrides);
+  constructor(configOverrides?: Config) {
+    this._loader = new Loader(configOverrides);
     this._globalInfo = new GlobalInfoImpl(this._loader.fullConfig());
   }
 
@@ -70,7 +69,7 @@ export class Runner {
     return await this._loader.loadConfigFile(resolvedConfigFile);
   }
 
-  loadEmptyConfig(configFileOrDirectory: string): Config {
+  loadEmptyConfig(configFileOrDirectory: string): Promise<Config> {
     return this._loader.loadEmptyConfig(configFileOrDirectory);
   }
 
@@ -140,7 +139,7 @@ export class Runner {
       if (list)
         reporters.unshift(new ListModeReporter());
       else
-        reporters.unshift(!process.env.CI ? new LineReporter({ omitFailures: true }) : new DotReporter({ omitFailures: true }));
+        reporters.unshift(!process.env.CI ? new LineReporter({ omitFailures: true }) : new DotReporter());
     }
     return new Multiplexer(reporters);
   }
@@ -148,13 +147,6 @@ export class Runner {
   async runAllTests(options: RunOptions = {}): Promise<FullResult> {
     this._reporter = await this._createReporter(!!options.listOnly);
     const config = this._loader.fullConfig();
-
-    let legacyGlobalTearDown: (() => Promise<void>) | undefined;
-    if (process.env.PW_TEST_LEGACY_GLOBAL_SETUP_MODE) {
-      legacyGlobalTearDown = await this._performGlobalSetup(config);
-      if (!legacyGlobalTearDown)
-        return { status: 'failed' };
-    }
 
     const result = await raceAgainstTimeout(() => this._run(!!options.listOnly, options.filePatternFilter || [], options.projectFilter), config.globalTimeout);
     let fullResult: FullResult;
@@ -165,7 +157,6 @@ export class Runner {
       fullResult = result.result;
     }
     await this._reporter.onEnd?.(fullResult);
-    await legacyGlobalTearDown?.();
 
     // Calling process.exit() might truncate large stdout/stderr output.
     // See https://github.com/nodejs/node/issues/6456.
@@ -379,12 +370,9 @@ export class Runner {
     }
 
     // 13. Run Global setup.
-    let globalTearDown: (() => Promise<void>) | undefined;
-    if (!process.env.PW_TEST_LEGACY_GLOBAL_SETUP_MODE) {
-      globalTearDown = await this._performGlobalSetup(config);
-      if (!globalTearDown)
-        return { status: 'failed' };
-    }
+    const globalTearDown = await this._performGlobalSetup(config, rootSuite);
+    if (!globalTearDown)
+      return { status: 'failed' };
 
     const result: FullResult = { status: 'passed' };
 
@@ -421,11 +409,10 @@ export class Runner {
     return result;
   }
 
-  private async _performGlobalSetup(config: FullConfigInternal): Promise<(() => Promise<void>) | undefined> {
+  private async _performGlobalSetup(config: FullConfigInternal, rootSuite: Suite): Promise<(() => Promise<void>) | undefined> {
     const result: FullResult = { status: 'passed' };
     const pluginTeardowns: (() => Promise<void>)[] = [];
     let globalSetupResult: any;
-    let webServer: WebServer | undefined;
 
     const tearDown = async () => {
       // Reverse to setup.
@@ -439,10 +426,6 @@ export class Runner {
           await (await this._loader.loadGlobalHook(config.globalTeardown, 'globalTeardown'))(this._loader.fullConfig());
       }, result);
 
-      await this._runAndReportError(async () => {
-        await webServer?.kill();
-      }, result);
-
       for (const teardown of pluginTeardowns) {
         await this._runAndReportError(async () => {
           await teardown();
@@ -454,13 +437,10 @@ export class Runner {
       // First run the plugins, if plugin is a web server we want it to run before the
       // config's global setup.
       for (const plugin of config._plugins) {
-        await plugin.setup?.();
+        await plugin.setup?.(rootSuite);
         if (plugin.teardown)
           pluginTeardowns.unshift(plugin.teardown);
       }
-
-      // Then do legacy web server.
-      webServer = config.webServer ? await WebServer.create(config.webServer, this._reporter) : undefined;
 
       // The do global setup.
       if (config.globalSetup)
