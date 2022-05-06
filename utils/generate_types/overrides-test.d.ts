@@ -40,7 +40,7 @@ export interface Project<TestArgs = {}, WorkerArgs = {}> extends TestProject {
 export interface FullProject<TestArgs = {}, WorkerArgs = {}> {
   grep: RegExp | RegExp[];
   grepInvert: RegExp | RegExp[] | null;
-  metadata: any;
+  metadata: Metadata;
   name: string;
   snapshotDir: string;
   outputDir: string;
@@ -56,15 +56,22 @@ export interface FullProject<TestArgs = {}, WorkerArgs = {}> {
 
 type LiteralUnion<T extends U, U = string> = T | (U & { zz_IGNORE_ME?: never });
 
+export interface TestPlugin {
+  fixtures?: Fixtures;
+}
+
 interface TestConfig {
   reporter?: LiteralUnion<'list'|'dot'|'line'|'github'|'json'|'junit'|'null'|'html', string> | ReporterDescription[];
   webServer?: TestConfigWebServer;
+  plugins?: TestPlugin[],
 }
 
 export interface Config<TestArgs = {}, WorkerArgs = {}> extends TestConfig {
   projects?: Project<TestArgs, WorkerArgs>[];
   use?: UseOptions<TestArgs, WorkerArgs>;
 }
+
+export type Metadata = { [key: string]: any };
 
 // [internal] !!! DO NOT ADD TO THIS !!!
 // [internal] It is part of the public API and is computed from the user's config.
@@ -78,6 +85,7 @@ export interface FullConfig<TestArgs = {}, WorkerArgs = {}> {
   grep: RegExp | RegExp[];
   grepInvert: RegExp | RegExp[] | null;
   maxFailures: number;
+  metadata: Metadata;
   version: string;
   preserveOutput: 'always' | 'never' | 'failures-only';
   projects: FullProject<TestArgs, WorkerArgs>[];

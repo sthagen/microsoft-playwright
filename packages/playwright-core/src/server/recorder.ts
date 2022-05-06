@@ -127,7 +127,7 @@ export class Recorder implements InstrumentationListener {
     this._contextRecorder.on(ContextRecorder.Events.Change, (data: { sources: Source[], primaryFileName: string }) => {
       this._recorderSources = data.sources;
       this._pushAllSources();
-      this._recorderApp?.setFile(data.primaryFileName);
+      this._recorderApp?.setFileIfNeeded(data.primaryFileName);
     });
 
     await this._context.exposeBinding('_playwrightRecorderState', false, source => {
@@ -229,7 +229,7 @@ export class Recorder implements InstrumentationListener {
       const { file, line } = metadata.stack[0];
       let source = this._userSources.get(file);
       if (!source) {
-        source = { file, text: this._readSource(file), highlight: [], language: languageForFile(file) };
+        source = { isRecorded: false, file, text: this._readSource(file), highlight: [], language: languageForFile(file) };
         this._userSources.set(file, source);
       }
       if (line) {
@@ -241,7 +241,7 @@ export class Recorder implements InstrumentationListener {
     }
     this._pushAllSources();
     if (fileToSelect)
-      this._recorderApp?.setFile(fileToSelect);
+      this._recorderApp?.setFileIfNeeded(fileToSelect);
   }
 
   private _pushAllSources() {
@@ -306,8 +306,9 @@ class ContextRecorder extends EventEmitter {
       new JavaLanguageGenerator(),
       new JavaScriptLanguageGenerator(false),
       new JavaScriptLanguageGenerator(true),
-      new PythonLanguageGenerator(false),
-      new PythonLanguageGenerator(true),
+      new PythonLanguageGenerator(false, false),
+      new PythonLanguageGenerator(true, false),
+      new PythonLanguageGenerator(false, true),
       new CSharpLanguageGenerator(),
     ]);
     const primaryLanguage = [...languages].find(l => l.id === language)!;
@@ -324,6 +325,7 @@ class ContextRecorder extends EventEmitter {
       this._recorderSources = [];
       for (const languageGenerator of orderedLanguages) {
         const source: Source = {
+          isRecorded: true,
           file: languageGenerator.fileName,
           text: generator.generateText(languageGenerator),
           language: languageGenerator.highlighter,

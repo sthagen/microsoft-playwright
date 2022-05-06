@@ -33,17 +33,22 @@ export class PythonLanguageGenerator implements LanguageGenerator {
   private _awaitPrefix: '' | 'await ';
   private _asyncPrefix: '' | 'async ';
   private _isAsync: boolean;
+  private _isPyTest: boolean;
 
-  constructor(isAsync: boolean) {
-    this.id = isAsync ? 'python-async' : 'python';
-    this.fileName = isAsync ? 'Python Async' : 'Python';
+  constructor(isAsync: boolean, isPyTest: boolean) {
+    this.id = isPyTest ? 'pytest' : (isAsync ? 'python-async' : 'python');
+    this.fileName = isPyTest ? 'Pytest' : (isAsync ? 'Python Async' : 'Python');
     this._isAsync = isAsync;
+    this._isPyTest = isPyTest;
     this._awaitPrefix = isAsync ? 'await ' : '';
     this._asyncPrefix = isAsync ? 'async ' : '';
   }
 
   generateAction(actionInContext: ActionInContext): string {
     const action = actionInContext.action;
+    if (this._isPyTest && (action.name === 'openPage' || action.name === 'closePage'))
+      return '';
+
     const pageAlias = actionInContext.frame.pageAlias;
     const formatter = new PythonFormatter(4);
     formatter.newLine();
@@ -150,7 +155,21 @@ export class PythonLanguageGenerator implements LanguageGenerator {
 
   generateHeader(options: LanguageGeneratorOptions): string {
     const formatter = new PythonFormatter();
-    if (this._isAsync) {
+    if (this._isPyTest) {
+      const contextOptions = formatContextOptions(options.contextOptions, options.deviceName, true /* asDict */);
+      const fixture = contextOptions ? `
+
+@pytest.fixture(scope="session")
+def browser_context_args(browser_context_args, playwright) {
+    return {${contextOptions}}
+}
+` : '';
+      formatter.add(`${options.deviceName ? 'import pytest\n' : ''}
+from playwright.sync_api import Page, expect
+${fixture}
+
+def test_example(page: Page) -> None {`);
+    } else if (this._isAsync) {
       formatter.add(`
 import asyncio
 
@@ -173,7 +192,9 @@ def run(playwright: Playwright) -> None {
   }
 
   generateFooter(saveStorage: string | undefined): string {
-    if (this._isAsync) {
+    if (this._isPyTest) {
+      return '';
+    } else if (this._isAsync) {
       const storageStateLine = saveStorage ? `\n    await context.storage_state(path=${quote(saveStorage)})` : '';
       return `\n    # ---------------------${storageStateLine}
     await context.close()
@@ -222,18 +243,22 @@ function toSnakeCase(name: string): string {
   return name.replace(toSnakeCaseRegex, `_$1`).toLowerCase();
 }
 
-function formatOptions(value: any, hasArguments: boolean): string {
+function formatOptions(value: any, hasArguments: boolean, asDict?: boolean): string {
   const keys = Object.keys(value);
   if (!keys.length)
     return '';
-  return (hasArguments ? ', ' : '') + keys.map(key => `${toSnakeCase(key)}=${formatValue(value[key])}`).join(', ');
+  return (hasArguments ? ', ' : '') + keys.map(key => {
+    if (asDict)
+      return `"${toSnakeCase(key)}": ${formatValue(value[key])}`;
+    return `${toSnakeCase(key)}=${formatValue(value[key])}`;
+  }).join(', ');
 }
 
-function formatContextOptions(options: BrowserContextOptions, deviceName: string | undefined): string {
+function formatContextOptions(options: BrowserContextOptions, deviceName: string | undefined, asDict?: boolean): string {
   const device = deviceName && deviceDescriptors[deviceName];
   if (!device)
-    return formatOptions(options, false);
-  return `**playwright.devices[${quote(deviceName!)}]` + formatOptions(sanitizeDeviceOptions(device, options), true);
+    return formatOptions(options, false, asDict);
+  return `**playwright.devices[${quote(deviceName!)}]` + formatOptions(sanitizeDeviceOptions(device, options), true, asDict);
 }
 
 class PythonFormatter {

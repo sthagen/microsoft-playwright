@@ -20,7 +20,7 @@ import type * as js from './javascript';
 import type * as types from './types';
 import type { ParsedSelector } from './isomorphic/selectorParser';
 import { allEngineNames, InvalidSelectorError, parseSelector, stringifySelector } from './isomorphic/selectorParser';
-import { createGuid, experimentalFeaturesEnabled } from '../utils';
+import { createGuid } from '../utils';
 
 export type SelectorInfo = {
   parsed: ParsedSelector,
@@ -46,6 +46,7 @@ export class Selectors {
       'data-test-id', 'data-test-id:light',
       'data-test', 'data-test:light',
       'nth', 'visible', 'control', 'has',
+      'left-of', 'right-of', 'above', 'below', 'near',
     ]);
     this._builtinEnginesInMainWorld = new Set([
       '_react', '_vue',
@@ -134,8 +135,7 @@ export class Selectors {
   }
 
   parseSelector(selector: string | ParsedSelector, strict: boolean): SelectorInfo {
-    if (experimentalFeaturesEnabled())
-      this._builtinEngines.add('role');
+    this._builtinEngines.add('role');
     const parsed = typeof selector === 'string' ? parseSelector(selector) : selector;
     let needsMainWorld = false;
     for (const name of allEngineNames(parsed)) {

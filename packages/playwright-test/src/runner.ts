@@ -37,12 +37,13 @@ import JSONReporter from './reporters/json';
 import JUnitReporter from './reporters/junit';
 import EmptyReporter from './reporters/empty';
 import HtmlReporter from './reporters/html';
-import { ProjectImpl } from './project';
 import type { Config, FullProjectInternal } from './types';
 import type { FullConfigInternal } from './types';
 import { raceAgainstTimeout } from 'playwright-core/lib/utils/timeoutRunner';
 import { SigIntWatcher } from './sigIntWatcher';
-import { GlobalInfoImpl } from './globalInfo';
+import type { TestRunnerPlugin } from './plugins';
+import { setRunnerToAddPluginsTo } from './plugins';
+import { webServerPluginForConfig } from './plugins/webServerPlugin';
 
 const removeFolderAsync = promisify(rimraf);
 const readDirAsync = promisify(fs.readdir);
@@ -78,11 +79,15 @@ export type ConfigCLIOverrides = {
 export class Runner {
   private _loader: Loader;
   private _reporter!: Reporter;
-  private _globalInfo: GlobalInfoImpl;
+  private _plugins: TestRunnerPlugin[] = [];
 
   constructor(configCLIOverrides?: ConfigCLIOverrides) {
     this._loader = new Loader(configCLIOverrides);
-    this._globalInfo = new GlobalInfoImpl(this._loader.fullConfig());
+    setRunnerToAddPluginsTo(this);
+  }
+
+  addPlugin(plugin: TestRunnerPlugin) {
+    this._plugins.push(plugin);
   }
 
   async loadConfigFromResolvedFile(resolvedConfigFile: string): Promise<FullConfigInternal> {
@@ -294,7 +299,6 @@ export class Runner {
     const outputDirs = new Set<string>();
     const rootSuite = new Suite('');
     for (const [project, files] of filesByProject) {
-      const projectImpl = new ProjectImpl(project, config.projects.indexOf(project));
       const grepMatcher = createTitleMatcher(project.grep);
       const grepInvertMatcher = project.grepInvert ? createTitleMatcher(project.grepInvert) : null;
       const projectSuite = new Suite(project.name);
@@ -307,14 +311,14 @@ export class Runner {
         if (!fileSuite)
           continue;
         for (let repeatEachIndex = 0; repeatEachIndex < project.repeatEach; repeatEachIndex++) {
-          const cloned = projectImpl.cloneFileSuite(fileSuite, repeatEachIndex, test => {
+          const builtSuite = this._loader.buildFileSuiteForProject(project, fileSuite, repeatEachIndex, test => {
             const grepTitle = test.titlePath().join(' ');
             if (grepInvertMatcher?.(grepTitle))
               return false;
             return grepMatcher(grepTitle);
           });
-          if (cloned)
-            projectSuite._addSuite(cloned);
+          if (builtSuite)
+            projectSuite._addSuite(builtSuite);
         }
       }
       outputDirs.add(project.outputDir);
@@ -398,9 +402,6 @@ export class Runner {
 
     const result: FullResult = { status: 'passed' };
 
-    // 13.5 Add copy of attachments.
-    rootSuite.attachments = this._globalInfo.attachments();
-
     // 14. Run tests.
     try {
       const sigintWatcher = new SigIntWatcher();
@@ -433,7 +434,6 @@ export class Runner {
 
   private async _performGlobalSetup(config: FullConfigInternal, rootSuite: Suite): Promise<(() => Promise<void>) | undefined> {
     const result: FullResult = { status: 'passed' };
-    const pluginTeardowns: (() => Promise<void>)[] = [];
     let globalSetupResult: any;
 
     const tearDown = async () => {
@@ -448,25 +448,26 @@ export class Runner {
           await (await this._loader.loadGlobalHook(config.globalTeardown, 'globalTeardown'))(this._loader.fullConfig());
       }, result);
 
-      for (const teardown of pluginTeardowns) {
+      for (const plugin of [...this._plugins, ...config._plugins].reverse()) {
         await this._runAndReportError(async () => {
-          await teardown();
+          await plugin.teardown?.();
         }, result);
       }
     };
 
     await this._runAndReportError(async () => {
+      // Legacy webServer support.
+      if (config.webServer)
+        this._plugins.push(webServerPluginForConfig(config, this._reporter));
+
       // First run the plugins, if plugin is a web server we want it to run before the
       // config's global setup.
-      for (const plugin of config._plugins) {
-        await plugin.setup?.(rootSuite);
-        if (plugin.teardown)
-          pluginTeardowns.unshift(plugin.teardown);
-      }
+      for (const plugin of [...this._plugins, ...config._plugins])
+        await plugin.setup?.(config, config._configDir, rootSuite);
 
       // The do global setup.
       if (config.globalSetup)
-        globalSetupResult = await (await this._loader.loadGlobalHook(config.globalSetup, 'globalSetup'))(this._loader.fullConfig(), this._globalInfo);
+        globalSetupResult = await (await this._loader.loadGlobalHook(config.globalSetup, 'globalSetup'))(this._loader.fullConfig());
     }, result);
 
     if (result.status !== 'passed') {

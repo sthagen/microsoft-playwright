@@ -14,13 +14,25 @@
  * limitations under the License.
  */
 
-const { test: baseTest, expect } = require('@playwright/test');
+const { test: baseTest, expect, devices, _addRunnerPlugin } = require('@playwright/test');
 const { mount } = require('@playwright/test/lib/mount');
+const path = require('path');
+
+_addRunnerPlugin(() => {
+  // Only fetch upon request to avoid resolution in workers.
+  const { createPlugin } = require('@playwright/test/lib/plugins/vitePlugin');
+  return createPlugin(
+    path.join(__dirname, 'registerSource.mjs'),
+    () => require('@sveltejs/vite-plugin-svelte').svelte());
+});
 
 const test = baseTest.extend({
   _workerPage: [async ({ browser }, use) => {
-    const page = await browser.newPage();
-    await page.addInitScript('navigator.serviceWorker.register = () => {}');
+    const page = await browser._wrapApiCall(async () => {
+      const page = await browser.newPage();
+      await page.addInitScript('navigator.serviceWorker.register = () => {}');
+      return page;
+    });
     await use(page);
   }, { scope: 'worker' }],
 
@@ -40,4 +52,4 @@ const test = baseTest.extend({
   },
 });
 
-module.exports = { test, expect };
+module.exports = { test, expect, devices };

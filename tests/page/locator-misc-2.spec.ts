@@ -16,6 +16,7 @@
  */
 
 import { test as it, expect } from './pageTest';
+import os from 'os';
 
 it('should press @smoke', async ({ page }) => {
   await page.setContent(`<input type='text' />`);
@@ -42,8 +43,9 @@ it('should scroll into view', async ({ page, server, isAndroid }) => {
   }
 });
 
-it('should scroll zero-sized element into view', async ({ page, isAndroid }) => {
-  it.fixme(isAndroid);
+it('should scroll zero-sized element into view', async ({ page, isAndroid, isElectron, browserName, isMac }) => {
+  it.fixme(isAndroid || isElectron);
+  it.skip(browserName === 'webkit' && isMac && parseInt(os.release(), 10) < 20, 'WebKit for macOS 10.15 is frozen.');
 
   await page.setContent(`
     <style>
@@ -69,8 +71,7 @@ it('should scroll zero-sized element into view', async ({ page, isAndroid }) => 
   `);
   expect(await page.locator('#lazyload').boundingBox()).toEqual({ x: 0, y: 2020, width: 1280, height: 0 });
   await page.locator('#lazyload').scrollIntoViewIfNeeded();
-  await page.evaluate(() => new Promise(requestAnimationFrame));
-  expect(await page.locator('#lazyload').textContent()).toBe('LAZY LOADED CONTENT');
+  await expect(page.locator('#lazyload')).toHaveText('LAZY LOADED CONTENT');
   expect(await page.locator('#lazyload').boundingBox()).toEqual({ x: 0, y: 720, width: 1280, height: 20 });
 });
 

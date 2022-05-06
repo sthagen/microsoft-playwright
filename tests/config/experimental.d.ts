@@ -2622,6 +2622,44 @@ export interface Page {
    */
   locator(selector: string, options?: {
     /**
+     * Matches elements that are above any of the elements matching the inner locator, at any horizontal position. Inner
+     * locator is queried against the same root as the outer one. More details in
+     * [layout selectors](https://playwright.dev/docs/selectors#selecting-elements-based-on-layout) guide.
+     *
+     * Note that outer and inner locators must belong to the same frame. Inner locator must not contain [FrameLocator]s.
+     */
+    above?: Locator|{
+      /**
+       * The inner locator.
+       */
+      locator: Locator;
+
+      /**
+       * Maximum vertical distance between the elements in pixels, unlimited by default.
+       */
+      maxDistance?: number;
+    };
+
+    /**
+     * Matches elements that are below any of the elements matching the inner locator, at any horizontal position. Inner
+     * locator is queried against the same root as the outer one. More details in
+     * [layout selectors](https://playwright.dev/docs/selectors#selecting-elements-based-on-layout) guide.
+     *
+     * Note that outer and inner locators must belong to the same frame. Inner locator must not contain [FrameLocator]s.
+     */
+    below?: Locator|{
+      /**
+       * The inner locator.
+       */
+      locator: Locator;
+
+      /**
+       * Maximum vertical distance between the elements in pixels, unlimited by default.
+       */
+      maxDistance?: number;
+    };
+
+    /**
      * Matches elements containing an element that matches an inner locator. Inner locator is queried against the outer one.
      * For example, `article` that has `text=Playwright` matches `<article><div>Playwright</div></article>`.
      *
@@ -2635,6 +2673,62 @@ export interface Page {
      * `<article><div>Playwright</div></article>`.
      */
     hasText?: string|RegExp;
+
+    /**
+     * Matches elements that are to the left of any element matching the inner locator, at any vertical position. Inner locator
+     * is queried against the same root as the outer one. More details in
+     * [layout selectors](https://playwright.dev/docs/selectors#selecting-elements-based-on-layout) guide.
+     *
+     * Note that outer and inner locators must belong to the same frame. Inner locator must not contain [FrameLocator]s.
+     */
+    leftOf?: Locator|{
+      /**
+       * The inner locator.
+       */
+      locator: Locator;
+
+      /**
+       * Maximum horizontal distance between the elements in pixels, unlimited by default.
+       */
+      maxDistance?: number;
+    };
+
+    /**
+     * Matches elements that are near any of the elements matching the inner locator. Inner locator is queried against the same
+     * root as the outer one. More details in [layout selectors](https://playwright.dev/docs/selectors#selecting-elements-based-on-layout) guide.
+     *
+     * Note that outer and inner locators must belong to the same frame. Inner locator must not contain [FrameLocator]s.
+     */
+    near?: Locator|{
+      /**
+       * The inner locator.
+       */
+      locator: Locator;
+
+      /**
+       * Maximum distance between the elements in pixels, 50 by default.
+       */
+      maxDistance?: number;
+    };
+
+    /**
+     * Matches elements that are to the right of any element matching the inner locator, at any vertical position. Inner
+     * locator is queried against the same root as the outer one. More details in
+     * [layout selectors](https://playwright.dev/docs/selectors#selecting-elements-based-on-layout) guide.
+     *
+     * Note that outer and inner locators must belong to the same frame. Inner locator must not contain [FrameLocator]s.
+     */
+    rightOf?: Locator|{
+      /**
+       * The inner locator.
+       */
+      locator: Locator;
+
+      /**
+       * Maximum horizontal distance between the elements in pixels, unlimited by default.
+       */
+      maxDistance?: number;
+    };
   }): Locator;
 
   /**
@@ -5446,6 +5540,44 @@ export interface Frame {
    */
   locator(selector: string, options?: {
     /**
+     * Matches elements that are above any of the elements matching the inner locator, at any horizontal position. Inner
+     * locator is queried against the same root as the outer one. More details in
+     * [layout selectors](https://playwright.dev/docs/selectors#selecting-elements-based-on-layout) guide.
+     *
+     * Note that outer and inner locators must belong to the same frame. Inner locator must not contain [FrameLocator]s.
+     */
+    above?: Locator|{
+      /**
+       * The inner locator.
+       */
+      locator: Locator;
+
+      /**
+       * Maximum vertical distance between the elements in pixels, unlimited by default.
+       */
+      maxDistance?: number;
+    };
+
+    /**
+     * Matches elements that are below any of the elements matching the inner locator, at any horizontal position. Inner
+     * locator is queried against the same root as the outer one. More details in
+     * [layout selectors](https://playwright.dev/docs/selectors#selecting-elements-based-on-layout) guide.
+     *
+     * Note that outer and inner locators must belong to the same frame. Inner locator must not contain [FrameLocator]s.
+     */
+    below?: Locator|{
+      /**
+       * The inner locator.
+       */
+      locator: Locator;
+
+      /**
+       * Maximum vertical distance between the elements in pixels, unlimited by default.
+       */
+      maxDistance?: number;
+    };
+
+    /**
      * Matches elements containing an element that matches an inner locator. Inner locator is queried against the outer one.
      * For example, `article` that has `text=Playwright` matches `<article><div>Playwright</div></article>`.
      *
@@ -5459,6 +5591,62 @@ export interface Frame {
      * `<article><div>Playwright</div></article>`.
      */
     hasText?: string|RegExp;
+
+    /**
+     * Matches elements that are to the left of any element matching the inner locator, at any vertical position. Inner locator
+     * is queried against the same root as the outer one. More details in
+     * [layout selectors](https://playwright.dev/docs/selectors#selecting-elements-based-on-layout) guide.
+     *
+     * Note that outer and inner locators must belong to the same frame. Inner locator must not contain [FrameLocator]s.
+     */
+    leftOf?: Locator|{
+      /**
+       * The inner locator.
+       */
+      locator: Locator;
+
+      /**
+       * Maximum horizontal distance between the elements in pixels, unlimited by default.
+       */
+      maxDistance?: number;
+    };
+
+    /**
+     * Matches elements that are near any of the elements matching the inner locator. Inner locator is queried against the same
+     * root as the outer one. More details in [layout selectors](https://playwright.dev/docs/selectors#selecting-elements-based-on-layout) guide.
+     *
+     * Note that outer and inner locators must belong to the same frame. Inner locator must not contain [FrameLocator]s.
+     */
+    near?: Locator|{
+      /**
+       * The inner locator.
+       */
+      locator: Locator;
+
+      /**
+       * Maximum distance between the elements in pixels, 50 by default.
+       */
+      maxDistance?: number;
+    };
+
+    /**
+     * Matches elements that are to the right of any element matching the inner locator, at any vertical position. Inner
+     * locator is queried against the same root as the outer one. More details in
+     * [layout selectors](https://playwright.dev/docs/selectors#selecting-elements-based-on-layout) guide.
+     *
+     * Note that outer and inner locators must belong to the same frame. Inner locator must not contain [FrameLocator]s.
+     */
+    rightOf?: Locator|{
+      /**
+       * The inner locator.
+       */
+      locator: Locator;
+
+      /**
+       * Maximum horizontal distance between the elements in pixels, unlimited by default.
+       */
+      maxDistance?: number;
+    };
   }): Locator;
 
   /**
@@ -9427,6 +9615,44 @@ export interface Locator {
    */
   locator(selector: string, options?: {
     /**
+     * Matches elements that are above any of the elements matching the inner locator, at any horizontal position. Inner
+     * locator is queried against the same root as the outer one. More details in
+     * [layout selectors](https://playwright.dev/docs/selectors#selecting-elements-based-on-layout) guide.
+     *
+     * Note that outer and inner locators must belong to the same frame. Inner locator must not contain [FrameLocator]s.
+     */
+    above?: Locator|{
+      /**
+       * The inner locator.
+       */
+      locator: Locator;
+
+      /**
+       * Maximum vertical distance between the elements in pixels, unlimited by default.
+       */
+      maxDistance?: number;
+    };
+
+    /**
+     * Matches elements that are below any of the elements matching the inner locator, at any horizontal position. Inner
+     * locator is queried against the same root as the outer one. More details in
+     * [layout selectors](https://playwright.dev/docs/selectors#selecting-elements-based-on-layout) guide.
+     *
+     * Note that outer and inner locators must belong to the same frame. Inner locator must not contain [FrameLocator]s.
+     */
+    below?: Locator|{
+      /**
+       * The inner locator.
+       */
+      locator: Locator;
+
+      /**
+       * Maximum vertical distance between the elements in pixels, unlimited by default.
+       */
+      maxDistance?: number;
+    };
+
+    /**
      * Matches elements containing an element that matches an inner locator. Inner locator is queried against the outer one.
      * For example, `article` that has `text=Playwright` matches `<article><div>Playwright</div></article>`.
      *
@@ -9440,6 +9666,62 @@ export interface Locator {
      * `<article><div>Playwright</div></article>`.
      */
     hasText?: string|RegExp;
+
+    /**
+     * Matches elements that are to the left of any element matching the inner locator, at any vertical position. Inner locator
+     * is queried against the same root as the outer one. More details in
+     * [layout selectors](https://playwright.dev/docs/selectors#selecting-elements-based-on-layout) guide.
+     *
+     * Note that outer and inner locators must belong to the same frame. Inner locator must not contain [FrameLocator]s.
+     */
+    leftOf?: Locator|{
+      /**
+       * The inner locator.
+       */
+      locator: Locator;
+
+      /**
+       * Maximum horizontal distance between the elements in pixels, unlimited by default.
+       */
+      maxDistance?: number;
+    };
+
+    /**
+     * Matches elements that are near any of the elements matching the inner locator. Inner locator is queried against the same
+     * root as the outer one. More details in [layout selectors](https://playwright.dev/docs/selectors#selecting-elements-based-on-layout) guide.
+     *
+     * Note that outer and inner locators must belong to the same frame. Inner locator must not contain [FrameLocator]s.
+     */
+    near?: Locator|{
+      /**
+       * The inner locator.
+       */
+      locator: Locator;
+
+      /**
+       * Maximum distance between the elements in pixels, 50 by default.
+       */
+      maxDistance?: number;
+    };
+
+    /**
+     * Matches elements that are to the right of any element matching the inner locator, at any vertical position. Inner
+     * locator is queried against the same root as the outer one. More details in
+     * [layout selectors](https://playwright.dev/docs/selectors#selecting-elements-based-on-layout) guide.
+     *
+     * Note that outer and inner locators must belong to the same frame. Inner locator must not contain [FrameLocator]s.
+     */
+    rightOf?: Locator|{
+      /**
+       * The inner locator.
+       */
+      locator: Locator;
+
+      /**
+       * Maximum horizontal distance between the elements in pixels, unlimited by default.
+       */
+      maxDistance?: number;
+    };
   }): Locator;
 
   /**
@@ -9822,6 +10104,44 @@ export interface Locator {
    */
   that(options?: {
     /**
+     * Matches elements that are above any of the elements matching the inner locator, at any horizontal position. Inner
+     * locator is queried against the same root as the outer one. More details in
+     * [layout selectors](https://playwright.dev/docs/selectors#selecting-elements-based-on-layout) guide.
+     *
+     * Note that outer and inner locators must belong to the same frame. Inner locator must not contain [FrameLocator]s.
+     */
+    above?: Locator|{
+      /**
+       * The inner locator.
+       */
+      locator: Locator;
+
+      /**
+       * Maximum vertical distance between the elements in pixels, unlimited by default.
+       */
+      maxDistance?: number;
+    };
+
+    /**
+     * Matches elements that are below any of the elements matching the inner locator, at any horizontal position. Inner
+     * locator is queried against the same root as the outer one. More details in
+     * [layout selectors](https://playwright.dev/docs/selectors#selecting-elements-based-on-layout) guide.
+     *
+     * Note that outer and inner locators must belong to the same frame. Inner locator must not contain [FrameLocator]s.
+     */
+    below?: Locator|{
+      /**
+       * The inner locator.
+       */
+      locator: Locator;
+
+      /**
+       * Maximum vertical distance between the elements in pixels, unlimited by default.
+       */
+      maxDistance?: number;
+    };
+
+    /**
      * Matches elements containing an element that matches an inner locator. Inner locator is queried against the outer one.
      * For example, `article` that has `text=Playwright` matches `<article><div>Playwright</div></article>`.
      *
@@ -9835,6 +10155,62 @@ export interface Locator {
      * `<article><div>Playwright</div></article>`.
      */
     hasText?: string|RegExp;
+
+    /**
+     * Matches elements that are to the left of any element matching the inner locator, at any vertical position. Inner locator
+     * is queried against the same root as the outer one. More details in
+     * [layout selectors](https://playwright.dev/docs/selectors#selecting-elements-based-on-layout) guide.
+     *
+     * Note that outer and inner locators must belong to the same frame. Inner locator must not contain [FrameLocator]s.
+     */
+    leftOf?: Locator|{
+      /**
+       * The inner locator.
+       */
+      locator: Locator;
+
+      /**
+       * Maximum horizontal distance between the elements in pixels, unlimited by default.
+       */
+      maxDistance?: number;
+    };
+
+    /**
+     * Matches elements that are near any of the elements matching the inner locator. Inner locator is queried against the same
+     * root as the outer one. More details in [layout selectors](https://playwright.dev/docs/selectors#selecting-elements-based-on-layout) guide.
+     *
+     * Note that outer and inner locators must belong to the same frame. Inner locator must not contain [FrameLocator]s.
+     */
+    near?: Locator|{
+      /**
+       * The inner locator.
+       */
+      locator: Locator;
+
+      /**
+       * Maximum distance between the elements in pixels, 50 by default.
+       */
+      maxDistance?: number;
+    };
+
+    /**
+     * Matches elements that are to the right of any element matching the inner locator, at any vertical position. Inner
+     * locator is queried against the same root as the outer one. More details in
+     * [layout selectors](https://playwright.dev/docs/selectors#selecting-elements-based-on-layout) guide.
+     *
+     * Note that outer and inner locators must belong to the same frame. Inner locator must not contain [FrameLocator]s.
+     */
+    rightOf?: Locator|{
+      /**
+       * The inner locator.
+       */
+      locator: Locator;
+
+      /**
+       * Maximum horizontal distance between the elements in pixels, unlimited by default.
+       */
+      maxDistance?: number;
+    };
   }): Locator;
 
   /**
@@ -13933,6 +14309,44 @@ export interface FrameLocator {
    */
   locator(selector: string, options?: {
     /**
+     * Matches elements that are above any of the elements matching the inner locator, at any horizontal position. Inner
+     * locator is queried against the same root as the outer one. More details in
+     * [layout selectors](https://playwright.dev/docs/selectors#selecting-elements-based-on-layout) guide.
+     *
+     * Note that outer and inner locators must belong to the same frame. Inner locator must not contain [FrameLocator]s.
+     */
+    above?: Locator|{
+      /**
+       * The inner locator.
+       */
+      locator: Locator;
+
+      /**
+       * Maximum vertical distance between the elements in pixels, unlimited by default.
+       */
+      maxDistance?: number;
+    };
+
+    /**
+     * Matches elements that are below any of the elements matching the inner locator, at any horizontal position. Inner
+     * locator is queried against the same root as the outer one. More details in
+     * [layout selectors](https://playwright.dev/docs/selectors#selecting-elements-based-on-layout) guide.
+     *
+     * Note that outer and inner locators must belong to the same frame. Inner locator must not contain [FrameLocator]s.
+     */
+    below?: Locator|{
+      /**
+       * The inner locator.
+       */
+      locator: Locator;
+
+      /**
+       * Maximum vertical distance between the elements in pixels, unlimited by default.
+       */
+      maxDistance?: number;
+    };
+
+    /**
      * Matches elements containing an element that matches an inner locator. Inner locator is queried against the outer one.
      * For example, `article` that has `text=Playwright` matches `<article><div>Playwright</div></article>`.
      *
@@ -13946,6 +14360,62 @@ export interface FrameLocator {
      * `<article><div>Playwright</div></article>`.
      */
     hasText?: string|RegExp;
+
+    /**
+     * Matches elements that are to the left of any element matching the inner locator, at any vertical position. Inner locator
+     * is queried against the same root as the outer one. More details in
+     * [layout selectors](https://playwright.dev/docs/selectors#selecting-elements-based-on-layout) guide.
+     *
+     * Note that outer and inner locators must belong to the same frame. Inner locator must not contain [FrameLocator]s.
+     */
+    leftOf?: Locator|{
+      /**
+       * The inner locator.
+       */
+      locator: Locator;
+
+      /**
+       * Maximum horizontal distance between the elements in pixels, unlimited by default.
+       */
+      maxDistance?: number;
+    };
+
+    /**
+     * Matches elements that are near any of the elements matching the inner locator. Inner locator is queried against the same
+     * root as the outer one. More details in [layout selectors](https://playwright.dev/docs/selectors#selecting-elements-based-on-layout) guide.
+     *
+     * Note that outer and inner locators must belong to the same frame. Inner locator must not contain [FrameLocator]s.
+     */
+    near?: Locator|{
+      /**
+       * The inner locator.
+       */
+      locator: Locator;
+
+      /**
+       * Maximum distance between the elements in pixels, 50 by default.
+       */
+      maxDistance?: number;
+    };
+
+    /**
+     * Matches elements that are to the right of any element matching the inner locator, at any vertical position. Inner
+     * locator is queried against the same root as the outer one. More details in
+     * [layout selectors](https://playwright.dev/docs/selectors#selecting-elements-based-on-layout) guide.
+     *
+     * Note that outer and inner locators must belong to the same frame. Inner locator must not contain [FrameLocator]s.
+     */
+    rightOf?: Locator|{
+      /**
+       * The inner locator.
+       */
+      locator: Locator;
+
+      /**
+       * Maximum horizontal distance between the elements in pixels, unlimited by default.
+       */
+      maxDistance?: number;
+    };
   }): Locator;
 
   /**
@@ -16385,9 +16855,9 @@ export interface FullProject<TestArgs = {}, WorkerArgs = {}> {
    */
   grepInvert: RegExp | RegExp[] | null;
   /**
-   * Any JSON-serializable metadata that will be put directly to the test report.
+   * Metadata that will be put directly to the test report serialized as JSON.
    */
-  metadata: any;
+  metadata: Metadata;
   /**
    * Project name is visible in the report and during test execution.
    */
@@ -16557,6 +17027,22 @@ export interface FullProject<TestArgs = {}, WorkerArgs = {}> {
 type LiteralUnion<T extends U, U = string> = T | (U & { zz_IGNORE_ME?: never });
 
 /**
+ *
+ */
+export interface TestPlugin {
+  fixtures?: Fixtures;
+  name: string;
+
+  /**
+   * @param config
+   * @param configDir
+   * @param suite
+   */
+  setup?(config: FullConfig, configDir: string, suite: Suite): Promise<void>;
+
+  teardown?(): Promise<void>;}
+
+/**
  * Playwright Test provides many options to configure how your tests are collected and executed, for example `timeout` or
  * `testDir`. These options are described in the [TestConfig] object in the [configuration file](https://playwright.dev/docs/test-configuration).
  *
@@ -16649,6 +17135,7 @@ interface TestConfig {
    *
    */
   webServer?: TestConfigWebServer;
+  plugins?: TestPlugin[],
   /**
    * Configuration for the `expect` assertion library. Learn more about [various timeouts](https://playwright.dev/docs/test-timeouts).
    *
@@ -16865,9 +17352,9 @@ interface TestConfig {
   maxFailures?: number;
 
   /**
-   * Any JSON-serializable metadata that will be put directly to the test report.
+   * Metadata that will be put directly to the test report serialized as JSON.
    */
-  metadata?: any;
+  metadata?: Metadata;
 
   /**
    * Config name is visible in the report and during test execution, unless overridden by
@@ -16924,8 +17411,6 @@ interface TestConfig {
    * resolve to `snapshots/a.spec.js-snapshots`.
    */
   snapshotDir?: string;
-
-  plugins?: Array<TestPlugin>;
 
   /**
    * Whether to preserve test output in the
@@ -17196,6 +17681,8 @@ export interface Config<TestArgs = {}, WorkerArgs = {}> extends TestConfig {
   use?: UseOptions<TestArgs, WorkerArgs>;
 }
 
+export type Metadata = { [key: string]: any };
+
 /**
  * Playwright Test provides many options to configure how your tests are collected and executed, for example `timeout` or
  * `testDir`. These options are described in the [TestConfig] object in the [configuration file](https://playwright.dev/docs/test-configuration).
@@ -17330,6 +17817,10 @@ export interface FullConfig<TestArgs = {}, WorkerArgs = {}> {
    *
    */
   maxFailures: number;
+  /**
+   * Metadata that will be put directly to the test report serialized as JSON.
+   */
+  metadata: Metadata;
   version: string;
   /**
    * Whether to preserve test output in the
@@ -19963,122 +20454,6 @@ interface ScreenshotAssertions {
 }
 
 /**
- * `GlobalInfo` contains information on the overall test run. The information spans projects and tests. Some reporters show
- * global info.
- *
- * You can write to GlobalInfo via your Global Setup hook, and read from it in a [Custom Reporter](https://playwright.dev/docs/test-reporters):
- *
- * ```ts
- * // global-setup.ts
- * import { chromium, FullConfig, GlobalInfo } from '@playwright/test';
- *
- * async function globalSetup(config: FullConfig, info: GlobalInfo) {
- *   await info.attach('agent.config.txt', { path: './agent.config.txt' });
- * }
- *
- * export default globalSetup;
- * ```
- *
- * Access the attachments from the Root Suite in the Reporter:
- *
- * ```ts
- * // my-awesome-reporter.ts
- * import { Reporter } from '@playwright/test/reporter';
- *
- * class MyReporter implements Reporter {
- *   private _suite;
- *
- *   onBegin(config, suite) {
- *     this._suite = suite;
- *   }
- *
- *   onEnd(result) {
- *     console.log(`Finished the run with ${this._suite.attachments.length} global attachments!`);
- *   }
- * }
- * export default MyReporter;
- * ```
- *
- * Finally, specify `globalSetup` in the configuration file and `reporter`:
- *
- * ```ts
- * // playwright.config.ts
- * import { PlaywrightTestConfig } from '@playwright/test';
- *
- * const config: PlaywrightTestConfig = {
- *   globalSetup: require.resolve('./global-setup'),
- *   reporter: require.resolve('./my-awesome-reporter'),
- * };
- * export default config;
- * ```
- *
- * See [`TestInfo`](https://playwright.dev/docs/api/class-testinfo) for related attachment functionality scoped to the test-level.
- */
-export interface GlobalInfo {
-  /**
-   * The list of files or buffers attached to the overall test run. Some reporters show global attachments.
-   *
-   * To add an attachment, use
-   * [globalInfo.attach(name[, options])](https://playwright.dev/docs/api/class-globalinfo#global-info-attach). See
-   * [testInfo.attachments](https://playwright.dev/docs/api/class-testinfo#test-info-attachments) if you are looking for
-   * test-scoped attachments.
-   */
-  attachments(): Array<{
-    /**
-     * Attachment name.
-     */
-    name: string;
-
-    /**
-     * Content type of this attachment to properly present in the report, for example `'application/json'` or `'image/png'`.
-     */
-    contentType: string;
-
-    /**
-     * Optional path on the filesystem to the attached file.
-     */
-    path?: string;
-
-    /**
-     * Optional attachment body used instead of a file.
-     */
-    body?: Buffer;
-  }>;
-
-  /**
-   * Attach a value or a file from disk to the overall test run. Some reporters show global attachments. Either `path` or
-   * `body` must be specified, but not both.
-   *
-   * See [testInfo.attach(name[, options])](https://playwright.dev/docs/api/class-testinfo#test-info-attach) if you are
-   * looking for test-scoped attachments.
-   *
-   * > NOTE: [globalInfo.attach(name[, options])](https://playwright.dev/docs/api/class-globalinfo#global-info-attach)
-   * automatically takes care of copying attached files to a location that is accessible to reporters. You can safely remove
-   * the attachment after awaiting the attach call.
-   * @param name Attachment name.
-   * @param options
-   */
-  attach(name: string, options?: {
-    /**
-     * Attachment body. Mutually exclusive with `path`.
-     */
-    body?: string|Buffer;
-
-    /**
-     * Optional content type of this attachment to properly present in the report, for example `'application/json'` or
-     * `'image/png'`. If omitted, content type is inferred based on the `path`, or defaults to `text/plain` for [string]
-     * attachments and `application/octet-stream` for [Buffer] attachments.
-     */
-    contentType?: string;
-
-    /**
-     * Path on the filesystem to the attached file. Mutually exclusive with `body`.
-     */
-    path?: string;
-  }): Promise<void>;
-}
-
-/**
  * Information about an error thrown during test execution.
  */
 export interface TestError {
@@ -20096,23 +20471,6 @@ export interface TestError {
    * The value that was thrown. Set when anything except the [Error] (or its subclass) has been thrown.
    */
   value?: string;
-}
-
-export interface TestPlugin {
-  name: string;
-
-  /**
-   * @param config
-   * @param configDir
-   */
-  configure?(config: TestConfig, configDir: string): Promise<void>;
-
-  /**
-   * @param suite
-   */
-  setup?(suite: Suite): Promise<void>;
-
-  teardown?(): Promise<void>;
 }
 
 /**
@@ -20285,9 +20643,9 @@ interface TestProject {
   grepInvert?: RegExp|Array<RegExp>;
 
   /**
-   * Any JSON-serializable metadata that will be put directly to the test report.
+   * Metadata that will be put directly to the test report serialized as JSON.
    */
-  metadata?: any;
+  metadata?: Metadata;
 
   /**
    * Project name is visible in the report and during test execution.
@@ -20540,7 +20898,7 @@ declare module '@playwright/test/reporter' {
  * limitations under the License.
  */
 
-import type { FullConfig, FullProject, TestStatus, TestError } from '@playwright/test';
+import type { FullConfig, FullProject, TestStatus, TestError, Metadata } from '@playwright/test';
 export type { FullConfig, TestStatus, TestError } from '@playwright/test';
 
 /**
@@ -20609,33 +20967,7 @@ export interface Suite {
   /**
    * Returns a list of titles from the root down to this suite.
    */
-  titlePath(): Array<string>;
-
-  /**
-   * The list of files or buffers attached to the suite. Root suite has attachments populated by
-   * [globalInfo.attach(name[, options])](https://playwright.dev/docs/api/class-globalinfo#global-info-attach).
-   */
-  attachments: Array<{
-    /**
-     * Attachment name.
-     */
-    name: string;
-
-    /**
-     * Content type of this attachment to properly present in the report, for example `'application/json'` or `'image/png'`.
-     */
-    contentType: string;
-
-    /**
-     * Optional path on the filesystem to the attached file.
-     */
-    path?: string;
-
-    /**
-     * Optional attachment body used instead of a file.
-     */
-    body?: Buffer;
-  }>;}
+  titlePath(): Array<string>;}
 
 /**
  * `TestCase` corresponds to every [test.(call)(title, testFunction)](https://playwright.dev/docs/api/class-test#test-call)
@@ -20988,7 +21320,7 @@ export interface JSONReport {
       outputDir: string,
       repeatEach: number,
       retries: number,
-      metadata: any,
+      metadata: Metadata,
       name: string,
       testDir: string,
       testIgnore: string[],

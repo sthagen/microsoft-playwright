@@ -109,18 +109,12 @@ jobs:
         name: ${{ matrix.browser }}-win-test-results
         path: test-results
 
-  test-package-installations:
+  test-package-installations-older-node-versions:
     name: "Installation Test ${{ matrix.os }} (${{ matrix.node_version }})"
     runs-on: ${{ matrix.os  }}
     strategy:
       fail-fast: false
       matrix:
-        os:
-        - ubuntu-latest
-        - macos-latest
-        - windows-latest
-        node_version:
-        - "^18.0.0"
         include:
         - os: ubuntu-latest
           node_version: "^14.1.0"  # pre 14.1, zip extraction was broken (https://github.com/microsoft/playwright/issues/1988)
@@ -763,30 +757,6 @@ jobs:
       if: ${{ always() }}
       with:
         name: chrome-beta-mac-test-results
-        path: test-results
-
-  test_electron:
-    name: "Electron Linux"
-    runs-on: ubuntu-20.04
-    steps:
-    - uses: actions/checkout@v2
-    - uses: actions/setup-node@v2
-      with:
-        node-version: 14
-    - run: npm i -g npm@8
-    - run: npm ci
-      env:
-        PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: 1
-    - run: npm run build
-    - run: npx playwright install --with-deps chromium
-    - run: xvfb-run --auto-servernum --server-args="-screen 0 1280x960x24" -- npm run etest
-    - run: node tests/config/checkCoverage.js electron
-    - run: ./utils/upload_flakiness_dashboard.sh ./test-results/report.json
-      if: always()
-    - uses: actions/upload-artifact@v1
-      if: ${{ always() }}
-      with:
-        name: electron-linux-test-results
         path: test-results
 
   build-playwright-driver:

@@ -15,11 +15,10 @@
  */
 
 import { installTransform, setCurrentlyLoadingTestFile } from './transform';
-import type { Config, Project, ReporterDescription, FullProjectInternal, GlobalInfo } from './types';
-import type { FullConfigInternal } from './types';
+import type { Config, Project, ReporterDescription, FullProjectInternal, FullConfigInternal, Fixtures, FixturesWithLocation, TestPlugin } from './types';
 import { getPackageJsonPath, mergeObjects, errorWithFile } from './util';
 import { setCurrentlyLoadingFileSuite } from './globals';
-import { Suite } from './test';
+import { Suite, type TestCase } from './test';
 import type { SerializedLoaderData } from './ipc';
 import * as path from 'path';
 import * as url from 'url';
@@ -28,10 +27,11 @@ import * as os from 'os';
 import type { BuiltInReporter, ConfigCLIOverrides } from './runner';
 import type { Reporter } from '../types/testReporter';
 import { builtInReporters } from './runner';
-import { isRegExp } from 'playwright-core/lib/utils';
+import { isRegExp, calculateSha1 } from 'playwright-core/lib/utils';
 import { serializeError } from './util';
-import { _legacyWebServer } from './plugins/webServerPlugin';
 import { hostPlatform } from 'playwright-core/lib/utils/hostPlatform';
+import { FixturePool, isFixtureOption } from './fixtures';
+import type { TestTypeImpl } from './testType';
 
 export const defaultTimeout = 30000;
 
@@ -44,6 +44,7 @@ export class Loader {
   private _fullConfig: FullConfigInternal;
   private _configDir: string = '';
   private _configFile: string | undefined;
+  private _projectSuiteBuilders = new Map<FullProjectInternal, ProjectSuiteBuilder>();
 
   constructor(configCLIOverrides?: ConfigCLIOverrides) {
     this._configCLIOverrides = configCLIOverrides || {};
@@ -51,28 +52,18 @@ export class Loader {
   }
 
   static async deserialize(data: SerializedLoaderData): Promise<Loader> {
-    if (process.env.PLAYWRIGHT_LEGACY_CONFIG_MODE) {
-      const loader = new Loader(data.overridesForLegacyConfigMode);
-      if (data.configFile)
-        await loader.loadConfigFile(data.configFile);
-      else
-        await loader.loadEmptyConfig(data.configDir);
-      return loader;
-    } else {
-      const loader = new Loader();
-      loader._configFile = data.configFile;
-      loader._configDir = data.configDir;
-      loader._fullConfig = data.config;
-      return loader;
-    }
+    const loader = new Loader(data.configCLIOverrides);
+    if (data.configFile)
+      await loader.loadConfigFile(data.configFile);
+    else
+      await loader.loadEmptyConfig(data.configDir);
+    return loader;
   }
 
   async loadConfigFile(file: string): Promise<FullConfigInternal> {
     if (this._configFile)
       throw new Error('Cannot load two config files');
-    let config = await this._requireOrImport(file) as Config;
-    if (config && typeof config === 'object' && ('default' in config))
-      config = (config as any)['default'];
+    const config = await this._requireOrImportDefaultObject(file) as Config;
     this._configFile = file;
     await this._processConfigObject(config, path.dirname(file));
     return this._fullConfig;
@@ -84,11 +75,6 @@ export class Loader {
   }
 
   private async _processConfigObject(config: Config, configDir: string) {
-    if (config.webServer) {
-      config.plugins = config.plugins || [];
-      config.plugins.push(_legacyWebServer(config.webServer));
-    }
-
     // 1. Validate data provided in the config file.
     validateConfig(this._configFile || '<default config>', config);
 
@@ -116,11 +102,7 @@ export class Loader {
     for (const project of config.projects || [])
       this._applyCLIOverridesToProject(project);
 
-    // 3. Run configure plugins phase.
-    for (const plugin of config.plugins || [])
-      await plugin.configure?.(config, configDir);
-
-    // 4. Resolve config.
+    // 3. Resolve config.
     this._configDir = configDir;
     const packageJsonPath = getPackageJsonPath(configDir);
     const packageJsonDir = packageJsonPath ? path.dirname(packageJsonPath) : undefined;
@@ -140,8 +122,19 @@ export class Loader {
       (config as any).screenshotsDir = path.resolve(configDir, (config as any).screenshotsDir);
     if (config.snapshotDir !== undefined)
       config.snapshotDir = path.resolve(configDir, config.snapshotDir);
-    if (config.webServer)
-      config.webServer.cwd = config.webServer.cwd ? path.resolve(configDir, config.webServer.cwd) : configDir;
+
+    config.plugins = await Promise.all((config.plugins || []).map(async plugin => {
+      if (typeof plugin === 'string')
+        return (await this._requireOrImportDefaultObject(resolveScript(plugin, configDir))) as TestPlugin;
+      return plugin;
+    }));
+
+    for (const plugin of config.plugins || []) {
+      if (!plugin.fixtures)
+        continue;
+      if (typeof plugin.fixtures === 'string')
+        plugin.fixtures = await this._requireOrImportDefaultObject(resolveScript(plugin.fixtures, configDir));
+    }
 
     this._fullConfig._configDir = configDir;
     this._fullConfig.rootDir = config.testDir || this._configDir;
@@ -163,7 +156,8 @@ export class Loader {
     this._fullConfig.workers = takeFirst(config.workers, baseFullConfig.workers);
     this._fullConfig.webServer = takeFirst(config.webServer, baseFullConfig.webServer);
     this._fullConfig._plugins = takeFirst(config.plugins, baseFullConfig._plugins);
-    this._fullConfig.projects = (config.projects || [config]).map(p => this._resolveProject(config, p, throwawayArtifactsPath));
+    this._fullConfig.metadata = takeFirst(config.metadata, baseFullConfig.metadata);
+    this._fullConfig.projects = (config.projects || [config]).map(p => this._resolveProject(config, this._fullConfig, p, throwawayArtifactsPath));
   }
 
   async loadTestFile(file: string, environment: 'runner' | 'worker') {
@@ -210,36 +204,31 @@ export class Loader {
     return suite;
   }
 
-  async loadGlobalHook(file: string, name: string): Promise<(config: FullConfigInternal, globalInfo?: GlobalInfo) => any> {
-    let hook = await this._requireOrImport(file);
-    if (hook && typeof hook === 'object' && ('default' in hook))
-      hook = hook['default'];
-    if (typeof hook !== 'function')
-      throw errorWithFile(file, `${name} file must export a single function.`);
-    return hook;
+  async loadGlobalHook(file: string, name: string): Promise<(config: FullConfigInternal) => any> {
+    return this._requireOrImportDefaultFunction(path.resolve(this._fullConfig.rootDir, file), false);
   }
 
   async loadReporter(file: string): Promise<new (arg?: any) => Reporter> {
-    let func = await this._requireOrImport(path.resolve(this._fullConfig.rootDir, file));
-    if (func && typeof func === 'object' && ('default' in func))
-      func = func['default'];
-    if (typeof func !== 'function')
-      throw errorWithFile(file, `reporter file must export a single class.`);
-    return func;
+    return this._requireOrImportDefaultFunction(path.resolve(this._fullConfig.rootDir, file), true);
   }
 
   fullConfig(): FullConfigInternal {
     return this._fullConfig;
   }
 
+  buildFileSuiteForProject(project: FullProjectInternal, suite: Suite, repeatEachIndex: number, filter: (test: TestCase) => boolean): Suite | undefined {
+    if (!this._projectSuiteBuilders.has(project))
+      this._projectSuiteBuilders.set(project, new ProjectSuiteBuilder(project, this._fullConfig.projects.indexOf(project)));
+    const builder = this._projectSuiteBuilders.get(project)!;
+    return builder.cloneFileSuite(suite, repeatEachIndex, filter);
+  }
+
   serialize(): SerializedLoaderData {
     const result: SerializedLoaderData = {
       configFile: this._configFile,
       configDir: this._configDir,
-      config: this._fullConfig,
+      configCLIOverrides: this._configCLIOverrides,
     };
-    if (process.env.PLAYWRIGHT_LEGACY_CONFIG_MODE)
-      result.overridesForLegacyConfigMode = this._configCLIOverrides;
     return result;
   }
 
@@ -251,9 +240,10 @@ export class Loader {
     projectConfig.repeatEach = takeFirst(this._configCLIOverrides.repeatEach, projectConfig.repeatEach);
     projectConfig.retries = takeFirst(this._configCLIOverrides.retries, projectConfig.retries);
     projectConfig.timeout = takeFirst(this._configCLIOverrides.timeout, projectConfig.timeout);
+    projectConfig.use = mergeObjects(projectConfig.use, this._configCLIOverrides.use);
   }
 
-  private _resolveProject(config: Config, projectConfig: Project, throwawayArtifactsPath: string): FullProjectInternal {
+  private _resolveProject(config: Config, fullConfig: FullConfigInternal, projectConfig: Project, throwawayArtifactsPath: string): FullProjectInternal {
     // Resolve all config dirs relative to configDir.
     if (projectConfig.testDir !== undefined)
       projectConfig.testDir = path.resolve(this._configDir, projectConfig.testDir);
@@ -271,8 +261,9 @@ export class Loader {
     const name = takeFirst(projectConfig.name, config.name, '');
     const screenshotsDir = takeFirst((projectConfig as any).screenshotsDir, (config as any).screenshotsDir, path.join(testDir, '__screenshots__', process.platform, name));
     return {
+      _fullConfig: fullConfig,
       _fullyParallel: takeFirst(projectConfig.fullyParallel, config.fullyParallel, undefined),
-      _expect: takeFirst(projectConfig.expect, config.expect, undefined),
+      _expect: takeFirst(projectConfig.expect, config.expect, {}),
       grep: takeFirst(projectConfig.grep, config.grep, baseFullConfig.grep),
       grepInvert: takeFirst(projectConfig.grepInvert, config.grepInvert, baseFullConfig.grepInvert),
       outputDir,
@@ -319,6 +310,138 @@ ${'='.repeat(80)}\n`);
     } finally {
       revertBabelRequire();
     }
+  }
+
+  private async _requireOrImportDefaultFunction(file: string, expectConstructor: boolean) {
+    let func = await this._requireOrImport(file);
+    if (func && typeof func === 'object' && ('default' in func))
+      func = func['default'];
+    if (typeof func !== 'function')
+      throw errorWithFile(file, `file must export a single ${expectConstructor ? 'class' : 'function'}.`);
+    return func;
+  }
+
+  private async _requireOrImportDefaultObject(file: string) {
+    let object = await this._requireOrImport(file);
+    if (object && typeof object === 'object' && ('default' in object))
+      object = object['default'];
+    return object;
+  }
+}
+
+class ProjectSuiteBuilder {
+  private _project: FullProjectInternal;
+  private _index: number;
+  private _testTypePools = new Map<TestTypeImpl, FixturePool>();
+  private _testPools = new Map<TestCase, FixturePool>();
+
+  constructor(project: FullProjectInternal, index: number) {
+    this._project = project;
+    this._index = index;
+  }
+
+  private _buildTestTypePool(testType: TestTypeImpl): FixturePool {
+    if (!this._testTypePools.has(testType)) {
+      const fixtures = this._applyConfigUseOptions(testType, this._project.use || {});
+      const pool = new FixturePool(fixtures);
+      this._testTypePools.set(testType, pool);
+    }
+    return this._testTypePools.get(testType)!;
+  }
+
+  // TODO: we can optimize this function by building the pool inline in cloneSuite
+  private _buildPool(test: TestCase): FixturePool {
+    if (!this._testPools.has(test)) {
+      let pool = this._buildTestTypePool(test._testType);
+
+      for (const plugin of this._project._fullConfig._plugins) {
+        if (!plugin.fixtures)
+          continue;
+        const pluginFixturesWithLocation: FixturesWithLocation = {
+          fixtures: plugin.fixtures,
+          location: { file: '', line: 0, column: 0 },
+        };
+        pool = new FixturePool([pluginFixturesWithLocation], pool, false);
+      }
+
+      const parents: Suite[] = [];
+      for (let parent: Suite | undefined = test.parent; parent; parent = parent.parent)
+        parents.push(parent);
+      parents.reverse();
+
+      for (const parent of parents) {
+        if (parent._use.length)
+          pool = new FixturePool(parent._use, pool, parent._isDescribe);
+        for (const hook of parent._hooks)
+          pool.validateFunction(hook.fn, hook.type + ' hook', hook.location);
+        for (const modifier of parent._modifiers)
+          pool.validateFunction(modifier.fn, modifier.type + ' modifier', modifier.location);
+      }
+
+      pool.validateFunction(test.fn, 'Test', test.location);
+      this._testPools.set(test, pool);
+    }
+    return this._testPools.get(test)!;
+  }
+
+  private _cloneEntries(from: Suite, to: Suite, repeatEachIndex: number, filter: (test: TestCase) => boolean, relativeTitlePath: string): boolean {
+    for (const entry of from._entries) {
+      if (entry instanceof Suite) {
+        const suite = entry._clone();
+        to._addSuite(suite);
+        if (!this._cloneEntries(entry, suite, repeatEachIndex, filter, relativeTitlePath + ' ' + suite.title)) {
+          to._entries.pop();
+          to.suites.pop();
+        }
+      } else {
+        const test = entry._clone();
+        test.retries = this._project.retries;
+        // We rely upon relative paths being unique.
+        // See `getClashingTestsPerSuite()` in `runner.ts`.
+        test._id = `${calculateSha1(relativeTitlePath + ' ' + entry.title)}@${entry._requireFile}#run${this._index}-repeat${repeatEachIndex}`;
+        test.repeatEachIndex = repeatEachIndex;
+        test._projectIndex = this._index;
+        to._addTest(test);
+        if (!filter(test)) {
+          to._entries.pop();
+          to.tests.pop();
+        } else {
+          const pool = this._buildPool(entry);
+          test._workerHash = `run${this._index}-${pool.digest}-repeat${repeatEachIndex}`;
+          test._pool = pool;
+        }
+      }
+    }
+    if (!to._entries.length)
+      return false;
+    return true;
+  }
+
+  cloneFileSuite(suite: Suite, repeatEachIndex: number, filter: (test: TestCase) => boolean): Suite | undefined {
+    const result = suite._clone();
+    return this._cloneEntries(suite, result, repeatEachIndex, filter, '') ? result : undefined;
+  }
+
+  private _applyConfigUseOptions(testType: TestTypeImpl, configUse: Fixtures): FixturesWithLocation[] {
+    const configKeys = new Set(Object.keys(configUse));
+    if (!configKeys.size)
+      return testType.fixtures;
+    const result: FixturesWithLocation[] = [];
+    for (const f of testType.fixtures) {
+      const optionsFromConfig: Fixtures = {};
+      const originalFixtures: Fixtures = {};
+      for (const [key, value] of Object.entries(f.fixtures)) {
+        if (isFixtureOption(value) && configKeys.has(key))
+          (optionsFromConfig as any)[key] = [(configUse as any)[key], value[1]];
+        else
+          (originalFixtures as any)[key] = value;
+      }
+      if (Object.entries(optionsFromConfig).length)
+        result.push({ fixtures: optionsFromConfig, location: { file: `project#${this._index}`, line: 1, column: 1 } });
+      if (Object.entries(originalFixtures).length)
+        result.push({ fixtures: originalFixtures, location: f.location });
+    }
+    return result;
   }
 }
 
@@ -515,6 +638,7 @@ export const baseFullConfig: FullConfigInternal = {
   grep: /.*/,
   grepInvert: null,
   maxFailures: 0,
+  metadata: {},
   preserveOutput: 'always',
   projects: [],
   reporter: [ [process.env.CI ? 'dot' : 'list'] ],

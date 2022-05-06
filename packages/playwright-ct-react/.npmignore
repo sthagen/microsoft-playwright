@@ -4,7 +4,6 @@
 !LICENSE
 !register.d.ts
 !register.mjs
-!test.d.ts
-!test.js
-!vitePlugin.d.ts
-!vitePlugin.js
+!registerSource.mjs
+!index.d.ts
+!index.js
