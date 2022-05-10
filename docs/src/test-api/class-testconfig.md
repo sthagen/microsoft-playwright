@@ -36,7 +36,7 @@ export default config;
 ## property: TestConfig.expect
 - type: ?<[Object]>
   - `timeout` ?<[int]> Default timeout for async expect matchers in milliseconds, defaults to 5000ms.
-  - `toHaveScreenshot` ?e<[Object]> Configuration for the [`method: PageAssertions.toHaveScreenshot`] method.
+  - `toHaveScreenshot` ?<[Object]> Configuration for the [`method: PageAssertions.toHaveScreenshot`] method.
     - `threshold` ?<[float]> an acceptable perceived color difference in the [YIQ color space](https://en.wikipedia.org/wiki/YIQ) between the same pixel in compared images, between zero (strict) and one (lax). Defaults to `0.2`.
     - `maxDiffPixels` ?<[int]> an acceptable amount of pixels that could be different, unset by default.
     - `maxDiffPixelRatio` ?<[float]> an acceptable ratio of pixels that are different to the total amount of pixels, between `0` and `1` , unset by default.
@@ -317,9 +317,6 @@ The base directory, relative to the config file, for snapshot files created with
 The directory for each test can be accessed by [`property: TestInfo.snapshotDir`] and [`method: TestInfo.snapshotPath`].
 
 This path will serve as the base directory for each test file snapshot directory. Setting `snapshotDir` to `'snapshots'`, the [`property: TestInfo.snapshotDir`] would resolve to `snapshots/a.spec.js-snapshots`.
-
-## property: TestConfig.plugins
-- type: ?<[Array]<[TestPlugin]|[string]>>
 
 ## property: TestConfig.preserveOutput
 - type: ?<[PreserveOutput]<"always"|"never"|"failures-only">>

@@ -576,7 +576,7 @@ await expect(locator).toBeVisible();
 ```
 
 ```java
-assertThat(page.locator(".my-element")).toBeVisible();
+assertThat(page.locator(".my-element")).isVisible();
 ```
 
 ```python async
@@ -1004,7 +1004,6 @@ Property value.
 
 ## async method: LocatorAssertions.toHaveScreenshot
 * langs: js
-* experimental
 
 Ensures that [Locator] resolves to a given screenshot. This function will re-take
 screenshots until it matches with the saved expectation.
