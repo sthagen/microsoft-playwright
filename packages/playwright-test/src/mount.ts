@@ -14,35 +14,47 @@
  * limitations under the License.
  */
 
-import type { Fixtures, Locator, Page, PlaywrightTestArgs, PlaywrightTestOptions, PlaywrightWorkerArgs } from './types';
+import type { Fixtures, Locator, Page, BrowserContextOptions, PlaywrightTestArgs, PlaywrightTestOptions, PlaywrightWorkerArgs } from './types';
 
 let boundCallbacksForMount: Function[] = [];
 
-export const fixtures: Fixtures<PlaywrightTestArgs & PlaywrightTestOptions & { mount: (component: any, options: any) => Promise<Locator> }, PlaywrightWorkerArgs & { _workerPage: Page }>  = {
-  _workerPage: [async ({ browser }, use) => {
-    const page = await (browser as any)._wrapApiCall(async () => {
-      const page = await browser.newPage();
-      await page.addInitScript('navigator.serviceWorker.register = () => {}');
-      await page.exposeFunction('__pw_dispatch', (ordinal: number, args: any[]) => {
-        boundCallbacksForMount[ordinal](...args);
-      });
-      return page;
-    });
-    await use(page);
-  }, { scope: 'worker' }],
+export const fixtures: Fixtures<PlaywrightTestArgs & PlaywrightTestOptions & { mount: (component: any, options: any) => Promise<Locator> }, PlaywrightWorkerArgs & { _ctPage: { page: Page | undefined, hash: string } }>  = {
+  _ctPage: [{ page: undefined, hash: '' }, { scope: 'worker' }],
 
   context: async ({ page }, use) => {
     await use(page.context());
   },
 
-  page: async ({ _workerPage, viewport }, use) => {
-    const page = _workerPage;
-    await page.goto('about:blank');
-    await (page as any)._resetForReuse();
-    await (page.context() as any)._resetForReuse();
-    await page.setViewportSize(viewport || { width: 1280, height: 800 });
-    await page.goto(process.env.PLAYWRIGHT_VITE_COMPONENTS_BASE_URL!);
-    await use(_workerPage);
+  page: async ({ _ctPage, browser, viewport, playwright }, use) => {
+    const defaultContextOptions = (playwright.chromium as any)._defaultContextOptions as BrowserContextOptions;
+    const hash = contextHash(defaultContextOptions);
+
+    if (!_ctPage.page || _ctPage.hash !== hash) {
+      if (_ctPage.page)
+        await _ctPage.page.close();
+      const page = await (browser as any)._wrapApiCall(async () => {
+        const page = await browser.newPage();
+        await page.addInitScript('navigator.serviceWorker.register = () => {}');
+        await page.exposeFunction('__pw_dispatch', (ordinal: number, args: any[]) => {
+          boundCallbacksForMount[ordinal](...args);
+        });
+        await page.goto(process.env.PLAYWRIGHT_VITE_COMPONENTS_BASE_URL!);
+        return page;
+      }, true);
+      _ctPage.page = page;
+      _ctPage.hash = hash;
+      await use(page);
+    } else {
+      const page = _ctPage.page;
+      await (page as any)._wrapApiCall(async () => {
+        await (page as any)._resetForReuse();
+        await (page.context() as any)._resetForReuse();
+        await page.goto('about:blank');
+        await page.setViewportSize(viewport || { width: 1280, height: 800 });
+        await page.goto(process.env.PLAYWRIGHT_VITE_COMPONENTS_BASE_URL!);
+      }, true);
+      await use(page);
+    }
   },
 
   mount: async ({ page }, use) => {
@@ -99,4 +111,29 @@ function wrapFunctions(object: any, page: Page, callbacks: Function[]) {
       wrapFunctions(value, page, callbacks);
     }
   }
+}
+
+function contextHash(context: BrowserContextOptions): string {
+  const hash = {
+    acceptDownloads: context.acceptDownloads,
+    bypassCSP: context.bypassCSP,
+    colorScheme: context.colorScheme,
+    extraHTTPHeaders: context.extraHTTPHeaders,
+    forcedColors: context.forcedColors,
+    geolocation: context.geolocation,
+    hasTouch: context.hasTouch,
+    httpCredentials: context.httpCredentials,
+    ignoreHTTPSErrors: context.ignoreHTTPSErrors,
+    isMobile: context.isMobile,
+    javaScriptEnabled: context.javaScriptEnabled,
+    locale: context.locale,
+    offline: context.offline,
+    permissions: context.permissions,
+    proxy: context.proxy,
+    storageState: context.storageState,
+    timezoneId: context.timezoneId,
+    userAgent: context.userAgent,
+    deviceScaleFactor: context.deviceScaleFactor,
+  };
+  return JSON.stringify(hash);
 }
