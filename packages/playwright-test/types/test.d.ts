@@ -508,9 +508,9 @@ interface TestConfig {
 
       /**
        * See `animations` in [page.screenshot([options])](https://playwright.dev/docs/api/class-page#page-screenshot). Defaults
-       * to `"disable"`.
+       * to `"disabled"`.
        */
-      animations?: "allow"|"disable";
+      animations?: "allow"|"disabled";
 
       /**
        * See `caret` in [page.screenshot([options])](https://playwright.dev/docs/api/class-page#page-screenshot). Defaults to
@@ -3328,11 +3328,8 @@ interface LocatorAssertions {
   }): Promise<void>;
 
   /**
-   * Ensures that [Locator] resolves to a given screenshot. This function will re-take screenshots until it matches with the
-   * saved expectation.
-   *
-   * If there's no expectation yet, it will wait until two consecutive screenshots yield the same result, and save the last
-   * one as an expectation.
+   * This function will wait until two consecutive locator screenshots yield the same result, and then compare the last
+   * screenshot with the expectation.
    *
    * ```js
    * const locator = page.locator('button');
@@ -3406,11 +3403,8 @@ interface LocatorAssertions {
   }): Promise<void>;
 
   /**
-   * Ensures that [Locator] resolves to a given screenshot. This function will re-take screenshots until it matches with the
-   * saved expectation.
-   *
-   * If there's no expectation yet, it will wait until two consecutive screenshots yield the same result, and save the last
-   * one as an expectation.
+   * This function will wait until two consecutive locator screenshots yield the same result, and then compare the last
+   * screenshot with the expectation.
    *
    * ```js
    * const locator = page.locator('button');
@@ -3562,11 +3556,8 @@ interface PageAssertions {
   not: PageAssertions;
 
   /**
-   * Ensures that the page resolves to a given screenshot. This function will re-take screenshots until it matches with the
-   * saved expectation.
-   *
-   * If there's no expectation yet, it will wait until two consecutive screenshots yield the same result, and save the last
-   * one as an expectation.
+   * This function will wait until two consecutive page screenshots yield the same result, and then compare the last
+   * screenshot with the expectation.
    *
    * ```js
    * await expect(page).toHaveScreenshot('image.png');
@@ -3670,11 +3661,8 @@ interface PageAssertions {
   }): Promise<void>;
 
   /**
-   * Ensures that the page resolves to a given screenshot. This function will re-take screenshots until it matches with the
-   * saved expectation.
-   *
-   * If there's no expectation yet, it will wait until two consecutive screenshots yield the same result, and save the last
-   * one as an expectation.
+   * This function will wait until two consecutive page screenshots yield the same result, and then compare the last
+   * screenshot with the expectation.
    *
    * ```js
    * await expect(page).toHaveScreenshot();
@@ -4032,9 +4020,9 @@ interface TestProject {
 
       /**
        * See `animations` in [page.screenshot([options])](https://playwright.dev/docs/api/class-page#page-screenshot). Defaults
-       * to `"disable"`.
+       * to `"disabled"`.
        */
-      animations?: "allow"|"disable";
+      animations?: "allow"|"disabled";
 
       /**
        * See `caret` in [page.screenshot([options])](https://playwright.dev/docs/api/class-page#page-screenshot). Defaults to
