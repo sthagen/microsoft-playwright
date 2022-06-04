@@ -13,13 +13,20 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+// @ts-check
 
 // This file is injected into the registry as text, no dependencies are allowed.
 
 import { createApp, setDevtoolsHook, h } from 'vue';
 
+/** @typedef {import('../playwright-test/types/component').Component} Component */
+
+/** @type { Map<string, import('vue').Component> } */
 const registry = new Map();
 
+/**
+ * @param {{[key: string]: import('vue').Component}} components
+ */
 export function register(components) {
   for (const [name, value] of Object.entries(components))
     registry.set(name, value);
@@ -27,10 +34,25 @@ export function register(components) {
 
 const allListeners = [];
 
+/**
+ * @param {Component | string} child 
+ * @returns {import('vue').VNode | string}
+ */
+function renderChild(child) {
+  return typeof child === 'string' ? child : render(child);
+}
+
+/**
+ * @param {Component} component 
+ * @returns {import('vue').VNode}
+ */
 function render(component) {
   if (typeof component === 'string')
     return component;
 
+  /**
+   * @type {import('vue').Component | string | undefined}
+   */
   let componentFunc = registry.get(component.type);
   if (!componentFunc) {
     // Lookup by shorthand.
@@ -48,20 +70,25 @@ function render(component) {
   componentFunc = componentFunc || component.type;
 
   const isVueComponent = componentFunc !== component.type;
-
+ 
+  /**
+   * @type {(import('vue').VNode | string)[]}
+   */
   const children = [];
+  /** @type {{[key: string]: any}} */
   const slots = {};
   const listeners = {};
+  /** @type {{[key: string]: any}} */
   let props = {};
 
   if (component.kind === 'jsx') {
     for (const child of component.children || []) {
-      if (child.type === 'template') {
+      if (typeof child !== 'string' && child.type === 'template' && child.kind === 'jsx') {
         const slotProperty = Object.keys(child.props).find(k => k.startsWith('v-slot:'));
         const slot = slotProperty ? slotProperty.substring('v-slot:'.length) : 'default';
-        slots[slot] = child.children.map(render);
+        slots[slot] = child.children.map(renderChild);
       } else {
-        children.push(render(child));
+        children.push(renderChild(child));
       }
     }
 
@@ -100,11 +127,15 @@ function render(component) {
     lastArg = children;
   }
 
+  // @ts-ignore
   const wrapper = h(componentFunc, props, lastArg);
   allListeners.push([wrapper, listeners]);
   return wrapper;
 }
 
+/**
+ * @returns {any}
+ */
 function createDevTools() {
   return {
     emit(eventType, ...payload) {
@@ -123,7 +154,7 @@ function createDevTools() {
   };
 }
 
-window.playwrightMount = async component => {
+/** @type {any} */ (window).playwrightMount = /** @param {Component} component */ async component => {
   if (!document.getElementById('root')) {
     const rootElement = document.createElement('div');
     rootElement.id = 'root';

@@ -3198,6 +3198,12 @@ interface LocatorAssertions {
    */
   toContainText(expected: string|RegExp|Array<string|RegExp>, options?: {
     /**
+     * Whether to perform case-insensitive match. `ignoreCase` option takes precedence over the corresponding regular
+     * expression flag if specified.
+     */
+    ignoreCase?: boolean;
+
+    /**
      * Time to retry the assertion for. Defaults to `timeout` in `TestConfig.expect`.
      */
     timeout?: number;
@@ -3497,6 +3503,12 @@ interface LocatorAssertions {
    */
   toHaveText(expected: string|RegExp|Array<string|RegExp>, options?: {
     /**
+     * Whether to perform case-insensitive match. `ignoreCase` option takes precedence over the corresponding regular
+     * expression flag if specified.
+     */
+    ignoreCase?: boolean;
+
+    /**
      * Time to retry the assertion for. Defaults to `timeout` in `TestConfig.expect`.
      */
     timeout?: number;
@@ -3520,6 +3532,36 @@ interface LocatorAssertions {
    * @param options
    */
   toHaveValue(value: string|RegExp, options?: {
+    /**
+     * Time to retry the assertion for. Defaults to `timeout` in `TestConfig.expect`.
+     */
+    timeout?: number;
+  }): Promise<void>;
+
+  /**
+   * Ensures the [Locator] points to multi-select/combobox (i.e. a `select` with the `multiple` attribute) and the specified
+   * values are selected.
+   *
+   * For example, given the following element:
+   *
+   * ```html
+   * <select id="favorite-colors" multiple>
+   *   <option value="R">Red</option>
+   *   <option value="G">Green</option>
+   *   <option value="B">Blue</option>
+   * </select>
+   * ```
+   *
+   * ```js
+   * const locator = page.locator("id=favorite-colors");
+   * await locator.selectOption(["R", "G"]);
+   * await expect(locator).toHaveValues([/R/, /G/]);
+   * ```
+   *
+   * @param values Expected options currently selected.
+   * @param options
+   */
+  toHaveValues(values: Array<string|RegExp>, options?: {
     /**
      * Time to retry the assertion for. Defaults to `timeout` in `TestConfig.expect`.
      */
