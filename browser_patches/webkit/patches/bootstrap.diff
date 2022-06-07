@@ -6951,7 +6951,7 @@ index ee63764693bb08b70a4ee6c54bf566f5143182cf..947c9c4f4bde763469e66b915e054f8d
  #else
          return false;
 diff --git a/Source/WebCore/platform/graphics/cairo/ImageBufferUtilitiesCairo.cpp b/Source/WebCore/platform/graphics/cairo/ImageBufferUtilitiesCairo.cpp
-index fab94e0ac0f4ab8f7d7decec53adb1f3ac7a6e07..cd853346eb019b00fa99478e7aee2961f61bc23b 100644
+index fab94e0ac0f4ab8f7d7decec53adb1f3ac7a6e07..56193e30522a6fe87e1a7bf01beeae9b9fdb5fbf 100644
 --- a/Source/WebCore/platform/graphics/cairo/ImageBufferUtilitiesCairo.cpp
 +++ b/Source/WebCore/platform/graphics/cairo/ImageBufferUtilitiesCairo.cpp
 @@ -48,6 +48,13 @@
@@ -7035,7 +7035,7 @@ index fab94e0ac0f4ab8f7d7decec53adb1f3ac7a6e07..cd853346eb019b00fa99478e7aee2961
 +
 +Vector<uint8_t> data(cairo_surface_t* image, const String& mimeType, std::optional<double> quality)
  {
-+    if (mimeType == "image/jpeg") {
++    if (mimeType == "image/jpeg"_s) {
 +        int qualityPercent = 100;
 +        if (quality)
 +            qualityPercent = static_cast<int>(*quality * 100.0 + 0.5);
@@ -7419,7 +7419,7 @@ index 80958ba565a877224d0ed37e4e4057b4be0dde24..eca42bf5181bc4a95efca9c9c3f5ce0f
      auto* display = gdk_display_get_default();
      if (!display)
 diff --git a/Source/WebCore/platform/libwpe/PasteboardLibWPE.cpp b/Source/WebCore/platform/libwpe/PasteboardLibWPE.cpp
-index ae439e30f1fb239d18e1164e8896dfb272c75673..93bbf2bdfc99df151c9b82df07eb5a07fae0b2c4 100644
+index ae439e30f1fb239d18e1164e8896dfb272c75673..c004d77c162f87701278fa1ada9200b92a8e7838 100644
 --- a/Source/WebCore/platform/libwpe/PasteboardLibWPE.cpp
 +++ b/Source/WebCore/platform/libwpe/PasteboardLibWPE.cpp
 @@ -32,6 +32,10 @@
@@ -7438,11 +7438,11 @@ index ae439e30f1fb239d18e1164e8896dfb272c75673..93bbf2bdfc99df151c9b82df07eb5a07
  String Pasteboard::readString(const String& type)
  {
 +    if (m_selectionData) {
-+        if (type == "text/plain")
++        if (type == "text/plain"_s)
 +            return m_selectionData->text();;
-+        if (type == "text/html")
++        if (type == "text/html"_s)
 +            return m_selectionData->markup();
-+        if (type == "Files" || type == "text/uri-list")
++        if (type == "Files"_s || type == "text/uri-list"_s)
 +            return m_selectionData->uriList();
 +        return { };
 +    }
@@ -7455,11 +7455,11 @@ index ae439e30f1fb239d18e1164e8896dfb272c75673..93bbf2bdfc99df151c9b82df07eb5a07
  void Pasteboard::writeString(const String& type, const String& text)
  {
 +   if (m_selectionData) {
-+        if (type == "Files" || type == "text/uri-list")
++        if (type == "Files"_s || type == "text/uri-list"_s)
 +            m_selectionData->setURIList(text);
-+        else if (type == "text/html")
++        else if (type == "text/html"_s)
 +            m_selectionData->setMarkup(text);
-+        else if (type == "text/plain")
++        else if (type == "text/plain"_s)
 +            m_selectionData->setText(text);
 +        return;
 +    }
@@ -22856,7 +22856,7 @@ index 3a231b168583cfc378fb67ff42b108c747dd0733..2b0971a411f87be622cf53536f107a44
 +
  } // namespace WTR
 diff --git a/Tools/glib/dependencies/apt b/Tools/glib/dependencies/apt
-index 017c992209e39859a0b56c1145bb79d9fdc6e939..5bf0744cfdcca58f6ecab6a9838abacfdea24fdb 100644
+index 017c992209e39859a0b56c1145bb79d9fdc6e939..d438dbf99c57f3d8b38b9f7b2f0e9069c2695baf 100644
 --- a/Tools/glib/dependencies/apt
 +++ b/Tools/glib/dependencies/apt
 @@ -45,9 +45,11 @@ PACKAGES=(
@@ -22871,6 +22871,26 @@ index 017c992209e39859a0b56c1145bb79d9fdc6e939..5bf0744cfdcca58f6ecab6a9838abacf
      ruby
  
      # These are dependencies necessary for running tests.
+@@ -58,7 +60,6 @@ PACKAGES=(
+     libcgi-pm-perl
+     psmisc
+     pulseaudio-utils
+-    python-gi
+     ruby-highline
+     ruby-json
+ 
+diff --git a/Tools/jhbuild/jhbuild-minimal.modules b/Tools/jhbuild/jhbuild-minimal.modules
+index a08c829f49b43d494a09c40f71606735c172b6a5..9b2a3825426adb4e30d010defc878a6b159f8c4b 100644
+--- a/Tools/jhbuild/jhbuild-minimal.modules
++++ b/Tools/jhbuild/jhbuild-minimal.modules
+@@ -22,7 +22,6 @@
+       <dep package="wpebackend-fdo"/>
+       <dep package="icu"/>
+       <dep package="libsoup"/>
+-      <dep package="openxr"/>
+       <dep package="libvpx"/>
+       <dep package="glib"/>
+       <dep package="glib-networking"/>
 diff --git a/Tools/win/DLLLauncher/DLLLauncherMain.cpp b/Tools/win/DLLLauncher/DLLLauncherMain.cpp
 index 52605867b9302d1afcc56c5e9b0c54acf0827900..6edf24ab60249241ba2969531ef55f4b495dce9e 100644
 --- a/Tools/win/DLLLauncher/DLLLauncherMain.cpp
