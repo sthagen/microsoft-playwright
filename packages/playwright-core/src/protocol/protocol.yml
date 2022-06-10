@@ -455,6 +455,11 @@ ContextOptions:
             height: number
     recordHar: RecordHarOptions?
     strictSelectors: boolean?
+    serviceWorkers:
+      type: enum?
+      literals:
+      - allow
+      - block
 
 LocalUtils:
   type: interface
@@ -467,6 +472,26 @@ LocalUtils:
         entries:
           type: array
           items: NameValue
+
+    harFindEntry:
+      parameters:
+        # HAR file is cached until clearHarCache is called
+        cacheKey: string
+        harFile: string
+        url: string
+        needBody: boolean
+      returns:
+        error: string?
+        status: number?
+        headers:
+          type: array?
+          items: NameValue
+        body: binary?
+
+    harClearCache:
+      parameters:
+        cacheKey: string
+
 
 Root:
   type: interface
@@ -2497,6 +2522,7 @@ Response:
       type: array
       items: NameValue
     timing: ResourceTiming
+    fromServiceWorker: boolean
 
 
   commands:

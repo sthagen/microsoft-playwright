@@ -21,7 +21,7 @@ import { Frame } from './frame';
 import type { Headers, RemoteAddr, SecurityDetails, WaitForEventOptions } from './types';
 import fs from 'fs';
 import { mime } from '../utilsBundle';
-import { isString, headersObjectToArray } from '../utils';
+import { isString, headersObjectToArray, headersArrayToObject } from '../utils';
 import { ManualPromise } from '../utils/manualPromise';
 import { Events } from './events';
 import type { Page } from './page';
@@ -140,6 +140,11 @@ export class Request extends ChannelOwner<channels.RequestChannel> implements ap
     return this._provisionalHeaders.headers();
   }
 
+  _context() {
+    // TODO: make sure this works for service worker requests.
+    return this.frame().page().context();
+  }
+
   _actualHeaders(): Promise<RawHeaders> {
     if (!this._actualHeadersPromise) {
       this._actualHeadersPromise = this._wrapApiCall(async () => {
@@ -211,7 +216,17 @@ export class Request extends ChannelOwner<channels.RequestChannel> implements ap
   }
 }
 
+type OverridesForContinue = {
+  url?: string;
+  method?: string;
+  headers?: Headers;
+  postData?: string | Buffer;
+};
+
 export class Route extends ChannelOwner<channels.RouteChannel> implements api.Route {
+  private _pendingContinueOverrides: OverridesForContinue | undefined;
+  private _routeChain: ((done: boolean) => Promise<void>) | null = null;
+
   static from(route: channels.RouteChannel): Route {
     return (route as any)._object;
   }
@@ -235,17 +250,48 @@ export class Route extends ChannelOwner<channels.RouteChannel> implements api.Ro
     ]);
   }
 
-  async abort(errorCode?: string) {
-    await this._raceWithPageClose(this._channel.abort({ errorCode }));
+  _startHandling(routeChain: (done: boolean) => Promise<void>) {
+    this._routeChain = routeChain;
   }
 
-  async fulfill(options: { response?: api.APIResponse, status?: number, headers?: Headers, contentType?: string, body?: string | Buffer, path?: string } = {}) {
+  async abort(errorCode?: string) {
+    await this._raceWithPageClose(this._channel.abort({ errorCode }));
+    await this._followChain(true);
+  }
+
+  async fulfill(options: { response?: api.APIResponse, status?: number, headers?: Headers, contentType?: string, body?: string | Buffer, path?: string, har?: string } = {}) {
+    await this._innerFulfill(options);
+    await this._followChain(true);
+  }
+
+  private async _innerFulfill(options: { response?: api.APIResponse, status?: number, headers?: Headers, contentType?: string, body?: string | Buffer, path?: string, har?: string } = {}) {
     let fetchResponseUid;
     let { status: statusOption, headers: headersOption, body } = options;
+
+    if (options.har && options.response)
+      throw new Error(`At most one of "har" and "response" options should be present`);
+
+    if (options.har) {
+      const entry = await this._connection.localUtils()._channel.harFindEntry({
+        cacheKey: this.request()._context()._guid,
+        harFile: options.har,
+        url: this.request().url(),
+        needBody: body === undefined,
+      });
+      if (entry.error)
+        throw new Error(entry.error);
+      if (statusOption === undefined)
+        statusOption = entry.status;
+      if (headersOption === undefined && entry.headers)
+        headersOption = headersArrayToObject(entry.headers, false);
+      if (body === undefined && entry.body !== undefined)
+        body = Buffer.from(entry.body, 'base64');
+    }
+
     if (options.response) {
-      statusOption ||= options.response.status();
-      headersOption ||= options.response.headers();
-      if (options.body === undefined && options.path === undefined && options.response instanceof APIResponse) {
+      statusOption ??= options.response.status();
+      headersOption ??= options.response.headers();
+      if (body === undefined && options.path === undefined && options.response instanceof APIResponse) {
         if (options.response._request._connection === this._connection)
           fetchResponseUid = (options.response as APIResponse)._fetchUid();
         else
@@ -288,15 +334,21 @@ export class Route extends ChannelOwner<channels.RouteChannel> implements api.Ro
     }));
   }
 
-  async continue(options: { url?: string, method?: string, headers?: Headers, postData?: string | Buffer } = {}) {
-    await this._continue(options);
+  async continue(options: OverridesForContinue = {}) {
+    if (!this._routeChain)
+      throw new Error('Route is already handled!');
+    this._pendingContinueOverrides = { ...this._pendingContinueOverrides, ...options };
+    await this._followChain(false);
   }
 
-  async _internalContinue(options: { url?: string, method?: string, headers?: Headers, postData?: string | Buffer } = {}) {
-    await this._continue(options, true).catch(() => {});
+  async _followChain(done: boolean) {
+    const chain = this._routeChain!;
+    this._routeChain = null;
+    await chain(done);
   }
 
-  private async _continue(options: { url?: string, method?: string, headers?: Headers, postData?: string | Buffer }, isInternal?: boolean) {
+  async _finalContinue() {
+    const options = this._pendingContinueOverrides || {};
     return await this._wrapApiCall(async () => {
       const postDataBuffer = isString(options.postData) ? Buffer.from(options.postData, 'utf8') : options.postData;
       await this._raceWithPageClose(this._channel.continue({
@@ -305,11 +357,11 @@ export class Route extends ChannelOwner<channels.RouteChannel> implements api.Ro
         headers: options.headers ? headersObjectToArray(options.headers) : undefined,
         postData: postDataBuffer ? postDataBuffer.toString('base64') : undefined,
       }));
-    }, isInternal);
+    }, !this._pendingContinueOverrides);
   }
 }
 
-export type RouteHandlerCallback = (route: Route, request: Request) => void | Promise<void>;
+export type RouteHandlerCallback = (route: Route, request: Request) => void;
 
 export type ResourceTiming = {
   startTime: number;
@@ -366,6 +418,10 @@ export class Response extends ChannelOwner<channels.ResponseChannel> implements 
 
   statusText(): string {
     return this._initializer.statusText;
+  }
+
+  fromServiceWorker(): boolean {
+    return this._initializer.fromServiceWorker;
   }
 
   /**
@@ -518,9 +574,10 @@ export class RouteHandler {
     return urlMatches(this._baseURL, requestURL, this.url);
   }
 
-  public handle(route: Route, request: Request): Promise<void> | void {
+  public handle(route: Route, request: Request, routeChain: (done: boolean) => Promise<void>) {
     ++this.handledCount;
-    return this.handler(route, request);
+    route._startHandling(routeChain);
+    this.handler(route, request);
   }
 
   public willExpire(): boolean {

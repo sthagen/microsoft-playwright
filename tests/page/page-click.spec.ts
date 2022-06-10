@@ -582,7 +582,15 @@ it('should wait for input to be enabled', async ({ page }) => {
 });
 
 it('should wait for select to be enabled', async ({ page }) => {
-  await page.setContent('<select onclick="javascript:window.__CLICKED=true;" disabled><option selected>Hello</option></select>');
+  await page.setContent(`
+    <select disabled><option selected>Hello</option></select>
+    <script>
+      document.querySelector('select').addEventListener('mousedown', event => {
+        window.__CLICKED=true;
+        event.preventDefault();
+      });
+    </script>
+  `);
   let done = false;
   const clickPromise = page.click('select').then(() => done = true);
   await giveItAChanceToClick(page);
@@ -832,8 +840,8 @@ it('should not throw protocol error when navigating during the click', async ({ 
   expect(await page.evaluate('result')).toBe('Clicked');
 });
 
-it('should retry when navigating during the click', async ({ page, server, mode }) => {
-  it.skip(mode !== 'default');
+it('should retry when navigating during the click', async ({ page, server, mode, isAndroid }) => {
+  it.skip(mode !== 'default' || isAndroid);
 
   await page.goto(server.PREFIX + '/input/button.html');
   let firstTime = true;

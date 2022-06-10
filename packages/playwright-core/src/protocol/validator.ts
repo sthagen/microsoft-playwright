@@ -205,6 +205,15 @@ export function createScheme(tChannel: (name: string) => Validator): Scheme {
     zipFile: tString,
     entries: tArray(tType('NameValue')),
   });
+  scheme.LocalUtilsHarFindEntryParams = tObject({
+    cacheKey: tString,
+    harFile: tString,
+    url: tString,
+    needBody: tBoolean,
+  });
+  scheme.LocalUtilsHarClearCacheParams = tObject({
+    cacheKey: tString,
+  });
   scheme.RootInitializeParams = tObject({
     sdkLanguage: tString,
   });
@@ -354,6 +363,7 @@ export function createScheme(tChannel: (name: string) => Validator): Scheme {
     })),
     recordHar: tOptional(tType('RecordHarOptions')),
     strictSelectors: tOptional(tBoolean),
+    serviceWorkers: tOptional(tEnum(['allow', 'block'])),
     userDataDir: tString,
     slowMo: tOptional(tNumber),
   });
@@ -410,6 +420,7 @@ export function createScheme(tChannel: (name: string) => Validator): Scheme {
     })),
     recordHar: tOptional(tType('RecordHarOptions')),
     strictSelectors: tOptional(tBoolean),
+    serviceWorkers: tOptional(tEnum(['allow', 'block'])),
     proxy: tOptional(tObject({
       server: tString,
       bypass: tOptional(tString),
@@ -1441,6 +1452,7 @@ export function createScheme(tChannel: (name: string) => Validator): Scheme {
     })),
     recordHar: tOptional(tType('RecordHarOptions')),
     strictSelectors: tOptional(tBoolean),
+    serviceWorkers: tOptional(tEnum(['allow', 'block'])),
     pkg: tOptional(tString),
     proxy: tOptional(tObject({
       server: tString,
