@@ -1535,7 +1535,7 @@ export interface Page {
    *
    * An example of overriding `Math.random` before the page loads:
    *
-   * ```js browser
+   * ```js
    * // preload.js
    * Math.random = () => 42;
    * ```
@@ -6580,7 +6580,7 @@ export interface BrowserContext {
    *
    * An example of overriding `Math.random` before the page loads:
    *
-   * ```js browser
+   * ```js
    * // preload.js
    * Math.random = () => 42;
    * ```
@@ -11177,7 +11177,7 @@ export {};
  * Note that since you don't need Playwright to install web browsers when testing Android, you can omit browser download
  * via setting the following environment variable when installing Playwright:
  *
- * ```bash js
+ * ```bash
  * PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 npm i -D playwright
  * ```
  *
@@ -13676,7 +13676,7 @@ export interface Download {
  * Note that since you don't need Playwright to install web browsers when testing Electron, you can omit browser download
  * via setting the following environment variable when installing Playwright:
  *
- * ```bash js
+ * ```bash
  * PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 npm i -D playwright
  * ```
  *
@@ -14868,12 +14868,25 @@ export interface Route {
     contentType?: string;
 
     /**
-     * HAR file to extract the response from. If HAR file contains an entry with the matching the url, its headers, status and
-     * body will be used. Individual fields such as headers can be overridden using fulfill options. If matching entry is not
-     * found, this method will throw. If `har` is a relative path, then it is resolved relative to the current working
-     * directory.
+     * HAR file to extract the response from. If HAR file contains an entry with the matching url and HTTP method, then the
+     * entry's headers, status and body will be used to fulfill. An entry resulting in a redirect will be followed
+     * automatically. Individual fields such as headers can be overridden using fulfill options. If `path` is a relative path,
+     * then it is resolved relative to the current working directory.
      */
-    har?: string;
+    har?: {
+      /**
+       * Path to the HAR file.
+       */
+      path: string;
+
+      /**
+       * Behavior in the case where matching entry was not found in the HAR. Either
+       * [route.abort([errorCode])](https://playwright.dev/docs/api/class-route#route-abort) the request,
+       * [route.continue([options])](https://playwright.dev/docs/api/class-route#route-continue) it, or throw an error. Defaults
+       * to "abort".
+       */
+      fallback?: "abort"|"continue"|"throw";
+    };
 
     /**
      * Response headers. Header values will be converted to a string.

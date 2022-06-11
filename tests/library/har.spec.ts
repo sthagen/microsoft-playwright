@@ -248,21 +248,26 @@ it('should include secure set-cookies', async ({ contextFactory, httpsServer }, 
 it('should include content @smoke', async ({ contextFactory, server }, testInfo) => {
   const { page, getLog } = await pageWithHar(contextFactory, testInfo);
   await page.goto(server.PREFIX + '/har.html');
+  await page.evaluate(() => fetch('/pptr.png').then(r => r.arrayBuffer()));
   const log = await getLog();
 
-  expect(log.entries[0].response.httpVersion).toBe('HTTP/1.1');
-  expect(log.entries[0].response.content.encoding).toBe('base64');
+  expect(log.entries[0].response.content.encoding).toBe(undefined);
   expect(log.entries[0].response.content.mimeType).toBe('text/html; charset=utf-8');
-  expect(Buffer.from(log.entries[0].response.content.text, 'base64').toString()).toContain('HAR Page');
+  expect(log.entries[0].response.content.text).toContain('HAR Page');
   expect(log.entries[0].response.content.size).toBeGreaterThanOrEqual(96);
   expect(log.entries[0].response.content.compression).toBe(0);
 
-  expect(log.entries[1].response.httpVersion).toBe('HTTP/1.1');
-  expect(log.entries[1].response.content.encoding).toBe('base64');
+  expect(log.entries[1].response.content.encoding).toBe(undefined);
   expect(log.entries[1].response.content.mimeType).toBe('text/css; charset=utf-8');
-  expect(Buffer.from(log.entries[1].response.content.text, 'base64').toString()).toContain('pink');
+  expect(log.entries[1].response.content.text).toContain('pink');
   expect(log.entries[1].response.content.size).toBeGreaterThanOrEqual(37);
   expect(log.entries[1].response.content.compression).toBe(0);
+
+  expect(log.entries[2].response.content.encoding).toBe('base64');
+  expect(log.entries[2].response.content.mimeType).toBe('image/png');
+  expect(Buffer.from(log.entries[2].response.content.text, 'base64').byteLength).toBeGreaterThan(0);
+  expect(log.entries[2].response.content.size).toBeGreaterThanOrEqual(6000);
+  expect(log.entries[2].response.content.compression).toBe(0);
 });
 
 it('should filter by glob', async ({ contextFactory, server }, testInfo) => {
@@ -285,47 +290,6 @@ it('should filter by regexp', async ({ contextFactory, server }, testInfo) => {
   const log = JSON.parse(fs.readFileSync(harPath).toString())['log'] as Log;
   expect(log.entries.length).toBe(1);
   expect(log.entries[0].request.url.endsWith('har.html')).toBe(true);
-});
-
-it('should fulfill route from har', async ({ contextFactory, server }, testInfo) => {
-  const kCustomCSS = 'body { background-color: rgb(50, 100, 150); }';
-
-  const harPath = testInfo.outputPath('test.har');
-  const harContext = await contextFactory({ baseURL: server.PREFIX, recordHar: { path: harPath, urlFilter: '/*.css' }, ignoreHTTPSErrors: true });
-  const harPage = await harContext.newPage();
-  await harPage.route('**/one-style.css', async route => {
-    // Make sure har content is not what the server returns.
-    await route.fulfill({ body: kCustomCSS });
-  });
-  await harPage.goto('/har.html');
-  await harContext.close();
-
-  const context  = await contextFactory();
-  const page1 = await context.newPage();
-  await page1.route('**/*.css', async route => {
-    // Fulfulling from har should give expected CSS.
-    await route.fulfill({ har: harPath });
-  });
-  const [response1] = await Promise.all([
-    page1.waitForResponse('**/one-style.css'),
-    page1.goto(server.PREFIX + '/one-style.html'),
-  ]);
-  expect(await response1.text()).toBe(kCustomCSS);
-  await expect(page1.locator('body')).toHaveCSS('background-color', 'rgb(50, 100, 150)');
-  await page1.close();
-
-  const page2 = await context.newPage();
-  await page2.route('**/*.css', async route => {
-    // Overriding status should make CSS not apply.
-    await route.fulfill({ har: harPath, status: 404 });
-  });
-  const [response2] = await Promise.all([
-    page2.waitForResponse('**/one-style.css'),
-    page2.goto(server.PREFIX + '/one-style.html'),
-  ]);
-  expect(response2.status()).toBe(404);
-  await expect(page2.locator('body')).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
-  await page2.close();
 });
 
 it('should include sizes', async ({ contextFactory, server, asset }, testInfo) => {
@@ -580,7 +544,7 @@ it('should contain http2 for http2 requests', async ({ contextFactory, browserNa
   const log = await getLog();
   expect(log.entries[0].request.httpVersion).toBe('HTTP/2.0');
   expect(log.entries[0].response.httpVersion).toBe('HTTP/2.0');
-  expect(Buffer.from(log.entries[0].response.content.text, 'base64').toString()).toBe('<h1>Hello World</h1>');
+  expect(log.entries[0].response.content.text).toBe('<h1>Hello World</h1>');
   server.close();
 });
 
@@ -734,7 +698,7 @@ it('should include API request', async ({ contextFactory, server }, testInfo) =>
   expect(entry.response.status).toBe(200);
   expect(entry.response.headers.find(h => h.name.toLowerCase() === 'content-type')?.value).toContain('application/json');
   expect(entry.response.content.size).toBe(15);
-  expect(entry.response.content.text).toBe(responseBody.toString('base64'));
+  expect(entry.response.content.text).toBe(responseBody.toString());
 });
 
 it('should not hang on resources served from cache', async ({ contextFactory, server, browserName }, testInfo) => {
