@@ -19,16 +19,16 @@ const path = require('path');
 const fs = require('fs');
 const esbuild = require('esbuild');
 
-// Can be removed once https://github.com/thejoshwolfe/yauzl/issues/114 is fixed.
+// Can be removed once source-map-support was  is fixed.
 /** @type{import('esbuild').Plugin} */
-let patchFdSlicerToHideBufferDeprecationWarning = {
-  name: 'patch-fd-slicer-deprecation',
+let patchSourceMapSupportHideBufferDeprecationWarning = {
+  name: 'patch-source-map-support-deprecation',
   setup(build) {
-    build.onResolve({ filter: /^fd-slicer$/ }, () => {
-      const originalPath = require.resolve('fd-slicer');
+    build.onResolve({ filter: /^source-map-support$/ }, () => {
+      const originalPath = require.resolve('source-map-support');
       const patchedPath = path.join(path.dirname(originalPath), path.basename(originalPath, '.js') + '.pw-patched.js');
       let sourceFileContent = fs.readFileSync(originalPath, 'utf8')
-      sourceFileContent = sourceFileContent.replace(/new Buffer\(toRead\)/g, 'Buffer.alloc(toRead)');
+      sourceFileContent = sourceFileContent.replace(/new Buffer\(rawData/g, 'Buffer.from(rawData');
       fs.writeFileSync(patchedPath, sourceFileContent);
       return { path: patchedPath }
     });
@@ -36,10 +36,10 @@ let patchFdSlicerToHideBufferDeprecationWarning = {
 }
 
 esbuild.build({
-  entryPoints: [path.join(__dirname, 'src/zipBundleImpl.ts')],
+  entryPoints: [path.join(__dirname, 'src/utilsBundleImpl.ts')],
   bundle: true,
   outdir: path.join(__dirname, '../../lib'),
-  plugins: [patchFdSlicerToHideBufferDeprecationWarning],
+  plugins: [patchSourceMapSupportHideBufferDeprecationWarning],
   format: 'cjs',
   platform: 'node',
   target: 'ES2019',
