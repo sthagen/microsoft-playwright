@@ -584,7 +584,7 @@ interface TestConfig {
    *
    * ```js
    * // playwright.config.ts
-   * import { type PlaywrightTestConfig, devices } from '@playwright/test';
+   * import { type PlaywrightTestConfig } from '@playwright/test';
    *
    * const config: PlaywrightTestConfig = {
    *   globalSetup: './global-setup',
@@ -603,7 +603,7 @@ interface TestConfig {
    *
    * ```js
    * // playwright.config.ts
-   * import { type PlaywrightTestConfig, devices } from '@playwright/test';
+   * import { type PlaywrightTestConfig } from '@playwright/test';
    *
    * const config: PlaywrightTestConfig = {
    *   globalTeardown: './global-teardown',
@@ -684,7 +684,7 @@ interface TestConfig {
    *
    * ```js
    * // playwright.config.ts
-   * import { type PlaywrightTestConfig, devices } from '@playwright/test';
+   * import { type PlaywrightTestConfig } from '@playwright/test';
    *
    * const config: PlaywrightTestConfig = {
    *   outputDir: './test-results',
@@ -829,7 +829,7 @@ interface TestConfig {
    *
    * ```js
    * // playwright.config.ts
-   * import { type PlaywrightTestConfig, devices } from '@playwright/test';
+   * import { type PlaywrightTestConfig } from '@playwright/test';
    *
    * const config: PlaywrightTestConfig = {
    *   testIgnore: '**\/test-assets/**',
@@ -848,7 +848,7 @@ interface TestConfig {
    *
    * ```js
    * // playwright.config.ts
-   * import { type PlaywrightTestConfig, devices } from '@playwright/test';
+   * import { type PlaywrightTestConfig } from '@playwright/test';
    *
    * const config: PlaywrightTestConfig = {
    *   testMatch: /.*\.e2e\.js/,
@@ -1018,7 +1018,7 @@ export interface FullConfig<TestArgs = {}, WorkerArgs = {}> {
    *
    * ```js
    * // playwright.config.ts
-   * import { type PlaywrightTestConfig, devices } from '@playwright/test';
+   * import { type PlaywrightTestConfig } from '@playwright/test';
    *
    * const config: PlaywrightTestConfig = {
    *   globalSetup: './global-setup',
@@ -1036,7 +1036,7 @@ export interface FullConfig<TestArgs = {}, WorkerArgs = {}> {
    *
    * ```js
    * // playwright.config.ts
-   * import { type PlaywrightTestConfig, devices } from '@playwright/test';
+   * import { type PlaywrightTestConfig } from '@playwright/test';
    *
    * const config: PlaywrightTestConfig = {
    *   globalTeardown: './global-teardown',
@@ -2800,11 +2800,9 @@ export interface PlaywrightTestOptions {
    */
   navigationTimeout: number | undefined;
   /**
-   * - `"allow"`: [Service Workers](https://developer.mozilla.org/en-US/docs/Web/API/Service_Worker_API) can be registered
-   *   by sites.
-   * - `"block"`: Playwright will block all registration of Service Workers.
-   *
-   * Defaults to `"allow"`.
+   * Whether to allow sites to register Service workers. Defaults to `'allow'`.
+   * - `'allow'`: [Service Workers](https://developer.mozilla.org/en-US/docs/Web/API/Service_Worker_API) can be registered.
+   * - `'block'`: Playwright will block all registration of Service Workers.
    */
   serviceWorkers: ServiceWorkerPolicy | undefined;
 }

@@ -43,19 +43,19 @@ it('should unroute', async ({ page, server }) => {
   let intercepted = [];
   await page.route('**/*', route => {
     intercepted.push(1);
-    route.continue();
+    route.fallback();
   });
   await page.route('**/empty.html', route => {
     intercepted.push(2);
-    route.continue();
+    route.fallback();
   });
   await page.route('**/empty.html', route => {
     intercepted.push(3);
-    route.continue();
+    route.fallback();
   });
   const handler4 = route => {
     intercepted.push(4);
-    route.continue();
+    route.fallback();
   };
   await page.route('**/empty.html', handler4);
   await page.goto(server.EMPTY_PAGE);
@@ -86,6 +86,7 @@ it('should work when POST is redirected with 302', async ({ page, server }) => {
     page.waitForNavigation()
   ]);
 });
+
 // @see https://github.com/GoogleChrome/puppeteer/issues/3973
 it('should work when header manipulation headers with redirect', async ({ page, server }) => {
   server.setRedirect('/rrredirect', '/empty.html');
@@ -97,6 +98,7 @@ it('should work when header manipulation headers with redirect', async ({ page, 
   });
   await page.goto(server.PREFIX + '/rrredirect');
 });
+
 // @see https://github.com/GoogleChrome/puppeteer/issues/4743
 it('should be able to remove headers', async ({ page, server }) => {
   await page.goto(server.EMPTY_PAGE);
@@ -149,6 +151,7 @@ it('should show custom HTTP headers', async ({ page, server }) => {
   const response = await page.goto(server.EMPTY_PAGE);
   expect(response.ok()).toBe(true);
 });
+
 // @see https://github.com/GoogleChrome/puppeteer/issues/4337
 it('should work with redirect inside sync XHR', async ({ page, server }) => {
   await page.goto(server.EMPTY_PAGE);
@@ -825,10 +828,10 @@ it('should contain raw response header after fulfill', async ({ page, server }) 
   expect(headers['content-type']).toBeTruthy();
 });
 
-for (const method of ['fulfill', 'continue', 'abort'] as const) {
+for (const method of ['fulfill', 'continue', 'fallback', 'abort'] as const) {
   it(`route.${method} should throw if called twice`, async ({ page, server }) => {
-    const routePromise = new Promise<Route>(async resove => {
-      await page.route('**/*', resove);
+    const routePromise = new Promise<Route>(async resolve => {
+      await page.route('**/*', resolve);
     });
     page.goto(server.PREFIX + '/empty.html').catch(() => {});
     const route = await routePromise;
@@ -837,80 +840,3 @@ for (const method of ['fulfill', 'continue', 'abort'] as const) {
     expect(e.message).toContain('Route is already handled!');
   });
 }
-
-it('should chain continue', async ({ page, server }) => {
-  const intercepted = [];
-  await page.route('**/empty.html', route => {
-    intercepted.push(1);
-    route.continue();
-  });
-  await page.route('**/empty.html', route => {
-    intercepted.push(2);
-    route.continue();
-  });
-  await page.route('**/empty.html', route => {
-    intercepted.push(3);
-    route.continue();
-  });
-  await page.goto(server.EMPTY_PAGE);
-  expect(intercepted).toEqual([3, 2, 1]);
-});
-
-it('should not chain fulfill', async ({ page, server }) => {
-  let failed = false;
-  await page.route('**/empty.html', route => {
-    failed = true;
-  });
-  await page.route('**/empty.html', route => {
-    route.fulfill({ status: 200, body: 'fulfilled' });
-  });
-  await page.route('**/empty.html', route => {
-    route.continue();
-  });
-  const response = await page.goto(server.EMPTY_PAGE);
-  const body = await response.body();
-  expect(body.toString()).toEqual('fulfilled');
-  expect(failed).toBeFalsy();
-});
-
-it('should not chain abort', async ({ page, server }) => {
-  let failed = false;
-  await page.route('**/empty.html', route => {
-    failed = true;
-  });
-  await page.route('**/empty.html', route => {
-    route.abort();
-  });
-  await page.route('**/empty.html', route => {
-    route.continue();
-  });
-  const e = await page.goto(server.EMPTY_PAGE).catch(e => e);
-  expect(e).toBeTruthy();
-  expect(failed).toBeFalsy();
-});
-
-it('should continue after exception', async ({ page, server }) => {
-  await page.route('**/empty.html', route => {
-    route.continue();
-  });
-  await page.route('**/empty.html', async route => {
-    try {
-      await route.fulfill({ har: { path: 'file' }, response: {} as any });
-    } catch (e) {
-      route.continue();
-    }
-  });
-  await page.goto(server.EMPTY_PAGE);
-});
-
-it('should chain once', async ({ page, server }) => {
-  await page.route('**/empty.html', route => {
-    route.fulfill({ status: 200, body: 'fulfilled one' });
-  }, { times: 1 });
-  await page.route('**/empty.html', route => {
-    route.continue();
-  }, { times: 1 });
-  const response = await page.goto(server.EMPTY_PAGE);
-  const body = await response.body();
-  expect(body.toString()).toEqual('fulfilled one');
-});

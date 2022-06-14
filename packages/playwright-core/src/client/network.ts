@@ -60,6 +60,13 @@ type RouteHAR = {
   path: string;
 };
 
+type FallbackOverrides = {
+  url?: string;
+  method?: string;
+  headers?: Headers;
+  postData?: string | Buffer;
+};
+
 export class Request extends ChannelOwner<channels.RequestChannel> implements api.Request {
   private _redirectedFrom: Request | null = null;
   private _redirectedTo: Request | null = null;
@@ -68,6 +75,7 @@ export class Request extends ChannelOwner<channels.RequestChannel> implements ap
   private _actualHeadersPromise: Promise<RawHeaders> | undefined;
   private _postData: Buffer | null;
   _timing: ResourceTiming;
+  private _fallbackOverrides: FallbackOverrides = {};
 
   static from(request: channels.RequestChannel): Request {
     return (request as any)._object;
@@ -98,7 +106,7 @@ export class Request extends ChannelOwner<channels.RequestChannel> implements ap
   }
 
   url(): string {
-    return this._initializer.url;
+    return this._fallbackOverrides.url || this._initializer.url;
   }
 
   resourceType(): string {
@@ -106,14 +114,21 @@ export class Request extends ChannelOwner<channels.RequestChannel> implements ap
   }
 
   method(): string {
-    return this._initializer.method;
+    return this._fallbackOverrides.method || this._initializer.method;
   }
 
   postData(): string | null {
+    if (this._fallbackOverrides.postData)
+      return this._fallbackOverrides.postData.toString('utf-8');
     return this._postData ? this._postData.toString('utf8') : null;
   }
 
   postDataBuffer(): Buffer | null {
+    if (this._fallbackOverrides.postData) {
+      if (isString(this._fallbackOverrides.postData))
+        return Buffer.from(this._fallbackOverrides.postData, 'utf-8');
+      return this._fallbackOverrides.postData;
+    }
     return this._postData;
   }
 
@@ -142,6 +157,8 @@ export class Request extends ChannelOwner<channels.RequestChannel> implements ap
    * @deprecated
    */
   headers(): Headers {
+    if (this._fallbackOverrides.headers)
+      return RawHeaders._fromHeadersObjectLossy(this._fallbackOverrides.headers).headers();
     return this._provisionalHeaders.headers();
   }
 
@@ -151,6 +168,9 @@ export class Request extends ChannelOwner<channels.RequestChannel> implements ap
   }
 
   _actualHeaders(): Promise<RawHeaders> {
+    if (this._fallbackOverrides.headers)
+      return Promise.resolve(RawHeaders._fromHeadersObjectLossy(this._fallbackOverrides.headers));
+
     if (!this._actualHeadersPromise) {
       this._actualHeadersPromise = this._wrapApiCall(async () => {
         return new RawHeaders((await this._channel.rawRequestHeaders()).headers);
@@ -219,18 +239,18 @@ export class Request extends ChannelOwner<channels.RequestChannel> implements ap
   _finalRequest(): Request {
     return this._redirectedTo ? this._redirectedTo._finalRequest() : this;
   }
+
+  _applyFallbackOverrides(overrides: FallbackOverrides) {
+    this._fallbackOverrides = { ...this._fallbackOverrides, ...overrides };
+  }
+
+  _fallbackOverridesForContinue() {
+    return this._fallbackOverrides;
+  }
 }
 
-type OverridesForContinue = {
-  url?: string;
-  method?: string;
-  headers?: Headers;
-  postData?: string | Buffer;
-};
-
 export class Route extends ChannelOwner<channels.RouteChannel> implements api.Route {
-  private _pendingContinueOverrides: OverridesForContinue | undefined;
-  private _routeChain: ((done: boolean) => Promise<void>) | null = null;
+  private _handlingPromise: ManualPromise<boolean> | null = null;
 
   static from(route: channels.RouteChannel): Route {
     return (route as any)._object;
@@ -255,22 +275,31 @@ export class Route extends ChannelOwner<channels.RouteChannel> implements api.Ro
     ]);
   }
 
-  _startHandling(routeChain: (done: boolean) => Promise<void>) {
-    this._routeChain = routeChain;
+  _startHandling(): Promise<boolean> {
+    this._handlingPromise = new ManualPromise();
+    return this._handlingPromise;
+  }
+
+  async fallback(options: FallbackOverrides = {}) {
+    this._checkNotHandled();
+    this.request()._applyFallbackOverrides(options);
+    this._reportHandled(false);
   }
 
   async abort(errorCode?: string) {
+    this._checkNotHandled();
     await this._raceWithPageClose(this._channel.abort({ errorCode }));
-    await this._followChain(true);
+    this._reportHandled(true);
   }
 
   async fulfill(options: { response?: api.APIResponse, status?: number, headers?: Headers, contentType?: string, body?: string | Buffer, path?: string, har?: RouteHAR } = {}) {
+    this._checkNotHandled();
     await this._wrapApiCall(async () => {
       const fallback = await this._innerFulfill(options);
       switch (fallback) {
         case 'abort': await this.abort(); break;
         case 'continue': await this.continue(); break;
-        case 'done': await this._followChain(true); break;
+        case 'done': this._reportHandled(true); break;
       }
     });
   }
@@ -353,21 +382,26 @@ export class Route extends ChannelOwner<channels.RouteChannel> implements api.Ro
     return 'done';
   }
 
-  async continue(options: OverridesForContinue = {}) {
-    if (!this._routeChain)
+  async continue(options: FallbackOverrides = {}) {
+    this._checkNotHandled();
+    this.request()._applyFallbackOverrides(options);
+    await this._innerContinue();
+    this._reportHandled(true);
+  }
+
+  _checkNotHandled() {
+    if (!this._handlingPromise)
       throw new Error('Route is already handled!');
-    this._pendingContinueOverrides = { ...this._pendingContinueOverrides, ...options };
-    await this._followChain(false);
   }
 
-  async _followChain(done: boolean) {
-    const chain = this._routeChain!;
-    this._routeChain = null;
-    await chain(done);
+  _reportHandled(done: boolean) {
+    const chain = this._handlingPromise!;
+    this._handlingPromise = null;
+    chain.resolve(done);
   }
 
-  async _finalContinue() {
-    const options = this._pendingContinueOverrides || {};
+  async _innerContinue(internal = false) {
+    const options = this.request()._fallbackOverridesForContinue();
     return await this._wrapApiCall(async () => {
       const postDataBuffer = isString(options.postData) ? Buffer.from(options.postData, 'utf8') : options.postData;
       await this._raceWithPageClose(this._channel.continue({
@@ -376,7 +410,7 @@ export class Route extends ChannelOwner<channels.RouteChannel> implements api.Ro
         headers: options.headers ? headersObjectToArray(options.headers) : undefined,
         postData: postDataBuffer ? postDataBuffer.toString('base64') : undefined,
       }));
-    }, !this._pendingContinueOverrides);
+    }, !!internal);
   }
 }
 
@@ -593,12 +627,16 @@ export class RouteHandler {
     return urlMatches(this._baseURL, requestURL, this.url);
   }
 
-  public handle(route: Route, request: Request, routeChain: (done: boolean) => Promise<void>) {
+  public async handle(route: Route, request: Request): Promise<boolean> {
     ++this.handledCount;
-    route._startHandling(routeChain);
+    const handledPromise = route._startHandling();
     // Extract handler into a variable to avoid [RouteHandler.handler] in the stack.
     const handler = this.handler;
-    handler(route, request);
+    const [handled] = await Promise.all([
+      handledPromise,
+      handler(route, request),
+    ]);
+    return handled;
   }
 
   public willExpire(): boolean {
@@ -609,6 +647,13 @@ export class RouteHandler {
 export class RawHeaders {
   private _headersArray: HeadersArray;
   private _headersMap = new MultiMap<string, string>();
+
+  static _fromHeadersObjectLossy(headers: Headers): RawHeaders {
+    const headersArray: HeadersArray = Object.entries(headers).map(([name, value]) => ({
+      name, value
+    })).filter(header => header.value !== undefined);
+    return new RawHeaders(headersArray);
+  }
 
   constructor(headers: HeadersArray) {
     this._headersArray = headers;
