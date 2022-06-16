@@ -15,44 +15,43 @@
  * limitations under the License.
  */
 
-import { Events } from './events';
-import { assert } from '../utils';
+import { Buffer } from 'buffer';
+import fs from 'fs';
+import path from 'path';
+import type * as structs from '../../types/structs';
+import type * as api from '../../types/types';
+import { isSafeCloseError } from '../common/errors';
+import { urlMatches } from '../common/netUtils';
 import { TimeoutSettings } from '../common/timeoutSettings';
-import type { ParsedStackTrace } from '../utils/stackTrace';
 import type * as channels from '../protocol/channels';
 import { parseError, serializeError } from '../protocol/serializers';
+import { assert, headersObjectToArray, isObject, isRegExp, isString } from '../utils';
+import { mkdirIfNeeded } from '../utils/fileUtils';
+import type { ParsedStackTrace } from '../utils/stackTrace';
 import { Accessibility } from './accessibility';
+import { Artifact } from './artifact';
 import type { BrowserContext } from './browserContext';
 import { ChannelOwner } from './channelOwner';
+import { evaluationScript } from './clientHelper';
 import { ConsoleMessage } from './consoleMessage';
+import { Coverage } from './coverage';
 import { Dialog } from './dialog';
 import { Download } from './download';
-import { ElementHandle, determineScreenshotType } from './elementHandle';
-import type { Locator, FrameLocator, LocatorOptions } from './locator';
-import { Worker } from './worker';
+import { determineScreenshotType, ElementHandle } from './elementHandle';
+import { Events } from './events';
+import type { APIRequestContext } from './fetch';
+import { FileChooser } from './fileChooser';
 import type { WaitForNavigationOptions } from './frame';
 import { Frame, verifyLoadState } from './frame';
 import { Keyboard, Mouse, Touchscreen } from './input';
-import { assertMaxArguments, serializeArgument, parseResult, JSHandle } from './jsHandle';
+import { assertMaxArguments, JSHandle, parseResult, serializeArgument } from './jsHandle';
+import type { FrameLocator, Locator, LocatorOptions } from './locator';
 import type { RouteHandlerCallback } from './network';
-import { Request, Response, Route, WebSocket, validateHeaders, RouteHandler } from './network';
-import { FileChooser } from './fileChooser';
-import { Buffer } from 'buffer';
-import { Coverage } from './coverage';
-import { Waiter } from './waiter';
-import type * as api from '../../types/types';
-import type * as structs from '../../types/structs';
-import fs from 'fs';
-import path from 'path';
-import type { Size, URLMatch, Headers, LifecycleEvent, WaitForEventOptions, SelectOption, SelectOptionOptions, FilePayload, WaitForFunctionOptions } from './types';
-import { evaluationScript } from './clientHelper';
-import { isString, isRegExp, isObject, headersObjectToArray } from '../utils';
-import { mkdirIfNeeded } from '../utils/fileUtils';
-import { isSafeCloseError } from '../common/errors';
+import { Request, Response, Route, RouteHandler, validateHeaders, WebSocket } from './network';
+import type { FilePayload, Headers, LifecycleEvent, SelectOption, SelectOptionOptions, Size, URLMatch, WaitForEventOptions, WaitForFunctionOptions } from './types';
 import { Video } from './video';
-import { Artifact } from './artifact';
-import type { APIRequestContext } from './fetch';
-import { urlMatches } from '../common/netUtils';
+import { Waiter } from './waiter';
+import { Worker } from './worker';
 
 type PDFOptions = Omit<channels.PagePdfParams, 'width' | 'height' | 'margin'> & {
   width?: string | number,
@@ -73,6 +72,7 @@ type ExpectScreenshotOptions = Omit<channels.PageExpectScreenshotOptions, 'scree
   isNot: boolean,
   screenshotOptions: Omit<channels.PageExpectScreenshotOptions['screenshotOptions'], 'mask'> & { mask?: Locator[] }
 };
+
 
 export class Page extends ChannelOwner<channels.PageChannel> implements api.Page {
   private _browserContext: BrowserContext;
@@ -689,6 +689,13 @@ export class Page extends ChannelOwner<channels.PageChannel> implements api.Page
     if (event === Events.Page.FileChooser && !this.listenerCount(event))
       this._channel.setFileChooserInterceptedNoReply({ intercepted: true });
     super.addListener(event, listener);
+    return this;
+  }
+
+  override prependListener(event: string | symbol, listener: Listener): this {
+    if (event === Events.Page.FileChooser && !this.listenerCount(event))
+      this._channel.setFileChooserInterceptedNoReply({ intercepted: true });
+    super.prependListener(event, listener);
     return this;
   }
 
