@@ -9476,7 +9476,18 @@ export interface Locator {
   }): Promise<void>;
 
   /**
-   * This method narrows existing locator according to the options, for example filters by text.
+   * This method narrows existing locator according to the options, for example filters by text. It can be chained to filter
+   * multiple times.
+   *
+   * ```js
+   * const rowLocator = page.locator('tr');
+   * // ...
+   * await rowLocator
+   *     .filter({ hasText: 'text in column 1' })
+   *     .filter({ has: page.locator('button', { hasText: 'column 2 button' }) })
+   *     .screenshot();
+   * ```
+   *
    * @param options
    */
   filter(options?: {
@@ -10627,12 +10638,20 @@ export interface BrowserType<Unused = {}> {
      */
     recordHar?: {
       /**
-       * Optional setting to control whether to omit request content from the HAR. Defaults to `false`.
+       * Optional setting to control whether to omit request content from the HAR. Defaults to `false`. Deprecated, use `content`
+       * policy instead.
        */
       omitContent?: boolean;
 
       /**
-       * Path on the filesystem to write the HAR file to.
+       * Optional setting to control resource content management. If `omit` is specified, content is not persisted. If `attach`
+       * is specified, resources are persistet as separate files and all of these files are archived along with the HAR file.
+       * Defaults to `embed`, which stores content inline the HAR file as per HAR specification.
+       */
+      content?: "omit"|"embed"|"attach";
+
+      /**
+       * Path on the filesystem to write the HAR file to. If the file name ends with `.zip`, `attach` mode is used by default.
        */
       path: string;
 
@@ -11835,12 +11854,20 @@ export interface AndroidDevice {
      */
     recordHar?: {
       /**
-       * Optional setting to control whether to omit request content from the HAR. Defaults to `false`.
+       * Optional setting to control whether to omit request content from the HAR. Defaults to `false`. Deprecated, use `content`
+       * policy instead.
        */
       omitContent?: boolean;
 
       /**
-       * Path on the filesystem to write the HAR file to.
+       * Optional setting to control resource content management. If `omit` is specified, content is not persisted. If `attach`
+       * is specified, resources are persistet as separate files and all of these files are archived along with the HAR file.
+       * Defaults to `embed`, which stores content inline the HAR file as per HAR specification.
+       */
+      content?: "omit"|"embed"|"attach";
+
+      /**
+       * Path on the filesystem to write the HAR file to. If the file name ends with `.zip`, `attach` mode is used by default.
        */
       path: string;
 
@@ -13426,12 +13453,20 @@ export interface Browser extends EventEmitter {
      */
     recordHar?: {
       /**
-       * Optional setting to control whether to omit request content from the HAR. Defaults to `false`.
+       * Optional setting to control whether to omit request content from the HAR. Defaults to `false`. Deprecated, use `content`
+       * policy instead.
        */
       omitContent?: boolean;
 
       /**
-       * Path on the filesystem to write the HAR file to.
+       * Optional setting to control resource content management. If `omit` is specified, content is not persisted. If `attach`
+       * is specified, resources are persistet as separate files and all of these files are archived along with the HAR file.
+       * Defaults to `embed`, which stores content inline the HAR file as per HAR specification.
+       */
+      content?: "omit"|"embed"|"attach";
+
+      /**
+       * Path on the filesystem to write the HAR file to. If the file name ends with `.zip`, `attach` mode is used by default.
        */
       path: string;
 
@@ -14233,12 +14268,20 @@ export interface Electron {
      */
     recordHar?: {
       /**
-       * Optional setting to control whether to omit request content from the HAR. Defaults to `false`.
+       * Optional setting to control whether to omit request content from the HAR. Defaults to `false`. Deprecated, use `content`
+       * policy instead.
        */
       omitContent?: boolean;
 
       /**
-       * Path on the filesystem to write the HAR file to.
+       * Optional setting to control resource content management. If `omit` is specified, content is not persisted. If `attach`
+       * is specified, resources are persistet as separate files and all of these files are archived along with the HAR file.
+       * Defaults to `embed`, which stores content inline the HAR file as per HAR specification.
+       */
+      content?: "omit"|"embed"|"attach";
+
+      /**
+       * Path on the filesystem to write the HAR file to. If the file name ends with `.zip`, `attach` mode is used by default.
        */
       path: string;
 
@@ -16073,12 +16116,20 @@ export interface BrowserContextOptions {
    */
   recordHar?: {
     /**
-     * Optional setting to control whether to omit request content from the HAR. Defaults to `false`.
+     * Optional setting to control whether to omit request content from the HAR. Defaults to `false`. Deprecated, use `content`
+     * policy instead.
      */
     omitContent?: boolean;
 
     /**
-     * Path on the filesystem to write the HAR file to.
+     * Optional setting to control resource content management. If `omit` is specified, content is not persisted. If `attach`
+     * is specified, resources are persistet as separate files and all of these files are archived along with the HAR file.
+     * Defaults to `embed`, which stores content inline the HAR file as per HAR specification.
+     */
+    content?: "omit"|"embed"|"attach";
+
+    /**
+     * Path on the filesystem to write the HAR file to. If the file name ends with `.zip`, `attach` mode is used by default.
      */
     path: string;
 

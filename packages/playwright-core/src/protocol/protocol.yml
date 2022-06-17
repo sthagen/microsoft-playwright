@@ -224,8 +224,13 @@ SerializedError:
 RecordHarOptions:
   type: object
   properties:
-    omitContent: boolean?
     path: string
+    content:
+      type: enum?
+      literals:
+      - embed
+      - attach
+      - omit
     urlGlob: string?
     urlRegexSource: string?
     urlRegexFlags: string?
@@ -1318,8 +1323,6 @@ Page:
         suggestedFilename: string
         artifact: Artifact
 
-    domcontentloaded:
-
     fileChooser:
       parameters:
         element: ElementHandle
@@ -1332,8 +1335,6 @@ Page:
     frameDetached:
       parameters:
         frame: Frame
-
-    load:
 
     pageError:
       parameters:

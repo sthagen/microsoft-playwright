@@ -19,7 +19,7 @@ import type { APIRequestEvent, APIRequestFinishedEvent } from '../fetch';
 import { APIRequestContext } from '../fetch';
 import { helper } from '../helper';
 import * as network from '../network';
-import { Page } from '../page';
+import type { Page } from '../page';
 import type * as har from './har';
 import { calculateSha1, monotonicTime } from '../../utils';
 import type { RegisteredListener } from '../../utils/eventsHelper';
@@ -28,6 +28,8 @@ import { mime } from '../../utilsBundle';
 import { ManualPromise } from '../../utils/manualPromise';
 import { getPlaywrightVersion } from '../../common/userAgent';
 import { urlMatches } from '../../common/netUtils';
+import { Frame } from '../frames';
+import type { LifecycleEvent } from '../types';
 
 const FALLBACK_HTTP_VERSION = 'HTTP/1.1';
 
@@ -38,7 +40,7 @@ export interface HarTracerDelegate {
 }
 
 type HarTracerOptions = {
-  content: 'omit' | 'sha1' | 'embedded';
+  content: 'omit' | 'attach' | 'embed';
   skipScripts: boolean;
   waitForContentOnStop: boolean;
   urlFilter?: string | RegExp;
@@ -93,8 +95,12 @@ export class HarTracer {
   private _ensurePageEntry(page: Page) {
     let pageEntry = this._pageEntries.get(page);
     if (!pageEntry) {
-      page.on(Page.Events.DOMContentLoaded, () => this._onDOMContentLoaded(page));
-      page.on(Page.Events.Load, () => this._onLoad(page));
+      page.mainFrame().on(Frame.Events.AddLifecycle, (event: LifecycleEvent) => {
+        if (event === 'load')
+          this._onLoad(page);
+        if (event === 'domcontentloaded')
+          this._onDOMContentLoaded(page);
+      });
 
       pageEntry = {
         startedDateTime: new Date(),
@@ -266,7 +272,7 @@ export class HarTracer {
       compressionCalculationBarrier.setDecodedBodySize(0);
     }).then(() => {
       const postData = response.request().postDataBuffer();
-      if (postData && harEntry.request.postData && this._options.content === 'sha1') {
+      if (postData && harEntry.request.postData && this._options.content === 'attach') {
         harEntry.request.postData._sha1 = calculateSha1(postData) + '.' + (mime.getExtension(harEntry.request.postData.mimeType) || 'dat');
         if (this._started)
           this._delegate.onContentBlob(harEntry.request.postData._sha1, postData);
@@ -302,7 +308,7 @@ export class HarTracer {
       return;
     }
     content.size = buffer.length;
-    if (this._options.content === 'embedded') {
+    if (this._options.content === 'embed') {
       // Sometimes, we can receive a font/media file with textual mime type. Browser
       // still interprets them correctly, but the 'content-type' header is obviously wrong.
       if (isTextualMimeType(content.mimeType) && resourceType !== 'font') {
@@ -311,7 +317,7 @@ export class HarTracer {
         content.text = buffer.toString('base64');
         content.encoding = 'base64';
       }
-    } else if (this._options.content === 'sha1') {
+    } else if (this._options.content === 'attach') {
       content._sha1 = calculateSha1(buffer) + '.' + (mime.getExtension(content.mimeType) || 'dat');
       if (this._started)
         this._delegate.onContentBlob(content._sha1, buffer);
@@ -469,7 +475,7 @@ function createHarEntry(method: string, url: URL, requestref: string, frameref: 
   return harEntry;
 }
 
-function postDataForRequest(request: network.Request, content: 'omit' | 'sha1' | 'embedded'): har.PostData | undefined {
+function postDataForRequest(request: network.Request, content: 'omit' | 'attach' | 'embed'): har.PostData | undefined {
   const postData = request.postDataBuffer();
   if (!postData)
     return;
@@ -478,7 +484,7 @@ function postDataForRequest(request: network.Request, content: 'omit' | 'sha1' |
   return postDataForBuffer(postData, contentType, content);
 }
 
-function postDataForBuffer(postData: Buffer | null, contentType: string | undefined, content: 'omit' | 'sha1' | 'embedded'): har.PostData | undefined {
+function postDataForBuffer(postData: Buffer | null, contentType: string | undefined, content: 'omit' | 'attach' | 'embed'): har.PostData | undefined {
   if (!postData)
     return;
 
@@ -490,7 +496,7 @@ function postDataForBuffer(postData: Buffer | null, contentType: string | undefi
     params: []
   };
 
-  if (content === 'embedded' && contentType !== 'application/octet-stream')
+  if (content === 'embed' && contentType !== 'application/octet-stream')
     result.text = postData.toString();
 
   if (contentType === 'application/x-www-form-urlencoded') {
