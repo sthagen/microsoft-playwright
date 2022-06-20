@@ -30,8 +30,10 @@ export class HarRouter {
   private _harId: string;
 
   static async create(localUtils: LocalUtils, options: HarOptions): Promise<HarRouter> {
-    const { harId } = await localUtils._channel.harOpen({ file: options.path });
-    return new HarRouter(localUtils, harId, options);
+    const { harId, error } = await localUtils._channel.harOpen({ file: options.path });
+    if (error)
+      throw new Error(error);
+    return new HarRouter(localUtils, harId!, options);
   }
 
   constructor(localUtils: LocalUtils, harId: string, options?: HarOptions) {
@@ -42,11 +44,14 @@ export class HarRouter {
   }
 
   private async _handle(route: Route) {
+    const request = route.request();
     const response = await this._localUtils._channel.harLookup({
       harId: this._harId,
-      url: route.request().url(),
-      method: route.request().method(),
-      isNavigationRequest: route.request().isNavigationRequest()
+      url: request.url(),
+      method: request.method(),
+      headers: (await request.headersArray()),
+      postData: request.postDataBuffer()?.toString('base64'),
+      isNavigationRequest: request.isNavigationRequest()
     });
 
     if (response.action === 'redirect') {
@@ -59,13 +64,13 @@ export class HarRouter {
       await route.fulfill({
         status: response.status,
         headers: Object.fromEntries(response.headers!.map(h => [h.name, h.value])),
-        body: response.base64Encoded ? Buffer.from(response.body!, 'base64') : response.body
+        body: Buffer.from(response.body!, 'base64')
       });
       return;
     }
 
     if (response.action === 'error')
-      debugLogger.log('api', response.message!);
+      debugLogger.log('api', 'HAR: ' + response.message!);
     // Report the error, but fall through to the default handler.
 
     if (this._options?.fallback === 'continue') {
