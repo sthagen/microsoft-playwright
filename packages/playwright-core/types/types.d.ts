@@ -22,8 +22,6 @@ import { Readable } from 'stream';
 import { ReadStream } from 'fs';
 import { Serializable, EvaluationArgument, PageFunction, PageFunctionOn, SmartHandle, ElementHandleForTag, BindingSource } from 'playwright-core/types/structs';
 
-export * from 'playwright-core/types/har';
-
 type PageWaitForSelectorOptionsNotHidden = PageWaitForSelectorOptions & {
   state?: 'visible'|'attached';
 };
@@ -3116,8 +3114,8 @@ export interface Page {
    * > NOTE: The handler will only be called for the first url if the response is a redirect.
    * > NOTE: [page.route(url, handler[, options])](https://playwright.dev/docs/api/class-page#page-route) will not intercept
    * requests intercepted by Service Worker. See [this](https://github.com/microsoft/playwright/issues/1090) issue. We
-   * recommend disabling Service Workers when using request interception. Via `await context.addInitScript(() => delete
-   * window.navigator.serviceWorker);`
+   * recommend disabling Service Workers when using request interception by setting `Browser.newContext.serviceWorkers` to
+   * `'block'`.
    *
    * An example of a naive handler that aborts all image requests:
    *
@@ -7038,10 +7036,11 @@ export interface BrowserContext {
    * Routing provides the capability to modify network requests that are made by any page in the browser context. Once route
    * is enabled, every request matching the url pattern will stall unless it's continued, fulfilled or aborted.
    *
-   * > NOTE: [page.route(url, handler[, options])](https://playwright.dev/docs/api/class-page#page-route) will not intercept
-   * requests intercepted by Service Worker. See [this](https://github.com/microsoft/playwright/issues/1090) issue. We
-   * recommend disabling Service Workers when using request interception. Via `await context.addInitScript(() => delete
-   * window.navigator.serviceWorker);`
+   * > NOTE:
+   * [browserContext.route(url, handler[, options])](https://playwright.dev/docs/api/class-browsercontext#browser-context-route)
+   * will not intercept requests intercepted by Service Worker. See
+   * [this](https://github.com/microsoft/playwright/issues/1090) issue. We recommend disabling Service Workers when using
+   * request interception by setting `Browser.newContext.serviceWorkers` to `'block'`.
    *
    * An example of a naive handler that aborts all image requests:
    *
@@ -10509,18 +10508,17 @@ export interface BrowserType<Unused = {}> {
     handleSIGTERM?: boolean;
 
     /**
-     * If specified the network requests that are made in the context will be served from the HAR file.
+     * If specified the network requests that are made in the context will be served from the HAR file. Read more about
+     * [Replaying from HAR](https://playwright.dev/docs/network#replaying-from-har).
      *
      * > NOTE: Playwright will not serve requests intercepted by Service Worker from the HAR file. See
      * [this](https://github.com/microsoft/playwright/issues/1090) issue. We recommend disabling Service Workers when using
-     * request interception. Via `await context.addInitScript(() => delete window.navigator.serviceWorker);`
+     * request interception by setting `Browser.newContext.serviceWorkers` to `'block'`.
      */
     har?: {
       /**
-       * Path to a [HAR](http://www.softwareishard.com/blog/har-12-spec) file with prerecorded network data. If the HAR file
-       * contains an entry with the matching URL and HTTP method, then the entry's headers, status and body will be used to
-       * fulfill the network request. An entry resulting in a redirect will be followed automatically. If `path` is a relative
-       * path, then it is resolved relative to the current working directory.
+       * Path to a [HAR](http://www.softwareishard.com/blog/har-12-spec) file with prerecorded network data. If `path` is a
+       * relative path, then it is resolved relative to the current working directory.
        */
       path: string;
 
@@ -11765,18 +11763,17 @@ export interface AndroidDevice {
     };
 
     /**
-     * If specified the network requests that are made in the context will be served from the HAR file.
+     * If specified the network requests that are made in the context will be served from the HAR file. Read more about
+     * [Replaying from HAR](https://playwright.dev/docs/network#replaying-from-har).
      *
      * > NOTE: Playwright will not serve requests intercepted by Service Worker from the HAR file. See
      * [this](https://github.com/microsoft/playwright/issues/1090) issue. We recommend disabling Service Workers when using
-     * request interception. Via `await context.addInitScript(() => delete window.navigator.serviceWorker);`
+     * request interception by setting `Browser.newContext.serviceWorkers` to `'block'`.
      */
     har?: {
       /**
-       * Path to a [HAR](http://www.softwareishard.com/blog/har-12-spec) file with prerecorded network data. If the HAR file
-       * contains an entry with the matching URL and HTTP method, then the entry's headers, status and body will be used to
-       * fulfill the network request. An entry resulting in a redirect will be followed automatically. If `path` is a relative
-       * path, then it is resolved relative to the current working directory.
+       * Path to a [HAR](http://www.softwareishard.com/blog/har-12-spec) file with prerecorded network data. If `path` is a
+       * relative path, then it is resolved relative to the current working directory.
        */
       path: string;
 
@@ -13334,18 +13331,17 @@ export interface Browser extends EventEmitter {
     };
 
     /**
-     * If specified the network requests that are made in the context will be served from the HAR file.
+     * If specified the network requests that are made in the context will be served from the HAR file. Read more about
+     * [Replaying from HAR](https://playwright.dev/docs/network#replaying-from-har).
      *
      * > NOTE: Playwright will not serve requests intercepted by Service Worker from the HAR file. See
      * [this](https://github.com/microsoft/playwright/issues/1090) issue. We recommend disabling Service Workers when using
-     * request interception. Via `await context.addInitScript(() => delete window.navigator.serviceWorker);`
+     * request interception by setting `Browser.newContext.serviceWorkers` to `'block'`.
      */
     har?: {
       /**
-       * Path to a [HAR](http://www.softwareishard.com/blog/har-12-spec) file with prerecorded network data. If the HAR file
-       * contains an entry with the matching URL and HTTP method, then the entry's headers, status and body will be used to
-       * fulfill the network request. An entry resulting in a redirect will be followed automatically. If `path` is a relative
-       * path, then it is resolved relative to the current working directory.
+       * Path to a [HAR](http://www.softwareishard.com/blog/har-12-spec) file with prerecorded network data. If `path` is a
+       * relative path, then it is resolved relative to the current working directory.
        */
       path: string;
 
@@ -14207,18 +14203,17 @@ export interface Electron {
     };
 
     /**
-     * If specified the network requests that are made in the context will be served from the HAR file.
+     * If specified the network requests that are made in the context will be served from the HAR file. Read more about
+     * [Replaying from HAR](https://playwright.dev/docs/network#replaying-from-har).
      *
      * > NOTE: Playwright will not serve requests intercepted by Service Worker from the HAR file. See
      * [this](https://github.com/microsoft/playwright/issues/1090) issue. We recommend disabling Service Workers when using
-     * request interception. Via `await context.addInitScript(() => delete window.navigator.serviceWorker);`
+     * request interception by setting `Browser.newContext.serviceWorkers` to `'block'`.
      */
     har?: {
       /**
-       * Path to a [HAR](http://www.softwareishard.com/blog/har-12-spec) file with prerecorded network data. If the HAR file
-       * contains an entry with the matching URL and HTTP method, then the entry's headers, status and body will be used to
-       * fulfill the network request. An entry resulting in a redirect will be followed automatically. If `path` is a relative
-       * path, then it is resolved relative to the current working directory.
+       * Path to a [HAR](http://www.softwareishard.com/blog/har-12-spec) file with prerecorded network data. If `path` is a
+       * relative path, then it is resolved relative to the current working directory.
        */
       path: string;
 
@@ -15457,10 +15452,10 @@ export interface Route {
     path?: string;
 
     /**
-     * [APIResponse] or [HARResponse] to fulfill route's request with. Individual fields of the response (such as headers) can
-     * be overridden using fulfill options.
+     * [APIResponse] to fulfill route's request with. Individual fields of the response (such as headers) can be overridden
+     * using fulfill options.
      */
-    response?: APIResponse|HARResponse;
+    response?: APIResponse;
 
     /**
      * Response status code, defaults to `200`.
@@ -16001,18 +15996,17 @@ export interface BrowserContextOptions {
   geolocation?: Geolocation;
 
   /**
-   * If specified the network requests that are made in the context will be served from the HAR file.
+   * If specified the network requests that are made in the context will be served from the HAR file. Read more about
+   * [Replaying from HAR](https://playwright.dev/docs/network#replaying-from-har).
    *
    * > NOTE: Playwright will not serve requests intercepted by Service Worker from the HAR file. See
    * [this](https://github.com/microsoft/playwright/issues/1090) issue. We recommend disabling Service Workers when using
-   * request interception. Via `await context.addInitScript(() => delete window.navigator.serviceWorker);`
+   * request interception by setting `Browser.newContext.serviceWorkers` to `'block'`.
    */
   har?: {
     /**
-     * Path to a [HAR](http://www.softwareishard.com/blog/har-12-spec) file with prerecorded network data. If the HAR file
-     * contains an entry with the matching URL and HTTP method, then the entry's headers, status and body will be used to
-     * fulfill the network request. An entry resulting in a redirect will be followed automatically. If `path` is a relative
-     * path, then it is resolved relative to the current working directory.
+     * Path to a [HAR](http://www.softwareishard.com/blog/har-12-spec) file with prerecorded network data. If `path` is a
+     * relative path, then it is resolved relative to the current working directory.
      */
     path: string;
 

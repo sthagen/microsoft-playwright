@@ -24,7 +24,7 @@ import type { DispatcherScope } from './dispatcher';
 import { Dispatcher } from './dispatcher';
 import { yazl, yauzl } from '../../zipBundle';
 import { ZipFile } from '../../utils/zipFile';
-import type { HAREntry, HARFile } from '../../../types/types';
+import type { HAREntry, HARFile, HARHeader } from '../../../types/har';
 import type { HeadersArray } from '../types';
 
 export class LocalUtilsDispatcher extends Dispatcher<{ guid: string }, channels.LocalUtilsChannel> implements channels.LocalUtilsChannel {
@@ -194,34 +194,33 @@ class HarBackend {
     const harLog = this._harFile.log;
     const visited = new Set<HAREntry>();
     while (true) {
-      const entries = harLog.entries.filter(entry => entry.request.url === url && entry.request.method === method);
+      const entries: HAREntry[] = [];
+      for (const candidate of harLog.entries) {
+        if (candidate.request.url !== url || candidate.request.method !== method)
+          continue;
+        if (method === 'POST' && postData && candidate.request.postData) {
+          const buffer = await this._loadContent(candidate.request.postData);
+          if (!buffer.equals(postData))
+            continue;
+        }
+        entries.push(candidate);
+      }
+
       if (!entries.length)
         return;
 
-      let entry: HAREntry | undefined;
+      let entry = entries[0];
 
+      // Disambiguate using headers - then one with most matching headers wins.
       if (entries.length > 1) {
-        // Disambiguating requests
-
-        // 1. Disambiguate by postData - this covers GraphQL
-        if (!entry && postData) {
-          for (const candidate of entries) {
-            if (!candidate.request.postData)
-              continue;
-            const buffer = await this._loadContent(candidate.request.postData);
-            if (buffer.equals(postData)) {
-              entry = candidate;
-              break;
-            }
-          }
+        const list: { candidate: HAREntry, matchingHeaders: number }[] = [];
+        for (const candidate of entries) {
+          const matchingHeaders = countMatchingHeaders(candidate.request.headers, headers);
+          list.push({ candidate, matchingHeaders });
         }
-
-        // TODO: disambiguate by headers.
+        list.sort((a, b) => b.matchingHeaders - a.matchingHeaders);
+        entry = list[0].candidate;
       }
-
-      // Fall back to first entry.
-      if (!entry)
-        entry = entries[0];
 
       if (visited.has(entry))
         throw new Error(`Found redirect cycle for ${url}`);
@@ -249,3 +248,14 @@ class HarBackend {
     this._zipFile?.close();
   }
 }
+
+function countMatchingHeaders(harHeaders: HARHeader[], headers: HeadersArray): number {
+  const set = new Set(headers.map(h => h.name.toLowerCase() + ':' + h.value));
+  let matches = 0;
+  for (const h of harHeaders) {
+    if (set.has(h.name.toLowerCase() + ':' + h.value))
+      ++matches;
+  }
+  return matches;
+}
+
