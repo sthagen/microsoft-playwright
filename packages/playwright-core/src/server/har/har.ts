@@ -22,19 +22,22 @@ export type HARFile = {
 export type Log = {
   version: string;
   creator: Creator;
-  browser: Browser;
-  pages: Page[];
+  browser?: Browser;
+  pages?: Page[];
   entries: Entry[];
+  comment?: string;
 };
 
 export type Creator = {
   name: string;
   version: string;
+  comment?: string;
 };
 
 export type Browser = {
   name: string;
   version: string;
+  comment?: string;
 };
 
 export type Page = {
@@ -42,11 +45,13 @@ export type Page = {
   id: string;
   title: string;
   pageTimings: PageTimings;
+  comment?: string;
 };
 
 export type PageTimings = {
-  onContentLoad: number;
-  onLoad: number;
+  onContentLoad?: number;
+  onLoad?: number;
+  comment?: string;
 };
 
 export type Entry = {
@@ -59,9 +64,8 @@ export type Entry = {
   timings: Timings;
   serverIPAddress?: string;
   connection?: string;
-  _requestref: string;
-  _frameref: string;
-  _monotonicTime: number;
+  _frameref?: string;
+  _monotonicTime?: number;
   _serverPort?: number;
   _securityDetails?: SecurityDetails;
 };
@@ -76,6 +80,7 @@ export type Request = {
   postData?: PostData;
   headersSize: number;
   bodySize: number;
+  comment?: string;
 };
 
 export type Response = {
@@ -88,7 +93,8 @@ export type Response = {
   redirectURL: string;
   headersSize: number;
   bodySize: number;
-  _transferSize: number;
+  comment?: string;
+  _transferSize?: number;
   _failureText?: string
 };
 
@@ -101,23 +107,28 @@ export type Cookie = {
   httpOnly?: boolean;
   secure?: boolean;
   sameSite?: string;
+  comment?: string;
 };
 
 export type Header = {
   name: string;
   value: string;
+  comment?: string;
 };
 
 export type QueryParameter = {
   name: string;
   value: string;
+  comment?: string;
 };
 
 export type PostData = {
   mimeType: string;
   params: Param[];
   text: string;
+  comment?: string;
   _sha1?: string;
+  _file?: string;
 };
 
 export type Param = {
@@ -125,6 +136,7 @@ export type Param = {
   value?: string;
   fileName?: string;
   contentType?: string;
+  comment?: string;
 };
 
 export type Content = {
@@ -133,12 +145,15 @@ export type Content = {
   mimeType: string;
   text?: string;
   encoding?: string;
+  comment?: string;
   _sha1?: string;
+  _file?: string;
 };
 
 export type Cache = {
-  beforeRequest: CacheState | null;
-  afterRequest: CacheState | null;
+  beforeRequest?: CacheState | null;
+  afterRequest?: CacheState | null;
+  comment?: string;
 };
 
 export type CacheState = {
@@ -146,6 +161,7 @@ export type CacheState = {
   lastAccess: string;
   eTag: string;
   hitCount: number;
+  comment?: string;
 };
 
 export type Timings = {
@@ -156,6 +172,7 @@ export type Timings = {
   wait: number;
   receive: number;
   ssl?: number;
+  comment?: string;
 };
 
 export type SecurityDetails = {

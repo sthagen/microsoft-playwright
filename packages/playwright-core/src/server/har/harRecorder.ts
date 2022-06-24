@@ -33,6 +33,7 @@ export class HarRecorder {
   private _tracer: HarTracer;
   private _entries: har.Entry[] = [];
   private _zipFile: ZipFile | null = null;
+  private _writtenZipEntries = new Set<string>();
 
   constructor(context: BrowserContext, options: channels.RecordHarOptions) {
     this._artifact = new Artifact(context, path.join(context._browser.options.artifactsDir, `${createGuid()}.har`));
@@ -41,6 +42,8 @@ export class HarRecorder {
     const content = options.content || (expectsZip ? 'attach' : 'embed');
     this._tracer = new HarTracer(context, this, {
       content,
+      slimMode: options.mode === 'minimal',
+      includeTraceInfo: false,
       waitForContentOnStop: true,
       skipScripts: false,
       urlFilter: urlFilterRe ?? options.urlGlob,
@@ -57,8 +60,10 @@ export class HarRecorder {
   }
 
   onContentBlob(sha1: string, buffer: Buffer) {
-    if (this._zipFile)
-      this._zipFile!.addBuffer(buffer, sha1);
+    if (!this._zipFile || this._writtenZipEntries.has(sha1))
+      return;
+    this._writtenZipEntries.add(sha1);
+    this._zipFile!.addBuffer(buffer, sha1);
   }
 
   async flush() {
@@ -70,7 +75,7 @@ export class HarRecorder {
     const log = this._tracer.stop();
     log.entries = this._entries;
 
-    const harFileContent = JSON.stringify({ log }, undefined, 2);
+    const harFileContent = jsonStringify({ log });
 
     if (this._zipFile) {
       const result = new ManualPromise<void>();
@@ -91,4 +96,51 @@ export class HarRecorder {
     this._artifact.reportFinished();
     return this._artifact;
   }
+}
+
+function jsonStringify(object: any): string {
+  const tokens: string[] = [];
+  innerJsonStringify(object, tokens, '', false, undefined);
+  return tokens.join('');
+}
+
+function innerJsonStringify(object: any, tokens: string[], indent: string, flat: boolean, parentKey: string | undefined) {
+  if (typeof object !== 'object' || object === null) {
+    tokens.push(JSON.stringify(object));
+    return;
+  }
+
+  const isArray = Array.isArray(object);
+  if (!isArray && object.constructor.name !== 'Object') {
+    tokens.push(JSON.stringify(object));
+    return;
+  }
+
+  const entries = isArray ? object : Object.entries(object).filter(e => e[1] !== undefined);
+  if (!entries.length) {
+    tokens.push(isArray ? `[]` : `{}`);
+    return;
+  }
+
+  const childIndent = `${indent}  `;
+  let brackets: { open: string, close: string };
+  if (isArray)
+    brackets = flat ? { open: '[', close: ']' } : { open: `[\n${childIndent}`, close: `\n${indent}]` };
+  else
+    brackets = flat ? { open: '{ ', close: ' }' } : { open: `{\n${childIndent}`, close: `\n${indent}}` };
+
+  tokens.push(brackets.open);
+
+  for (let i = 0; i < entries.length; ++i) {
+    const entry = entries[i];
+    if (i)
+      tokens.push(flat ? `, ` : `,\n${childIndent}`);
+    if (!isArray)
+      tokens.push(`${JSON.stringify(entry[0])}: `);
+    const key = isArray ? undefined : entry[0];
+    const flatten = flat || key === 'timings' || parentKey === 'headers';
+    innerJsonStringify(isArray ? entry : entry[1], tokens, childIndent, flatten, key);
+  }
+
+  tokens.push(brackets.close);
 }

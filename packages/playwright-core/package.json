@@ -1,6 +1,6 @@
 {
   "name": "playwright-core",
-  "version": "1.23.0-next",
+  "version": "1.24.0-next",
   "description": "A high-level API to automate web browsers",
   "repository": "github:Microsoft/playwright",
   "homepage": "https://playwright.dev",
@@ -38,7 +38,6 @@
     "./lib/server": "./lib/server/index.js",
     "./lib/utilsBundle": "./lib/utilsBundle.js",
     "./lib/zipBundle": "./lib/zipBundle.js",
-    "./types/har": "./types/har.d.ts",
     "./types/protocol": "./types/protocol.d.ts",
     "./types/structs": "./types/structs.d.ts"
   },

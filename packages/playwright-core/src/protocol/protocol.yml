@@ -231,6 +231,11 @@ RecordHarOptions:
       - embed
       - attach
       - omit
+    mode:
+      type: enum?
+      literals:
+      - full
+      - minimal
     urlGlob: string?
     urlRegexSource: string?
     urlRegexFlags: string?
@@ -2491,10 +2496,13 @@ Route:
 
   commands:
 
+    redirectNavigationRequest:
+      parameters:
+        url: string
+
     abort:
       parameters:
         errorCode: string?
-        redirectAbortedNavigationToUrl: string?
 
     continue:
       parameters:

@@ -40,6 +40,7 @@ import { Artifact } from './artifact';
 import { APIRequestContext } from './fetch';
 import { createInstrumentation } from './clientInstrumentation';
 import { rewriteErrorMessage } from '../utils/stackTrace';
+import { HarRouter } from './harRouter';
 
 export class BrowserContext extends ChannelOwner<channels.BrowserContextChannel> implements api.BrowserContext {
   _pages = new Set<Page>();
@@ -144,8 +145,10 @@ export class BrowserContext extends ChannelOwner<channels.BrowserContextChannel>
   }
 
   async _onRoute(route: network.Route, request: network.Request) {
-    const routeHandlers = this._routes.filter(r => r.matches(request.url()));
+    const routeHandlers = this._routes.slice();
     for (const routeHandler of routeHandlers) {
+      if (!routeHandler.matches(request.url()))
+        continue;
       if (routeHandler.willExpire())
         this._routes.splice(this._routes.indexOf(routeHandler), 1);
       const handled = await routeHandler.handle(route, request);
@@ -265,6 +268,11 @@ export class BrowserContext extends ChannelOwner<channels.BrowserContextChannel>
     this._routes.unshift(new network.RouteHandler(this._options.baseURL, url, handler, options.times));
     if (this._routes.length === 1)
       await this._channel.setNetworkInterceptionEnabled({ enabled: true });
+  }
+
+  async routeFromHAR(har: string, options: { url?: URLMatch, notFound?: 'abort' | 'fallback' } = {}): Promise<void> {
+    const harRouter = await HarRouter.create(this._connection.localUtils(), har, options.notFound || 'abort', { urlMatch: options.url });
+    harRouter.addContextRoute(this);
   }
 
   async unroute(url: URLMatch, handler?: network.RouteHandlerCallback): Promise<void> {
@@ -387,6 +395,7 @@ function prepareRecordHarOptions(options: BrowserContextOptions['recordHar']): c
     urlGlob: isString(options.urlFilter) ? options.urlFilter : undefined,
     urlRegexSource: isRegExp(options.urlFilter) ? options.urlFilter.source : undefined,
     urlRegexFlags: isRegExp(options.urlFilter) ? options.urlFilter.flags : undefined,
+    mode: options.mode
   };
 }
 

@@ -247,37 +247,6 @@ The file path to save the storage state to. If [`option: path`] is a relative pa
 current working directory. If no path is provided, storage
 state is still returned, but won't be saved to the disk.
 
-## js-context-option-har
-* langs: js, python
-- `har` <[Object]>
-  - `path` <[path]> Path to a [HAR](http://www.softwareishard.com/blog/har-12-spec) file with prerecorded network data. If `path` is a relative path, then it is resolved relative to the current working directory.
-  - `fallback` ?<[HarFallback]<"abort"|"continue">> If set to 'abort' any request not found in the HAR file will be aborted. If set to'continue' missing requests will be sent to the network. Defaults to 'abort'.
-  - `urlFilter` ?<[string]|[RegExp]> A glob pattern or regular expression to match request URL while routing. Only requests with URL matching the pattern will be surved from the HAR file. If not specified, all requests are served from the HAR file.
-
-If specified the network requests that are made in the context will be served from the HAR file. Read more about [Replaying from HAR](../network.md#replaying-from-har).
-
-:::note
-Playwright will not serve requests intercepted by Service Worker from the HAR file. See [this](https://github.com/microsoft/playwright/issues/1090) issue. We recommend disabling Service Workers when using request interception by setting [`option: Browser.newContext.serviceWorkers`] to `'block'`.
-:::
-
-## csharp-java-python-context-option-har-path
-* langs: csharp, java, python
-- `harPath` <[path]>
-
-Path to a [HAR](http://www.softwareishard.com/blog/har-12-spec) file with prerecorded network data. If the HAR file contains an entry with the matching URL and HTTP method, then the entry's headers, status and body will be used to fulfill the network request. An entry resulting in a redirect will be followed automatically. If `path` is a relative path, then it is resolved relative to the current working directory.
-
-## csharp-java-python-context-option-har-fallback
-* langs: csharp, java, python
-- `harFallback` ?<[HarFallback]<"abort"|"continue">>
-
-If set to 'abort' any request not found in the HAR file will be aborted. If set to'continue' missing requests will be sent to the network. Defaults to 'abort'.
-
-## csharp-java-python-context-option-har-urlfilter
-* langs: csharp, java, python
-- `harUrlFilter` ?<[string]|[RegExp]>
-
-A glob pattern or regular expression to match request URL while routing. Only requests with URL matching the pattern will be surved from the HAR file. If not specified, all requests are served from the HAR file.
-
 ## context-option-acceptdownloads
 - `acceptDownloads` <[boolean]>
 
@@ -594,6 +563,7 @@ Logger sink for Playwright logging.
     `false`. Deprecated, use `content` policy instead.
   - `content` ?<[HarContentPolicy]<"omit"|"embed"|"attach">> Optional setting to control resource content management. If `omit` is specified, content is not persisted. If `attach` is specified, resources are persistet as separate files and all of these files are archived along with the HAR file. Defaults to `embed`, which stores content inline the HAR file as per HAR specification.
   - `path` <[path]> Path on the filesystem to write the HAR file to. If the file name ends with `.zip`, `attach` mode is used by default.
+  - `mode` ?<[HarMode]<"full"|"minimal">> When set to `minimal`, only record information necessary for routing from HAR. This omits sizes, timing, page, cookies, security and other types of HAR information that are not used when replaying from HAR. Defaults to `full`.
   - `urlFilter` ?<[string]|[RegExp]> A glob or regex pattern to filter requests that are stored in the HAR. When a [`option: baseURL`] via the context options was provided and the passed URL is a path, it gets merged via the [`new URL()`](https://developer.mozilla.org/en-US/docs/Web/API/URL/URL) constructor.
 
 Enables [HAR](http://www.softwareishard.com/blog/har-12-spec) recording for all pages into `recordHar.path` file. If not
@@ -615,6 +585,20 @@ call [`method: BrowserContext.close`] for the HAR to be saved.
 - `recordHarOmitContent` ?<[boolean]>
 
 Optional setting to control whether to omit request content from the HAR. Defaults to `false`.
+
+## context-option-recordhar-content
+* langs: csharp, java, python
+  - alias-python: record_har_content
+- `recordHarContent` ?<[HarContentPolicy]<"omit"|"embed"|"attach">>
+
+Optional setting to control resource content management. If `omit` is specified, content is not persisted. If `attach` is specified, resources are persistet as separate files and all of these files are archived along with the HAR file. Defaults to `embed`, which stores content inline the HAR file as per HAR specification.
+
+## context-option-recordhar-mode
+* langs: csharp, java, python
+  - alias-python: record_har_mode
+- `recordHarMode` ?<[HarMode]<"full"|"minimal">>
+
+When set to `minimal`, only record information necessary for routing from HAR. This omits sizes, timing, page, cookies, security and other types of HAR information that are not used when replaying from HAR. Defaults to `full`.
 
 ## context-option-recordhar-url-filter
 * langs: csharp, java, python
@@ -834,13 +818,11 @@ An acceptable perceived color difference in the [YIQ color space](https://en.wik
 - %%-context-option-logger-%%
 - %%-context-option-videospath-%%
 - %%-context-option-videosize-%%
-- %%-js-context-option-har-%%
-- %%-csharp-java-python-context-option-har-path-%%
-- %%-csharp-java-python-context-option-har-fallback-%%
-- %%-csharp-java-python-context-option-har-urlfilter-%%
 - %%-context-option-recordhar-%%
 - %%-context-option-recordhar-path-%%
 - %%-context-option-recordhar-omit-content-%%
+- %%-context-option-recordhar-content-%%
+- %%-context-option-recordhar-mode-%%
 - %%-context-option-recordhar-url-filter-%%
 - %%-context-option-recordvideo-%%
 - %%-context-option-recordvideo-dir-%%
