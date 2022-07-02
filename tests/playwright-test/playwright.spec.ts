@@ -67,8 +67,7 @@ test('should run in three browsers with --browser', async ({ runInlineTest }) =>
     `,
     'a.test.ts': `
       const { test } = pwt;
-      test('pass', async ({ page, browserName }) => {
-        expect(page.viewportSize()).toEqual({ width: 800, height: 800 });
+      test('pass', async ({ browserName }) => {
         console.log('\\n%%browser=' + browserName);
       });
     `,
@@ -90,8 +89,7 @@ test('should run in one browser with --browser', async ({ runInlineTest }) => {
     `,
     'a.test.ts': `
       const { test } = pwt;
-      test('pass', async ({ page, browserName }) => {
-        expect(page.viewportSize()).toEqual({ width: 800, height: 800 });
+      test('pass', async ({ browserName }) => {
         console.log('\\n%%browser=' + browserName);
       });
     `,
@@ -391,7 +389,7 @@ test('should report error from beforeAll timeout', async ({ runInlineTest }, tes
   expect(result.exitCode).toBe(1);
   expect(result.passed).toBe(0);
   expect(result.failed).toBe(1);
-  expect(result.output).toContain('Timeout of 2000ms exceeded in beforeAll hook.');
+  expect(result.output).toContain('"beforeAll" hook timeout of 2000ms exceeded.');
   expect(result.output).toContain('waiting for selector');
   expect(stripAnsi(result.output)).toContain(`11 |           page.textContent('text=More missing'),`);
 });
@@ -406,7 +404,7 @@ test('should not report waitForEventInfo as pending', async ({ runInlineTest }, 
         await page.click('text=Missing');
       });
     `,
-  }, { workers: 1, timeout: 2000 });
+  }, { workers: 1, timeout: 5000 });
 
   expect(result.exitCode).toBe(1);
   expect(result.passed).toBe(0);
