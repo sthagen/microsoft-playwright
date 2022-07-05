@@ -66,6 +66,8 @@ SerializedValue:
       - "-0"
     # String representation of the Date.
     d: string?
+    # String representation of the URL.
+    u: string?
     # Regular expression pattern and flags.
     r:
       type: object?
@@ -498,7 +500,7 @@ LocalUtils:
         headers:
           type: array
           items: NameValue
-        postData: string?
+        postData: binary?
         isNavigationRequest: boolean
       returns:
         action:
@@ -514,7 +516,7 @@ LocalUtils:
         headers:
           type: array?
           items: NameValue
-        body: string?
+        body: binary?
 
     harClose:
       parameters:

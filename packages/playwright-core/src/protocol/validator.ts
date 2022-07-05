@@ -47,6 +47,7 @@ scheme.SerializedValue = tObject({
   s: tOptional(tString),
   v: tOptional(tEnum(['null', 'undefined', 'NaN', 'Infinity', '-Infinity', '-0'])),
   d: tOptional(tString),
+  u: tOptional(tString),
   r: tOptional(tObject({
     p: tString,
     f: tString,
@@ -223,7 +224,7 @@ scheme.LocalUtilsHarLookupParams = tObject({
   url: tString,
   method: tString,
   headers: tArray(tType('NameValue')),
-  postData: tOptional(tString),
+  postData: tOptional(tBinary),
   isNavigationRequest: tBoolean,
 });
 scheme.LocalUtilsHarLookupResult = tObject({
@@ -232,7 +233,7 @@ scheme.LocalUtilsHarLookupResult = tObject({
   redirectURL: tOptional(tString),
   status: tOptional(tNumber),
   headers: tOptional(tArray(tType('NameValue'))),
-  body: tOptional(tString),
+  body: tOptional(tBinary),
 });
 scheme.LocalUtilsHarCloseParams = tObject({
   harId: tString,
