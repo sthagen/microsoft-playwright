@@ -75,6 +75,7 @@ export abstract class BrowserContext extends SdkObject {
   readonly _tempDirs: string[] = [];
   private _settingStorageState = false;
   readonly initScripts: string[] = [];
+  private _routesInFlight = new Set<network.Route>();
 
   constructor(browser: Browser, options: channels.BrowserNewContextParams, browserContextId: string | undefined) {
     super(browser, 'browser-context');
@@ -126,6 +127,9 @@ export abstract class BrowserContext extends SdkObject {
       await this.extendInjectedScript(consoleApiSource.source);
     if (this._options.serviceWorkers === 'block')
       await this.addInitScript(`\nnavigator.serviceWorker.register = () => { console.warn('Service Worker registration blocked by Playwright'); };\n`);
+
+    if (this._options.permissions)
+      await this.grantPermissions(this._options.permissions);
   }
 
   async _ensureVideosPath() {
@@ -454,6 +458,19 @@ export abstract class BrowserContext extends SdkObject {
   async _harExport(harId: string | undefined): Promise<Artifact> {
     const recorder = this._harRecorders.get(harId || '')!;
     return recorder.export();
+  }
+
+  addRouteInFlight(route: network.Route) {
+    this._routesInFlight.add(route);
+  }
+
+  removeRouteInFlight(route: network.Route) {
+    this._routesInFlight.delete(route);
+  }
+
+  async _cancelAllRoutesInFlight() {
+    await Promise.all([...this._routesInFlight].map(r => r.abort())).catch(() => {});
+    this._routesInFlight.clear();
   }
 }
 

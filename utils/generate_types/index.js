@@ -98,6 +98,13 @@ class TypesGenerator {
       handledClasses.add(className);
       return this.writeComment(docClass.comment) + '\n';
     }, (className, methodName, overloadIndex) => {
+      if (className === 'SuiteFunction' && methodName === '__call') {
+        console.log(className, methodName, overloadIndex);
+        const cls = this.documentation.classes.get('Test');
+        const method = cls.membersArray.find(m => m.alias === 'describe' && m.overloadIndex === overloadIndex);
+        return this.memberJSDOC(method, '  ').trimLeft();
+      }
+
       const docClass = this.docClassForName(className);
       let method;
       if (docClass) {
@@ -419,7 +426,8 @@ class TypesGenerator {
       const name = namespace.map(n => n[0].toUpperCase() + n.substring(1)).join('');
       const shouldExport = exported[name];
       const properties = namespace[namespace.length - 1] === 'options' ? type.sortedProperties() : type.properties;
-      this.objectDefinitions.push({ name, properties });
+      if (!this.objectDefinitions.some(o => o.name === name))
+        this.objectDefinitions.push({ name, properties });
       if (shouldExport) {
         out = name;
       } else {
