@@ -60,8 +60,10 @@ export class TimeoutManager {
     this._updateRunnables(this._runnable, fixture);
   }
 
-  defaultTimeout() {
-    return this._defaultSlot.timeout;
+  defaultSlotTimings() {
+    const slot = this._currentSlot();
+    slot.elapsed = this._timeoutRunner.elapsed();
+    return this._defaultSlot;
   }
 
   slow() {
@@ -107,10 +109,11 @@ export class TimeoutManager {
     let message = '';
     const timeout = this._currentSlot().timeout;
     switch (this._runnable.type) {
-      case 'test':
+      case 'test': {
         const fixtureSuffix = this._fixture ? ` while ${this._fixture.title}` : '';
         message = `Test timeout of ${timeout}ms exceeded${fixtureSuffix}.`;
         break;
+      }
       case 'afterEach':
       case 'beforeEach':
         message = `Test timeout of ${timeout}ms exceeded while running "${this._runnable.type}" hook.`;
@@ -119,9 +122,11 @@ export class TimeoutManager {
       case 'afterAll':
         message = `"${this._runnable.type}" hook timeout of ${timeout}ms exceeded.`;
         break;
-      case 'teardown':
-        message = `Worker teardown timeout of ${timeout}ms exceeded.`;
+      case 'teardown': {
+        const fixtureSuffix = this._fixture ? ` while ${this._fixture.title}` : '';
+        message = `Worker teardown timeout of ${timeout}ms exceeded${fixtureSuffix}.`;
         break;
+      }
       case 'skip':
       case 'slow':
       case 'fixme':
