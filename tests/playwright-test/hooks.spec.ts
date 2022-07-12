@@ -636,7 +636,7 @@ test('should not hang and report results when worker process suddenly exits duri
   expect(result.passed).toBe(0);
   expect(result.failed).toBe(1);
   expect(result.output).toContain('Worker process exited unexpectedly');
-  expect(stripAnsi(result.output)).toContain('[1/1] a.spec.js:6:7 › failing due to afterall');
+  expect(stripAnsi(result.output)).toContain('a.spec.js:6:7 › failing due to afterall');
 });
 
 test('unhandled rejection during beforeAll should be reported and prevent more tests', async ({ runInlineTest }) => {
@@ -782,4 +782,34 @@ test('beforeAll failure should only prevent tests that are affected', async ({ r
     '%%beforeAll',
     '%%test3',
   ]);
+});
+
+test('afterAll should run if last test was skipped', async ({ runInlineTest }) => {
+  const result = await runInlineTest({
+    'a.test.js': `
+      const { test } = pwt;
+      test.afterAll(() => console.log('after-all'));
+      test('test1', () => {});
+      test.skip('test2', () => {});
+    `,
+  });
+  expect(result.exitCode).toBe(0);
+  expect(result.skipped).toBe(1);
+  expect(result.passed).toBe(1);
+  expect(result.output).toContain('after-all');
+});
+
+test('afterAll should run if last test was skipped 2', async ({ runInlineTest }) => {
+  const result = await runInlineTest({
+    'a.test.js': `
+      const { test } = pwt;
+      test.afterAll(() => console.log('after-all'));
+      test('test1', () => {});
+      test('test2', () => { test.skip(); });
+    `,
+  });
+  expect(result.exitCode).toBe(0);
+  expect(result.skipped).toBe(1);
+  expect(result.passed).toBe(1);
+  expect(result.output).toContain('after-all');
 });

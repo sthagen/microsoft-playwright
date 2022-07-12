@@ -47,10 +47,7 @@ test('serviceWorker(), and fromServiceWorker() work', async ({ context, page, se
     context.waitForEvent('request', r => r.url().endsWith('/request-from-within-worker.txt')),
     page.goto(server.PREFIX + '/serviceworkers/fetch/sw.html')
   ]);
-  const [inner] = await Promise.all([
-    context.waitForEvent('request', r => r.url().endsWith('/inner.txt')),
-    page.evaluate(() => fetch('/inner.txt')),
-  ]);
+
   expect(html.frame()).toBeTruthy();
   expect(html.serviceWorker()).toBe(null);
   expect((await html.response()).fromServiceWorker()).toBe(false);
@@ -58,10 +55,6 @@ test('serviceWorker(), and fromServiceWorker() work', async ({ context, page, se
   expect(main.frame).toThrow();
   expect(main.serviceWorker()).toBe(worker);
   expect((await main.response()).fromServiceWorker()).toBe(false);
-
-  expect(inner.frame()).toBeTruthy();
-  expect(inner.serviceWorker()).toBe(null);
-  expect((await inner.response()).fromServiceWorker()).toBe(true);
 
   expect(inWorker.frame).toThrow();
   expect(inWorker.serviceWorker()).toBe(worker);
@@ -101,6 +94,9 @@ test('should intercept service worker requests (main and within)', async ({ cont
 
   const [ sw ] = await Promise.all([
     context.waitForEvent('serviceworker'),
+    context.waitForEvent('response', r => r.url().endsWith('/request-from-within-worker')),
+    context.waitForEvent('request', r => r.url().endsWith('sw.js') && !!r.serviceWorker()),
+    context.waitForEvent('response', r => r.url().endsWith('sw.js') && !r.fromServiceWorker()),
     page.goto(server.PREFIX + '/serviceworkers/empty/sw.html'),
   ]);
 
@@ -158,6 +154,7 @@ test('should intercept service worker importScripts', async ({ context, page, se
 
   const [ sw ] = await Promise.all([
     context.waitForEvent('serviceworker'),
+    context.waitForEvent('response', r => r.url().endsWith('/import.js')),
     page.goto(server.PREFIX + '/serviceworkers/empty/sw.html'),
   ]);
 
@@ -192,6 +189,7 @@ test('should report intercepted service worker requests in HAR', async ({ pageWi
 
   const [ sw ] = await Promise.all([
     context.waitForEvent('serviceworker'),
+    context.waitForEvent('response', r => r.url().endsWith('/request-from-within-worker')),
     page.goto(server.PREFIX + '/serviceworkers/empty/sw.html'),
   ]);
 
@@ -235,6 +233,116 @@ test('should intercept only serviceworker request, not page', async ({ context, 
   expect(response).toBe('from sw');
 });
 
+test('should emit new service worker on update', async ({ context, page, server }) => {
+  let version = 0;
+  server.setRoute('/worker.js', (req, res) => {
+    res.writeHead(200, 'OK', { 'Content-Type': 'text/javascript' });
+    res.write(`self.PW_VERSION = ${version++};`);
+    res.end();
+  });
+
+  server.setRoute('/home', (req, res) => {
+    res.write(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>Service Worker Update Demo</title>
+        </head>
+        <body>
+          <button id="update" disabled>update service worker</button>
+          <script>
+            const updateBtn = document.getElementById('update');
+            updateBtn.addEventListener('click', evt => {
+              evt.preventDefault();
+              registration.then(r => r.update());
+            });
+
+            const registration = new Promise(r => navigator.serviceWorker.register('/worker.js').then(r));
+            registration.then(() => updateBtn.disabled = false);
+          </script>
+        </body>
+      </html>
+    `);
+    res.end();
+  });
+
+  const [ sw ] = await Promise.all([
+    context.waitForEvent('serviceworker'),
+    page.goto(server.PREFIX + '/home'),
+  ]);
+
+  await expect.poll(() => sw.evaluate(() => self['PW_VERSION'])).toBe(0);
+
+  const [ updatedSW ] = await Promise.all([
+    context.waitForEvent('serviceworker'),
+    page.click('#update'),
+  ]);
+
+  await expect.poll(() => updatedSW.evaluate(() => self['PW_VERSION'])).toBe(1);
+});
+
+test('should intercept service worker update requests', async ({ context, page, server }) => {
+  test.fixme();
+  test.info().annotations.push({ type: 'issue', description: 'https://github.com/microsoft/playwright/issues/14711' });
+
+  let version = 0;
+  server.setRoute('/worker.js', (req, res) => {
+    res.writeHead(200, 'OK', { 'Content-Type': 'text/javascript' });
+    res.write(`self.PW_VERSION = ${version++};`);
+    res.end();
+  });
+
+  server.setRoute('/home', (req, res) => {
+    res.write(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>Service Worker Update Demo</title>
+        </head>
+        <body>
+          <button id="update" disabled>update service worker</button>
+          <script>
+            const updateBtn = document.getElementById('update');
+            updateBtn.addEventListener('click', evt => {
+              evt.preventDefault();
+              registration.then(r => r.update());
+            });
+
+            const registration = new Promise(r => navigator.serviceWorker.register('/worker.js').then(r));
+            registration.then(() => updateBtn.disabled = false);
+          </script>
+        </body>
+      </html>
+    `);
+    res.end();
+  });
+
+  const [ sw ] = await Promise.all([
+    context.waitForEvent('serviceworker'),
+    page.goto(server.PREFIX + '/home'),
+  ]);
+
+  await expect.poll(() => sw.evaluate(() => self['PW_VERSION'])).toBe(0);
+
+  // Before triggering, let's intercept the update request
+  await context.route('**/worker.js', async route => {
+    await route.fulfill({
+      status: 200,
+      body: `self.PW_VERSION = "intercepted";`,
+      contentType: 'text/javascript',
+    });
+  });
+
+  const [ updatedSW ] = await Promise.all([
+    context.waitForEvent('serviceworker'),
+    // currently times out here
+    context.waitForEvent('request', r => r.url().endsWith('worker.js')),
+    page.click('#update'),
+  ]);
+
+  await expect.poll(() => updatedSW.evaluate(() => self['PW_VERSION'])).toBe('intercepted');
+});
+
 test('setOffline', async ({ context, page, server }) => {
   const [worker] = await Promise.all([
     context.waitForEvent('serviceworker'),
@@ -250,6 +358,39 @@ test('setOffline', async ({ context, page, server }) => {
   expect(error).toMatch(/REJECTED.*Failed to fetch/);
 });
 
+test('should emit page-level request event for respondWith', async ({ page, server }) => {
+  await page.goto(server.PREFIX + '/serviceworkers/fetchdummy/sw.html');
+  await page.evaluate(() => window['activationPromise']);
+
+  // Sanity check.
+  const [pageReq, swResponse] = await Promise.all([
+    page.waitForEvent('request'),
+    page.evaluate(() => window['fetchDummy']('foo')),
+  ]);
+  expect(swResponse).toBe('responseFromServiceWorker:foo');
+  expect(pageReq.url()).toMatch(/fetchdummy\/foo$/);
+  expect(pageReq.serviceWorker()).toBe(null);
+  expect((await pageReq.response()).fromServiceWorker()).toBe(true);
+});
+
+test('should emit page-level request event for respondWith when interception enabled', async ({ page, server, context }) => {
+  test.fixme();
+  test.info().annotations.push({ type: 'issue', description: 'https://github.com/microsoft/playwright/issues/15474' });
+
+  await context.route('**', route => route.continue());
+  await page.goto(server.PREFIX + '/serviceworkers/fetchdummy/sw.html');
+  await page.evaluate(() => window['activationPromise']);
+
+  // Sanity check.
+  const [pageReq, swResponse] = await Promise.all([
+    page.waitForEvent('request'),
+    page.evaluate(() => window['fetchDummy']('foo')),
+  ]);
+  expect(swResponse).toBe('responseFromServiceWorker:foo');
+  expect(pageReq.url()).toMatch(/fetchdummy\/foo$/);
+  expect(pageReq.serviceWorker()).toBe(null);
+  expect((await pageReq.response()).fromServiceWorker()).toBe(true);
+});
 
 test('setExtraHTTPHeaders', async ({ context, page, server }) => {
   const [worker] = await Promise.all([

@@ -14,30 +14,5 @@
  * limitations under the License.
  */
 
-export type JsxComponent = {
-  kind: 'jsx',
-  type: string,
-  props: {[key: string]: any},
-  children: (Component | string)[],
-};
-
-export type ObjectComponentOptions = {
-  props?: { [key: string]: any },
-  slots?: { [key: string]: any },
-  on?: { [key: string]: Function },
-  hooksConfig?: any,
-};
-
-export type ObjectComponent = {
-  kind: 'object',
-  type: string,
-  options?: ObjectComponentOptions
-};
-
-export type Component = JsxComponent | ObjectComponent;
-
-declare global {
-  interface Window {
-    playwrightMount(component: Component, rootElement: Element, hooksConfig: any): Promise<void>;
-  }
-}
+export declare function beforeMount(callback: (params: { hooksConfig: any }) => Promise<void>): void;
+export declare function afterMount(callback: (params: { hooksConfig: any }) => Promise<void>): void;

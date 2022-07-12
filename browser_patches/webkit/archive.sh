@@ -28,9 +28,9 @@ if ! [[ -d $(dirname "$ZIP_PATH") ]]; then
   exit 1
 fi
 
-IS_UNIVERSAL=""
+IS_UNIVERSAL_BUILD=""
 if [[ $2 == "--universal" ]]; then
-  IS_UNIVERSAL=1
+  IS_UNIVERSAL_BUILD=1
 fi
 
 main() {
@@ -67,7 +67,7 @@ createZipForLinux() {
 
   # Generate and unpack MiniBrowser bundles for each port
   for port in gtk wpe; do
-    if [[ -n "${IS_UNIVERSAL}" ]]; then
+    if [[ -n "${IS_UNIVERSAL_BUILD}" ]]; then
       Tools/Scripts/generate-bundle \
           --syslibs=bundle-all \
           --bundle=MiniBrowser --release \
@@ -84,9 +84,15 @@ createZipForLinux() {
   done
 
   cd "$tmpdir"
-  # de-duplicate common files: convert to relative symlinks identical files (same hash)
-  rdfind -deterministic true -makesymlinks true -makehardlinks false -makeresultsfile false .
-  symlinks -rc .
+
+  if [[ -n "${IS_UNIVERSAL_BUILD}" ]]; then
+    # De-duplicate common files: convert to relative symlinks identical files (same hash).
+    # We apply this algorithm only to unified build since in JHBuild WPE/Minibrowser
+    # and GTK/Minibrowser executables are identical and should not be symlinked.
+    rdfind -deterministic true -makesymlinks true -makehardlinks false -makeresultsfile false .
+    symlinks -rc .
+  fi
+
   # zip resulting directory and cleanup TMP.
   zip --symlinks -r "$ZIP_PATH" ./
   cd -

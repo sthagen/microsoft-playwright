@@ -66,3 +66,15 @@ test('optionless should work', async ({ mount }) => {
   const component = await mount(Component)
   await expect(component).toContainText('test')
 })
+
+test('should run hooks', async ({ page, mount }) => {
+  const messages = []
+  page.on('console', m => messages.push(m.text()))
+  await mount(Button, {
+    props: {
+      title: 'Submit'
+    },
+    hooksConfig: { route: 'A' }
+  })
+  expect(messages).toEqual(['Before mount: {\"route\":\"A\"}, app: true', 'After mount el: HTMLButtonElement'])
+})
