@@ -13,7 +13,7 @@ if [[ ($1 == '--help') || ($1 == '-h') ]]; then
   exit 0
 fi
 
-BUILD_FLAVOR="${1}"
+export BUILD_FLAVOR="${1}"
 
 DOCKER_PLATFORM="linux/amd64"
 DOCKER_IMAGE_NAME=""
@@ -99,34 +99,31 @@ else
 fi
 
 DOCKER_CONTAINER_NAME="build-${BUILD_FLAVOR}"
+DOCKER_ARGS=$(echo \
+  --env CI \
+  --env BUILD_FLAVOR \
+  --env TELEGRAM_BOT_KEY \
+  --env AZ_ACCOUNT_NAME \
+  --env AZ_ACCOUNT_KEY \
+  --env GITHUB_SERVER_URL \
+  --env GITHUB_REPOSITORY \
+  --env GITHUB_RUN_ID \
+  --env GH_TOKEN \
+  --env DEBIAN_FRONTEND=noninteractive \
+  --env TZ="America/Los_Angeles"
+)
 
 function ensure_docker_container {
   if docker ps | grep "${DOCKER_CONTAINER_NAME}" 2>&1 1>/dev/null; then
     return;
   fi
-  EXTRA_FLAGS=""
   if [[ "${BUILD_FLAVOR}" == "webkit-universal" ]]; then
     # NOTE: WebKit Linux Universal build is run in PRIVILEGED container due to Flatpak!
-    EXTRA_FLAGS="--privileged"
+    DOCKER_ARGS="${DOCKER_ARGS} --privileged"
   fi
-  docker pull --platform "${DOCKER_PLATFORM}" "${DOCKER_IMAGE_NAME}" && docker run \
-      --rm \
-      ${EXTRA_FLAGS} \
-      --name "${DOCKER_CONTAINER_NAME}" \
-      --platform "${DOCKER_PLATFORM}" \
-      --env CI \
-      --env BUILD_FLAVOR \
-      --env TELEGRAM_BOT_KEY \
-      --env AZ_ACCOUNT_NAME \
-      --env AZ_ACCOUNT_KEY \
-      --env GITHUB_SERVER_URL \
-      --env GITHUB_REPOSITORY \
-      --env GITHUB_RUN_ID \
-      --env GH_TOKEN \
-      --env DEBIAN_FRONTEND=noninteractive \
-      --env TZ="America/Los_Angeles" \
-      -d -t "${DOCKER_IMAGE_NAME}" /bin/bash
-  docker exec "${DOCKER_CONTAINER_NAME}" /bin/bash -c '
+  docker pull --platform "${DOCKER_PLATFORM}" "${DOCKER_IMAGE_NAME}"
+  docker run --rm ${DOCKER_ARGS} --name "${DOCKER_CONTAINER_NAME}" --platform "${DOCKER_PLATFORM}" -d -t "${DOCKER_IMAGE_NAME}" /bin/bash
+  docker exec ${DOCKER_ARGS} "${DOCKER_CONTAINER_NAME}" /bin/bash -c '
     set -e
     arch
     if [[ "${BUILD_FLAVOR}" == webkit-debian-11 ]]; then
@@ -157,13 +154,16 @@ function ensure_docker_container {
 
     # Install AZ CLI on CI only
     if [[ -n "${CI}" ]]; then
-      curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash
+      # Install AZ CLI with Python since they do not ship
+      # aarch64 to APT: https://github.com/Azure/azure-cli/issues/7368
+      # Pin so future releases dont break us.
+      pip install azure-cli==2.38.0
     fi
 
     if [[ "${BUILD_FLAVOR}" == "firefox-"* ]]; then
-      # install rust
-      curl --proto "=https" --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-      export PATH="${PATH}:/home/pwuser/.cargo/bin"
+      # install rust as a pwuser
+      su -l pwuser -c "curl --proto \"=https\" --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y"
+      echo "PATH=\"${PATH}:/home/pwuser/.cargo/bin\"" > /etc/environment
     elif [[ "${BUILD_FLAVOR}" == "webkit-ubuntu-18.04" ]]; then
       # Ubuntu 18.04 specific: update CMake. Default CMake on Ubuntu 18.04 is 3.10, whereas WebKit requires 3.12+.
       apt purge --auto-remove cmake
@@ -174,37 +174,43 @@ function ensure_docker_container {
 
       # Ubuntu 18.04 specific: install GCC-8. WebKit requires gcc 8.3+ to compile.
       apt-get install -y gcc-8 g++-8
+    elif [[ "${BUILD_FLAVOR}" == webkit-*-arm64 ]]; then
+      apt-get install -y clang-12
     fi
 
-    su pwuser
-    cd /home/pwuser
-    git config --global user.email "you@example.com"
-    git config --global user.name "Your Name"
+    git config --system user.email "you@example.com"
+    git config --system user.name "Your Name"
 
     # mitigate git clone issues on CI.
     # See https://stdworkflow.com/877/error-rpc-failed-curl-56-gnutls-recv-error-54-error-in-the-pull-function
-    git config --global http.postBuffer 524288000
-    git config --global http.lowSpeedLimit 0
-    git config --global http.lowSpeedTime 999999
+    git config --system http.postBuffer 524288000
+    git config --system http.lowSpeedLimit 0
+    git config --system http.lowSpeedTime 999999
 
+    su pwuser
+    cd /home/pwuser
     git clone --depth=1 https://github.com/microsoft/playwright
   '
 }
 
-if [[ "$2" == "prepare" ]]; then
+if [[ "$2" == "prepare" || "$2" == "start" ]]; then
   ensure_docker_container
 elif [[ "$2" == "compile" ]]; then
   ensure_docker_container
-  docker exec --user pwuser --workdir "/home/pwuser/playwright" "${DOCKER_CONTAINER_NAME}" /bin/bash -c '
+  echo "BUILD FLAVOR: ${BUILD_FLAVOR}"
+  docker exec --user pwuser --workdir "/home/pwuser/playwright" ${DOCKER_ARGS} "${DOCKER_CONTAINER_NAME}" /bin/bash -c '
     if [[ "${BUILD_FLAVOR}" == "webkit-ubuntu-18.04" ]]; then
       export CC=/usr/bin/gcc-8
-      export CXX=/usr/bin/gcc++-8
+      export CXX=/usr/bin/g++-8
+    elif [[ "${BUILD_FLAVOR}" == webkit-*-arm64 ]]; then
+      export CC=/usr/bin/clang-12
+      export CXX=/usr/bin/clang++-12
     fi
     ./browser_patches/checkout_build_archive_upload.sh "${BUILD_FLAVOR}"
   '
 elif [[ "$2" == "enter" || -z "$2" ]]; then
   ensure_docker_container
-  docker exec --user pwuser --workdir "/home/pwuser/playwright" -it "${DOCKER_CONTAINER_NAME}" /bin/bash
+  docker exec --user pwuser --workdir "/home/pwuser/playwright" ${DOCKER_ARGS} -it "${DOCKER_CONTAINER_NAME}" /bin/bash
 elif [[ "$2" == "kill" || "$2" == "stop" ]]; then
   docker kill "${DOCKER_CONTAINER_NAME}"
 else
