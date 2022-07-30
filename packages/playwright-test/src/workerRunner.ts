@@ -18,7 +18,7 @@ import { colors, rimraf } from 'playwright-core/lib/utilsBundle';
 import util from 'util';
 import { EventEmitter } from 'events';
 import { relativeFilePath, serializeError } from './util';
-import type { TestBeginPayload, TestEndPayload, RunPayload, DonePayload, WorkerInitParams, StepBeginPayload, StepEndPayload, TeardownErrorsPayload } from './ipc';
+import type { TestBeginPayload, TestEndPayload, RunPayload, DonePayload, WorkerInitParams, StepBeginPayload, StepEndPayload, TeardownErrorsPayload, TestServerTestResolvedPayload } from './ipc';
 import { setCurrentTestInfo } from './globals';
 import { Loader } from './loader';
 import type { Suite, TestCase } from './test';
@@ -86,15 +86,13 @@ export class WorkerRunner extends EventEmitter {
     await this._loadIfNeeded();
     await this._teardownScopes();
     if (this._fatalErrors.length) {
-      const diagnostics = this._createWorkerTeardownDiagnostics();
-      if (diagnostics)
-        this._fatalErrors.unshift(diagnostics);
+      this.appendWorkerTeardownDiagnostics(this._fatalErrors[this._fatalErrors.length - 1]);
       const payload: TeardownErrorsPayload = { fatalErrors: this._fatalErrors };
       this.emit('teardownErrors', payload);
     }
   }
 
-  private _createWorkerTeardownDiagnostics(): TestError | undefined {
+  appendWorkerTeardownDiagnostics(error: TestError) {
     if (!this._lastRunningTests.length)
       return;
     const count = this._totalRunningTests === 1 ? '1 test' : `${this._totalRunningTests} tests`;
@@ -102,10 +100,23 @@ export class WorkerRunner extends EventEmitter {
     if (this._lastRunningTests.length < this._totalRunningTests)
       lastMessage = `, last ${this._lastRunningTests.length} tests were`;
     const message = [
-      colors.red(`Worker teardown error. This worker ran ${count}${lastMessage}:`),
+      '',
+      '',
+      colors.red(`Failed worker ran ${count}${lastMessage}:`),
       ...this._lastRunningTests.map(testInfo => formatTestTitle(testInfo._test, testInfo.project.name)),
     ].join('\n');
-    return { message };
+    if (error.message) {
+      if (error.stack) {
+        let index = error.stack.indexOf(error.message);
+        if (index !== -1) {
+          index += error.message.length;
+          error.stack = error.stack.substring(0, index) + message + error.stack.substring(index);
+        }
+      }
+      error.message += message;
+    } else if (error.value) {
+      error.value += message;
+    }
   }
 
   private async _teardownScopes() {
@@ -150,7 +161,7 @@ export class WorkerRunner extends EventEmitter {
       return;
 
     this._loader = await Loader.deserialize(this._params.loader);
-    this._project = this._loader.fullConfig().projects[this._params.projectIndex];
+    this._project = this._loader.fullConfig().projects.find(p => p._id === this._params.projectId)!;
   }
 
   async runTestGroup(runPayload: RunPayload) {
@@ -161,7 +172,16 @@ export class WorkerRunner extends EventEmitter {
       await this._loadIfNeeded();
       const fileSuite = await this._loader.loadTestFile(runPayload.file, 'worker');
       const suite = this._loader.buildFileSuiteForProject(this._project, fileSuite, this._params.repeatEachIndex, test => {
-        if (!entries.has(test._id))
+        if (test.location.line === runPayload.testServerTestLine) {
+          const testResolvedPayload: TestServerTestResolvedPayload = {
+            testId: test.id,
+            title: test.title,
+            location: test.location
+          };
+          this.emit('testServer:testResolved', testResolvedPayload);
+          entries.set(test.id, { testId: test.id, retry: 0 });
+        }
+        if (!entries.has(test.id))
           return false;
         return true;
       });
@@ -169,13 +189,13 @@ export class WorkerRunner extends EventEmitter {
         this._extraSuiteAnnotations = new Map();
         this._activeSuites = new Set();
         this._didRunFullCleanup = false;
-        const tests = suite.allTests().filter(test => entries.has(test._id));
+        const tests = suite.allTests();
         for (let i = 0; i < tests.length; i++) {
           // Do not run tests after full cleanup, because we are entirely done.
           if (this._isStopped && this._didRunFullCleanup)
             break;
-          const entry = entries.get(tests[i]._id)!;
-          entries.delete(tests[i]._id);
+          const entry = entries.get(tests[i].id)!;
+          entries.delete(tests[i].id);
           await this._runTest(tests[i], entry.retry, tests[i + 1]);
         }
       } else {
@@ -194,8 +214,8 @@ export class WorkerRunner extends EventEmitter {
         fatalUnknownTestIds
       };
       for (const test of this._skipRemainingTestsInSuite?.allTests() || []) {
-        if (entries.has(test._id))
-          donePayload.skipTestsDueToSetupFailure.push(test._id);
+        if (entries.has(test.id))
+          donePayload.skipTestsDueToSetupFailure.push(test.id);
       }
       this.emit('done', donePayload);
       this._fatalErrors = [];
@@ -217,7 +237,7 @@ export class WorkerRunner extends EventEmitter {
           callbackHandled = true;
           const error = result.error instanceof Error ? serializeError(result.error) : result.error;
           const payload: StepEndPayload = {
-            testId: test._id,
+            testId: test.id,
             refinedTitle: step.refinedTitle,
             stepId,
             wallTime: Date.now(),
@@ -230,7 +250,7 @@ export class WorkerRunner extends EventEmitter {
       // Sanitize location that comes from user land, it might have extra properties.
       const location = data.location && hasLocation ? { file: data.location.file, line: data.location.line, column: data.location.column } : undefined;
       const payload: StepBeginPayload = {
-        testId: test._id,
+        testId: test.id,
         stepId,
         ...data,
         location,
@@ -567,14 +587,14 @@ export class WorkerRunner extends EventEmitter {
 
 function buildTestBeginPayload(testInfo: TestInfoImpl): TestBeginPayload {
   return {
-    testId: testInfo._test._id,
+    testId: testInfo._test.id,
     startWallTime: testInfo._startWallTime,
   };
 }
 
 function buildTestEndPayload(testInfo: TestInfoImpl): TestEndPayload {
   return {
-    testId: testInfo._test._id,
+    testId: testInfo._test.id,
     duration: testInfo.duration,
     status: testInfo.status!,
     errors: testInfo.errors,

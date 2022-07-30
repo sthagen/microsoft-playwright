@@ -45,6 +45,7 @@ import type { TestRunnerPlugin } from './plugins';
 import { setRunnerToAddPluginsTo } from './plugins';
 import { webServerPluginsForConfig } from './plugins/webServerPlugin';
 import { MultiMap } from 'playwright-core/lib/utils/multimap';
+import { createGuid } from 'playwright-core/lib/utils';
 
 const removeFolderAsync = promisify(rimraf);
 const readDirAsync = promisify(fs.readdir);
@@ -209,6 +210,37 @@ export class Runner {
     return report;
   }
 
+  async runTestServer(): Promise<void> {
+    const config = this._loader.fullConfig();
+    this._reporter = await this._createReporter(false);
+    const rootSuite = new Suite('', 'root');
+    this._reporter.onBegin?.(config, rootSuite);
+    const result: FullResult = { status: 'passed' };
+    const globalTearDown = await this._performGlobalSetup(config, rootSuite, result);
+    if (result.status !== 'passed')
+      return;
+
+    while (true) {
+      const nextTest = await (this._reporter as any)._nextTest!();
+      if (!nextTest)
+        break;
+      const { projectId, file, line } = nextTest;
+      const testGroup: TestGroup = {
+        workerHash: createGuid(), // Create new worker for each test.
+        requireFile: file,
+        repeatEachIndex: 0,
+        projectId,
+        tests: [],
+        testServerTestLine: line,
+      };
+      const dispatcher = new Dispatcher(this._loader, [testGroup], this._reporter);
+      await dispatcher.run();
+    }
+
+    await globalTearDown?.();
+    await this._reporter.onEnd?.(result);
+  }
+
   private async _run(list: boolean, testFileReFilters: FilePatternFilter[], projectNames?: string[]): Promise<FullResult> {
     const filesByProject = await this._collectFiles(testFileReFilters, projectNames);
     return await this._runFiles(list, filesByProject, testFileReFilters);
@@ -266,7 +298,7 @@ export class Runner {
     const fatalErrors: TestError[] = [];
 
     // 1. Add all tests.
-    const preprocessRoot = new Suite('');
+    const preprocessRoot = new Suite('', 'root');
     for (const file of allTestFiles) {
       const fileSuite = await this._loader.loadTestFile(file, 'runner');
       if (fileSuite._loadError)
@@ -299,11 +331,11 @@ export class Runner {
       fileSuites.set(fileSuite._requireFile, fileSuite);
 
     const outputDirs = new Set<string>();
-    const rootSuite = new Suite('');
+    const rootSuite = new Suite('', 'root');
     for (const [project, files] of filesByProject) {
       const grepMatcher = createTitleMatcher(project.grep);
       const grepInvertMatcher = project.grepInvert ? createTitleMatcher(project.grepInvert) : null;
-      const projectSuite = new Suite(project.name);
+      const projectSuite = new Suite(project.name, 'project');
       projectSuite._projectConfig = project;
       if (project._fullyParallel)
         projectSuite._parallelMode = 'parallel';
@@ -671,7 +703,7 @@ function createTestGroups(rootSuite: Suite, workers: number): TestGroup[] {
       workerHash: test._workerHash,
       requireFile: test._requireFile,
       repeatEachIndex: test.repeatEachIndex,
-      projectIndex: test._projectIndex,
+      projectId: test._projectId,
       tests: [],
     };
   };
@@ -794,7 +826,7 @@ function createDuplicateTitlesError(config: FullConfigInternal, rootSuite: Suite
   for (const fileSuite of rootSuite.suites) {
     const testsByFullTitle = new MultiMap<string, TestCase>();
     for (const test of fileSuite.allTests()) {
-      const fullTitle = test.titlePath().slice(2).join(' ');
+      const fullTitle = test.titlePath().slice(2).join('\x1e');
       testsByFullTitle.set(fullTitle, test);
     }
     for (const fullTitle of testsByFullTitle.keys()) {

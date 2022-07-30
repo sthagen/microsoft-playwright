@@ -3,7 +3,6 @@ set -e
 set +x
 
 RUST_VERSION="1.59.0"
-CBINDGEN_VERSION="0.23.0"
 
 trap "cd $(pwd -P)" EXIT
 
@@ -89,10 +88,8 @@ if [[ -n "${IS_LINUX_ARM64}" ]]; then
   echo "ac_add_options --target=aarch64-linux-gnu" >> .mozconfig
 fi
 
-if is_linux "debian" 11; then
-  # There's no pre-built wasi sysroot for Debian 11.
-  echo "ac_add_options --without-wasm-sandboxed-libraries" >> .mozconfig
-fi
+# There's no pre-built wasi sysroot on certain platforms.
+echo "ac_add_options --without-wasm-sandboxed-libraries" >> .mozconfig
 
 OBJ_FOLDER="obj-build-playwright"
 echo "mk_add_options MOZ_OBJDIR=@TOPSRCDIR@/${OBJ_FOLDER}" >> .mozconfig
@@ -119,12 +116,6 @@ if [[ -z "${IS_JUGGLER}" ]]; then
     rustup install "${RUST_VERSION}"
     rustup default "${RUST_VERSION}"
   fi
-
-  # TODO: cargo is not in the PATH on Windows
-  if command -v cargo >/dev/null; then
-    echo "-- Using cbindgen v${CBINDGEN_VERSION}"
-    cargo install cbindgen --version "${CBINDGEN_VERSION}"
-  fi
 fi
 
 if [[ -n "${IS_FULL}" ]]; then
@@ -141,35 +132,20 @@ if [[ -n "${IS_FULL}" ]]; then
   git fetch browser_upstream master
   # 2. Checkout the master branch and run bootstrap from it.
   git checkout browser_upstream/master
+  echo "ac_add_options --enable-bootstrap" >> .mozconfig
   SHELL=/bin/sh ./mach --no-interactive bootstrap --application-choice=browser
   git checkout -
+  rm -rf "${OBJ_FOLDER}"
 
-  if [[ ! -z "${WIN32_REDIST_DIR}" ]]; then
+  if [[ -n "${WIN32_REDIST_DIR}" ]]; then
     # Having this option in .mozconfig kills incremental compilation.
     echo "export WIN32_REDIST_DIR=\"$WIN32_REDIST_DIR\"" >> .mozconfig
   fi
 fi
 
-# Remove the cbindgen from mozbuild to rely on the one we install manually.
-# See https://github.com/microsoft/playwright/issues/15174
-if is_win; then
-  rm -rf "${USERPROFILE}\\.mozbuild\\cbindgen"
-else
-  rm -rf "${HOME}/.mozbuild/cbindgen"
-fi
-
-
 if [[ -n "${IS_JUGGLER}" ]]; then
   ./mach build faster
 else
-  export MOZ_AUTOMATION=1
-  # Use winpaths instead of unix paths on Windows.
-  # note: 'cygpath' is not available in MozBuild shell.
-  if is_win; then
-    export MOZ_FETCHES_DIR="${USERPROFILE}\\.mozbuild"
-  else
-    export MOZ_FETCHES_DIR="${HOME}/.mozbuild"
-  fi
   ./mach build
   if is_mac; then
     FF_DEBUG_BUILD="${IS_DEBUG}" node "${SCRIPT_FOLDER}"/install-preferences.js "$PWD"/${OBJ_FOLDER}/dist

@@ -14,7 +14,6 @@
  * limitations under the License.
  */
 
-import type { SvelteComponent } from "svelte";
-
-export declare function beforeMount(callback: (params: { hooksConfig: any }) => Promise<void>): void;
-export declare function afterMount(callback: (params: { hooksConfig: any, svelteComponent: SvelteComponent }) => Promise<void>): void;
+export function isTextualMimeType(mimeType: string) {
+  return !!mimeType.match(/^(text\/.*?|application\/(json|(x-)?javascript|xml.*?|ecmascript|graphql|x-www-form-urlencoded)|image\/svg(\+xml)?|application\/.*?(\+json|\+xml))(;\s*charset=.*)?$/);
+}

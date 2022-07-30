@@ -34,10 +34,16 @@ export type WorkerInitParams = {
   workerIndex: number;
   parallelIndex: number;
   repeatEachIndex: number;
-  projectIndex: number;
+  projectId: string;
   loader: SerializedLoaderData;
   stdoutParams: TtyParams;
   stderrParams: TtyParams;
+};
+
+export type TestServerTestResolvedPayload = {
+  testId: string;
+  title: string;
+  location: { file: string, line: number, column: number };
 };
 
 export type TestBeginPayload = {
@@ -83,6 +89,7 @@ export type TestEntry = {
 export type RunPayload = {
   file: string;
   entries: TestEntry[];
+  testServerTestLine?: number;
 };
 
 export type DonePayload = {

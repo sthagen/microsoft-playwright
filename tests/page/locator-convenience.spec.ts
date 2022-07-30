@@ -202,8 +202,9 @@ it('allInnerTexts should work', async ({ page }) => {
   expect(await page.locator('div').allInnerTexts()).toEqual(['A', 'B', 'C']);
 });
 
-it('isVisible and isHidden should work with details', async ({ page, isAndroid }) => {
+it('isVisible and isHidden should work with details', async ({ page, isAndroid, isElectron }) => {
   it.info().annotations.push({ type: 'issue', description: 'https://github.com/microsoft/playwright/issues/10674' });
+  it.skip(isElectron, 'We don\'t disable the AutoExpandDetailsElement feature on Electron');
   it.skip(isAndroid, 'We can\'t disable the AutoExpandDetailsElement feature on Android');
   await page.setContent(`<details>
     <summary>click to open</summary>
@@ -227,4 +228,30 @@ it('should return page', async ({ page, server }) => {
 
   const inFrame = page.frames()[1].locator('div');
   expect(inFrame.page()).toBe(page);
+});
+
+it('isVisible inside a button', async ({ page }) => {
+  await page.setContent(`<button><span></span>a button</button>`);
+  const span = page.locator('span');
+  expect(await span.isVisible()).toBe(false);
+  expect(await span.isHidden()).toBe(true);
+  expect(await page.isVisible('span')).toBe(false);
+  expect(await page.isHidden('span')).toBe(true);
+  await expect(span).not.toBeVisible();
+  await expect(span).toBeHidden();
+  await span.waitFor({ state: 'hidden' });
+  await page.locator('button').waitFor({ state: 'visible' });
+});
+
+it('isVisible inside a role=button', async ({ page }) => {
+  await page.setContent(`<div role=button><span></span>a button</div>`);
+  const span = page.locator('span');
+  expect(await span.isVisible()).toBe(false);
+  expect(await span.isHidden()).toBe(true);
+  expect(await page.isVisible('span')).toBe(false);
+  expect(await page.isHidden('span')).toBe(true);
+  await expect(span).not.toBeVisible();
+  await expect(span).toBeHidden();
+  await span.waitFor({ state: 'hidden' });
+  await page.locator('[role=button]').waitFor({ state: 'visible' });
 });

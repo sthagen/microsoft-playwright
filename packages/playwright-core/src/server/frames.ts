@@ -530,7 +530,7 @@ export class Frame extends SdkObject {
   _onClearLifecycle() {
     this._firedLifecycleEvents.clear();
     // Recalculate subtree lifecycle for the whole tree - it should not be that big.
-    this._page.mainFrame()._recalculateLifecycle();
+    this._page.mainFrame()._recalculateLifecycle(this);
     // Keep the current navigation request if any.
     this._inflightRequests = new Set(Array.from(this._inflightRequests).filter(request => request === this._currentDocument.request));
     this._stopNetworkIdleTimer();
@@ -593,16 +593,22 @@ export class Frame extends SdkObject {
     });
   }
 
-  _recalculateLifecycle() {
+  _recalculateLifecycle(frameThatAllowsRemovingLifecycleEvents?: Frame) {
     const events = new Set<types.LifecycleEvent>(this._firedLifecycleEvents);
     for (const child of this._childFrames) {
-      child._recalculateLifecycle();
+      child._recalculateLifecycle(frameThatAllowsRemovingLifecycleEvents);
       // We require a particular lifecycle event to be fired in the whole
       // frame subtree, and then consider it done.
       for (const event of events) {
         if (!child._subtreeLifecycleEvents.has(event))
           events.delete(event);
       }
+    }
+    if (frameThatAllowsRemovingLifecycleEvents !== this) {
+      // Usually, lifecycle events are fired once and not removed after that, so we keep existing ones.
+      // However, when we clear them right before a new commit, this is allowed for a particular frame.
+      for (const event of this._subtreeLifecycleEvents)
+        events.add(event);
     }
     const mainFrame = this._page.mainFrame();
     for (const event of events) {
@@ -1256,8 +1262,13 @@ export class Frame extends SdkObject {
       const pair = await this.resolveFrameForSelectorNoWait(selector, options);
       if (!pair)
         return false;
-      const element = await this._page.selectors.query(pair.frame, pair.info);
-      return element ? await element.isVisible() : false;
+      const context = await pair.frame._context(pair.info.world);
+      const injectedScript = await context.injectedScript();
+      return await injectedScript.evaluate((injected, { parsed, strict }) => {
+        const element = injected.querySelector(parsed, document, strict);
+        const state = element ? injected.elementState(element, 'visible') : false;
+        return state === 'error:notconnected' ? false : state;
+      }, { parsed: pair.info.parsed, strict: pair.info.strict });
     }, this._page._timeoutSettings.timeout({}));
   }
 

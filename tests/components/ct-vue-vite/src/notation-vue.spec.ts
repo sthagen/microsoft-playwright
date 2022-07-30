@@ -16,6 +16,17 @@ test('props should work', async ({ mount }) => {
   await expect(component).toContainText('Submit')
 })
 
+test('update props should work', async ({ mount }) => {
+  const component = await mount(Button, {
+    props: { 
+      title: 'Submit'
+    }
+  });
+  await expect(component).toContainText('Submit')
+  await component.setProps({ title: 'Loading' })
+  await expect(component).toContainText('Loading')
+})
+
 test('event should work', async ({ mount }) => {
   const messages = []
   const component = await mount(Button, {
@@ -78,3 +89,14 @@ test('should run hooks', async ({ page, mount }) => {
   })
   expect(messages).toEqual(['Before mount: {\"route\":\"A\"}, app: true', 'After mount el: HTMLButtonElement'])
 })
+
+test('should unmount', async ({ page, mount }) => {
+  const component = await mount(Button, {
+    props: {
+      title: 'Submit'
+    }
+  })
+  await expect(page.locator('#root')).toContainText('Submit')
+  await component.unmount();
+  await expect(page.locator('#root')).not.toContainText('Submit');
+});
