@@ -3,6 +3,7 @@ set -e
 set +x
 
 RUST_VERSION="1.59.0"
+CBINDGEN_VERSION="0.24.3"
 
 trap "cd $(pwd -P)" EXIT
 
@@ -20,13 +21,11 @@ fi
 args=("$@")
 IS_FULL=""
 IS_JUGGLER=""
-IS_LINUX_ARM64=""
 IS_DEBUG=""
 for ((i="${#args[@]}"-1; i >= 0; --i)); do
     case ${args[i]} in
         --full) IS_FULL="1"; unset args[i]; ;;
         --juggler) IS_JUGGLER="1"; unset args[i]; ;;
-        --linux-arm64) IS_LINUX_ARM64="1"; unset args[i]; ;;
         --debug) IS_DEBUG="1"; unset args[i]; ;;
     esac
 done
@@ -51,11 +50,6 @@ else
   echo "- debug: NO"
 fi
 
-if [[ -n "${IS_LINUX_ARM64}" ]]; then
-  echo "- linux aarch64: YES"
-else
-  echo "- linux aarch64: NO"
-fi
 echo "========================="
 
 rm -rf .mozconfig
@@ -82,10 +76,6 @@ elif is_win; then
 else
   echo "ERROR: cannot upload on this platform!" 1>&2
   exit 1;
-fi
-
-if [[ -n "${IS_LINUX_ARM64}" ]]; then
-  echo "ac_add_options --target=aarch64-linux-gnu" >> .mozconfig
 fi
 
 # There's no pre-built wasi sysroot on certain platforms.
@@ -116,6 +106,12 @@ if [[ -z "${IS_JUGGLER}" ]]; then
     rustup install "${RUST_VERSION}"
     rustup default "${RUST_VERSION}"
   fi
+  # Firefox on Linux arm64 host does not ship
+  # cbindgen in their default toolchains - install manually.
+  if command -v cargo >/dev/null; then
+    echo "-- Using cbindgen v${CBINDGEN_VERSION}"
+    cargo install cbindgen --version "${CBINDGEN_VERSION}"
+  fi
 fi
 
 if [[ -n "${IS_FULL}" ]]; then
@@ -129,7 +125,7 @@ if [[ -n "${IS_FULL}" ]]; then
 
   # 1. We have a --single-branch checkout, so we have to add a "master" branch and fetch it
   git remote set-branches --add browser_upstream master
-  git fetch browser_upstream master
+  git fetch --depth 1 browser_upstream master
   # 2. Checkout the master branch and run bootstrap from it.
   git checkout browser_upstream/master
   echo "ac_add_options --enable-bootstrap" >> .mozconfig

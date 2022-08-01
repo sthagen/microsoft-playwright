@@ -29,15 +29,13 @@ elif [[ "${BUILD_FLAVOR}" == "firefox-ubuntu-20.04" ]]; then
   DOCKER_PLATFORM="linux/amd64"
   DOCKER_IMAGE_NAME="ubuntu:20.04"
 elif [[ "${BUILD_FLAVOR}" == "firefox-ubuntu-20.04-arm64" ]]; then
-  # We cross-compile from x86_64 to aarch64.
-  DOCKER_PLATFORM="linux/amd64"
+  DOCKER_PLATFORM="linux/arm64"
   DOCKER_IMAGE_NAME="ubuntu:20.04"
 elif [[ "${BUILD_FLAVOR}" == "firefox-ubuntu-22.04" ]]; then
   DOCKER_PLATFORM="linux/amd64"
   DOCKER_IMAGE_NAME="ubuntu:22.04"
 elif [[ "${BUILD_FLAVOR}" == "firefox-ubuntu-22.04-arm64" ]]; then
-  # We cross-compile from x86_64 to aarch64.
-  DOCKER_PLATFORM="linux/amd64"
+  DOCKER_PLATFORM="linux/arm64"
   DOCKER_IMAGE_NAME="ubuntu:22.04"
 elif [[ "${BUILD_FLAVOR}" == "firefox-debian-11" ]]; then
   DOCKER_PLATFORM="linux/amd64"
@@ -133,15 +131,24 @@ function ensure_docker_container {
 
     apt-get update && apt-get install -y wget \
                                          git-core \
-                                         python3 \
-                                         python3-pip \
                                          curl \
                                          autoconf2.13 \
                                          tzdata \
                                          sudo \
                                          zip \
-                                         unzip \
-                                         python3-distutils
+                                         unzip
+
+    # Ubuntu 18 installs Python 3.6 as Python3 by default; this, however,
+    # fails to run Firefox build scripts.
+    # Install Python3.8 instead on Ubuntu 18.04 as Python3.
+    if [[ "${BUILD_FLAVOR}" == *ubuntu-18.04* ]]; then
+      apt-get install -y python3.8 python3.8-pip python3.8-distutils
+      # Point python3 to python3.8
+      update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.8 2
+    else
+      apt-get install -y python3 python3-pip python3-distutils
+    fi
+
 
     # Create the pwuser and make it passwordless sudoer.
     adduser --disabled-password --gecos "" pwuser
@@ -157,7 +164,7 @@ function ensure_docker_container {
       # Install AZ CLI with Python since they do not ship
       # aarch64 to APT: https://github.com/Azure/azure-cli/issues/7368
       # Pin so future releases dont break us.
-      pip install azure-cli==2.38.0
+      pip3 install azure-cli==2.38.0
     fi
 
     if [[ "${BUILD_FLAVOR}" == "firefox-"* ]]; then
@@ -174,7 +181,9 @@ function ensure_docker_container {
 
       # Ubuntu 18.04 specific: install GCC-8. WebKit requires gcc 8.3+ to compile.
       apt-get install -y gcc-8 g++-8
-    elif [[ "${BUILD_FLAVOR}" == webkit-*-arm64 ]]; then
+    fi
+
+    if [[ "${BUILD_FLAVOR}" == *"-arm64" ]]; then
       apt-get install -y clang-12
     fi
 
@@ -201,7 +210,7 @@ elif [[ "$2" == "compile" ]]; then
     if [[ "${BUILD_FLAVOR}" == "webkit-ubuntu-18.04" ]]; then
       export CC=/usr/bin/gcc-8
       export CXX=/usr/bin/g++-8
-    elif [[ "${BUILD_FLAVOR}" == webkit-*-arm64 ]]; then
+    elif [[ "${BUILD_FLAVOR}" == "*-arm64" ]]; then
       export CC=/usr/bin/clang-12
       export CXX=/usr/bin/clang++-12
     fi
