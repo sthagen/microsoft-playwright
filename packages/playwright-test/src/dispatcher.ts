@@ -17,7 +17,7 @@
 import child_process from 'child_process';
 import path from 'path';
 import { EventEmitter } from 'events';
-import type { RunPayload, TestBeginPayload, TestEndPayload, DonePayload, TestOutputPayload, WorkerInitParams, StepBeginPayload, StepEndPayload, SerializedLoaderData, TeardownErrorsPayload, TestServerTestResolvedPayload, WorkerIsolation } from './ipc';
+import type { RunPayload, TestBeginPayload, TestEndPayload, DonePayload, TestOutputPayload, WorkerInitParams, StepBeginPayload, StepEndPayload, SerializedLoaderData, TeardownErrorsPayload, WatchTestResolvedPayload, WorkerIsolation } from './ipc';
 import type { TestResult, Reporter, TestStep, TestError } from '../types/testReporter';
 import type { Suite } from './test';
 import type { Loader } from './loader';
@@ -31,7 +31,7 @@ export type TestGroup = {
   repeatEachIndex: number;
   projectId: string;
   tests: TestCase[];
-  testServerTestLine?: number;
+  watchMode: boolean;
 };
 
 type TestResultData = {
@@ -175,7 +175,7 @@ export class Dispatcher {
     let doneCallback = () => {};
     const result = new Promise<void>(f => doneCallback = f);
     const doneWithJob = () => {
-      worker.removeListener('testServer:testResolved', onTestServerTestResolved);
+      worker.removeListener('watchTestResolved', onWatchTestResolved);
       worker.removeListener('testBegin', onTestBegin);
       worker.removeListener('testEnd', onTestEnd);
       worker.removeListener('stepBegin', onStepBegin);
@@ -188,16 +188,14 @@ export class Dispatcher {
     const remainingByTestId = new Map(testGroup.tests.map(e => [ e.id, e ]));
     const failedTestIds = new Set<string>();
 
-    const onTestServerTestResolved = (params: TestServerTestResolvedPayload) => {
+    const onWatchTestResolved = (params: WatchTestResolvedPayload) => {
       const test = new TestCase(params.title, () => {}, new TestTypeImpl([]), params.location);
       this._testById.set(params.testId, { test, resultByWorkerIndex: new Map() });
     };
-    worker.addListener('testServer:testResolved', onTestServerTestResolved);
+    worker.addListener('watchTestResolved', onWatchTestResolved);
 
     const onTestBegin = (params: TestBeginPayload) => {
       const data = this._testById.get(params.testId)!;
-      if (this._hasReachedMaxFailures())
-        return;
       const result = data.test._appendTestResult();
       data.resultByWorkerIndex.set(worker.workerIndex, { result, stepStack: new Set(), steps: new Map() });
       result.workerIndex = worker.workerIndex;
@@ -208,8 +206,12 @@ export class Dispatcher {
 
     const onTestEnd = (params: TestEndPayload) => {
       remainingByTestId.delete(params.testId);
-      if (this._hasReachedMaxFailures())
-        return;
+      if (this._hasReachedMaxFailures()) {
+        // Do not show more than one error to avoid confusion, but report
+        // as interrupted to indicate that we did actually start the test.
+        params.status = 'interrupted';
+        params.errors = [];
+      }
       const data = this._testById.get(params.testId)!;
       const test = data.test;
       const { result } = data.resultByWorkerIndex.get(worker.workerIndex)!;
@@ -461,6 +463,8 @@ export class Dispatcher {
   }
 
   async stop() {
+    if (this._isStopped)
+      return;
     this._isStopped = true;
     await Promise.all(this._workerSlots.map(({ worker }) => worker?.stop()));
     this._checkFinished();
@@ -562,7 +566,7 @@ class Worker extends EventEmitter {
       entries: testGroup.tests.map(test => {
         return { testId: test.id, retry: test.results.length };
       }),
-      testServerTestLine: testGroup.testServerTestLine,
+      watchMode: testGroup.watchMode,
     };
     this.send({ method: 'run', params: runPayload });
   }

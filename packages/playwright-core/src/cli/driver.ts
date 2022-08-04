@@ -39,22 +39,25 @@ export function runDriver() {
   const transport = process.send ? new IpcTransport(process) : new PipeTransport(process.stdout, process.stdin);
   transport.onmessage = message => dispatcherConnection.dispatch(JSON.parse(message));
   dispatcherConnection.onmessage = message => transport.send(JSON.stringify(message));
-  transport.onclose = async () => {
+  transport.onclose = () => {
     // Drop any messages during shutdown on the floor.
     dispatcherConnection.onmessage = () => {};
-    // Force exit after 30 seconds.
-    setTimeout(() => process.exit(0), 30000);
-    // Meanwhile, try to gracefully close all browsers.
-    await gracefullyCloseAll();
-    process.exit(0);
+    selfDestruct();
   };
 }
 
 export async function runServer(port: number | undefined, path = '/', maxClients = Infinity, enableSocksProxy = true, reuseBrowser = false) {
-  const server = new PlaywrightServer(reuseBrowser ? 'reuse-browser' : 'auto', { path, maxClients, enableSocksProxy });
+  const maxIncomingConnections = maxClients;
+  const maxConcurrentConnections = reuseBrowser ? 1 : maxClients;
+  const server = new PlaywrightServer(reuseBrowser ? 'reuse-browser' : 'auto', { path, maxIncomingConnections, maxConcurrentConnections, enableSocksProxy });
   const wsEndpoint = await server.listen(port);
   process.on('exit', () => server.close().catch(console.error));
   console.log('Listening on ' + wsEndpoint);  // eslint-disable-line no-console
+  process.stdin.on('close', () => selfDestruct());
+  process.stdin.on('data', data => {
+    if (data.toString() === '<EOL>')
+      selfDestruct();
+  });
 }
 
 export async function launchBrowserServer(browserName: string, configFile?: string) {
@@ -64,4 +67,13 @@ export async function launchBrowserServer(browserName: string, configFile?: stri
   const browserType = (playwright as any)[browserName] as BrowserType;
   const server = await browserType.launchServer(options);
   console.log(server.wsEndpoint());
+}
+
+function selfDestruct() {
+  // Force exit after 30 seconds.
+  setTimeout(() => process.exit(0), 30000);
+  // Meanwhile, try to gracefully close all browsers.
+  gracefullyCloseAll().then(() => {
+    process.exit(0);
+  });
 }

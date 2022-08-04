@@ -145,6 +145,13 @@ export abstract class BrowserContext extends SdkObject {
 
   static reusableContextHash(params: channels.BrowserNewContextForReuseParams): string {
     const paramsCopy = { ...params };
+
+    for (const k of Object.keys(paramsCopy)) {
+      const key = k as keyof channels.BrowserNewContextForReuseParams;
+      if (paramsCopy[key] === defaultNewContextParamValues[key])
+        delete paramsCopy[key];
+    }
+
     for (const key of paramsThatAllowContextReuse)
       delete paramsCopy[key];
     return JSON.stringify(paramsCopy);
@@ -159,6 +166,7 @@ export abstract class BrowserContext extends SdkObject {
 
     await this._cancelAllRoutesInFlight();
 
+    // Close extra pages early.
     let page: Page | undefined = this.pages()[0];
     const [, ...otherPages] = this.pages();
     for (const p of otherPages)
@@ -170,6 +178,9 @@ export abstract class BrowserContext extends SdkObject {
 
     // Unless I do this early, setting extra http headers below does not respond.
     await page?._frameManager.closeOpenDialogs();
+    // This should be before the navigation to about:blank so that we could save on
+    // a navigation as we clear local storage.
+    await this._clearLocalStorage();
     await page?.mainFrame().goto(metadata, 'about:blank', { timeout: 0 });
     await this._removeExposedBindings();
     await this._removeInitScripts();
@@ -181,6 +192,8 @@ export abstract class BrowserContext extends SdkObject {
     await this.setExtraHTTPHeaders(this._options.extraHTTPHeaders || []);
     await this.setGeolocation(this._options.geolocation);
     await this.setOffline(!!this._options.offline);
+    await this.setUserAgent(this._options.userAgent);
+    await this.clearCookies();
 
     await page?.resetForReuse(metadata);
   }
@@ -214,6 +227,7 @@ export abstract class BrowserContext extends SdkObject {
   abstract clearCookies(): Promise<void>;
   abstract setGeolocation(geolocation?: types.Geolocation): Promise<void>;
   abstract setExtraHTTPHeaders(headers: types.HeadersArray): Promise<void>;
+  abstract setUserAgent(userAgent: string | undefined): Promise<void>;
   abstract setOffline(offline: boolean): Promise<void>;
   abstract cancelDownload(uuid: string): Promise<void>;
   protected abstract doGetCookies(urls: string[]): Promise<channels.NetworkCookie[]>;
@@ -457,6 +471,32 @@ export abstract class BrowserContext extends SdkObject {
     return result;
   }
 
+  async _clearLocalStorage() {
+    if (!this._origins.size)
+      return;
+    let page = this.pages()[0];
+    const originArray = [...this._origins];
+
+    // Fast path.
+    if (page && originArray.length === 1 && page.mainFrame().url().startsWith(originArray[0])) {
+      await page.mainFrame().evaluateExpression(`localStorage.clear()`, false, undefined, 'utility');
+      return;
+    }
+
+    // Slow path.
+    const internalMetadata = serverSideCallMetadata();
+    page = page || await this.newPage(internalMetadata);
+    await page._setServerRequestInterceptor(handler => {
+      handler.fulfill({ body: '<html></html>' }).catch(() => {});
+    });
+    for (const origin of this._origins) {
+      const frame = page.mainFrame();
+      await frame.goto(internalMetadata, origin);
+      await frame.evaluateExpression(`localStorage.clear()`, false, undefined, 'utility');
+    }
+    await page._setServerRequestInterceptor(undefined);
+  }
+
   isSettingStorageState(): boolean {
     return this._settingStorageState;
   }
@@ -607,5 +647,19 @@ const paramsThatAllowContextReuse: (keyof channels.BrowserNewContextForReusePara
   'forcedColors',
   'reducedMotion',
   'screen',
-  'viewport'
+  'userAgent',
+  'viewport',
 ];
+
+const defaultNewContextParamValues: channels.BrowserNewContextForReuseParams = {
+  noDefaultViewport: false,
+  ignoreHTTPSErrors: false,
+  javaScriptEnabled: true,
+  bypassCSP: false,
+  offline: false,
+  isMobile: false,
+  hasTouch: false,
+  acceptDownloads: true,
+  strictSelectors: false,
+  serviceWorkers: 'allow',
+};
