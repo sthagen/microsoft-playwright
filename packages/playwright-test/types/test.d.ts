@@ -3355,11 +3355,36 @@ interface LocatorAssertions {
    * await expect(locator).toContainText(/\d messages/);
    * ```
    *
-   * Note that if array is passed as an expected value, entire lists of elements can be asserted:
+   * If you pass an array as an expected value, the expectations are:
+   * 1. Locator resolves to a list of elements.
+   * 1. Elements from a **subset** of this list contain text from the expected array, respectively.
+   * 1. The matching subset of elements has the same order as the expected array.
+   * 1. Each text value from the expected array is matched by some element from the list.
+   *
+   * For example, consider the following list:
+   *
+   * ```html
+   * <ul>
+   *   <li>Item Text 1</li>
+   *   <li>Item Text 2</li>
+   *   <li>Item Text 3</li>
+   * </ul>
+   * ```
+   *
+   * Let's see how we can use the assertion:
    *
    * ```js
-   * const locator = page.locator('list > .list-item');
-   * await expect(locator).toContainText(['Text 1', 'Text 4', 'Text 5']);
+   * // ✓ Contains the right items in the right order
+   * await expect(page.locator('ul > li')).toContainText(['Text 1', 'Text 3']);
+   *
+   * // ✖ Wrong order
+   * await expect(page.locator('ul > li')).toContainText(['Text 3', 'Text 2']);
+   *
+   * // ✖ No item contains this text
+   * await expect(page.locator('ul > li')).toContainText(['Some 33']);
+   *
+   * // ✖ Locator points to the outer list element, not to the list items
+   * await expect(page.locator('ul')).toContainText(['Text 3']);
    * ```
    *
    * @param expected Expected substring or RegExp or a list of those.
@@ -3666,11 +3691,35 @@ interface LocatorAssertions {
    * await expect(locator).toHaveText(/Welcome, .*\/);
    * ```
    *
-   * Note that if array is passed as an expected value, entire lists of elements can be asserted:
+   * If you pass an array as an expected value, the expectations are:
+   * 1. Locator resolves to a list of elements.
+   * 1. The number of elements equals the number of expected values in the array.
+   * 1. Elements from the list have text matching expected array values, one by one, in order.
+   *
+   * For example, consider the following list:
+   *
+   * ```html
+   * <ul>
+   *   <li>Text 1</li>
+   *   <li>Text 2</li>
+   *   <li>Text 3</li>
+   * </ul>
+   * ```
+   *
+   * Let's see how we can use the assertion:
    *
    * ```js
-   * const locator = page.locator('list > .component');
-   * await expect(locator).toHaveText(['Text 1', 'Text 2', 'Text 3']);
+   * // ✓ Has the right items in the right order
+   * await expect(page.locator('ul > li')).toHaveText(['Text 1', 'Text 2', 'Text 3']);
+   *
+   * // ✖ Wrong order
+   * await expect(page.locator('ul > li')).toHaveText(['Text 3', 'Text 2', 'Text 1']);
+   *
+   * // ✖ Last item does not match
+   * await expect(page.locator('ul > li')).toHaveText(['Text 1', 'Text 2', 'Text']);
+   *
+   * // ✖ Locator points to the outer list element, not to the list items
+   * await expect(page.locator('ul')).toHaveText(['Text 1', 'Text 2', 'Text 3']);
    * ```
    *
    * @param expected Expected substring or RegExp or a list of those.
@@ -4313,49 +4362,6 @@ interface TestProject {
    * Project name is visible in the report and during test execution.
    */
   name?: string;
-
-  /**
-   * Path to the project-specifc setup file. This file will be required and run before all the tests from this project. It
-   * must export a single function that takes a [`TestConfig`] argument.
-   *
-   * Project setup is similar to
-   * [testConfig.globalSetup](https://playwright.dev/docs/api/class-testconfig#test-config-global-setup), but it is only
-   * executed if at least one test from this particular project should be run. Learn more about
-   * [global setup and teardown](https://playwright.dev/docs/test-advanced#global-setup-and-teardown).
-   *
-   * ```js
-   * // playwright.config.ts
-   * import { type PlaywrightTestConfig } from '@playwright/test';
-   *
-   * const config: PlaywrightTestConfig = {
-   *   projects: [
-   *     {
-   *       name: 'Admin Portal',
-   *       projectSetup: './setup-admin',
-   *     },
-   *     {
-   *       name: 'Customer Portal',
-   *       projectSetup: './setup-customer',
-   *     },
-   *   ],
-   * };
-   * export default config;
-   * ```
-   *
-   */
-  projectSetup?: string;
-
-  /**
-   * Path to the project-specifc teardown file. This file will be required and run after all the tests from this project. It
-   * must export a single function. See also
-   * [testProject.projectSetup](https://playwright.dev/docs/api/class-testproject#test-project-project-setup).
-   *
-   * Project teardown is similar to
-   * [testConfig.globalTeardown](https://playwright.dev/docs/api/class-testconfig#test-config-global-teardown), but it is
-   * only executed if at least one test from this particular project did run. Learn more about
-   * [global setup and teardown](https://playwright.dev/docs/test-advanced#global-setup-and-teardown).
-   */
-  projectTeardown?: string;
 
   /**
    * The base directory, relative to the config file, for snapshot files created with `toMatchSnapshot`. Defaults to

@@ -15,7 +15,7 @@
  */
 
 import type { Fixtures, TestError, Project } from '../types/test';
-import type { Location } from '../types/testReporter';
+import type { Location, Reporter } from '../types/testReporter';
 import type { WorkerIsolation } from './ipc';
 import type { FullConfig as FullConfigPublic, FullProject as FullProjectPublic } from './types';
 export * from '../types/test';
@@ -68,6 +68,8 @@ export interface FullProjectInternal extends FullProjectPublic {
   _expect: Project['expect'];
   _screenshotsDir: string;
   _respectGitIgnore: boolean;
-  _projectSetup?: string;
-  _projectTeardown?: string;
+}
+
+export interface ReporterInternal extends Reporter {
+  _onExit?(): void | Promise<void>;
 }

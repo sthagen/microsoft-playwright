@@ -17,8 +17,8 @@
 import { colors, ms as milliseconds, parseStackTraceLine } from 'playwright-core/lib/utilsBundle';
 import fs from 'fs';
 import path from 'path';
-import type { FullConfig, TestCase, Suite, TestResult, TestError, Reporter, FullResult, TestStep, Location } from '../../types/testReporter';
-import type { FullConfigInternal } from '../types';
+import type { FullConfig, TestCase, Suite, TestResult, TestError, FullResult, TestStep, Location } from '../../types/testReporter';
+import type { FullConfigInternal, ReporterInternal } from '../types';
 import { codeFrameColumns } from '../babelBundle';
 
 export type TestResultOutput = { chunk: string | Buffer, type: 'stdout' | 'stderr' };
@@ -45,7 +45,7 @@ type TestSummary = {
   fatalErrors: TestError[];
 };
 
-export class BaseReporter implements Reporter  {
+export class BaseReporter implements ReporterInternal  {
   duration = 0;
   config!: FullConfigInternal;
   suite!: Suite;
@@ -98,7 +98,8 @@ export class BaseReporter implements Reporter  {
   }
 
   onError(error: TestError) {
-    this._fatalErrors.push(error);
+    if (!(error as any).__isNotAFatalError)
+      this._fatalErrors.push(error);
   }
 
   async onEnd(result: FullResult) {
@@ -136,8 +137,6 @@ export class BaseReporter implements Reporter  {
 
   protected generateSummaryMessage({ skipped, expected, interrupted, unexpected, flaky, fatalErrors }: TestSummary) {
     const tokens: string[] = [];
-    if (fatalErrors.length)
-      tokens.push(colors.red(`  ${fatalErrors.length} fatal ${fatalErrors.length === 1 ? 'error' : 'errors'}`));
     if (unexpected.length) {
       tokens.push(colors.red(`  ${unexpected.length} failed`));
       for (const test of unexpected)
@@ -159,6 +158,8 @@ export class BaseReporter implements Reporter  {
       tokens.push(colors.green(`  ${expected} passed`) + colors.dim(` (${milliseconds(this.duration)})`));
     if (this.result.status === 'timedout')
       tokens.push(colors.red(`  Timed out waiting ${this.config.globalTimeout / 1000}s for the entire test run`));
+    if (fatalErrors.length)
+      tokens.push(colors.red(`  ${fatalErrors.length === 1 ? '1 error was not a part of any test' : fatalErrors.length + ' errors were not a part of any test'}, see above for details`));
 
     return tokens.join('\n');
   }
