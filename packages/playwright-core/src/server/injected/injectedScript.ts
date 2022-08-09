@@ -668,14 +668,19 @@ export class InjectedScript {
     return 'done';
   }
 
+  private _activelyFocused(node: Node): { activeElement: Element | null, isFocused: boolean } {
+    const activeElement = (node.getRootNode() as (Document | ShadowRoot)).activeElement;
+    const isFocused = activeElement === node && !!node.ownerDocument && node.ownerDocument.hasFocus();
+    return { activeElement, isFocused };
+  }
+
   focusNode(node: Node, resetSelectionIfNotFocused?: boolean): 'error:notconnected' | 'done' {
     if (!node.isConnected)
       return 'error:notconnected';
     if (node.nodeType !== Node.ELEMENT_NODE)
       throw this.createStacklessError('Node is not an element');
 
-    const activeElement = (node.getRootNode() as (Document | ShadowRoot)).activeElement;
-    const wasFocused = activeElement === node && node.ownerDocument && node.ownerDocument.hasFocus();
+    const { activeElement, isFocused: wasFocused } = this._activelyFocused(node);
     if ((node as HTMLElement).isContentEditable && !wasFocused && activeElement && (activeElement as HTMLElement | SVGElement).blur) {
       // Workaround the Firefox bug where focusing the element does not switch current
       // contenteditable to the new element. However, blurring the previous one helps.
@@ -865,9 +870,19 @@ export class InjectedScript {
     let container: Document | ShadowRoot | null = document;
     let element: Element | undefined;
     while (container) {
-      // elementFromPoint works incorrectly in Chromium (http://crbug.com/1188919),
-      // so we use elementsFromPoint instead.
+      // All browsers have different behavior around elementFromPoint and elementsFromPoint.
+      // https://github.com/w3c/csswg-drafts/issues/556
+      // http://crbug.com/1188919
       const elements: Element[] = container.elementsFromPoint(x, y);
+      const singleElement = container.elementFromPoint(x, y);
+      if (singleElement && elements[0] && parentElementOrShadowHost(singleElement) === elements[0]) {
+        const style = document.defaultView?.getComputedStyle(singleElement);
+        if (style?.display === 'contents') {
+          // Workaround a case where elementsFromPoint misses the inner-most element with display:contents.
+          // https://bugs.chromium.org/p/chromium/issues/detail?id=1342092
+          elements.unshift(singleElement);
+        }
+      }
       const innerElement = elements[0] as Element | undefined;
       if (!innerElement || element === innerElement)
         break;
@@ -1029,7 +1044,7 @@ export class InjectedScript {
       } else if (expression === 'to.be.enabled') {
         elementState = progress.injectedScript.elementState(element, 'enabled');
       } else if (expression === 'to.be.focused') {
-        elementState = document.activeElement === element;
+        elementState = this._activelyFocused(element).isFocused;
       } else if (expression === 'to.be.hidden') {
         elementState = progress.injectedScript.elementState(element, 'hidden');
       } else if (expression === 'to.be.visible') {
