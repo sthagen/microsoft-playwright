@@ -56,7 +56,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-10.15, macos-11, macos-12]
+        os: [macos-11, macos-12]
         browser: [chromium, firefox, webkit]
     runs-on: ${{ matrix.os }}
     steps:
@@ -128,7 +128,7 @@ jobs:
     - uses: actions/setup-node@v2
       with:
         node-version: ${{ matrix.node_version }}
-    - run: npm i -g npm@8.15.1 # This should NOT be pinned beyond major version once https://github.com/microsoft/playwright/issues/16281 is resolved.
+    - run: npm i -g npm@8
     - run: npm ci
       env:
         DEBUG: pw:install

@@ -14,12 +14,12 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import { Protocol } from 'playwright-core/types/protocol';
 import { ChildProcess } from 'child_process';
 import { EventEmitter } from 'events';
 import { Readable } from 'stream';
 import { ReadStream } from 'fs';
-import { Serializable, EvaluationArgument, PageFunction, PageFunctionOn, SmartHandle, ElementHandleForTag, BindingSource } from 'playwright-core/types/structs';
+import { Protocol } from './protocol';
+import { Serializable, EvaluationArgument, PageFunction, PageFunctionOn, SmartHandle, ElementHandleForTag, BindingSource } from './structs';
 
 type PageWaitForSelectorOptionsNotHidden = PageWaitForSelectorOptions & {
   state?: 'visible'|'attached';
@@ -1723,6 +1723,12 @@ export interface Page {
    */
   prependListener(event: 'worker', listener: (worker: Worker) => void): this;
 
+  /**
+   * **DEPRECATED** This property is deprecated. Please use other libraries such as [Axe](https://www.deque.com/axe/) if you
+   * need to test page accessibility. See our Node.js [guide](https://playwright.dev/docs/accessibility-testing) for
+   * integration with Axe.
+   * @deprecated
+   */
   accessibility: Accessibility;
 
   /**
@@ -11089,6 +11095,10 @@ class TimeoutError extends Error {}
 }
 
 /**
+ * **DEPRECATED** This class is deprecated. Please use other libraries such as [Axe](https://www.deque.com/axe/) if you
+ * need to test page accessibility. See our Node.js [guide](https://playwright.dev/docs/accessibility-testing) for
+ * integration with Axe.
+ *
  * The Accessibility class provides methods for inspecting Chromium's accessibility tree. The accessibility tree is used by
  * assistive technology such as [screen readers](https://en.wikipedia.org/wiki/Screen_reader) or
  * [switches](https://en.wikipedia.org/wiki/Switch_access).
@@ -11105,6 +11115,10 @@ class TimeoutError extends Error {}
  */
 export interface Accessibility {
   /**
+   * **DEPRECATED** This method is deprecated. Please use other libraries such as [Axe](https://www.deque.com/axe/) if you
+   * need to test page accessibility. See our Node.js [guide](https://playwright.dev/docs/accessibility-testing) for
+   * integration with Axe.
+   *
    * Captures the current state of the accessibility tree. The returned object represents the root accessible node of the
    * page.
    *
@@ -11137,6 +11151,7 @@ export interface Accessibility {
    * }
    * ```
    *
+   * @deprecated
    * @param options
    */
   snapshot(options?: AccessibilitySnapshotOptions): Promise<null|AccessibilityNode>;

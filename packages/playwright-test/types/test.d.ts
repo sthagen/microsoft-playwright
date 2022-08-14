@@ -2509,6 +2509,20 @@ export interface TestType<TestArgs extends KeyValue, WorkerArgs extends KeyValue
    * });
    * ```
    *
+   * The method returns value retuned by the step callback.
+   *
+   * ```js
+   * import { test, expect } from '@playwright/test';
+   *
+   * test('test', async ({ page }) => {
+   *   const user = await test.step('Log in', async () => {
+   *     // ...
+   *     return 'john';
+   *   });
+   *   expect(user).toBe('john');
+   * });
+   * ```
+   *
    * @param title Step name.
    * @param body Step body.
    */
@@ -3042,8 +3056,8 @@ export interface PlaywrightTestArgs {
 export type PlaywrightTestProject<TestArgs = {}, WorkerArgs = {}> = Project<PlaywrightTestOptions & TestArgs, PlaywrightWorkerOptions & WorkerArgs>;
 export type PlaywrightTestConfig<TestArgs = {}, WorkerArgs = {}> = Config<PlaywrightTestOptions & TestArgs, PlaywrightWorkerOptions & WorkerArgs>;
 
-import type * as expectType from '@playwright/test/types/expect-types';
-import type { Suite } from '@playwright/test/types/testReporter';
+import type * as expectType from './expect-types';
+import type { Suite } from './testReporter';
 
 type AsymmetricMatcher = Record<string, any>;
 

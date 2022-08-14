@@ -21,7 +21,7 @@ import { VueEngine } from './vueSelectorEngine';
 import { RoleEngine } from './roleSelectorEngine';
 import type { NestedSelectorBody, ParsedSelector, ParsedSelectorPart } from '../isomorphic/selectorParser';
 import { allEngineNames, parseSelector, stringifySelector } from '../isomorphic/selectorParser';
-import { type TextMatcher, elementMatchesText, createRegexTextMatcher, createStrictTextMatcher, createLaxTextMatcher } from './selectorUtils';
+import { type TextMatcher, elementMatchesText, createRegexTextMatcher, createStrictTextMatcher, createLaxTextMatcher, elementText } from './selectorUtils';
 import { SelectorEvaluatorImpl } from './selectorEvaluator';
 import { isElementVisible, parentElementOrShadowHost } from './domUtils';
 import type { CSSComplexSelectorList } from '../isomorphic/cssParser';
@@ -437,14 +437,18 @@ export class InjectedScript {
     return { left: parseInt(style.borderLeftWidth || '', 10), top: parseInt(style.borderTopWidth || '', 10) };
   }
 
-  retarget(node: Node, behavior: 'none' | 'follow-label' | 'no-follow-label'): Element | null {
+  retarget(node: Node, behavior: 'none' | 'follow-label' | 'no-follow-label' | 'button-link'): Element | null {
     let element = node.nodeType === Node.ELEMENT_NODE ? node as Element : node.parentElement;
     if (!element)
       return null;
     if (behavior === 'none')
       return element;
-    if (!element.matches('input, textarea, select'))
-      element = element.closest('button, [role=button], [role=checkbox], [role=radio]') || element;
+    if (!element.matches('input, textarea, select')) {
+      if (behavior === 'button-link')
+        element = element.closest('button, [role=button], a, [role=link]') || element;
+      else
+        element = element.closest('button, [role=button], [role=checkbox], [role=radio]') || element;
+    }
     if (behavior === 'follow-label') {
       if (!element.matches('input, textarea, button, select, [role=button], [role=checkbox], [role=radio]') &&
         !(element as any).isContentEditable) {
@@ -723,7 +727,6 @@ export class InjectedScript {
   }
 
   expectHitTargetParent(hitElement: Element | undefined, targetElement: Element) {
-    targetElement = targetElement.closest('button, [role=button], a, [role=link]') || targetElement;
     const hitParents: Element[] = [];
     while (hitElement && hitElement !== targetElement) {
       hitParents.push(hitElement);
@@ -782,7 +785,7 @@ export class InjectedScript {
   //     2l. All navigations triggered between 2g-2k are awaited to be either committed or canceled.
   //     2m. If failed, wait for increasing amount of time before the next retry.
   setupHitTargetInterceptor(node: Node, action: 'hover' | 'tap' | 'mouse' | 'drag', hitPoint: { x: number, y: number }, blockAllEvents: boolean): HitTargetInterceptionResult | 'error:notconnected' | string /* hitTargetDescription */ {
-    const element: Element | null | undefined = node.nodeType === Node.ELEMENT_NODE ? (node as Element) : node.parentElement;
+    const element = this.retarget(node, 'button-link');
     if (!element || !element.isConnected)
       return 'error:notconnected';
 
@@ -956,7 +959,7 @@ export class InjectedScript {
   maskSelectors(selectors: ParsedSelector[]) {
     if (this._highlight)
       this.hideHighlight();
-    this._highlight = new Highlight(this.isUnderTest);
+    this._highlight = new Highlight(this);
     this._highlight.install();
     const elements = [];
     for (const selector of selectors)
@@ -966,17 +969,10 @@ export class InjectedScript {
 
   highlight(selector: ParsedSelector) {
     if (!this._highlight) {
-      this._highlight = new Highlight(this.isUnderTest);
+      this._highlight = new Highlight(this);
       this._highlight.install();
     }
-    this._runHighlightOnRaf(selector);
-  }
-
-  _runHighlightOnRaf(selector: ParsedSelector) {
-    if (!this._highlight)
-      return;
-    this._highlight.updateHighlight(this.querySelectorAll(selector, document.documentElement), stringifySelector(selector), false);
-    requestAnimationFrame(() => this._runHighlightOnRaf(selector));
+    this._highlight.runHighlightOnRaf(selector);
   }
 
   hideHighlight() {
@@ -1095,7 +1091,7 @@ export class InjectedScript {
       } else if (expression === 'to.have.id') {
         received = element.id;
       } else if (expression === 'to.have.text') {
-        received = options.useInnerText ? (element as HTMLElement).innerText : element.textContent || '';
+        received = options.useInnerText ? (element as HTMLElement).innerText : elementText(new Map(), element).full;
       } else if (expression === 'to.have.title') {
         received = document.title;
       } else if (expression === 'to.have.url') {
@@ -1128,7 +1124,7 @@ export class InjectedScript {
     // List of values.
     let received: string[] | undefined;
     if (expression === 'to.have.text.array' || expression === 'to.contain.text.array')
-      received = elements.map(e => options.useInnerText ? (e as HTMLElement).innerText : e.textContent || '');
+      received = elements.map(e => options.useInnerText ? (e as HTMLElement).innerText : elementText(new Map(), e).full);
     else if (expression === 'to.have.class.array')
       received = elements.map(e => e.classList.toString());
 

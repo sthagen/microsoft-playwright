@@ -90,6 +90,51 @@ class ProtocolHandler {
 
   constructor(playwright: Playwright) {
     this._playwright = playwright;
+    playwright.instrumentation.addListener({
+      onPageOpen: () => this._sendSnapshot(),
+      onPageNavigated: () => this._sendSnapshot(),
+      onPageClose: () => this._sendSnapshot(),
+    }, null);
+  }
+
+  private _sendSnapshot() {
+    const browsers = [];
+    for (const browser of this._playwright.allBrowsers()) {
+      const b = {
+        name: browser.options.name,
+        guid: browser.guid,
+        contexts: [] as any[]
+      };
+      browsers.push(b);
+      for (const context of browser.contexts()) {
+        const c = {
+          guid: context.guid,
+          pages: [] as any[]
+        };
+        b.contexts.push(c);
+        for (const page of context.pages()) {
+          const p = {
+            guid: page.guid,
+            url: page.mainFrame().url()
+          };
+          c.pages.push(p);
+        }
+      }
+    }
+    process.send!({ method: 'browsersChanged', params: { browsers } });
+  }
+
+  async resetForReuse() {
+    const contexts = new Set<BrowserContext>();
+    for (const page of this._playwright.allPages())
+      contexts.add(page.context());
+    for (const context of contexts)
+      await context.resetForReuse(internalMetadata, null);
+  }
+
+  async navigate(params: { url: string }) {
+    for (const p of this._playwright.allPages())
+      await p.mainFrame().goto(internalMetadata, params.url);
   }
 
   async setMode(params: { mode: Mode, language?: string, file?: string }) {
@@ -143,6 +188,10 @@ class ProtocolHandler {
       recorder.setHighlightedSelector(params.selector);
   }
 
+  async hideHighlight() {
+    await this._playwright.hideHighlight();
+  }
+
   async kill() {
     selfDestruct();
   }
@@ -176,7 +225,7 @@ async function allRecorders(playwright: Playwright): Promise<Recorder[]> {
   const contexts = new Set<BrowserContext>();
   for (const page of playwright.allPages())
     contexts.add(page.context());
-  const result = await Promise.all([...contexts].map(c => Recorder.show(c, {}, () => Promise.resolve(new InspectingRecorderApp()))));
+  const result = await Promise.all([...contexts].map(c => Recorder.show(c, { omitCallTracking: true }, () => Promise.resolve(new InspectingRecorderApp()))));
   return result.filter(Boolean) as Recorder[];
 }
 
