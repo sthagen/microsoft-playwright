@@ -149,7 +149,8 @@ class JSONReporter implements Reporter {
       title: test.title,
       ok: test.ok(),
       tags: (test.title.match(/@[\S]+/g) || []).map(t => t.substring(1)),
-      tests: [ this._serializeTest(test) ],
+      tests: [this._serializeTest(test)],
+      id: test.id,
       ...this._relativeLocation(test.location),
     };
   }
@@ -184,7 +185,7 @@ class JSONReporter implements Reporter {
       })),
     };
     if (result.error?.stack)
-      jsonResult.errorLocation = prepareErrorStack(result.error.stack, test.location.file).location;
+      jsonResult.errorLocation = prepareErrorStack(result.error.stack).location;
     return jsonResult;
   }
 

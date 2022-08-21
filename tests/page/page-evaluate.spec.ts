@@ -141,7 +141,6 @@ it('should work with large strings', async ({ page }) => {
 });
 
 it('should work with large unicode strings', async ({ page, browserName, platform }) => {
-  it.fixme(browserName === 'firefox' && platform === 'darwin');
   it.info().annotations.push({ type: 'issue', description: 'https://github.com/microsoft/playwright/issues/16367' });
 
   const expected = '🎭'.repeat(10000);
@@ -636,7 +635,7 @@ it('should not use Array.prototype.toJSON when evaluating', async ({ page }) => 
     (Array.prototype as any).toJSON = () => 'busted';
     return [1, 2, 3];
   });
-  expect(result).toEqual([1,2,3]);
+  expect(result).toEqual([1, 2, 3]);
 });
 
 it('should not add a toJSON property to newly created Arrays after evaluation', async ({ page, browserName }) => {

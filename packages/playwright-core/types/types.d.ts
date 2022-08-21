@@ -593,7 +593,7 @@ export interface Page {
    * `detached`.
    *
    * > NOTE: Playwright automatically waits for element to be ready before performing an action. Using [Locator] objects and
-   * web-first assertions make the code wait-for-selector-free.
+   * web-first assertions makes the code wait-for-selector-free.
    *
    * Wait for the `selector` to satisfy `state` option (either appear/disappear from dom, or become visible/hidden). If at
    * the moment of calling the method `selector` already satisfies the condition, the method will return immediately. If the
@@ -625,7 +625,7 @@ export interface Page {
    * `detached`.
    *
    * > NOTE: Playwright automatically waits for element to be ready before performing an action. Using [Locator] objects and
-   * web-first assertions make the code wait-for-selector-free.
+   * web-first assertions makes the code wait-for-selector-free.
    *
    * Wait for the `selector` to satisfy `state` option (either appear/disappear from dom, or become visible/hidden). If at
    * the moment of calling the method `selector` already satisfies the condition, the method will return immediately. If the
@@ -657,7 +657,7 @@ export interface Page {
    * `detached`.
    *
    * > NOTE: Playwright automatically waits for element to be ready before performing an action. Using [Locator] objects and
-   * web-first assertions make the code wait-for-selector-free.
+   * web-first assertions makes the code wait-for-selector-free.
    *
    * Wait for the `selector` to satisfy `state` option (either appear/disappear from dom, or become visible/hidden). If at
    * the moment of calling the method `selector` already satisfies the condition, the method will return immediately. If the
@@ -689,7 +689,7 @@ export interface Page {
    * `detached`.
    *
    * > NOTE: Playwright automatically waits for element to be ready before performing an action. Using [Locator] objects and
-   * web-first assertions make the code wait-for-selector-free.
+   * web-first assertions makes the code wait-for-selector-free.
    *
    * Wait for the `selector` to satisfy `state` option (either appear/disappear from dom, or become visible/hidden). If at
    * the moment of calling the method `selector` already satisfies the condition, the method will return immediately. If the
@@ -2249,8 +2249,6 @@ export interface Page {
     /**
      * Emulates `'forced-colors'` media feature, supported values are `'active'` and `'none'`. Passing `null` disables forced
      * colors emulation.
-     *
-     * > NOTE: It's not supported in WebKit, see [here](https://bugs.webkit.org/show_bug.cgi?id=225281) in their issue tracker.
      */
     forcedColors?: null|"active"|"none";
 
@@ -10541,8 +10539,6 @@ export interface BrowserType<Unused = {}> {
      * Emulates `'forced-colors'` media feature, supported values are `'active'`, `'none'`. See
      * [page.emulateMedia([options])](https://playwright.dev/docs/api/class-page#page-emulate-media) for more details. Defaults
      * to `'none'`.
-     *
-     * > NOTE: It's not supported in WebKit, see [here](https://bugs.webkit.org/show_bug.cgi?id=225281) in their issue tracker.
      */
     forcedColors?: "active"|"none";
 
@@ -11802,8 +11798,6 @@ export interface AndroidDevice {
      * Emulates `'forced-colors'` media feature, supported values are `'active'`, `'none'`. See
      * [page.emulateMedia([options])](https://playwright.dev/docs/api/class-page#page-emulate-media) for more details. Defaults
      * to `'none'`.
-     *
-     * > NOTE: It's not supported in WebKit, see [here](https://bugs.webkit.org/show_bug.cgi?id=225281) in their issue tracker.
      */
     forcedColors?: "active"|"none";
 
@@ -13366,8 +13360,6 @@ export interface Browser extends EventEmitter {
      * Emulates `'forced-colors'` media feature, supported values are `'active'`, `'none'`. See
      * [page.emulateMedia([options])](https://playwright.dev/docs/api/class-page#page-emulate-media) for more details. Defaults
      * to `'none'`.
-     *
-     * > NOTE: It's not supported in WebKit, see [here](https://bugs.webkit.org/show_bug.cgi?id=225281) in their issue tracker.
      */
     forcedColors?: "active"|"none";
 
@@ -16015,8 +16007,6 @@ export interface BrowserContextOptions {
    * Emulates `'forced-colors'` media feature, supported values are `'active'`, `'none'`. See
    * [page.emulateMedia([options])](https://playwright.dev/docs/api/class-page#page-emulate-media) for more details. Defaults
    * to `'none'`.
-   *
-   * > NOTE: It's not supported in WebKit, see [here](https://bugs.webkit.org/show_bug.cgi?id=225281) in their issue tracker.
    */
   forcedColors?: "active"|"none";
 

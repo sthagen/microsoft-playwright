@@ -70,8 +70,10 @@ dotnet build
 4. Install required browsers by replacing `netX` with the actual output folder name, e.g. `net6.0`:
 
 ```bash
-pwsh bin\Debug\netX\playwright.ps1 install
+pwsh bin/Debug/netX/playwright.ps1 install
 ```
+
+If `pwsh` is not available, you have to [install PowerShell](https://docs.microsoft.com/powershell/scripting/install/installing-powershell). 
 
 ## Add Example Tests
 
@@ -130,6 +132,7 @@ using Microsoft.Playwright.MSTest;
 
 namespace PlaywrightTests;
 
+[TestClass]
 public class UnitTest1 : PageTest
 {
     [TestMethod]

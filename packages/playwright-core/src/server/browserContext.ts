@@ -100,6 +100,8 @@ export abstract class BrowserContext extends SdkObject {
 
   setSelectors(selectors: Selectors) {
     this._selectors = selectors;
+    for (const page of this.pages())
+      page.selectors = selectors;
   }
 
   selectors(): Selectors {
@@ -245,7 +247,7 @@ export abstract class BrowserContext extends SdkObject {
 
   async cookies(urls: string | string[] | undefined = []): Promise<channels.NetworkCookie[]> {
     if (urls && !Array.isArray(urls))
-      urls = [ urls ];
+      urls = [urls];
     return await this.doGetCookies(urls as string[]);
   }
 

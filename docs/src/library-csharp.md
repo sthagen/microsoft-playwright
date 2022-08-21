@@ -19,7 +19,7 @@ dotnet add package Microsoft.Playwright
 # Build the project
 dotnet build
 # Install required browsers - replace netX with actual output folder name, e.g. net6.0.
-pwsh bin\Debug\netX\playwright.ps1 install
+pwsh bin/Debug/netX/playwright.ps1 install
 
 # If the pwsh command does not work (throws TypeNotFound), make sure to use an up-to-date version of PowerShell.
 dotnet tool update --global PowerShell
@@ -34,7 +34,10 @@ using var playwright = await Playwright.CreateAsync();
 await using var browser = await playwright.Chromium.LaunchAsync();
 var page = await browser.NewPageAsync();
 await page.GotoAsync("https://playwright.dev/dotnet");
-await page.ScreenshotAsync(new PageScreenshotOptions { Path = "screenshot.png" });
+await page.ScreenshotAsync(new()
+{
+    Path = "screenshot.png"
+});
 ```
 
 Now run it.

@@ -309,13 +309,33 @@ Examples:
 
 if (!process.env.PW_LANG_NAME) {
   let playwrightTestPackagePath = null;
+  const resolvePwTestPaths = [__dirname, process.cwd()];
   try {
     playwrightTestPackagePath = require.resolve('@playwright/test/lib/cli', {
-      paths: [__dirname, process.cwd()]
+      paths: resolvePwTestPaths,
     });
   } catch {}
 
   if (playwrightTestPackagePath) {
+    const pwTestVersion = require(require.resolve('@playwright/test/package.json', {
+      paths: resolvePwTestPaths,
+    })).version;
+    const pwCoreVersion = require(path.join(__dirname, '../../package.json')).version;
+    if (pwTestVersion !== pwCoreVersion) {
+      let hasPlaywrightPackage = false;
+      try {
+        require('playwright');
+        hasPlaywrightPackage = true;
+      } catch {}
+      console.error(wrapInASCIIBox([
+        `Playwright Test compatibility check failed:`,
+        `@playwright/test version '${pwTestVersion}' does not match ${hasPlaywrightPackage ? 'playwright' : 'playwright-core'} version '${pwCoreVersion}'!`,
+        `To fix this either align the versions or only keep @playwright/test since it depends on playwright-core.`,
+        `If you still receive this error, execute 'npm ci' or delete 'node_modules' and do 'npm install' again.`,
+      ].join('\n'), 1));
+      process.exit(1);
+    }
+
     require(playwrightTestPackagePath).addTestCommands(program);
   } else {
     {
@@ -432,7 +452,7 @@ async function launchContext(options: Options, headless: boolean, executablePath
   // Viewport size
   if (options.viewportSize) {
     try {
-      const [ width, height ] = options.viewportSize.split(',').map(n => parseInt(n, 10));
+      const [width, height] = options.viewportSize.split(',').map(n => parseInt(n, 10));
       contextOptions.viewport = { width, height };
     } catch (e) {
       console.log('Invalid window size format: use "width, height", for example --window-size=800,600');
@@ -715,7 +735,7 @@ function buildBasePlaywrightCLICommand(cliTargetLang: string | undefined): strin
     case 'java':
       return `mvn exec:java -e -Dexec.mainClass=com.microsoft.playwright.CLI -Dexec.args="...options.."`;
     case 'csharp':
-      return `pwsh bin\\Debug\\netX\\playwright.ps1`;
+      return `pwsh bin/Debug/netX/playwright.ps1`;
     default:
       return `npx playwright`;
   }
