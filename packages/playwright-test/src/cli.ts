@@ -50,6 +50,7 @@ function addTestCommand(program: Command) {
   command.option('--list', `Collect all the tests and report them, but do not run`);
   command.option('--max-failures <N>', `Stop after the first N failures`);
   command.option('--output <dir>', `Folder for output artifacts (default: "test-results")`);
+  command.option('--pass-with-no-tests', `Makes test run succeed even if no tests were found`);
   command.option('--quiet', `Suppress stdio`);
   command.option('--repeat-each <N>', `Run each test N times (default: 1)`);
   command.option('--reporter <reporter>', `Reporter to use, comma-separated, can be ${builtInReporters.map(name => `"${name}"`).join(', ')} (default: "${baseFullConfig.reporter[0]}")`);
@@ -58,6 +59,7 @@ function addTestCommand(program: Command) {
   command.option('--project <project-name...>', `Only run tests from the specified list of projects (default: run all projects)`);
   command.option('--timeout <timeout>', `Specify test timeout threshold in milliseconds, zero for unlimited (default: ${defaultTimeout})`);
   command.option('--trace <mode>', `Force tracing mode, can be ${kTraceModes.map(mode => `"${mode}"`).join(', ')}`);
+  command.option('-i, --ignore-snapshots', `Ignore screenshot and snapshot expectations`);
   command.option('-u, --update-snapshots', `Update snapshots with actual results (default: only create missing snapshots)`);
   command.option('-x', `Stop after the first failure`);
   command.action(async (args, opts) => {
@@ -165,6 +167,7 @@ async function runTests(args: string[], opts: { [key: string]: any }) {
     testFileFilters,
     projectFilter: opts.project || undefined,
     watchMode: !!process.env.PW_TEST_WATCH,
+    passWithNoTests: opts.passWithNoTests,
   });
   await stopProfiling(undefined);
 
@@ -214,6 +217,7 @@ function overridesFromOptions(options: { [key: string]: any }): ConfigCLIOverrid
     reporter: (options.reporter && options.reporter.length) ? options.reporter.split(',').map((r: string) => [resolveReporter(r)]) : undefined,
     shard: shardPair ? { current: shardPair[0], total: shardPair[1] } : undefined,
     timeout: options.timeout ? parseInt(options.timeout, 10) : undefined,
+    ignoreSnapshots: options.ignoreSnapshots ? !!options.ignoreSnapshots : undefined,
     updateSnapshots: options.updateSnapshots ? 'all' as const : undefined,
     workers: options.workers ? parseInt(options.workers, 10) : undefined,
   };

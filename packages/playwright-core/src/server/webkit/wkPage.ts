@@ -829,9 +829,23 @@ export class WKPage implements PageDelegate {
     this._recordingVideoFile = null;
   }
 
+  private validateScreenshotDimension(side: number, omitDeviceScaleFactor: boolean) {
+    // Cairo based implementations (Linux and Windows) have hard limit of 32767
+    // (see https://github.com/microsoft/playwright/issues/16727).
+    if (process.platform === 'darwin')
+      return;
+    if (!omitDeviceScaleFactor && this._page._browserContext._options.deviceScaleFactor)
+      side = Math.ceil(side * this._page._browserContext._options.deviceScaleFactor);
+    if (side > 32767)
+      throw new Error('Cannot take screenshot larger than 32767 pixels on any dimension');
+  }
+
   async takeScreenshot(progress: Progress, format: string, documentRect: types.Rect | undefined, viewportRect: types.Rect | undefined, quality: number | undefined, fitsViewport: boolean, scale: 'css' | 'device'): Promise<Buffer> {
     const rect = (documentRect || viewportRect)!;
-    const result = await this._session.send('Page.snapshotRect', { ...rect, coordinateSystem: documentRect ? 'Page' : 'Viewport', omitDeviceScaleFactor: scale === 'css' });
+    const omitDeviceScaleFactor = scale === 'css';
+    this.validateScreenshotDimension(rect.width, omitDeviceScaleFactor);
+    this.validateScreenshotDimension(rect.height, omitDeviceScaleFactor);
+    const result = await this._session.send('Page.snapshotRect', { ...rect, coordinateSystem: documentRect ? 'Page' : 'Viewport', omitDeviceScaleFactor });
     const prefix = 'data:image/png;base64,';
     let buffer = Buffer.from(result.dataURL.substr(prefix.length), 'base64');
     if (format === 'jpeg')
@@ -974,17 +988,14 @@ export class WKPage implements PageDelegate {
     const parent = frame.parentFrame();
     if (!parent)
       throw new Error('Frame has been detached.');
-    const info = this._page.parseSelector('frame,iframe');
-    const handles = await this._page.selectors._queryAll(parent, info);
-    const items = await Promise.all(handles.map(async handle => {
-      const frame = await handle.contentFrame().catch(e => null);
-      return { handle, frame };
-    }));
-    const result = items.find(item => item.frame === frame);
-    items.map(item => item === result ? Promise.resolve() : item.handle.dispose());
-    if (!result)
+    const context = await parent._mainContext();
+    const result = await this._session.send('DOM.resolveNode', {
+      frameId: frame._id,
+      executionContextId: ((context as any)[contextDelegateSymbol] as WKExecutionContext)._contextId
+    });
+    if (!result || result.object.subtype === 'null')
       throw new Error('Frame has been detached.');
-    return result.handle;
+    return context.createHandle(result.object) as dom.ElementHandle;
   }
 
   _onRequestWillBeSent(session: WKSession, event: Protocol.Network.requestWillBeSentPayload) {

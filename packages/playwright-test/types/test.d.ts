@@ -679,6 +679,12 @@ interface TestConfig {
   grepInvert?: RegExp|Array<RegExp>;
 
   /**
+   * Whether to skip snapshot expectations, such as `expect(value).toMatchSnapshot()` and `await
+   * expect(page).toHaveScreenshot()`.
+   */
+  ignoreSnapshots?: boolean;
+
+  /**
    * The maximum number of test failures for the whole test suite run. After reaching this number, testing will stop and exit
    * with an error. Setting to zero (default) disables this behavior.
    *
@@ -3268,6 +3274,8 @@ interface LocatorAssertions {
    * @param options
    */
   toBeEditable(options?: {
+    editable?: boolean;
+
     /**
      * Time to retry the assertion for. Defaults to `timeout` in `TestConfig.expect`.
      */
@@ -3302,6 +3310,8 @@ interface LocatorAssertions {
    * @param options
    */
   toBeEnabled(options?: {
+    enabled?: boolean;
+
     /**
      * Time to retry the assertion for. Defaults to `timeout` in `TestConfig.expect`.
      */
@@ -3326,7 +3336,8 @@ interface LocatorAssertions {
   }): Promise<void>;
 
   /**
-   * Ensures the [Locator] points to a hidden DOM node, which is the opposite of [visible](https://playwright.dev/docs/api/actionability#visible).
+   * Ensures that [Locator] either does not resolve to any DOM node, or resolves to a
+   * [non-visible](https://playwright.dev/docs/api/actionability#visible) one.
    *
    * ```js
    * const locator = page.locator('.my-element');
@@ -3343,7 +3354,8 @@ interface LocatorAssertions {
   }): Promise<void>;
 
   /**
-   * Ensures the [Locator] points to a [visible](https://playwright.dev/docs/api/actionability#visible) DOM node.
+   * Ensures that [Locator] points to an [attached](https://playwright.dev/docs/api/actionability#visible) and [visible](https://playwright.dev/docs/api/actionability#visible) DOM
+   * node.
    *
    * ```js
    * const locator = page.locator('.my-element');
@@ -3357,6 +3369,8 @@ interface LocatorAssertions {
      * Time to retry the assertion for. Defaults to `timeout` in `TestConfig.expect`.
      */
     timeout?: number;
+
+    visible?: boolean;
   }): Promise<void>;
 
   /**
@@ -3423,23 +3437,39 @@ interface LocatorAssertions {
   }): Promise<void>;
 
   /**
-   * Ensures the [Locator] points to an element with given attribute. If the method is used without `'value'` argument, then
-   * the method will assert attribute existance.
+   * Ensures the [Locator] points to an element with given attribute value.
    *
    * ```js
    * const locator = page.locator('input');
    * // Assert attribute with given value.
    * await expect(locator).toHaveAttribute('type', 'text');
+   * ```
+   *
+   * @param name Attribute name.
+   * @param value Expected attribute value.
+   * @param options
+   */
+  toHaveAttribute(name: string, value: string|RegExp, options?: {
+    /**
+     * Time to retry the assertion for. Defaults to `timeout` in `TestConfig.expect`.
+     */
+    timeout?: number;
+  }): Promise<void>;
+
+  /**
+   * Ensures the [Locator] points to an element with given attribute. The method will assert attribute presence.
+   *
+   * ```js
+   * const locator = page.locator('input');
    * // Assert attribute existance.
    * await expect(locator).toHaveAttribute('disabled');
    * await expect(locator).not.toHaveAttribute('open');
    * ```
    *
    * @param name Attribute name.
-   * @param value Optional expected attribute value. If missing, method will assert attribute presence.
    * @param options
    */
-  toHaveAttribute(name: string, value?: string|RegExp, options?: {
+  toHaveAttribute(name: string, options?: {
     /**
      * Time to retry the assertion for. Defaults to `timeout` in `TestConfig.expect`.
      */

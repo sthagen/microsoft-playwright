@@ -3,10 +3,6 @@ id: test-cli
 title: "Command line"
 ---
 
-<!-- TOC -->
-
-## Examples
-
 Here are the most common options available in the command line.
 
 - Run all the tests
@@ -110,6 +106,8 @@ Complete set of Playwright Test options is available in the [configuration file]
 - `--shard <shard>`: [Shard](./test-parallel.md#shard-tests-between-multiple-machines) tests and execute only selected shard, specified in the form `current/all`, 1-based, for example `3/5`.
 
 - `--timeout <number>`: Maximum timeout in milliseconds for each test, defaults to 30 seconds. Learn more about [various timeouts](./test-timeouts.md).
+
+- `--ignore-snapshots` or `-i`: Whether to ignore [snapshots](./test-snapshots.md). Use this when snapshot expectations are known to be different, e.g. running tests on Linux against Windows screenshots.
 
 - `--update-snapshots` or `-u`: Whether to update [snapshots](./test-snapshots.md) with actual results instead of comparing them. Use this when snapshot expectations have changed.
 

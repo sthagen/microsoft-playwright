@@ -57,6 +57,7 @@ test.beforeAll(async function recordTrace({ browser, browserName, browserType, s
 
   await Promise.all([
     page.waitForNavigation(),
+    page.waitForResponse(server.PREFIX + '/frames/frame.html'),
     page.waitForTimeout(200).then(() => page.goto(server.PREFIX + '/frames/frame.html'))
   ]);
   await page.setViewportSize({ width: 500, height: 600 });
@@ -88,6 +89,7 @@ test('should open simple trace viewer', async ({ showTraceViewer }) => {
     /page.evaluate/,
     /page.click"Click"/,
     /page.waitForNavigation/,
+    /page.waitForResponse/,
     /page.waitForTimeout/,
     /page.gotohttp:\/\/localhost:\d+\/frames\/frame.html/,
     /page.setViewportSize/,
@@ -631,5 +633,79 @@ test('should open two trace files', async ({ context, page, request, server, sho
   await expect(callLine.locator('text=pages')).toHaveText(/pages: 1/);
   await expect(callLine.locator('text=actions')).toHaveText(/actions: 6/);
   await expect(callLine.locator('text=events')).toHaveText(/events: [\d]+/);
+});
+
+test('should include requestUrl in route.fulfill', async ({ page, runAndTrace, browserName }) => {
+  await page.route('**/*', route => {
+    route.fulfill({
+      status: 200,
+      headers: {
+        'content-type': 'text/html'
+      },
+      body: 'Hello there!'
+    });
+  });
+  const traceViewer = await runAndTrace(async () => {
+    await page.goto('http://test.com');
+  });
+
+  // Render snapshot, check expectations.
+  await traceViewer.selectAction('route.fulfill');
+  await traceViewer.page.locator('.tab-label', { hasText: 'Call' }).click();
+  const callLine = traceViewer.page.locator('.call-line');
+  await expect(callLine.locator('text=status')).toContainText('200');
+  await expect(callLine.locator('text=requestUrl')).toContainText('http://test.com');
+});
+
+test('should include requestUrl in route.continue', async ({ page, runAndTrace, server }) => {
+  await page.route('**/*', route => {
+    route.continue({ url: server.EMPTY_PAGE });
+  });
+  const traceViewer = await runAndTrace(async () => {
+    await page.goto('http://test.com');
+  });
+
+  // Render snapshot, check expectations.
+  await traceViewer.selectAction('route.continue');
+  await traceViewer.page.locator('.tab-label', { hasText: 'Call' }).click();
+  const callLine = traceViewer.page.locator('.call-line');
+  await expect(callLine.locator('text=requestUrl')).toContainText('http://test.com');
+  await expect(callLine.locator('text=/^url: .*/')).toContainText(server.EMPTY_PAGE);
+});
+
+test('should include requestUrl in route.abort', async ({ page, runAndTrace, server }) => {
+  await page.route('**/*', route => {
+    route.abort();
+  });
+  const traceViewer = await runAndTrace(async () => {
+    await page.goto('http://test.com').catch(() => {});
+  });
+
+  // Render snapshot, check expectations.
+  await traceViewer.selectAction('route.abort');
+  await traceViewer.page.locator('.tab-label', { hasText: 'Call' }).click();
+  const callLine = traceViewer.page.locator('.call-line');
+  await expect(callLine.locator('text=requestUrl')).toContainText('http://test.com');
+});
+
+test('should serve overridden request', async ({ page, runAndTrace, server }) => {
+  server.setRoute('/custom.css', (req, res) => {
+    res.writeHead(200, {
+      'Content-Type': 'text/css',
+    });
+    res.end(`body { background: red }`);
+  });
+  await page.route('**/one-style.css', route => {
+    route.continue({
+      url: server.PREFIX + '/custom.css'
+    });
+  });
+  const traceViewer = await runAndTrace(async () => {
+    await page.goto(server.PREFIX + '/one-style.html');
+  });
+  // Render snapshot, check expectations.
+  const snapshotFrame = await traceViewer.snapshotFrame('page.goto');
+  const color = await snapshotFrame.locator('body').evaluate(body => getComputedStyle(body).backgroundColor);
+  expect(color).toBe('rgb(255, 0, 0)');
 });
 
