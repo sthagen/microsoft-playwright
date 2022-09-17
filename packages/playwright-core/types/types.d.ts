@@ -12668,6 +12668,12 @@ export interface APIRequestContext {
     ignoreHTTPSErrors?: boolean;
 
     /**
+     * Maximum number of request redirects that will be followed automatically. An error will be thrown if the number is
+     * exceeded. Defaults to `20`. Pass `0` to not follow redirects.
+     */
+    maxRedirects?: number;
+
+    /**
      * Provides an object that will be serialized as html form using `multipart/form-data` encoding and sent as this request
      * body. If this parameter is specified `content-type` header will be set to `multipart/form-data` unless explicitly
      * provided. File values can be passed either as [`fs.ReadStream`](https://nodejs.org/api/fs.html#fs_class_fs_readstream)
@@ -12714,6 +12720,45 @@ export interface APIRequestContext {
   /**
    * Sends HTTP(S) request and returns its response. The method will populate request cookies from the context and update
    * context cookies from the response. The method will automatically follow redirects.
+   *
+   * JSON objects can be passed directly to the request:
+   *
+   * ```js
+   * await request.fetch('https://example.com/api/createBook', {
+   *   method: 'post',
+   *   data: {
+   *     title: 'Book Title',
+   *     author: 'John Doe',
+   *   }
+   * });
+   * ```
+   *
+   * The common way to send file(s) in the body of a request is to encode it as form fields with `multipart/form-data`
+   * encoding. You can achieve that with Playwright API like this:
+   *
+   * ```js
+   * // Open file as a stream and pass it to the request:
+   * const stream = fs.createReadStream('team.csv');
+   * await request.fetch('https://example.com/api/uploadTeamList', {
+   *   method: 'post',
+   *   multipart: {
+   *     fileField: stream
+   *   }
+   * });
+   *
+   * // Or you can pass the file content directly as an object:
+   * await request.fetch('https://example.com/api/uploadScript', {
+   *   method: 'post',
+   *   multipart: {
+   *     fileField: {
+   *       name: 'f.js',
+   *       mimeType: 'text/javascript',
+   *       buffer: Buffer.from('console.log(2022);')
+   *     }
+   *   }
+   * });
+   * ```
+   *
    * @param urlOrRequest Target URL or Request to get all parameters from.
    * @param options
    */
@@ -12746,6 +12791,12 @@ export interface APIRequestContext {
      * Whether to ignore HTTPS errors when sending network requests. Defaults to `false`.
      */
     ignoreHTTPSErrors?: boolean;
+
+    /**
+     * Maximum number of request redirects that will be followed automatically. An error will be thrown if the number is
+     * exceeded. Defaults to `20`. Pass `0` to not follow redirects.
+     */
+    maxRedirects?: number;
 
     /**
      * If set changes the fetch method (e.g. [PUT](https://developer.mozilla.org/en-US/docs/Web/HTTP/Methods/PUT) or
@@ -12791,6 +12842,18 @@ export interface APIRequestContext {
    * Sends HTTP(S) [GET](https://developer.mozilla.org/en-US/docs/Web/HTTP/Methods/GET) request and returns its response. The
    * method will populate request cookies from the context and update context cookies from the response. The method will
    * automatically follow redirects.
+   *
+   * Request parameters can be configured with `params` option, they will be serialized into the URL search parameters:
+   *
+   * ```js
+   * await request.get('https://example.com/api/getText', {
+   *   params: {
+   *     'isbn': '1234',
+   *     'page': 23,
+   *   }
+   * });
+   * ```
+   *
    * @param url Target URL.
    * @param options
    */
@@ -12809,6 +12872,12 @@ export interface APIRequestContext {
      * Whether to ignore HTTPS errors when sending network requests. Defaults to `false`.
      */
     ignoreHTTPSErrors?: boolean;
+
+    /**
+     * Maximum number of request redirects that will be followed automatically. An error will be thrown if the number is
+     * exceeded. Defaults to `20`. Pass `0` to not follow redirects.
+     */
+    maxRedirects?: number;
 
     /**
      * Query parameters to be sent with the URL.
@@ -12843,6 +12912,12 @@ export interface APIRequestContext {
      * Whether to ignore HTTPS errors when sending network requests. Defaults to `false`.
      */
     ignoreHTTPSErrors?: boolean;
+
+    /**
+     * Maximum number of request redirects that will be followed automatically. An error will be thrown if the number is
+     * exceeded. Defaults to `20`. Pass `0` to not follow redirects.
+     */
+    maxRedirects?: number;
 
     /**
      * Query parameters to be sent with the URL.
@@ -12893,6 +12968,12 @@ export interface APIRequestContext {
     ignoreHTTPSErrors?: boolean;
 
     /**
+     * Maximum number of request redirects that will be followed automatically. An error will be thrown if the number is
+     * exceeded. Defaults to `20`. Pass `0` to not follow redirects.
+     */
+    maxRedirects?: number;
+
+    /**
      * Provides an object that will be serialized as html form using `multipart/form-data` encoding and sent as this request
      * body. If this parameter is specified `content-type` header will be set to `multipart/form-data` unless explicitly
      * provided. File values can be passed either as [`fs.ReadStream`](https://nodejs.org/api/fs.html#fs_class_fs_readstream)
@@ -12930,6 +13011,54 @@ export interface APIRequestContext {
    * Sends HTTP(S) [POST](https://developer.mozilla.org/en-US/docs/Web/HTTP/Methods/POST) request and returns its response.
    * The method will populate request cookies from the context and update context cookies from the response. The method will
    * automatically follow redirects.
+   *
+   * JSON objects can be passed directly to the request:
+   *
+   * ```js
+   * await request.post('https://example.com/api/createBook', {
+   *   data: {
+   *     title: 'Book Title',
+   *     author: 'John Doe',
+   *   }
+   * });
+   * ```
+   *
+   * To send form data to the server use `form` option. Its value will be encoded into the request body with
+   * `application/x-www-form-urlencoded` encoding (see below how to use `multipart/form-data` form encoding to send files):
+   *
+   * ```js
+   * await request.post('https://example.com/api/findBook', {
+   *   form: {
+   *     title: 'Book Title',
+   *     author: 'John Doe',
+   *   }
+   * });
+   * ```
+   *
+   * The common way to send file(s) in the body of a request is to upload them as form fields with `multipart/form-data`
+   * encoding. You can achieve that with Playwright API like this:
+   *
+   * ```js
+   * // Open file as a stream and pass it to the request:
+   * const stream = fs.createReadStream('team.csv');
+   * await request.post('https://example.com/api/uploadTeamList', {
+   *   multipart: {
+   *     fileField: stream
+   *   }
+   * });
+   *
+   * // Or you can pass the file content directly as an object:
+   * await request.post('https://example.com/api/uploadScript', {
+   *   multipart: {
+   *     fileField: {
+   *       name: 'f.js',
+   *       mimeType: 'text/javascript',
+   *       buffer: Buffer.from('console.log(2022);')
+   *     }
+   *   }
+   * });
+   * ```
+   *
    * @param url Target URL.
    * @param options
    */
@@ -12962,6 +13091,12 @@ export interface APIRequestContext {
      * Whether to ignore HTTPS errors when sending network requests. Defaults to `false`.
      */
     ignoreHTTPSErrors?: boolean;
+
+    /**
+     * Maximum number of request redirects that will be followed automatically. An error will be thrown if the number is
+     * exceeded. Defaults to `20`. Pass `0` to not follow redirects.
+     */
+    maxRedirects?: number;
 
     /**
      * Provides an object that will be serialized as html form using `multipart/form-data` encoding and sent as this request
@@ -13033,6 +13168,12 @@ export interface APIRequestContext {
      * Whether to ignore HTTPS errors when sending network requests. Defaults to `false`.
      */
     ignoreHTTPSErrors?: boolean;
+
+    /**
+     * Maximum number of request redirects that will be followed automatically. An error will be thrown if the number is
+     * exceeded. Defaults to `20`. Pass `0` to not follow redirects.
+     */
+    maxRedirects?: number;
 
     /**
      * Provides an object that will be serialized as html form using `multipart/form-data` encoding and sent as this request
@@ -14457,7 +14598,7 @@ export interface FileChooser {
  * **Strictness**
  *
  * Frame locators are strict. This means that all operations on frame locators will throw if more than one element matches
- * given selector.
+ * a given selector.
  *
  * ```js
  * // Throws if there are several frames in DOM:
