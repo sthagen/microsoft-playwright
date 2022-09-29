@@ -16,8 +16,10 @@
 
 import { test, expect } from '@playwright/experimental-ct-svelte';
 import Button from './components/Button.svelte';
+import Component from './components/Component.svelte';
 import DefaultSlot from './components/DefaultSlot.svelte';
 import MultiRoot from './components/MultiRoot.svelte';
+import Empty from './components/Empty.svelte';
 
 test.use({ viewport: { width: 500, height: 500 } });
 
@@ -53,6 +55,11 @@ test('render a default slot', async ({ mount }) => {
   await expect(component).toContainText('Main Content')
 })
 
+test('render a component without options', async ({ mount }) => {
+  const component = await mount(Component);
+  await expect(component).toContainText('test');
+})
+
 test('run hooks', async ({ page, mount }) => {
   const messages = []
   page.on('console', m => messages.push(m.text()))
@@ -83,4 +90,11 @@ test('unmount a multi root component', async ({ mount, page }) => {
   await component.unmount()
   await expect(page.locator('#root')).not.toContainText('root 1')
   await expect(page.locator('#root')).not.toContainText('root 2')
-})
+});
+
+test('get textContent of the empty component', async ({ mount }) => {
+  const component = await mount(Empty);
+  expect(await component.allTextContents()).toEqual(['']);
+  expect(await component.textContent()).toBe('');
+  await expect(component).toHaveText('');
+});

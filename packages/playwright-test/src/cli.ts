@@ -17,7 +17,6 @@
 /* eslint-disable no-console */
 
 import type { Command } from 'playwright-core/lib/utilsBundle';
-import * as docker from './docker/docker';
 import fs from 'fs';
 import url from 'url';
 import path from 'path';
@@ -33,58 +32,6 @@ export function addTestCommands(program: Command) {
   addTestCommand(program);
   addShowReportCommand(program);
   addListFilesCommand(program);
-  addDockerCommand(program);
-}
-
-function addDockerCommand(program: Command) {
-  const dockerCommand = program.command('docker')
-      .description(`Manage Docker integration (EXPERIMENTAL)`);
-
-  dockerCommand.command('build')
-      .description('build local docker image')
-      .action(async function(options) {
-        try {
-          await docker.buildPlaywrightImage();
-        } catch (e) {
-          console.error(e.stack ? e : e.message);
-        }
-      });
-
-  dockerCommand.command('start')
-      .description('start docker container')
-      .action(async function(options) {
-        try {
-          await docker.startPlaywrightContainer();
-        } catch (e) {
-          console.error(e.stack ? e : e.message);
-        }
-      });
-
-  dockerCommand.command('stop')
-      .description('stop docker container')
-      .action(async function(options) {
-        try {
-          await docker.stopAllPlaywrightContainers();
-        } catch (e) {
-          console.error(e.stack ? e : e.message);
-        }
-      });
-
-  dockerCommand.command('delete-image', { hidden: true })
-      .description('delete docker image, if any')
-      .action(async function(options) {
-        try {
-          await docker.deletePlaywrightImage();
-        } catch (e) {
-          console.error(e.stack ? e : e.message);
-        }
-      });
-
-  dockerCommand.command('print-status-json', { hidden: true })
-      .description('print docker status')
-      .action(async function(options) {
-        await docker.printDockerStatus();
-      });
 }
 
 function addTestCommand(program: Command) {
@@ -92,7 +39,7 @@ function addTestCommand(program: Command) {
   command.description('run tests with Playwright Test');
   command.option('--browser <browser>', `Browser to use for tests, one of "all", "chromium", "firefox" or "webkit" (default: "chromium")`);
   command.option('--headed', `Run tests in headed browsers (default: headless)`);
-  command.option('--debug', `Run tests with Playwright Inspector. Shortcut for "PWDEBUG=1" environment variable and "--timeout=0 --maxFailures=1 --headed --workers=1" options`);
+  command.option('--debug', `Run tests with Playwright Inspector. Shortcut for "PWDEBUG=1" environment variable and "--timeout=0 --max-failures=1 --headed --workers=1" options`);
   command.option('-c, --config <file>', `Configuration file, or a test directory with optional ${kDefaultConfigFiles.map(file => `"${file}"`).join('/')}`);
   command.option('--forbid-only', `Fail if test.only is called (default: false)`);
   command.option('--fully-parallel', `Run all tests in parallel (default: false)`);
@@ -100,7 +47,7 @@ function addTestCommand(program: Command) {
   command.option('-gv, --grep-invert <grep>', `Only run tests that do not match this regular expression`);
   command.option('--global-timeout <timeout>', `Maximum time this test suite can run in milliseconds (default: unlimited)`);
   command.option('--ignore-snapshots', `Ignore screenshot and snapshot expectations`);
-  command.option('-j, --workers <workers>', `Number of concurrent workers, use 1 to run in a single worker (default: number of CPU cores / 2)`);
+  command.option('-j, --workers <workers>', `Number of concurrent workers or percentage of logical CPU cores, use 1 to run in a single worker (default: 50%)`);
   command.option('--list', `Collect all the tests and report them, but do not run`);
   command.option('--max-failures <N>', `Stop after the first N failures`);
   command.option('--output <dir>', `Folder for output artifacts (default: "test-results")`);
@@ -111,6 +58,7 @@ function addTestCommand(program: Command) {
   command.option('--retries <retries>', `Maximum retry count for flaky tests, zero for no retries (default: no retries)`);
   command.option('--shard <shard>', `Shard tests and execute only the selected shard, specify in the form "current/all", 1-based, for example "3/5"`);
   command.option('--project <project-name...>', `Only run tests from the specified list of projects (default: run all projects)`);
+  command.option('--group <project-group-name>', `Only run tests from the specified project group (default: run all projects from the 'default' group or just all projects if 'default' group is not defined).`);
   command.option('--timeout <timeout>', `Specify test timeout threshold in milliseconds, zero for unlimited (default: ${defaultTimeout})`);
   command.option('--trace <mode>', `Force tracing mode, can be ${kTraceModes.map(mode => `"${mode}"`).join(', ')}`);
   command.option('-u, --update-snapshots', `Update snapshots with actual results (default: only create missing snapshots)`);
@@ -219,6 +167,7 @@ async function runTests(args: string[], opts: { [key: string]: any }) {
     listOnly: !!opts.list,
     testFileFilters,
     projectFilter: opts.project || undefined,
+    projectGroup: opts.group,
     watchMode: !!process.env.PW_TEST_WATCH,
     passWithNoTests: opts.passWithNoTests,
   });
@@ -272,7 +221,7 @@ function overridesFromOptions(options: { [key: string]: any }): ConfigCLIOverrid
     timeout: options.timeout ? parseInt(options.timeout, 10) : undefined,
     ignoreSnapshots: options.ignoreSnapshots ? !!options.ignoreSnapshots : undefined,
     updateSnapshots: options.updateSnapshots ? 'all' as const : undefined,
-    workers: options.workers ? parseInt(options.workers, 10) : undefined,
+    workers: options.workers,
   };
 }
 
@@ -315,7 +264,7 @@ function restartWithExperimentalTsEsm(configFile: string | null): boolean {
 }
 
 export function experimentalLoaderOption() {
-  return ` --experimental-loader=${url.pathToFileURL(require.resolve('@playwright/test/lib/experimentalLoader')).toString()}`;
+  return ` --no-warnings --experimental-loader=${url.pathToFileURL(require.resolve('@playwright/test/lib/experimentalLoader')).toString()}`;
 }
 
 export function envWithoutExperimentalLoaderOptions(): NodeJS.ProcessEnv {

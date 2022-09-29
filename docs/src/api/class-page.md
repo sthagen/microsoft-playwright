@@ -964,6 +964,58 @@ Optional event-specific initialization properties.
 ## async method: Page.dragAndDrop
 * since: v1.13
 
+This method drags the source element to the target element.
+It will first move to the source element, perform a `mousedown`,
+then move to the target element and perform a `mouseup`.
+
+```js
+await page.dragAndDrop('#source', '#target');
+// or specify exact positions relative to the top-left corners of the elements:
+await page.dragAndDrop('#source', '#target', {
+  sourcePosition: { x: 34, y: 7 },
+  targetPosition: { x: 10, y: 20 },
+});
+```
+
+```java
+page.dragAndDrop("#source", '#target');
+// or specify exact positions relative to the top-left corners of the elements:
+page.dragAndDrop("#source", '#target', new Page.DragAndDropOptions()
+  .setSourcePosition(34, 7).setTargetPosition(10, 20));
+```
+
+```python async
+await page.drag_and_drop("#source", "#target")
+# or specify exact positions relative to the top-left corners of the elements:
+await page.drag_and_drop(
+  "#source",
+  "#target",
+  source_position={"x": 34, "y": 7},
+  target_position={"x": 10, "y": 20}
+)
+```
+
+```python sync
+page.drag_and_drop("#source", "#target")
+# or specify exact positions relative to the top-left corners of the elements:
+page.drag_and_drop(
+  "#source",
+  "#target",
+  source_position={"x": 34, "y": 7},
+  target_position={"x": 10, "y": 20}
+)
+```
+
+```csharp
+await Page.DragAndDropAsync("#source", "#target");
+// or specify exact positions relative to the top-left corners of the elements:
+await Page.DragAndDropAsync("#source", "#target", new()
+{
+    SourcePosition = new() { X = 34, Y = 7 },
+    TargetPosition = new() { X = 10, Y = 20 },
+});
+```
+
 ### param: Page.dragAndDrop.source = %%-input-source-%%
 * since: v1.13
 ### param: Page.dragAndDrop.target = %%-input-target-%%
@@ -2110,6 +2162,18 @@ await locator.ClickAsync();
 
 An array of all frames attached to the page.
 
+## method: Page.get
+* since: v1.27
+- returns: <[Locator]>
+
+%%-template-locator-root-locator-%%
+
+### param: Page.get.selector = %%-find-selector-%%
+* since: v1.27
+### option: Page.get.-inline- = %%-locator-options-list-v1.14-%%
+* since: v1.27
+
+
 ## async method: Page.getAttribute
 * since: v1.8
 - returns: <[null]|[string]>
@@ -2129,6 +2193,38 @@ Attribute name to get the value for.
 * since: v1.14
 ### option: Page.getAttribute.timeout = %%-input-timeout-%%
 * since: v1.8
+
+
+## method: Page.getByRole
+* since: v1.27
+- returns: <[Locator]>
+
+%%-template-locator-get-by-role-%%
+
+### param: Page.getByRole.role = %%-locator-get-by-role-role-%%
+### option: Page.getByRole.-inline- = %%-locator-get-by-role-option-list-v1.27-%%
+* since: v1.27
+
+
+## method: Page.getByTestId
+* since: v1.27
+- returns: <[Locator]>
+
+%%-template-locator-get-by-test-id-%%
+
+### param: Page.getByTestId.testId = %%-locator-get-by-test-id-test-id-%%
+* since: v1.27
+
+
+## method: Page.getByText
+* since: v1.27
+- returns: <[Locator]>
+
+%%-template-locator-get-by-text-%%
+
+### param: Page.getByText.text = %%-locator-get-by-text-text-%%
+### option: Page.getByText.exact = %%-locator-get-by-text-exact-%%
+
 
 ## async method: Page.goBack
 * since: v1.8
@@ -2395,12 +2491,7 @@ Returns whether the element is [visible](../actionability.md#visible). [`option:
 * since: v1.14
 - returns: <[Locator]>
 
-The method returns an element locator that can be used to perform actions on the page.
-Locator is resolved to the element immediately before performing an action, so a series of actions on the same locator can in fact be performed on different DOM elements. That would happen if the DOM structure between those actions has changed.
-
-[Learn more about locators](../locators.md).
-
-Shortcut for main frame's [`method: Frame.locator`].
+%%-template-locator-root-locator-%%
 
 ### param: Page.locator.selector = %%-find-selector-%%
 * since: v1.14

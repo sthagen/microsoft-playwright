@@ -688,6 +688,38 @@ interface TestConfig {
   grepInvert?: RegExp|Array<RegExp>;
 
   /**
+   * Project groups that control project execution order.
+   */
+  groups?: { [key: string]: Array<string|Array<string|{
+    /**
+     * Project name(s).
+     */
+    project: string|Array<string>;
+
+    /**
+     * Filter to only run tests with a title matching one of the patterns.
+     */
+    grep?: RegExp|Array<RegExp>;
+
+    /**
+     * Filter to only run tests with a title **not** matching one of the patterns.
+     */
+    grepInvert?: RegExp|Array<RegExp>;
+
+    /**
+     * Only the files matching one of these patterns are executed as test files. Matching is performed against the absolute
+     * file path. Strings are treated as glob patterns.
+     */
+    testMatch?: string|RegExp|Array<string|RegExp>;
+
+    /**
+     * Files matching one of these patterns are not executed as test files. Matching is performed against the absolute file
+     * path. Strings are treated as glob patterns.
+     */
+    testIgnore?: string|RegExp|Array<string|RegExp>;
+  }>>; };
+
+  /**
    * Whether to skip snapshot expectations, such as `expect(value).toMatchSnapshot()` and `await
    * expect(page).toHaveScreenshot()`.
    */
@@ -936,13 +968,14 @@ interface TestConfig {
   updateSnapshots?: "all"|"none"|"missing";
 
   /**
-   * The maximum number of concurrent worker processes to use for parallelizing tests.
+   * The maximum number of concurrent worker processes to use for parallelizing tests. Can also be set as percentage of
+   * logical CPU cores, e.g. `'50%'.`
    *
    * Playwright Test uses worker processes to run tests. There is always at least one worker process, but more can be used to
    * speed up test execution.
    *
-   * Defaults to one half of the number of CPU cores. Learn more about [parallelism and sharding](https://playwright.dev/docs/test-parallel) with
-   * Playwright Test.
+   * Defaults to half of the number of logical CPU cores. Learn more about [parallelism and sharding](https://playwright.dev/docs/test-parallel)
+   * with Playwright Test.
    *
    * ```js
    * // playwright.config.ts
@@ -955,7 +988,7 @@ interface TestConfig {
    * ```
    *
    */
-  workers?: number;}
+  workers?: number|string;}
 
 /**
  * Playwright Test provides many options to configure how your tests are collected and executed, for example `timeout` or
@@ -1210,13 +1243,14 @@ export interface FullConfig<TestArgs = {}, WorkerArgs = {}> {
    */
   updateSnapshots: 'all' | 'none' | 'missing';
   /**
-   * The maximum number of concurrent worker processes to use for parallelizing tests.
+   * The maximum number of concurrent worker processes to use for parallelizing tests. Can also be set as percentage of
+   * logical CPU cores, e.g. `'50%'.`
    *
    * Playwright Test uses worker processes to run tests. There is always at least one worker process, but more can be used to
    * speed up test execution.
    *
-   * Defaults to one half of the number of CPU cores. Learn more about [parallelism and sharding](https://playwright.dev/docs/test-parallel) with
-   * Playwright Test.
+   * Defaults to half of the number of logical CPU cores. Learn more about [parallelism and sharding](https://playwright.dev/docs/test-parallel)
+   * with Playwright Test.
    *
    * ```js
    * // playwright.config.ts
@@ -2957,6 +2991,12 @@ export interface PlaywrightTestOptions {
    * - `'block'`: Playwright will block all registration of Service Workers.
    */
   serviceWorkers: ServiceWorkerPolicy | undefined;
+  /**
+   * Custom attribute to be used in
+   * [page.getByTestId(testId)](https://playwright.dev/docs/api/class-page#page-get-by-test-id). `data-testid` is used by
+   * default.
+   */
+  testIdAttribute: string | undefined;
 }
 
 

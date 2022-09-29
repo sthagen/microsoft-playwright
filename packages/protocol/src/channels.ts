@@ -52,7 +52,7 @@ export type InitializerTraits<T> =
     T extends BrowserTypeChannel ? BrowserTypeInitializer :
     T extends SelectorsChannel ? SelectorsInitializer :
     T extends SocksSupportChannel ? SocksSupportInitializer :
-    T extends ReuseControllerChannel ? ReuseControllerInitializer :
+    T extends DebugControllerChannel ? DebugControllerInitializer :
     T extends PlaywrightChannel ? PlaywrightInitializer :
     T extends RootChannel ? RootInitializer :
     T extends LocalUtilsChannel ? LocalUtilsInitializer :
@@ -90,7 +90,7 @@ export type EventsTraits<T> =
     T extends BrowserTypeChannel ? BrowserTypeEvents :
     T extends SelectorsChannel ? SelectorsEvents :
     T extends SocksSupportChannel ? SocksSupportEvents :
-    T extends ReuseControllerChannel ? ReuseControllerEvents :
+    T extends DebugControllerChannel ? DebugControllerEvents :
     T extends PlaywrightChannel ? PlaywrightEvents :
     T extends RootChannel ? RootEvents :
     T extends LocalUtilsChannel ? LocalUtilsEvents :
@@ -128,7 +128,7 @@ export type EventTargetTraits<T> =
     T extends BrowserTypeChannel ? BrowserTypeEventTarget :
     T extends SelectorsChannel ? SelectorsEventTarget :
     T extends SocksSupportChannel ? SocksSupportEventTarget :
-    T extends ReuseControllerChannel ? ReuseControllerEventTarget :
+    T extends DebugControllerChannel ? DebugControllerEventTarget :
     T extends PlaywrightChannel ? PlaywrightEventTarget :
     T extends RootChannel ? RootEventTarget :
     T extends LocalUtilsChannel ? LocalUtilsEventTarget :
@@ -389,6 +389,7 @@ export interface LocalUtilsChannel extends LocalUtilsEventTarget, Channel {
   harLookup(params: LocalUtilsHarLookupParams, metadata?: Metadata): Promise<LocalUtilsHarLookupResult>;
   harClose(params: LocalUtilsHarCloseParams, metadata?: Metadata): Promise<LocalUtilsHarCloseResult>;
   harUnzip(params: LocalUtilsHarUnzipParams, metadata?: Metadata): Promise<LocalUtilsHarUnzipResult>;
+  connect(params: LocalUtilsConnectParams, metadata?: Metadata): Promise<LocalUtilsConnectResult>;
 }
 export type LocalUtilsZipParams = {
   zipFile: string,
@@ -442,6 +443,22 @@ export type LocalUtilsHarUnzipOptions = {
 
 };
 export type LocalUtilsHarUnzipResult = void;
+export type LocalUtilsConnectParams = {
+  wsEndpoint: string,
+  headers?: any,
+  slowMo?: number,
+  timeout?: number,
+  socksProxyRedirectPortForTest?: number,
+};
+export type LocalUtilsConnectOptions = {
+  headers?: any,
+  slowMo?: number,
+  timeout?: number,
+  socksProxyRedirectPortForTest?: number,
+};
+export type LocalUtilsConnectResult = {
+  pipe: JsonPipeChannel,
+};
 
 export interface LocalUtilsEvents {
 }
@@ -558,96 +575,107 @@ export type PlaywrightHideHighlightResult = void;
 export interface PlaywrightEvents {
 }
 
-// ----------- ReuseController -----------
-export type ReuseControllerInitializer = {};
-export interface ReuseControllerEventTarget {
-  on(event: 'inspectRequested', callback: (params: ReuseControllerInspectRequestedEvent) => void): this;
-  on(event: 'browsersChanged', callback: (params: ReuseControllerBrowsersChangedEvent) => void): this;
+export type RecorderSource = {
+  isRecorded: boolean,
+  id: string,
+  label: string,
+  text: string,
+  language: string,
+  highlight: {
+    line: number,
+    type: string,
+  }[],
+  revealLine?: number,
+  group?: string,
+};
+
+// ----------- DebugController -----------
+export type DebugControllerInitializer = {};
+export interface DebugControllerEventTarget {
+  on(event: 'inspectRequested', callback: (params: DebugControllerInspectRequestedEvent) => void): this;
+  on(event: 'browsersChanged', callback: (params: DebugControllerBrowsersChangedEvent) => void): this;
+  on(event: 'sourcesChanged', callback: (params: DebugControllerSourcesChangedEvent) => void): this;
 }
-export interface ReuseControllerChannel extends ReuseControllerEventTarget, Channel {
-  _type_ReuseController: boolean;
-  setTrackHierarchy(params: ReuseControllerSetTrackHierarchyParams, metadata?: Metadata): Promise<ReuseControllerSetTrackHierarchyResult>;
-  setReuseBrowser(params: ReuseControllerSetReuseBrowserParams, metadata?: Metadata): Promise<ReuseControllerSetReuseBrowserResult>;
-  resetForReuse(params?: ReuseControllerResetForReuseParams, metadata?: Metadata): Promise<ReuseControllerResetForReuseResult>;
-  navigateAll(params: ReuseControllerNavigateAllParams, metadata?: Metadata): Promise<ReuseControllerNavigateAllResult>;
-  setRecorderMode(params: ReuseControllerSetRecorderModeParams, metadata?: Metadata): Promise<ReuseControllerSetRecorderModeResult>;
-  setAutoClose(params: ReuseControllerSetAutoCloseParams, metadata?: Metadata): Promise<ReuseControllerSetAutoCloseResult>;
-  highlightAll(params: ReuseControllerHighlightAllParams, metadata?: Metadata): Promise<ReuseControllerHighlightAllResult>;
-  hideHighlightAll(params?: ReuseControllerHideHighlightAllParams, metadata?: Metadata): Promise<ReuseControllerHideHighlightAllResult>;
-  kill(params?: ReuseControllerKillParams, metadata?: Metadata): Promise<ReuseControllerKillResult>;
-  closeAllBrowsers(params?: ReuseControllerCloseAllBrowsersParams, metadata?: Metadata): Promise<ReuseControllerCloseAllBrowsersResult>;
+export interface DebugControllerChannel extends DebugControllerEventTarget, Channel {
+  _type_DebugController: boolean;
+  setTrackHierarchy(params: DebugControllerSetTrackHierarchyParams, metadata?: Metadata): Promise<DebugControllerSetTrackHierarchyResult>;
+  setReuseBrowser(params: DebugControllerSetReuseBrowserParams, metadata?: Metadata): Promise<DebugControllerSetReuseBrowserResult>;
+  resetForReuse(params?: DebugControllerResetForReuseParams, metadata?: Metadata): Promise<DebugControllerResetForReuseResult>;
+  navigateAll(params: DebugControllerNavigateAllParams, metadata?: Metadata): Promise<DebugControllerNavigateAllResult>;
+  setRecorderMode(params: DebugControllerSetRecorderModeParams, metadata?: Metadata): Promise<DebugControllerSetRecorderModeResult>;
+  highlightAll(params: DebugControllerHighlightAllParams, metadata?: Metadata): Promise<DebugControllerHighlightAllResult>;
+  hideHighlightAll(params?: DebugControllerHideHighlightAllParams, metadata?: Metadata): Promise<DebugControllerHideHighlightAllResult>;
+  kill(params?: DebugControllerKillParams, metadata?: Metadata): Promise<DebugControllerKillResult>;
+  closeAllBrowsers(params?: DebugControllerCloseAllBrowsersParams, metadata?: Metadata): Promise<DebugControllerCloseAllBrowsersResult>;
 }
-export type ReuseControllerInspectRequestedEvent = {
+export type DebugControllerInspectRequestedEvent = {
   selector: string,
 };
-export type ReuseControllerBrowsersChangedEvent = {
+export type DebugControllerBrowsersChangedEvent = {
   browsers: {
     contexts: {
       pages: string[],
     }[],
   }[],
 };
-export type ReuseControllerSetTrackHierarchyParams = {
+export type DebugControllerSourcesChangedEvent = {
+  sources: RecorderSource[],
+};
+export type DebugControllerSetTrackHierarchyParams = {
   enabled: boolean,
 };
-export type ReuseControllerSetTrackHierarchyOptions = {
+export type DebugControllerSetTrackHierarchyOptions = {
 
 };
-export type ReuseControllerSetTrackHierarchyResult = void;
-export type ReuseControllerSetReuseBrowserParams = {
+export type DebugControllerSetTrackHierarchyResult = void;
+export type DebugControllerSetReuseBrowserParams = {
   enabled: boolean,
 };
-export type ReuseControllerSetReuseBrowserOptions = {
+export type DebugControllerSetReuseBrowserOptions = {
 
 };
-export type ReuseControllerSetReuseBrowserResult = void;
-export type ReuseControllerResetForReuseParams = {};
-export type ReuseControllerResetForReuseOptions = {};
-export type ReuseControllerResetForReuseResult = void;
-export type ReuseControllerNavigateAllParams = {
+export type DebugControllerSetReuseBrowserResult = void;
+export type DebugControllerResetForReuseParams = {};
+export type DebugControllerResetForReuseOptions = {};
+export type DebugControllerResetForReuseResult = void;
+export type DebugControllerNavigateAllParams = {
   url: string,
 };
-export type ReuseControllerNavigateAllOptions = {
+export type DebugControllerNavigateAllOptions = {
 
 };
-export type ReuseControllerNavigateAllResult = void;
-export type ReuseControllerSetRecorderModeParams = {
+export type DebugControllerNavigateAllResult = void;
+export type DebugControllerSetRecorderModeParams = {
   mode: 'inspecting' | 'recording' | 'none',
   language?: string,
   file?: string,
 };
-export type ReuseControllerSetRecorderModeOptions = {
+export type DebugControllerSetRecorderModeOptions = {
   language?: string,
   file?: string,
 };
-export type ReuseControllerSetRecorderModeResult = void;
-export type ReuseControllerSetAutoCloseParams = {
-  enabled: boolean,
-};
-export type ReuseControllerSetAutoCloseOptions = {
-
-};
-export type ReuseControllerSetAutoCloseResult = void;
-export type ReuseControllerHighlightAllParams = {
+export type DebugControllerSetRecorderModeResult = void;
+export type DebugControllerHighlightAllParams = {
   selector: string,
 };
-export type ReuseControllerHighlightAllOptions = {
+export type DebugControllerHighlightAllOptions = {
 
 };
-export type ReuseControllerHighlightAllResult = void;
-export type ReuseControllerHideHighlightAllParams = {};
-export type ReuseControllerHideHighlightAllOptions = {};
-export type ReuseControllerHideHighlightAllResult = void;
-export type ReuseControllerKillParams = {};
-export type ReuseControllerKillOptions = {};
-export type ReuseControllerKillResult = void;
-export type ReuseControllerCloseAllBrowsersParams = {};
-export type ReuseControllerCloseAllBrowsersOptions = {};
-export type ReuseControllerCloseAllBrowsersResult = void;
+export type DebugControllerHighlightAllResult = void;
+export type DebugControllerHideHighlightAllParams = {};
+export type DebugControllerHideHighlightAllOptions = {};
+export type DebugControllerHideHighlightAllResult = void;
+export type DebugControllerKillParams = {};
+export type DebugControllerKillOptions = {};
+export type DebugControllerKillResult = void;
+export type DebugControllerCloseAllBrowsersParams = {};
+export type DebugControllerCloseAllBrowsersOptions = {};
+export type DebugControllerCloseAllBrowsersResult = void;
 
-export interface ReuseControllerEvents {
-  'inspectRequested': ReuseControllerInspectRequestedEvent;
-  'browsersChanged': ReuseControllerBrowsersChangedEvent;
+export interface DebugControllerEvents {
+  'inspectRequested': DebugControllerInspectRequestedEvent;
+  'browsersChanged': DebugControllerBrowsersChangedEvent;
+  'sourcesChanged': DebugControllerSourcesChangedEvent;
 }
 
 // ----------- SocksSupport -----------
@@ -754,27 +782,10 @@ export interface BrowserTypeEventTarget {
 }
 export interface BrowserTypeChannel extends BrowserTypeEventTarget, Channel {
   _type_BrowserType: boolean;
-  connect(params: BrowserTypeConnectParams, metadata?: Metadata): Promise<BrowserTypeConnectResult>;
   launch(params: BrowserTypeLaunchParams, metadata?: Metadata): Promise<BrowserTypeLaunchResult>;
   launchPersistentContext(params: BrowserTypeLaunchPersistentContextParams, metadata?: Metadata): Promise<BrowserTypeLaunchPersistentContextResult>;
   connectOverCDP(params: BrowserTypeConnectOverCDPParams, metadata?: Metadata): Promise<BrowserTypeConnectOverCDPResult>;
 }
-export type BrowserTypeConnectParams = {
-  wsEndpoint: string,
-  headers?: any,
-  slowMo?: number,
-  timeout?: number,
-  socksProxyRedirectPortForTest?: number,
-};
-export type BrowserTypeConnectOptions = {
-  headers?: any,
-  slowMo?: number,
-  timeout?: number,
-  socksProxyRedirectPortForTest?: number,
-};
-export type BrowserTypeConnectResult = {
-  pipe: JsonPipeChannel,
-};
 export type BrowserTypeLaunchParams = {
   channel?: string,
   executablePath?: string,
@@ -4465,129 +4476,3 @@ export interface JsonPipeEvents {
   'message': JsonPipeMessageEvent;
   'closed': JsonPipeClosedEvent;
 }
-
-export const commandsWithTracingSnapshots = new Set([
-  'EventTarget.waitForEventInfo',
-  'BrowserContext.waitForEventInfo',
-  'Page.waitForEventInfo',
-  'WebSocket.waitForEventInfo',
-  'ElectronApplication.waitForEventInfo',
-  'AndroidDevice.waitForEventInfo',
-  'Page.goBack',
-  'Page.goForward',
-  'Page.reload',
-  'Page.expectScreenshot',
-  'Page.screenshot',
-  'Page.setViewportSize',
-  'Page.keyboardDown',
-  'Page.keyboardUp',
-  'Page.keyboardInsertText',
-  'Page.keyboardType',
-  'Page.keyboardPress',
-  'Page.mouseMove',
-  'Page.mouseDown',
-  'Page.mouseUp',
-  'Page.mouseClick',
-  'Page.mouseWheel',
-  'Page.touchscreenTap',
-  'Frame.evalOnSelector',
-  'Frame.evalOnSelectorAll',
-  'Frame.addScriptTag',
-  'Frame.addStyleTag',
-  'Frame.check',
-  'Frame.click',
-  'Frame.dragAndDrop',
-  'Frame.dblclick',
-  'Frame.dispatchEvent',
-  'Frame.evaluateExpression',
-  'Frame.evaluateExpressionHandle',
-  'Frame.fill',
-  'Frame.focus',
-  'Frame.getAttribute',
-  'Frame.goto',
-  'Frame.hover',
-  'Frame.innerHTML',
-  'Frame.innerText',
-  'Frame.inputValue',
-  'Frame.isChecked',
-  'Frame.isDisabled',
-  'Frame.isEnabled',
-  'Frame.isHidden',
-  'Frame.isVisible',
-  'Frame.isEditable',
-  'Frame.press',
-  'Frame.selectOption',
-  'Frame.setContent',
-  'Frame.setInputFiles',
-  'Frame.setInputFilePaths',
-  'Frame.tap',
-  'Frame.textContent',
-  'Frame.type',
-  'Frame.uncheck',
-  'Frame.waitForTimeout',
-  'Frame.waitForFunction',
-  'Frame.waitForSelector',
-  'Frame.expect',
-  'JSHandle.evaluateExpression',
-  'ElementHandle.evaluateExpression',
-  'JSHandle.evaluateExpressionHandle',
-  'ElementHandle.evaluateExpressionHandle',
-  'ElementHandle.evalOnSelector',
-  'ElementHandle.evalOnSelectorAll',
-  'ElementHandle.check',
-  'ElementHandle.click',
-  'ElementHandle.dblclick',
-  'ElementHandle.dispatchEvent',
-  'ElementHandle.fill',
-  'ElementHandle.hover',
-  'ElementHandle.innerHTML',
-  'ElementHandle.innerText',
-  'ElementHandle.inputValue',
-  'ElementHandle.isChecked',
-  'ElementHandle.isDisabled',
-  'ElementHandle.isEditable',
-  'ElementHandle.isEnabled',
-  'ElementHandle.isHidden',
-  'ElementHandle.isVisible',
-  'ElementHandle.press',
-  'ElementHandle.screenshot',
-  'ElementHandle.scrollIntoViewIfNeeded',
-  'ElementHandle.selectOption',
-  'ElementHandle.selectText',
-  'ElementHandle.setInputFiles',
-  'ElementHandle.setInputFilePaths',
-  'ElementHandle.tap',
-  'ElementHandle.textContent',
-  'ElementHandle.type',
-  'ElementHandle.uncheck',
-  'ElementHandle.waitForElementState',
-  'ElementHandle.waitForSelector'
-]);
-
-export const pausesBeforeInputActions = new Set([
-  'Frame.check',
-  'Frame.click',
-  'Frame.dragAndDrop',
-  'Frame.dblclick',
-  'Frame.fill',
-  'Frame.hover',
-  'Frame.press',
-  'Frame.selectOption',
-  'Frame.setInputFiles',
-  'Frame.setInputFilePaths',
-  'Frame.tap',
-  'Frame.type',
-  'Frame.uncheck',
-  'ElementHandle.check',
-  'ElementHandle.click',
-  'ElementHandle.dblclick',
-  'ElementHandle.fill',
-  'ElementHandle.hover',
-  'ElementHandle.press',
-  'ElementHandle.selectOption',
-  'ElementHandle.setInputFiles',
-  'ElementHandle.setInputFilePaths',
-  'ElementHandle.tap',
-  'ElementHandle.type',
-  'ElementHandle.uncheck'
-]);

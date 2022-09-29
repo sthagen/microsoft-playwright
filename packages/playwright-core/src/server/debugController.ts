@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import type { Mode } from '../server/recorder/recorderTypes';
+import type { Mode, Source } from '@recorder/recorderTypes';
 import { gracefullyCloseAll } from '../utils/processLauncher';
 import type { Browser } from './browser';
 import type { BrowserContext } from './browserContext';
@@ -26,10 +26,11 @@ import { EmptyRecorderApp } from './recorder/recorderApp';
 
 const internalMetadata = serverSideCallMetadata();
 
-export class ReuseController extends SdkObject {
+export class DebugController extends SdkObject {
   static Events = {
     BrowsersChanged: 'browsersChanged',
-    InspectRequested: 'inspectRequested'
+    InspectRequested: 'inspectRequested',
+    SourcesChanged: 'sourcesChanged',
   };
 
   private _autoCloseTimer: NodeJS.Timeout | undefined;
@@ -40,7 +41,7 @@ export class ReuseController extends SdkObject {
   private _reuseBrowser = false;
 
   constructor(playwright: Playwright) {
-    super({ attribution: { isInternalPlaywright: true }, instrumentation: createInstrumentation() } as any, undefined, 'ReuseController');
+    super({ attribution: { isInternalPlaywright: true }, instrumentation: createInstrumentation() } as any, undefined, 'DebugController');
     this._playwright = playwright;
   }
 
@@ -61,9 +62,9 @@ export class ReuseController extends SdkObject {
         onPageNavigated: () => this._emitSnapshot(),
         onPageClose: () => this._emitSnapshot(),
       };
-      this.instrumentation.addListener(this._trackHierarchyListener, null);
+      this._playwright.instrumentation.addListener(this._trackHierarchyListener, null);
     } else if (!enabled && this._trackHierarchyListener) {
-      this.instrumentation.removeListener(this._trackHierarchyListener);
+      this._playwright.instrumentation.removeListener(this._trackHierarchyListener);
       this._trackHierarchyListener = undefined;
     }
   }
@@ -173,7 +174,7 @@ export class ReuseController extends SdkObject {
           c.pages.push(page.mainFrame().url());
       }
     }
-    this.emit(ReuseController.Events.BrowsersChanged, browsers);
+    this.emit(DebugController.Events.BrowsersChanged, browsers);
   }
 
   private async _allRecorders(): Promise<Recorder[]> {
@@ -206,14 +207,18 @@ function selfDestruct() {
 }
 
 class InspectingRecorderApp extends EmptyRecorderApp {
-  private _reuseController: ReuseController;
+  private _debugController: DebugController;
 
-  constructor(reuseController: ReuseController) {
+  constructor(debugController: DebugController) {
     super();
-    this._reuseController = reuseController;
+    this._debugController = debugController;
   }
 
   override async setSelector(selector: string): Promise<void> {
-    this._reuseController.emit(ReuseController.Events.InspectRequested, selector);
+    this._debugController.emit(DebugController.Events.InspectRequested, selector);
+  }
+
+  override async setSources(sources: Source[]): Promise<void> {
+    this._debugController.emit(DebugController.Events.SourcesChanged, sources);
   }
 }

@@ -2146,6 +2146,18 @@ export interface Page {
   }): Promise<void>;
 
   /**
+   * This method drags the source element to the target element. It will first move to the source element, perform a
+   * `mousedown`, then move to the target element and perform a `mouseup`.
+   *
+   * ```js
+   * await page.dragAndDrop('#source', '#target');
+   * // or specify exact positions relative to the top-left corners of the elements:
+   * await page.dragAndDrop('#source', '#target', {
+   *   sourcePosition: { x: 34, y: 7 },
+   *   targetPosition: { x: 10, y: 20 },
+   * });
+   * ```
+   *
    * @param source A selector to search for an element to drag. If there are multiple elements satisfying the selector, the first will be used. See [working with selectors](https://playwright.dev/docs/selectors) for more details.
    * @param target A selector to search for an element to drop onto. If there are multiple elements satisfying the selector, the first will be used. See [working with selectors](https://playwright.dev/docs/selectors) for more details.
    * @param options
@@ -2423,6 +2435,32 @@ export interface Page {
   frames(): Array<Frame>;
 
   /**
+   * The method returns an element locator that can be used to perform actions on this page / frame. Locator is resolved to
+   * the element immediately before performing an action, so a series of actions on the same locator can in fact be performed
+   * on different DOM elements. That would happen if the DOM structure between those actions has changed.
+   *
+   * [Learn more about locators](https://playwright.dev/docs/locators).
+   * @param selector A selector to use when resolving DOM element. See [working with selectors](https://playwright.dev/docs/selectors) for more details.
+   * @param options
+   */
+  get(selector: string, options?: {
+    /**
+     * Matches elements containing an element that matches an inner locator. Inner locator is queried against the outer one.
+     * For example, `article` that has `text=Playwright` matches `<article><div>Playwright</div></article>`.
+     *
+     * Note that outer and inner locators must belong to the same frame. Inner locator must not contain [FrameLocator]s.
+     */
+    has?: Locator;
+
+    /**
+     * Matches elements containing specified text somewhere inside, possibly in a child or a descendant element. When passed a
+     * [string], matching is case-insensitive and searches for a substring. For example, `"Playwright"` matches
+     * `<article><div>Playwright</div></article>`.
+     */
+    hasText?: string|RegExp;
+  }): Locator;
+
+  /**
    * Returns element attribute value.
    * @param selector A selector to search for an element. If there are multiple elements satisfying the selector, the first will be used. See [working with selectors](https://playwright.dev/docs/selectors) for more details.
    * @param name Attribute name to get the value for.
@@ -2443,6 +2481,101 @@ export interface Page {
      */
     timeout?: number;
   }): Promise<null|string>;
+
+  /**
+   * Allows locating elements by their [ARIA role](https://www.w3.org/TR/wai-aria-1.2/#roles),
+   * [ARIA attributes](https://www.w3.org/TR/wai-aria-1.2/#aria-attributes) and
+   * [accessible name](https://w3c.github.io/accname/#dfn-accessible-name). Note that role selector **does not replace**
+   * accessibility audits and conformance tests, but rather gives early feedback about the ARIA guidelines.
+   *
+   * Note that many html elements have an implicitly
+   * [defined role](https://w3c.github.io/html-aam/#html-element-role-mappings) that is recognized by the role selector. You
+   * can find all the [supported roles here](https://www.w3.org/TR/wai-aria-1.2/#role_definitions). ARIA guidelines **do not
+   * recommend** duplicating implicit roles and attributes by setting `role` and/or `aria-*` attributes to default values.
+   * @param role Required aria role.
+   * @param options
+   */
+  getByRole(role: string, options?: {
+    /**
+     * An attribute that is usually set by `aria-checked` or native `<input type=checkbox>` controls. Available values for
+     * checked are `true`, `false` and `"mixed"`.
+     *
+     * Learn more about [`aria-checked`](https://www.w3.org/TR/wai-aria-1.2/#aria-checked).
+     */
+    checked?: boolean;
+
+    /**
+     * A boolean attribute that is usually set by `aria-disabled` or `disabled`.
+     *
+     * > NOTE: Unlike most other attributes, `disabled` is inherited through the DOM hierarchy. Learn more about
+     * [`aria-disabled`](https://www.w3.org/TR/wai-aria-1.2/#aria-disabled).
+     */
+    disabled?: boolean;
+
+    /**
+     * A boolean attribute that is usually set by `aria-expanded`.
+     *
+     * Learn more about [`aria-expanded`](https://www.w3.org/TR/wai-aria-1.2/#aria-expanded).
+     */
+    expanded?: boolean;
+
+    /**
+     * A boolean attribute that controls whether hidden elements are matched. By default, only non-hidden elements, as
+     * [defined by ARIA](https://www.w3.org/TR/wai-aria-1.2/#tree_exclusion), are matched by role selector.
+     *
+     * Learn more about [`aria-hidden`](https://www.w3.org/TR/wai-aria-1.2/#aria-hidden).
+     */
+    includeHidden?: boolean;
+
+    /**
+     * A number attribute that is usually present for roles `heading`, `listitem`, `row`, `treeitem`, with default values for
+     * `<h1>-<h6>` elements.
+     *
+     * Learn more about [`aria-level`](https://www.w3.org/TR/wai-aria-1.2/#aria-level).
+     */
+    level?: number;
+
+    /**
+     * A string attribute that matches [accessible name](https://w3c.github.io/accname/#dfn-accessible-name).
+     *
+     * Learn more about [accessible name](https://w3c.github.io/accname/#dfn-accessible-name).
+     */
+    name?: string|RegExp;
+
+    /**
+     * An attribute that is usually set by `aria-pressed`. Available values for pressed are `true`, `false` and `"mixed"`.
+     *
+     * Learn more about [`aria-pressed`](https://www.w3.org/TR/wai-aria-1.2/#aria-pressed).
+     */
+    pressed?: boolean;
+
+    /**
+     * A boolean attribute that is usually set by `aria-selected`.
+     *
+     * Learn more about [`aria-selected`](https://www.w3.org/TR/wai-aria-1.2/#aria-selected).
+     */
+    selected?: boolean;
+  }): Locator;
+
+  /**
+   * Locate element by the test id. By default, the `data-testid` attribute is used as a test id. Use
+   * [selectors.setTestIdAttribute(attributeName)](https://playwright.dev/docs/api/class-selectors#selectors-set-test-id-attribute)
+   * to configure a different test id attribute if necessary.
+   * @param testId Id to locate the element by.
+   */
+  getByTestId(testId: string): Locator;
+
+  /**
+   * Allows locating elements that contain given text.
+   * @param text Text to locate the element for.
+   * @param options
+   */
+  getByText(text: string|RegExp, options?: {
+    /**
+     * Whether to find an exact match: case-sensitive and whole-string. Default to false.
+     */
+    exact?: boolean;
+  }): Locator;
 
   /**
    * Returns the main resource response. In case of multiple redirects, the navigation will resolve with the response of the
@@ -2814,14 +2947,11 @@ export interface Page {
   keyboard: Keyboard;
 
   /**
-   * The method returns an element locator that can be used to perform actions on the page. Locator is resolved to the
-   * element immediately before performing an action, so a series of actions on the same locator can in fact be performed on
-   * different DOM elements. That would happen if the DOM structure between those actions has changed.
+   * The method returns an element locator that can be used to perform actions on this page / frame. Locator is resolved to
+   * the element immediately before performing an action, so a series of actions on the same locator can in fact be performed
+   * on different DOM elements. That would happen if the DOM structure between those actions has changed.
    *
    * [Learn more about locators](https://playwright.dev/docs/locators).
-   *
-   * Shortcut for main frame's
-   * [frame.locator(selector[, options])](https://playwright.dev/docs/api/class-frame#frame-locator).
    * @param selector A selector to use when resolving DOM element. See [working with selectors](https://playwright.dev/docs/selectors) for more details.
    * @param options
    */
@@ -5346,6 +5476,32 @@ export interface Frame {
   frameLocator(selector: string): FrameLocator;
 
   /**
+   * The method returns an element locator that can be used to perform actions on this page / frame. Locator is resolved to
+   * the element immediately before performing an action, so a series of actions on the same locator can in fact be performed
+   * on different DOM elements. That would happen if the DOM structure between those actions has changed.
+   *
+   * [Learn more about locators](https://playwright.dev/docs/locators).
+   * @param selector A selector to use when resolving DOM element. See [working with selectors](https://playwright.dev/docs/selectors) for more details.
+   * @param options
+   */
+  get(selector: string, options?: {
+    /**
+     * Matches elements containing an element that matches an inner locator. Inner locator is queried against the outer one.
+     * For example, `article` that has `text=Playwright` matches `<article><div>Playwright</div></article>`.
+     *
+     * Note that outer and inner locators must belong to the same frame. Inner locator must not contain [FrameLocator]s.
+     */
+    has?: Locator;
+
+    /**
+     * Matches elements containing specified text somewhere inside, possibly in a child or a descendant element. When passed a
+     * [string], matching is case-insensitive and searches for a substring. For example, `"Playwright"` matches
+     * `<article><div>Playwright</div></article>`.
+     */
+    hasText?: string|RegExp;
+  }): Locator;
+
+  /**
    * Returns element attribute value.
    * @param selector A selector to search for an element. If there are multiple elements satisfying the selector, the first will be used. See [working with selectors](https://playwright.dev/docs/selectors) for more details.
    * @param name Attribute name to get the value for.
@@ -5366,6 +5522,101 @@ export interface Frame {
      */
     timeout?: number;
   }): Promise<null|string>;
+
+  /**
+   * Allows locating elements by their [ARIA role](https://www.w3.org/TR/wai-aria-1.2/#roles),
+   * [ARIA attributes](https://www.w3.org/TR/wai-aria-1.2/#aria-attributes) and
+   * [accessible name](https://w3c.github.io/accname/#dfn-accessible-name). Note that role selector **does not replace**
+   * accessibility audits and conformance tests, but rather gives early feedback about the ARIA guidelines.
+   *
+   * Note that many html elements have an implicitly
+   * [defined role](https://w3c.github.io/html-aam/#html-element-role-mappings) that is recognized by the role selector. You
+   * can find all the [supported roles here](https://www.w3.org/TR/wai-aria-1.2/#role_definitions). ARIA guidelines **do not
+   * recommend** duplicating implicit roles and attributes by setting `role` and/or `aria-*` attributes to default values.
+   * @param role Required aria role.
+   * @param options
+   */
+  getByRole(role: string, options?: {
+    /**
+     * An attribute that is usually set by `aria-checked` or native `<input type=checkbox>` controls. Available values for
+     * checked are `true`, `false` and `"mixed"`.
+     *
+     * Learn more about [`aria-checked`](https://www.w3.org/TR/wai-aria-1.2/#aria-checked).
+     */
+    checked?: boolean;
+
+    /**
+     * A boolean attribute that is usually set by `aria-disabled` or `disabled`.
+     *
+     * > NOTE: Unlike most other attributes, `disabled` is inherited through the DOM hierarchy. Learn more about
+     * [`aria-disabled`](https://www.w3.org/TR/wai-aria-1.2/#aria-disabled).
+     */
+    disabled?: boolean;
+
+    /**
+     * A boolean attribute that is usually set by `aria-expanded`.
+     *
+     * Learn more about [`aria-expanded`](https://www.w3.org/TR/wai-aria-1.2/#aria-expanded).
+     */
+    expanded?: boolean;
+
+    /**
+     * A boolean attribute that controls whether hidden elements are matched. By default, only non-hidden elements, as
+     * [defined by ARIA](https://www.w3.org/TR/wai-aria-1.2/#tree_exclusion), are matched by role selector.
+     *
+     * Learn more about [`aria-hidden`](https://www.w3.org/TR/wai-aria-1.2/#aria-hidden).
+     */
+    includeHidden?: boolean;
+
+    /**
+     * A number attribute that is usually present for roles `heading`, `listitem`, `row`, `treeitem`, with default values for
+     * `<h1>-<h6>` elements.
+     *
+     * Learn more about [`aria-level`](https://www.w3.org/TR/wai-aria-1.2/#aria-level).
+     */
+    level?: number;
+
+    /**
+     * A string attribute that matches [accessible name](https://w3c.github.io/accname/#dfn-accessible-name).
+     *
+     * Learn more about [accessible name](https://w3c.github.io/accname/#dfn-accessible-name).
+     */
+    name?: string|RegExp;
+
+    /**
+     * An attribute that is usually set by `aria-pressed`. Available values for pressed are `true`, `false` and `"mixed"`.
+     *
+     * Learn more about [`aria-pressed`](https://www.w3.org/TR/wai-aria-1.2/#aria-pressed).
+     */
+    pressed?: boolean;
+
+    /**
+     * A boolean attribute that is usually set by `aria-selected`.
+     *
+     * Learn more about [`aria-selected`](https://www.w3.org/TR/wai-aria-1.2/#aria-selected).
+     */
+    selected?: boolean;
+  }): Locator;
+
+  /**
+   * Locate element by the test id. By default, the `data-testid` attribute is used as a test id. Use
+   * [selectors.setTestIdAttribute(attributeName)](https://playwright.dev/docs/api/class-selectors#selectors-set-test-id-attribute)
+   * to configure a different test id attribute if necessary.
+   * @param testId Id to locate the element by.
+   */
+  getByTestId(testId: string): Locator;
+
+  /**
+   * Allows locating elements that contain given text.
+   * @param text Text to locate the element for.
+   * @param options
+   */
+  getByText(text: string|RegExp, options?: {
+    /**
+     * Whether to find an exact match: case-sensitive and whole-string. Default to false.
+     */
+    exact?: boolean;
+  }): Locator;
 
   /**
    * Returns the main resource response. In case of multiple redirects, the navigation will resolve with the response of the
@@ -5674,9 +5925,11 @@ export interface Frame {
   }): Promise<boolean>;
 
   /**
-   * The method returns an element locator that can be used to perform actions in the frame. Locator is resolved to the
-   * element immediately before performing an action, so a series of actions on the same locator can in fact be performed on
-   * different DOM elements. That would happen if the DOM structure between those actions has changed.
+   * The method returns an element locator that can be used to perform actions on this page / frame. Locator is resolved to
+   * the element immediately before performing an action, so a series of actions on the same locator can in fact be performed
+   * on different DOM elements. That would happen if the DOM structure between those actions has changed.
+   *
+   * [Learn more about locators](https://playwright.dev/docs/locators).
    *
    * [Learn more about locators](https://playwright.dev/docs/locators).
    * @param selector A selector to use when resolving DOM element. See [working with selectors](https://playwright.dev/docs/selectors) for more details.
@@ -9413,6 +9666,21 @@ export interface Locator {
   }): Promise<void>;
 
   /**
+   * This method drags the locator to another target locator or target position. It will first move to the source element,
+   * perform a `mousedown`, then move to the target element or position and perform a `mouseup`.
+   *
+   * ```js
+   * const source = page.locator('#source');
+   * const target = page.locator('#target');
+   *
+   * await source.dragTo(target);
+   * // or specify exact positions relative to the top-left corners of the elements:
+   * await source.dragTo(target, {
+   *   sourcePosition: { x: 34, y: 7 },
+   *   targetPosition: { x: 10, y: 20 },
+   * });
+   * ```
+   *
    * @param target Locator of the element to drag to.
    * @param options
    */
@@ -9604,6 +9872,31 @@ export interface Locator {
   frameLocator(selector: string): FrameLocator;
 
   /**
+   * The method finds an element matching the specified selector in the locator's subtree. It also accepts filter options,
+   * similar to [locator.filter([options])](https://playwright.dev/docs/api/class-locator#locator-filter) method.
+   *
+   * [Learn more about locators](https://playwright.dev/docs/locators).
+   * @param selector A selector to use when resolving DOM element. See [working with selectors](https://playwright.dev/docs/selectors) for more details.
+   * @param options
+   */
+  get(selector: string, options?: {
+    /**
+     * Matches elements containing an element that matches an inner locator. Inner locator is queried against the outer one.
+     * For example, `article` that has `text=Playwright` matches `<article><div>Playwright</div></article>`.
+     *
+     * Note that outer and inner locators must belong to the same frame. Inner locator must not contain [FrameLocator]s.
+     */
+    has?: Locator;
+
+    /**
+     * Matches elements containing specified text somewhere inside, possibly in a child or a descendant element. When passed a
+     * [string], matching is case-insensitive and searches for a substring. For example, `"Playwright"` matches
+     * `<article><div>Playwright</div></article>`.
+     */
+    hasText?: string|RegExp;
+  }): Locator;
+
+  /**
    * Returns element attribute value.
    * @param name Attribute name to get the value for.
    * @param options
@@ -9617,6 +9910,101 @@ export interface Locator {
      */
     timeout?: number;
   }): Promise<null|string>;
+
+  /**
+   * Allows locating elements by their [ARIA role](https://www.w3.org/TR/wai-aria-1.2/#roles),
+   * [ARIA attributes](https://www.w3.org/TR/wai-aria-1.2/#aria-attributes) and
+   * [accessible name](https://w3c.github.io/accname/#dfn-accessible-name). Note that role selector **does not replace**
+   * accessibility audits and conformance tests, but rather gives early feedback about the ARIA guidelines.
+   *
+   * Note that many html elements have an implicitly
+   * [defined role](https://w3c.github.io/html-aam/#html-element-role-mappings) that is recognized by the role selector. You
+   * can find all the [supported roles here](https://www.w3.org/TR/wai-aria-1.2/#role_definitions). ARIA guidelines **do not
+   * recommend** duplicating implicit roles and attributes by setting `role` and/or `aria-*` attributes to default values.
+   * @param role Required aria role.
+   * @param options
+   */
+  getByRole(role: string, options?: {
+    /**
+     * An attribute that is usually set by `aria-checked` or native `<input type=checkbox>` controls. Available values for
+     * checked are `true`, `false` and `"mixed"`.
+     *
+     * Learn more about [`aria-checked`](https://www.w3.org/TR/wai-aria-1.2/#aria-checked).
+     */
+    checked?: boolean;
+
+    /**
+     * A boolean attribute that is usually set by `aria-disabled` or `disabled`.
+     *
+     * > NOTE: Unlike most other attributes, `disabled` is inherited through the DOM hierarchy. Learn more about
+     * [`aria-disabled`](https://www.w3.org/TR/wai-aria-1.2/#aria-disabled).
+     */
+    disabled?: boolean;
+
+    /**
+     * A boolean attribute that is usually set by `aria-expanded`.
+     *
+     * Learn more about [`aria-expanded`](https://www.w3.org/TR/wai-aria-1.2/#aria-expanded).
+     */
+    expanded?: boolean;
+
+    /**
+     * A boolean attribute that controls whether hidden elements are matched. By default, only non-hidden elements, as
+     * [defined by ARIA](https://www.w3.org/TR/wai-aria-1.2/#tree_exclusion), are matched by role selector.
+     *
+     * Learn more about [`aria-hidden`](https://www.w3.org/TR/wai-aria-1.2/#aria-hidden).
+     */
+    includeHidden?: boolean;
+
+    /**
+     * A number attribute that is usually present for roles `heading`, `listitem`, `row`, `treeitem`, with default values for
+     * `<h1>-<h6>` elements.
+     *
+     * Learn more about [`aria-level`](https://www.w3.org/TR/wai-aria-1.2/#aria-level).
+     */
+    level?: number;
+
+    /**
+     * A string attribute that matches [accessible name](https://w3c.github.io/accname/#dfn-accessible-name).
+     *
+     * Learn more about [accessible name](https://w3c.github.io/accname/#dfn-accessible-name).
+     */
+    name?: string|RegExp;
+
+    /**
+     * An attribute that is usually set by `aria-pressed`. Available values for pressed are `true`, `false` and `"mixed"`.
+     *
+     * Learn more about [`aria-pressed`](https://www.w3.org/TR/wai-aria-1.2/#aria-pressed).
+     */
+    pressed?: boolean;
+
+    /**
+     * A boolean attribute that is usually set by `aria-selected`.
+     *
+     * Learn more about [`aria-selected`](https://www.w3.org/TR/wai-aria-1.2/#aria-selected).
+     */
+    selected?: boolean;
+  }): Locator;
+
+  /**
+   * Locate element by the test id. By default, the `data-testid` attribute is used as a test id. Use
+   * [selectors.setTestIdAttribute(attributeName)](https://playwright.dev/docs/api/class-selectors#selectors-set-test-id-attribute)
+   * to configure a different test id attribute if necessary.
+   * @param testId Id to locate the element by.
+   */
+  getByTestId(testId: string): Locator;
+
+  /**
+   * Allows locating elements that contain given text.
+   * @param text Text to locate the element for.
+   * @param options
+   */
+  getByText(text: string|RegExp, options?: {
+    /**
+     * Whether to find an exact match: case-sensitive and whole-string. Default to false.
+     */
+    exact?: boolean;
+  }): Locator;
 
   /**
    * Highlight the corresponding element(s) on the screen. Useful for debugging, don't commit the code that uses
@@ -9810,8 +10198,10 @@ export interface Locator {
   last(): Locator;
 
   /**
-   * The method finds an element matching the specified selector in the `Locator`'s subtree. It also accepts filter options,
+   * The method finds an element matching the specified selector in the locator's subtree. It also accepts filter options,
    * similar to [locator.filter([options])](https://playwright.dev/docs/api/class-locator#locator-filter) method.
+   *
+   * [Learn more about locators](https://playwright.dev/docs/locators).
    * @param selector A selector to use when resolving DOM element. See [working with selectors](https://playwright.dev/docs/selectors) for more details.
    * @param options
    */
@@ -10696,7 +11086,7 @@ export interface BrowserType<Unused = {}> {
 
       /**
        * Optional setting to control resource content management. If `omit` is specified, content is not persisted. If `attach`
-       * is specified, resources are persistet as separate files or entries in the ZIP archive. If `embed` is specified, content
+       * is specified, resources are persisted as separate files or entries in the ZIP archive. If `embed` is specified, content
        * is stored inline the HAR file as per HAR specification. Defaults to `attach` for `.zip` output files and to `embed` for
        * all other file extensions.
        */
@@ -11900,7 +12290,7 @@ export interface AndroidDevice {
 
       /**
        * Optional setting to control resource content management. If `omit` is specified, content is not persisted. If `attach`
-       * is specified, resources are persistet as separate files or entries in the ZIP archive. If `embed` is specified, content
+       * is specified, resources are persisted as separate files or entries in the ZIP archive. If `embed` is specified, content
        * is stored inline the HAR file as per HAR specification. Defaults to `attach` for `.zip` output files and to `embed` for
        * all other file extensions.
        */
@@ -12859,9 +13249,23 @@ export interface APIRequestContext {
    */
   get(url: string, options?: {
     /**
+     * Allows to set post data of the request. If the data parameter is an object, it will be serialized to json string and
+     * `content-type` header will be set to `application/json` if not explicitly set. Otherwise the `content-type` header will
+     * be set to `application/octet-stream` if not explicitly set.
+     */
+    data?: string|Buffer|Serializable;
+
+    /**
      * Whether to throw on response codes other than 2xx and 3xx. By default response object is returned for all status codes.
      */
     failOnStatusCode?: boolean;
+
+    /**
+     * Provides an object that will be serialized as html form using `application/x-www-form-urlencoded` encoding and sent as
+     * this request body. If this parameter is specified `content-type` header will be set to
+     * `application/x-www-form-urlencoded` unless explicitly provided.
+     */
+    form?: { [key: string]: string|number|boolean; };
 
     /**
      * Allows to set HTTP headers.
@@ -12878,6 +13282,29 @@ export interface APIRequestContext {
      * exceeded. Defaults to `20`. Pass `0` to not follow redirects.
      */
     maxRedirects?: number;
+
+    /**
+     * Provides an object that will be serialized as html form using `multipart/form-data` encoding and sent as this request
+     * body. If this parameter is specified `content-type` header will be set to `multipart/form-data` unless explicitly
+     * provided. File values can be passed either as [`fs.ReadStream`](https://nodejs.org/api/fs.html#fs_class_fs_readstream)
+     * or as file-like object containing file name, mime-type and its content.
+     */
+    multipart?: { [key: string]: string|number|boolean|ReadStream|{
+      /**
+       * File name
+       */
+      name: string;
+
+      /**
+       * File type
+       */
+      mimeType: string;
+
+      /**
+       * File content
+       */
+      buffer: Buffer;
+    }; };
 
     /**
      * Query parameters to be sent with the URL.
@@ -12899,9 +13326,23 @@ export interface APIRequestContext {
    */
   head(url: string, options?: {
     /**
+     * Allows to set post data of the request. If the data parameter is an object, it will be serialized to json string and
+     * `content-type` header will be set to `application/json` if not explicitly set. Otherwise the `content-type` header will
+     * be set to `application/octet-stream` if not explicitly set.
+     */
+    data?: string|Buffer|Serializable;
+
+    /**
      * Whether to throw on response codes other than 2xx and 3xx. By default response object is returned for all status codes.
      */
     failOnStatusCode?: boolean;
+
+    /**
+     * Provides an object that will be serialized as html form using `application/x-www-form-urlencoded` encoding and sent as
+     * this request body. If this parameter is specified `content-type` header will be set to
+     * `application/x-www-form-urlencoded` unless explicitly provided.
+     */
+    form?: { [key: string]: string|number|boolean; };
 
     /**
      * Allows to set HTTP headers.
@@ -12918,6 +13359,29 @@ export interface APIRequestContext {
      * exceeded. Defaults to `20`. Pass `0` to not follow redirects.
      */
     maxRedirects?: number;
+
+    /**
+     * Provides an object that will be serialized as html form using `multipart/form-data` encoding and sent as this request
+     * body. If this parameter is specified `content-type` header will be set to `multipart/form-data` unless explicitly
+     * provided. File values can be passed either as [`fs.ReadStream`](https://nodejs.org/api/fs.html#fs_class_fs_readstream)
+     * or as file-like object containing file name, mime-type and its content.
+     */
+    multipart?: { [key: string]: string|number|boolean|ReadStream|{
+      /**
+       * File name
+       */
+      name: string;
+
+      /**
+       * File type
+       */
+      mimeType: string;
+
+      /**
+       * File content
+       */
+      buffer: Buffer;
+    }; };
 
     /**
      * Query parameters to be sent with the URL.
@@ -13633,7 +14097,7 @@ export interface Browser extends EventEmitter {
 
       /**
        * Optional setting to control resource content management. If `omit` is specified, content is not persisted. If `attach`
-       * is specified, resources are persistet as separate files or entries in the ZIP archive. If `embed` is specified, content
+       * is specified, resources are persisted as separate files or entries in the ZIP archive. If `embed` is specified, content
        * is stored inline the HAR file as per HAR specification. Defaults to `attach` for `.zip` output files and to `embed` for
        * all other file extensions.
        */
@@ -14427,7 +14891,7 @@ export interface Electron {
 
       /**
        * Optional setting to control resource content management. If `omit` is specified, content is not persisted. If `attach`
-       * is specified, resources are persistet as separate files or entries in the ZIP archive. If `embed` is specified, content
+       * is specified, resources are persisted as separate files or entries in the ZIP archive. If `embed` is specified, content
        * is stored inline the HAR file as per HAR specification. Defaults to `attach` for `.zip` output files and to `embed` for
        * all other file extensions.
        */
@@ -14632,12 +15096,135 @@ export interface FrameLocator {
   frameLocator(selector: string): FrameLocator;
 
   /**
+   * The method finds an element matching the specified selector in the locator's subtree. It also accepts filter options,
+   * similar to [locator.filter([options])](https://playwright.dev/docs/api/class-locator#locator-filter) method.
+   *
+   * [Learn more about locators](https://playwright.dev/docs/locators).
+   * @param selector A selector to use when resolving DOM element. See [working with selectors](https://playwright.dev/docs/selectors) for more details.
+   * @param options
+   */
+  get(selector: string, options?: {
+    /**
+     * Matches elements containing an element that matches an inner locator. Inner locator is queried against the outer one.
+     * For example, `article` that has `text=Playwright` matches `<article><div>Playwright</div></article>`.
+     *
+     * Note that outer and inner locators must belong to the same frame. Inner locator must not contain [FrameLocator]s.
+     */
+    has?: Locator;
+
+    /**
+     * Matches elements containing specified text somewhere inside, possibly in a child or a descendant element. When passed a
+     * [string], matching is case-insensitive and searches for a substring. For example, `"Playwright"` matches
+     * `<article><div>Playwright</div></article>`.
+     */
+    hasText?: string|RegExp;
+  }): Locator;
+
+  /**
+   * Allows locating elements by their [ARIA role](https://www.w3.org/TR/wai-aria-1.2/#roles),
+   * [ARIA attributes](https://www.w3.org/TR/wai-aria-1.2/#aria-attributes) and
+   * [accessible name](https://w3c.github.io/accname/#dfn-accessible-name). Note that role selector **does not replace**
+   * accessibility audits and conformance tests, but rather gives early feedback about the ARIA guidelines.
+   *
+   * Note that many html elements have an implicitly
+   * [defined role](https://w3c.github.io/html-aam/#html-element-role-mappings) that is recognized by the role selector. You
+   * can find all the [supported roles here](https://www.w3.org/TR/wai-aria-1.2/#role_definitions). ARIA guidelines **do not
+   * recommend** duplicating implicit roles and attributes by setting `role` and/or `aria-*` attributes to default values.
+   * @param role Required aria role.
+   * @param options
+   */
+  getByRole(role: string, options?: {
+    /**
+     * An attribute that is usually set by `aria-checked` or native `<input type=checkbox>` controls. Available values for
+     * checked are `true`, `false` and `"mixed"`.
+     *
+     * Learn more about [`aria-checked`](https://www.w3.org/TR/wai-aria-1.2/#aria-checked).
+     */
+    checked?: boolean;
+
+    /**
+     * A boolean attribute that is usually set by `aria-disabled` or `disabled`.
+     *
+     * > NOTE: Unlike most other attributes, `disabled` is inherited through the DOM hierarchy. Learn more about
+     * [`aria-disabled`](https://www.w3.org/TR/wai-aria-1.2/#aria-disabled).
+     */
+    disabled?: boolean;
+
+    /**
+     * A boolean attribute that is usually set by `aria-expanded`.
+     *
+     * Learn more about [`aria-expanded`](https://www.w3.org/TR/wai-aria-1.2/#aria-expanded).
+     */
+    expanded?: boolean;
+
+    /**
+     * A boolean attribute that controls whether hidden elements are matched. By default, only non-hidden elements, as
+     * [defined by ARIA](https://www.w3.org/TR/wai-aria-1.2/#tree_exclusion), are matched by role selector.
+     *
+     * Learn more about [`aria-hidden`](https://www.w3.org/TR/wai-aria-1.2/#aria-hidden).
+     */
+    includeHidden?: boolean;
+
+    /**
+     * A number attribute that is usually present for roles `heading`, `listitem`, `row`, `treeitem`, with default values for
+     * `<h1>-<h6>` elements.
+     *
+     * Learn more about [`aria-level`](https://www.w3.org/TR/wai-aria-1.2/#aria-level).
+     */
+    level?: number;
+
+    /**
+     * A string attribute that matches [accessible name](https://w3c.github.io/accname/#dfn-accessible-name).
+     *
+     * Learn more about [accessible name](https://w3c.github.io/accname/#dfn-accessible-name).
+     */
+    name?: string|RegExp;
+
+    /**
+     * An attribute that is usually set by `aria-pressed`. Available values for pressed are `true`, `false` and `"mixed"`.
+     *
+     * Learn more about [`aria-pressed`](https://www.w3.org/TR/wai-aria-1.2/#aria-pressed).
+     */
+    pressed?: boolean;
+
+    /**
+     * A boolean attribute that is usually set by `aria-selected`.
+     *
+     * Learn more about [`aria-selected`](https://www.w3.org/TR/wai-aria-1.2/#aria-selected).
+     */
+    selected?: boolean;
+  }): Locator;
+
+  /**
+   * Locate element by the test id. By default, the `data-testid` attribute is used as a test id. Use
+   * [selectors.setTestIdAttribute(attributeName)](https://playwright.dev/docs/api/class-selectors#selectors-set-test-id-attribute)
+   * to configure a different test id attribute if necessary.
+   * @param testId Id to locate the element by.
+   */
+  getByTestId(testId: string): Locator;
+
+  /**
+   * Allows locating elements that contain given text.
+   * @param text Text to locate the element for.
+   * @param options
+   */
+  getByText(text: string|RegExp, options?: {
+    /**
+     * Whether to find an exact match: case-sensitive and whole-string. Default to false.
+     */
+    exact?: boolean;
+  }): Locator;
+
+  /**
    * Returns locator to the last matching frame.
    */
   last(): FrameLocator;
 
   /**
-   * The method finds an element matching the specified selector in the FrameLocator's subtree.
+   * The method finds an element matching the specified selector in the locator's subtree. It also accepts filter options,
+   * similar to [locator.filter([options])](https://playwright.dev/docs/api/class-locator#locator-filter) method.
+   *
+   * [Learn more about locators](https://playwright.dev/docs/locators).
    * @param selector A selector to use when resolving DOM element. See [working with selectors](https://playwright.dev/docs/selectors) for more details.
    * @param options
    */
@@ -15709,6 +16296,14 @@ export interface Selectors {
      */
     contentScript?: boolean;
   }): Promise<void>;
+
+  /**
+   * Defines custom attribute name to be used in
+   * [page.getByTestId(testId)](https://playwright.dev/docs/api/class-page#page-get-by-test-id). `data-testid` is used by
+   * default.
+   * @param attributeName Test id attribute name.
+   */
+  setTestIdAttribute(attributeName: string): void;
 }
 
 /**
@@ -16261,7 +16856,7 @@ export interface BrowserContextOptions {
 
     /**
      * Optional setting to control resource content management. If `omit` is specified, content is not persisted. If `attach`
-     * is specified, resources are persistet as separate files or entries in the ZIP archive. If `embed` is specified, content
+     * is specified, resources are persisted as separate files or entries in the ZIP archive. If `embed` is specified, content
      * is stored inline the HAR file as per HAR specification. Defaults to `attach` for `.zip` output files and to `embed` for
      * all other file extensions.
      */
