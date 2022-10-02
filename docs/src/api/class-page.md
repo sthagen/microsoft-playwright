@@ -2162,18 +2162,6 @@ await locator.ClickAsync();
 
 An array of all frames attached to the page.
 
-## method: Page.get
-* since: v1.27
-- returns: <[Locator]>
-
-%%-template-locator-root-locator-%%
-
-### param: Page.get.selector = %%-find-selector-%%
-* since: v1.27
-### option: Page.get.-inline- = %%-locator-options-list-v1.14-%%
-* since: v1.27
-
-
 ## async method: Page.getAttribute
 * since: v1.8
 - returns: <[null]|[string]>
@@ -2193,6 +2181,36 @@ Attribute name to get the value for.
 * since: v1.14
 ### option: Page.getAttribute.timeout = %%-input-timeout-%%
 * since: v1.8
+
+
+## method: Page.getByAltText
+* since: v1.27
+- returns: <[Locator]>
+
+%%-template-locator-get-by-alt-text-%%
+
+### param: Page.getByAltText.text = %%-locator-get-by-text-text-%%
+### option: Page.getByAltText.exact = %%-locator-get-by-text-exact-%%
+
+
+## method: Page.getByLabelText
+* since: v1.27
+- returns: <[Locator]>
+
+%%-template-locator-get-by-label-text-%%
+
+### param: Page.getByLabelText.text = %%-locator-get-by-text-text-%%
+### option: Page.getByLabelText.exact = %%-locator-get-by-text-exact-%%
+
+
+## method: Page.getByPlaceholderText
+* since: v1.27
+- returns: <[Locator]>
+
+%%-template-locator-get-by-placeholder-text-%%
+
+### param: Page.getByPlaceholderText.text = %%-locator-get-by-text-text-%%
+### option: Page.getByPlaceholderText.exact = %%-locator-get-by-text-exact-%%
 
 
 ## method: Page.getByRole
@@ -2224,6 +2242,16 @@ Attribute name to get the value for.
 
 ### param: Page.getByText.text = %%-locator-get-by-text-text-%%
 ### option: Page.getByText.exact = %%-locator-get-by-text-exact-%%
+
+
+## method: Page.getByTitle
+* since: v1.27
+- returns: <[Locator]>
+
+%%-template-locator-get-by-title-%%
+
+### param: Page.getByTitle.text = %%-locator-get-by-text-text-%%
+### option: Page.getByTitle.exact = %%-locator-get-by-text-exact-%%
 
 
 ## async method: Page.goBack

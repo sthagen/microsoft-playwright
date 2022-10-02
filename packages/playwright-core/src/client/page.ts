@@ -564,16 +564,28 @@ export class Page extends ChannelOwner<channels.PageChannel> implements api.Page
     return this.mainFrame().locator(selector, options);
   }
 
-  get(selector: string, options?: LocatorOptions): Locator {
-    return this.mainFrame().locator(selector, options);
-  }
-
   getByTestId(testId: string): Locator {
     return this.mainFrame().getByTestId(testId);
   }
 
+  getByAltText(text: string | RegExp, options?: { exact?: boolean }): Locator {
+    return this.mainFrame().getByAltText(text, options);
+  }
+
+  getByLabelText(text: string | RegExp, options?: { exact?: boolean }): Locator {
+    return this.mainFrame().getByLabelText(text, options);
+  }
+
+  getByPlaceholderText(text: string | RegExp, options?: { exact?: boolean }): Locator {
+    return this.mainFrame().getByPlaceholderText(text, options);
+  }
+
   getByText(text: string | RegExp, options?: { exact?: boolean }): Locator {
     return this.mainFrame().getByText(text, options);
+  }
+
+  getByTitle(text: string | RegExp, options?: { exact?: boolean }): Locator {
+    return this.mainFrame().getByTitle(text, options);
   }
 
   getByRole(role: string, options: ByRoleOptions = {}): Locator {

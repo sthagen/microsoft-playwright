@@ -114,16 +114,34 @@ in that iframe.
 * since: v1.17
 
 
-## method: FrameLocator.get
+## method: FrameLocator.getByAltText
 * since: v1.27
 - returns: <[Locator]>
 
-%%-template-locator-locator-%%
+%%-template-locator-get-by-alt-text-%%
 
-### param: FrameLocator.get.selector = %%-find-selector-%%
+### param: FrameLocator.getByAltText.text = %%-locator-get-by-text-text-%%
+### option: FrameLocator.getByAltText.exact = %%-locator-get-by-text-exact-%%
+
+
+## method: FrameLocator.getByLabelText
 * since: v1.27
-### option: FrameLocator.get.-inline- = %%-locator-options-list-v1.14-%%
+- returns: <[Locator]>
+
+%%-template-locator-get-by-label-text-%%
+
+### param: FrameLocator.getByLabelText.text = %%-locator-get-by-text-text-%%
+### option: FrameLocator.getByLabelText.exact = %%-locator-get-by-text-exact-%%
+
+
+## method: FrameLocator.getByPlaceholderText
 * since: v1.27
+- returns: <[Locator]>
+
+%%-template-locator-get-by-placeholder-text-%%
+
+### param: FrameLocator.getByPlaceholderText.text = %%-locator-get-by-text-text-%%
+### option: FrameLocator.getByPlaceholderText.exact = %%-locator-get-by-text-exact-%%
 
 
 ## method: FrameLocator.getByRole
@@ -155,6 +173,16 @@ in that iframe.
 
 ### param: FrameLocator.getByText.text = %%-locator-get-by-text-text-%%
 ### option: FrameLocator.getByText.exact = %%-locator-get-by-text-exact-%%
+
+
+## method: FrameLocator.getByTitle
+* since: v1.27
+- returns: <[Locator]>
+
+%%-template-locator-get-by-title-%%
+
+### param: FrameLocator.getByTitle.text = %%-locator-get-by-text-text-%%
+### option: FrameLocator.getByTitle.exact = %%-locator-get-by-text-exact-%%
 
 
 ## method: FrameLocator.last

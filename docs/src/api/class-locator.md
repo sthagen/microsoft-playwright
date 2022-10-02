@@ -618,18 +618,6 @@ await locator.ClickAsync();
 * since: v1.17
 
 
-## method: Locator.get
-* since: v1.27
-- returns: <[Locator]>
-
-%%-template-locator-locator-%%
-
-### param: Locator.get.selector = %%-find-selector-%%
-* since: v1.27
-### option: Locator.get.-inline- = %%-locator-options-list-v1.14-%%
-* since: v1.27
-
-
 ## async method: Locator.getAttribute
 * since: v1.14
 - returns: <[null]|[string]>
@@ -644,6 +632,36 @@ Attribute name to get the value for.
 
 ### option: Locator.getAttribute.timeout = %%-input-timeout-%%
 * since: v1.14
+
+
+## method: Locator.getByAltText
+* since: v1.27
+- returns: <[Locator]>
+
+%%-template-locator-get-by-alt-text-%%
+
+### param: Locator.getByAltText.text = %%-locator-get-by-text-text-%%
+### option: Locator.getByAltText.exact = %%-locator-get-by-text-exact-%%
+
+
+## method: Locator.getByLabelText
+* since: v1.27
+- returns: <[Locator]>
+
+%%-template-locator-get-by-label-text-%%
+
+### param: Locator.getByLabelText.text = %%-locator-get-by-text-text-%%
+### option: Locator.getByLabelText.exact = %%-locator-get-by-text-exact-%%
+
+
+## method: Locator.getByPlaceholderText
+* since: v1.27
+- returns: <[Locator]>
+
+%%-template-locator-get-by-placeholder-text-%%
+
+### param: Locator.getByPlaceholderText.text = %%-locator-get-by-text-text-%%
+### option: Locator.getByPlaceholderText.exact = %%-locator-get-by-text-exact-%%
 
 
 ## method: Locator.getByRole
@@ -675,6 +693,16 @@ Attribute name to get the value for.
 
 ### param: Locator.getByText.text = %%-locator-get-by-text-text-%%
 ### option: Locator.getByText.exact = %%-locator-get-by-text-exact-%%
+
+
+## method: Locator.getByTitle
+* since: v1.27
+- returns: <[Locator]>
+
+%%-template-locator-get-by-title-%%
+
+### param: Locator.getByTitle.text = %%-locator-get-by-text-text-%%
+### option: Locator.getByTitle.exact = %%-locator-get-by-text-exact-%%
 
 
 ## async method: Locator.highlight

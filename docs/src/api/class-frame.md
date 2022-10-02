@@ -887,18 +887,6 @@ await locator.ClickAsync();
 * since: v1.17
 
 
-## method: Frame.get
-* since: v1.27
-- returns: <[Locator]>
-
-%%-template-locator-root-locator-%%
-
-### param: Frame.get.selector = %%-find-selector-%%
-* since: v1.27
-### option: Frame.get.-inline- = %%-locator-options-list-v1.14-%%
-* since: v1.27
-
-
 ## async method: Frame.getAttribute
 * since: v1.8
 - returns: <[null]|[string]>
@@ -918,6 +906,36 @@ Attribute name to get the value for.
 * since: v1.14
 ### option: Frame.getAttribute.timeout = %%-input-timeout-%%
 * since: v1.8
+
+
+## method: Frame.getByAltText
+* since: v1.27
+- returns: <[Locator]>
+
+%%-template-locator-get-by-alt-text-%%
+
+### param: Frame.getByAltText.text = %%-locator-get-by-text-text-%%
+### option: Frame.getByAltText.exact = %%-locator-get-by-text-exact-%%
+
+
+## method: Frame.getByLabelText
+* since: v1.27
+- returns: <[Locator]>
+
+%%-template-locator-get-by-label-text-%%
+
+### param: Frame.getByLabelText.text = %%-locator-get-by-text-text-%%
+### option: Frame.getByLabelText.exact = %%-locator-get-by-text-exact-%%
+
+
+## method: Frame.getByPlaceholderText
+* since: v1.27
+- returns: <[Locator]>
+
+%%-template-locator-get-by-placeholder-text-%%
+
+### param: Frame.getByPlaceholderText.text = %%-locator-get-by-text-text-%%
+### option: Frame.getByPlaceholderText.exact = %%-locator-get-by-text-exact-%%
 
 
 ## method: Frame.getByRole
@@ -950,6 +968,16 @@ Attribute name to get the value for.
 
 ### param: Frame.getByText.text = %%-locator-get-by-text-text-%%
 ### option: Frame.getByText.exact = %%-locator-get-by-text-exact-%%
+
+
+## method: Frame.getByTitle
+* since: v1.27
+- returns: <[Locator]>
+
+%%-template-locator-get-by-title-%%
+
+### param: Frame.getByTitle.text = %%-locator-get-by-text-text-%%
+### option: Frame.getByTitle.exact = %%-locator-get-by-text-exact-%%
 
 
 ## async method: Frame.goto

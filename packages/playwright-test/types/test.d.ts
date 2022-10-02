@@ -199,10 +199,6 @@ export interface FullProject<TestArgs = {}, WorkerArgs = {}> {
    */
   metadata: Metadata;
   /**
-   * Unique project id within this config.
-   */
-  id: string;
-  /**
    * Project name is visible in the report and during test execution.
    */
   name: string;
@@ -3407,8 +3403,8 @@ interface LocatorAssertions {
   }): Promise<void>;
 
   /**
-   * Ensures that [Locator] points to an [attached](https://playwright.dev/docs/api/actionability#visible) and [visible](https://playwright.dev/docs/api/actionability#visible) DOM
-   * node.
+   * Ensures that [Locator] points to an [attached](https://playwright.dev/docs/api/actionability#attached) and [visible](https://playwright.dev/docs/api/actionability#visible)
+   * DOM node.
    *
    * ```js
    * const locator = page.locator('.my-element');
@@ -4433,11 +4429,6 @@ interface TestProject {
    * `grepInvert` option is also useful for [tagging tests](https://playwright.dev/docs/test-annotations#tag-tests).
    */
   grepInvert?: RegExp|Array<RegExp>;
-
-  /**
-   * Unique project id within this config.
-   */
-  id?: string;
 
   /**
    * Metadata that will be put directly to the test report serialized as JSON.
