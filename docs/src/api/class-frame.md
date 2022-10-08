@@ -859,27 +859,27 @@ in that iframe. Following snippet locates element with text "Submit" in the ifra
 like `<iframe id="my-frame">`:
 
 ```js
-const locator = frame.frameLocator('#my-iframe').locator('text=Submit');
+const locator = frame.frameLocator('#my-iframe').getByText('Submit');
 await locator.click();
 ```
 
 ```java
-Locator locator = frame.frameLocator("#my-iframe").locator("text=Submit");
+Locator locator = frame.frameLocator("#my-iframe").getByText("Submit");
 locator.click();
 ```
 
 ```python async
-locator = frame.frame_locator("#my-iframe").locator("text=Submit")
+locator = frame.frame_locator("#my-iframe").get_by_text("Submit")
 await locator.click()
 ```
 
 ```python sync
-locator = frame.frame_locator("#my-iframe").locator("text=Submit")
+locator = frame.frame_locator("#my-iframe").get_by_text("Submit")
 locator.click()
 ```
 
 ```csharp
-var locator = frame.FrameLocator("#my-iframe").Locator("text=Submit");
+var locator = frame.FrameLocator("#my-iframe").GetByText("Submit");
 await locator.ClickAsync();
 ```
 
@@ -918,24 +918,24 @@ Attribute name to get the value for.
 ### option: Frame.getByAltText.exact = %%-locator-get-by-text-exact-%%
 
 
-## method: Frame.getByLabelText
+## method: Frame.getByLabel
 * since: v1.27
 - returns: <[Locator]>
 
 %%-template-locator-get-by-label-text-%%
 
-### param: Frame.getByLabelText.text = %%-locator-get-by-text-text-%%
-### option: Frame.getByLabelText.exact = %%-locator-get-by-text-exact-%%
+### param: Frame.getByLabel.text = %%-locator-get-by-text-text-%%
+### option: Frame.getByLabel.exact = %%-locator-get-by-text-exact-%%
 
 
-## method: Frame.getByPlaceholderText
+## method: Frame.getByPlaceholder
 * since: v1.27
 - returns: <[Locator]>
 
 %%-template-locator-get-by-placeholder-text-%%
 
-### param: Frame.getByPlaceholderText.text = %%-locator-get-by-text-text-%%
-### option: Frame.getByPlaceholderText.exact = %%-locator-get-by-text-exact-%%
+### param: Frame.getByPlaceholder.text = %%-locator-get-by-text-text-%%
+### option: Frame.getByPlaceholder.exact = %%-locator-get-by-text-exact-%%
 
 
 ## method: Frame.getByRole
@@ -1059,6 +1059,8 @@ When all steps combined have not finished during the specified [`option: timeout
 * since: v1.8
 ### option: Frame.hover.trial = %%-input-trial-%%
 * since: v1.11
+### option: Frame.hover.noWaitAfter = %%-input-no-wait-after-%%
+* since: v1.28
 
 ## async method: Frame.innerHTML
 * since: v1.8
