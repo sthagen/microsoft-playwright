@@ -257,6 +257,22 @@ export interface FullProject<TestArgs = {}, WorkerArgs = {}> {
    */
   retries: number;
   /**
+   * An integer number that defines when the project should run relative to other projects. Each project runs in exactly one
+   * stage. By default all projects run in stage 0. Stages with lower number run first. Several projects can run in each
+   * stage. Exeution order between projecs in the same stage is undefined.
+   */
+  stage: number;
+  /**
+   * If set to true and the any test in the project fails all subsequent projects in the same playwright test run will be
+   * skipped.
+   */
+  stopOnFailure: boolean;
+  /**
+   * If set to false and the tests run with --shard command line option, all tests from this project will run in every shard.
+   * If not specified, the project can be split between several shards.
+   */
+  canShard: boolean;
+  /**
    * Directory that will be recursively scanned for test files. Defaults to the directory of the configuration file.
    *
    * Each project can use a different directory. Here is an example that runs smoke tests in three browsers and all other
@@ -4288,6 +4304,12 @@ export interface TestError {
  */
 interface TestProject {
   /**
+   * If set to false and the tests run with --shard command line option, all tests from this project will run in every shard.
+   * If not specified, the project can be split between several shards.
+   */
+  canShard?: boolean;
+
+  /**
    * Configuration for the `expect` assertion library.
    *
    * Use [testConfig.expect](https://playwright.dev/docs/api/class-testconfig#test-config-expect) to change this option for
@@ -4457,6 +4479,19 @@ interface TestProject {
    * all projects.
    */
   retries?: number;
+
+  /**
+   * An integer number that defines when the project should run relative to other projects. Each project runs in exactly one
+   * stage. By default all projects run in stage 0. Stages with lower number run first. Several projects can run in each
+   * stage. Exeution order between projecs in the same stage is undefined.
+   */
+  stage?: number;
+
+  /**
+   * If set to true and the any test in the project fails all subsequent projects in the same playwright test run will be
+   * skipped.
+   */
+  stopOnFailure?: boolean;
 
   /**
    * Directory that will be recursively scanned for test files. Defaults to the directory of the configuration file.
