@@ -50,10 +50,8 @@ export class Locator implements api.Locator {
     this._frame = frame;
     this._selector = selector;
 
-    if (options?.hasText) {
-      const textSelector = 'text=' + escapeForTextSelector(options.hasText, false);
-      this._selector += ` >> internal:has=${JSON.stringify(textSelector)}`;
-    }
+    if (options?.hasText)
+      this._selector += ` >> internal:has-text=${escapeForTextSelector(options.hasText, false)}`;
 
     if (options?.has) {
       const locator = options.has;
@@ -421,7 +419,7 @@ export function getByPlaceholderSelector(text: string | RegExp, options?: { exac
 }
 
 export function getByTextSelector(text: string | RegExp, options?: { exact?: boolean }): string {
-  return 'text=' + escapeForTextSelector(text, !!options?.exact);
+  return 'internal:text=' + escapeForTextSelector(text, !!options?.exact);
 }
 
 export function getByRoleSelector(role: string, options: ByRoleOptions = {}): string {
@@ -442,5 +440,5 @@ export function getByRoleSelector(role: string, options: ByRoleOptions = {}): st
     props.push(['name', isString(options.name) ? escapeForAttributeSelector(options.name, false) : String(options.name)]);
   if (options.pressed !== undefined)
     props.push(['pressed', String(options.pressed)]);
-  return `role=${role}${props.map(([n, v]) => `[${n}=${v}]`).join('')}`;
+  return `internal:role=${role}${props.map(([n, v]) => `[${n}=${v}]`).join('')}`;
 }

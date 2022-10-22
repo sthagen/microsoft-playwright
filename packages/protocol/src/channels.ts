@@ -472,7 +472,7 @@ export interface RootChannel extends RootEventTarget, Channel {
   initialize(params: RootInitializeParams, metadata?: Metadata): Promise<RootInitializeResult>;
 }
 export type RootInitializeParams = {
-  sdkLanguage: string,
+  sdkLanguage: 'javascript' | 'python' | 'java' | 'csharp',
 };
 export type RootInitializeOptions = {
 
@@ -593,13 +593,13 @@ export type RecorderSource = {
 export type DebugControllerInitializer = {};
 export interface DebugControllerEventTarget {
   on(event: 'inspectRequested', callback: (params: DebugControllerInspectRequestedEvent) => void): this;
+  on(event: 'stateChanged', callback: (params: DebugControllerStateChangedEvent) => void): this;
   on(event: 'browsersChanged', callback: (params: DebugControllerBrowsersChangedEvent) => void): this;
   on(event: 'sourcesChanged', callback: (params: DebugControllerSourcesChangedEvent) => void): this;
 }
 export interface DebugControllerChannel extends DebugControllerEventTarget, Channel {
   _type_DebugController: boolean;
-  setTrackHierarchy(params: DebugControllerSetTrackHierarchyParams, metadata?: Metadata): Promise<DebugControllerSetTrackHierarchyResult>;
-  setReuseBrowser(params: DebugControllerSetReuseBrowserParams, metadata?: Metadata): Promise<DebugControllerSetReuseBrowserResult>;
+  setReportStateChanged(params: DebugControllerSetReportStateChangedParams, metadata?: Metadata): Promise<DebugControllerSetReportStateChangedResult>;
   resetForReuse(params?: DebugControllerResetForReuseParams, metadata?: Metadata): Promise<DebugControllerResetForReuseResult>;
   navigateAll(params: DebugControllerNavigateAllParams, metadata?: Metadata): Promise<DebugControllerNavigateAllResult>;
   setRecorderMode(params: DebugControllerSetRecorderModeParams, metadata?: Metadata): Promise<DebugControllerSetRecorderModeResult>;
@@ -612,6 +612,9 @@ export type DebugControllerInspectRequestedEvent = {
   selector: string,
   locators: NameValue[],
 };
+export type DebugControllerStateChangedEvent = {
+  pageCount: number,
+};
 export type DebugControllerBrowsersChangedEvent = {
   browsers: {
     contexts: {
@@ -622,20 +625,13 @@ export type DebugControllerBrowsersChangedEvent = {
 export type DebugControllerSourcesChangedEvent = {
   sources: RecorderSource[],
 };
-export type DebugControllerSetTrackHierarchyParams = {
+export type DebugControllerSetReportStateChangedParams = {
   enabled: boolean,
 };
-export type DebugControllerSetTrackHierarchyOptions = {
+export type DebugControllerSetReportStateChangedOptions = {
 
 };
-export type DebugControllerSetTrackHierarchyResult = void;
-export type DebugControllerSetReuseBrowserParams = {
-  enabled: boolean,
-};
-export type DebugControllerSetReuseBrowserOptions = {
-
-};
-export type DebugControllerSetReuseBrowserResult = void;
+export type DebugControllerSetReportStateChangedResult = void;
 export type DebugControllerResetForReuseParams = {};
 export type DebugControllerResetForReuseOptions = {};
 export type DebugControllerResetForReuseResult = void;
@@ -675,6 +671,7 @@ export type DebugControllerCloseAllBrowsersResult = void;
 
 export interface DebugControllerEvents {
   'inspectRequested': DebugControllerInspectRequestedEvent;
+  'stateChanged': DebugControllerStateChangedEvent;
   'browsersChanged': DebugControllerBrowsersChangedEvent;
   'sourcesChanged': DebugControllerSourcesChangedEvent;
 }

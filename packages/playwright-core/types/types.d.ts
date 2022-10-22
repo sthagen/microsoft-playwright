@@ -2581,6 +2581,14 @@ export interface Page {
    * Locate element by the test id. By default, the `data-testid` attribute is used as a test id. Use
    * [selectors.setTestIdAttribute(attributeName)](https://playwright.dev/docs/api/class-selectors#selectors-set-test-id-attribute)
    * to configure a different test id attribute if necessary.
+   *
+   * ```js
+   * // Set custom test id attribute from @playwright/test config:
+   * use: {
+   *   testIdAttribute: 'data-pw'
+   * }
+   * ```
+   *
    * @param testId Id to locate the element by.
    */
   getByTestId(testId: string): Locator;
@@ -5681,6 +5689,14 @@ export interface Frame {
    * Locate element by the test id. By default, the `data-testid` attribute is used as a test id. Use
    * [selectors.setTestIdAttribute(attributeName)](https://playwright.dev/docs/api/class-selectors#selectors-set-test-id-attribute)
    * to configure a different test id attribute if necessary.
+   *
+   * ```js
+   * // Set custom test id attribute from @playwright/test config:
+   * use: {
+   *   testIdAttribute: 'data-pw'
+   * }
+   * ```
+   *
    * @param testId Id to locate the element by.
    */
   getByTestId(testId: string): Locator;
@@ -8917,7 +8933,7 @@ export interface ElementHandle<T=Node> extends JSHandle<T> {
 
     /**
      * When set to `"css"`, screenshot will have a single pixel per each css pixel on the page. For high-dpi devices, this will
-     * keep screenshots small. Using `"device"` option will produce a single pixel per each device pixel, so screenhots of
+     * keep screenshots small. Using `"device"` option will produce a single pixel per each device pixel, so screenshots of
      * high-dpi devices will be twice as large or even larger.
      *
      * Defaults to `"device"`.
@@ -10125,6 +10141,14 @@ export interface Locator {
    * Locate element by the test id. By default, the `data-testid` attribute is used as a test id. Use
    * [selectors.setTestIdAttribute(attributeName)](https://playwright.dev/docs/api/class-selectors#selectors-set-test-id-attribute)
    * to configure a different test id attribute if necessary.
+   *
+   * ```js
+   * // Set custom test id attribute from @playwright/test config:
+   * use: {
+   *   testIdAttribute: 'data-pw'
+   * }
+   * ```
+   *
    * @param testId Id to locate the element by.
    */
   getByTestId(testId: string): Locator;
@@ -15392,6 +15416,14 @@ export interface FrameLocator {
    * Locate element by the test id. By default, the `data-testid` attribute is used as a test id. Use
    * [selectors.setTestIdAttribute(attributeName)](https://playwright.dev/docs/api/class-selectors#selectors-set-test-id-attribute)
    * to configure a different test id attribute if necessary.
+   *
+   * ```js
+   * // Set custom test id attribute from @playwright/test config:
+   * use: {
+   *   testIdAttribute: 'data-pw'
+   * }
+   * ```
+   *
    * @param testId Id to locate the element by.
    */
   getByTestId(testId: string): Locator;
@@ -15467,7 +15499,7 @@ export interface FrameLocator {
 /**
  * Keyboard provides an api for managing a virtual keyboard. The high level api is
  * [keyboard.type(text[, options])](https://playwright.dev/docs/api/class-keyboard#keyboard-type), which takes raw
- * characters and generates proper keydown, keypress/input, and keyup events on your page.
+ * characters and generates proper `keydown`, `keypress`/`input`, and `keyup` events on your page.
  *
  * For finer control, you can use [keyboard.down(key)](https://playwright.dev/docs/api/class-keyboard#keyboard-down),
  * [keyboard.up(key)](https://playwright.dev/docs/api/class-keyboard#keyboard-up), and
@@ -15825,7 +15857,7 @@ export const webkit: BrowserType;
  * > NOTE: HTTP Error responses, such as 404 or 503, are still successful responses from HTTP standpoint, so request will
  * complete with `'requestfinished'` event.
  *
- * If request gets a 'redirect' response, the request is successfully finished with the 'requestfinished' event, and a new
+ * If request gets a 'redirect' response, the request is successfully finished with the `requestfinished` event, and a new
  * request is  issued to a redirected url.
  */
 export interface Request {
@@ -17523,7 +17555,7 @@ export interface LocatorScreenshotOptions {
 
   /**
    * When set to `"css"`, screenshot will have a single pixel per each css pixel on the page. For high-dpi devices, this will
-   * keep screenshots small. Using `"device"` option will produce a single pixel per each device pixel, so screenhots of
+   * keep screenshots small. Using `"device"` option will produce a single pixel per each device pixel, so screenshots of
    * high-dpi devices will be twice as large or even larger.
    *
    * Defaults to `"device"`.
@@ -17708,7 +17740,7 @@ export interface PageScreenshotOptions {
 
   /**
    * When set to `"css"`, screenshot will have a single pixel per each css pixel on the page. For high-dpi devices, this will
-   * keep screenshots small. Using `"device"` option will produce a single pixel per each device pixel, so screenhots of
+   * keep screenshots small. Using `"device"` option will produce a single pixel per each device pixel, so screenshots of
    * high-dpi devices will be twice as large or even larger.
    *
    * Defaults to `"device"`.

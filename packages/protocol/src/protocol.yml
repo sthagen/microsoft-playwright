@@ -545,7 +545,13 @@ Root:
 
     initialize:
       parameters:
-        sdkLanguage: string
+        sdkLanguage:
+          type: enum
+          literals:
+          - javascript
+          - python
+          - java
+          - csharp
       returns:
         playwright: Playwright
 
@@ -654,11 +660,7 @@ DebugController:
   type: interface
 
   commands:
-    setTrackHierarchy:
-      parameters:
-        enabled: boolean
-
-    setReuseBrowser:
+    setReportStateChanged:
       parameters:
         enabled: boolean
 
@@ -697,6 +699,11 @@ DebugController:
           type: array
           items: NameValue
 
+    stateChanged:
+      parameters:
+        pageCount: number
+
+    # Deprecated
     browsersChanged:
       parameters:
         browsers:

@@ -257,7 +257,7 @@ scheme.LocalUtilsConnectResult = tObject({
 });
 scheme.RootInitializer = tOptional(tObject({}));
 scheme.RootInitializeParams = tObject({
-  sdkLanguage: tString,
+  sdkLanguage: tEnum(['javascript', 'python', 'java', 'csharp']),
 });
 scheme.RootInitializeResult = tObject({
   playwright: tChannel(['Playwright']),
@@ -336,6 +336,9 @@ scheme.DebugControllerInspectRequestedEvent = tObject({
   selector: tString,
   locators: tArray(tType('NameValue')),
 });
+scheme.DebugControllerStateChangedEvent = tObject({
+  pageCount: tNumber,
+});
 scheme.DebugControllerBrowsersChangedEvent = tObject({
   browsers: tArray(tObject({
     contexts: tArray(tObject({
@@ -346,14 +349,10 @@ scheme.DebugControllerBrowsersChangedEvent = tObject({
 scheme.DebugControllerSourcesChangedEvent = tObject({
   sources: tArray(tType('RecorderSource')),
 });
-scheme.DebugControllerSetTrackHierarchyParams = tObject({
+scheme.DebugControllerSetReportStateChangedParams = tObject({
   enabled: tBoolean,
 });
-scheme.DebugControllerSetTrackHierarchyResult = tOptional(tObject({}));
-scheme.DebugControllerSetReuseBrowserParams = tObject({
-  enabled: tBoolean,
-});
-scheme.DebugControllerSetReuseBrowserResult = tOptional(tObject({}));
+scheme.DebugControllerSetReportStateChangedResult = tOptional(tObject({}));
 scheme.DebugControllerResetForReuseParams = tOptional(tObject({}));
 scheme.DebugControllerResetForReuseResult = tOptional(tObject({}));
 scheme.DebugControllerNavigateAllParams = tObject({

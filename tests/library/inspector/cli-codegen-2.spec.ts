@@ -333,7 +333,7 @@ test.describe('cli codegen', () => {
     await recorder.setContentAndWait(`<a href="about:blank?foo">link</a>`);
 
     const selector = await recorder.hoverOverElement('a');
-    expect(selector).toBe('role=link[name=\"link\"]');
+    expect(selector).toBe('internal:role=link[name=\"link\"]');
 
     await page.click('a', { modifiers: [platform === 'darwin' ? 'Meta' : 'Control'] });
     const sources = await recorder.waitForOutput('JavaScript', 'page1');
@@ -471,31 +471,6 @@ test.describe('cli codegen', () => {
 
     await page.goto(server.PREFIX + '/page2.html');
     await recorder.waitForOutput('JavaScript', `await page.goto('${server.PREFIX}/page2.html');`);
-  });
-
-  test('should record slow navigation signal after mouse move', async ({ page, openRecorder, server }) => {
-    const recorder = await openRecorder();
-    await recorder.setContentAndWait(`
-    <script>
-      async function onClick() {
-        await new Promise(f => setTimeout(f, 100));
-        await window.letTheMouseMove();
-        window.location = ${JSON.stringify(server.EMPTY_PAGE)};
-      }
-    </script>
-    <button onclick="onClick()">Click me</button>
-    `);
-    await page.exposeBinding('letTheMouseMove', async () => {
-      await page.mouse.move(200, 200);
-    });
-
-    const [, sources] = await Promise.all([
-      // This will click, finish the click, then mouse move, then navigate.
-      page.click('button'),
-      recorder.waitForOutput('JavaScript', 'waitForURL'),
-    ]);
-
-    expect(sources.get('JavaScript').text).toContain(`page.waitForURL('${server.EMPTY_PAGE}')`);
   });
 
   test('should --save-trace', async ({ runCLI }, testInfo) => {
