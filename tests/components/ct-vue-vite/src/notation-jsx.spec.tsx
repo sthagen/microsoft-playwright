@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/experimental-ct-vue'
+import App from './App.vue';
 import Button from './components/Button.vue'
 import Counter from './components/Counter.vue'
 import DefaultSlot from './components/DefaultSlot.vue'
@@ -19,7 +20,7 @@ test('render attributes', async ({ mount }) => {
   await expect(component).toHaveClass('primary');
 });
 
-test('renderer updates props without remounting', async ({ mount }) => {
+test('update props without remounting', async ({ mount }) => {
   const component = await mount(<Counter count={9001} />)
   await expect(component.locator('#props')).toContainText('9001')
 
@@ -30,7 +31,7 @@ test('renderer updates props without remounting', async ({ mount }) => {
   await expect(component.locator('#remount-count')).toContainText('1')
 })
 
-test('renderer updates event listeners without remounting', async ({ mount }) => {
+test('update event listeners without remounting', async ({ mount }) => {
   const component = await mount(<Counter />)
 
   const messages: string[] = []
@@ -43,7 +44,7 @@ test('renderer updates event listeners without remounting', async ({ mount }) =>
   await expect(component.locator('#remount-count')).toContainText('1')
 })
 
-test('renderer updates slots without remounting', async ({ mount }) => {
+test('update slots without remounting', async ({ mount }) => {
   const component = await mount(<Counter>Default Slot</Counter>)
   await expect(component).toContainText('Default Slot')
 
@@ -140,4 +141,13 @@ test('get textContent of the empty template', async ({ mount }) => {
   expect(await component.allTextContents()).toEqual(['']);
   expect(await component.textContent()).toBe('');
   await expect(component).toHaveText('');
+});
+
+test('render app and navigate to a page', async ({ page, mount }) => {
+  const component = await mount(App);
+  await expect(component.getByRole('main')).toHaveText('Login');
+  await expect(page).toHaveURL('/');
+  await component.getByRole('link', { name: 'Dashboard' }).click();
+  await expect(component.getByRole('main')).toHaveText('Dashboard');
+  await expect(page).toHaveURL('/dashboard');
 });

@@ -95,7 +95,7 @@ export class DebugController extends SdkObject {
 
     if (params.mode === 'none') {
       for (const recorder of await this._allRecorders()) {
-        recorder.setHighlightedSelector('');
+        recorder.hideHighlightedSelecor();
         recorder.setMode('none');
       }
       this.setAutoCloseEnabled(true);
@@ -113,7 +113,7 @@ export class DebugController extends SdkObject {
     }
     // Toggle the mode.
     for (const recorder of await this._allRecorders()) {
-      recorder.setHighlightedSelector('');
+      recorder.hideHighlightedSelecor();
       if (params.mode === 'recording')
         recorder.setOutput(this._codegenId, params.file);
       recorder.setMode(params.mode);
@@ -139,13 +139,13 @@ export class DebugController extends SdkObject {
 
   async highlight(selector: string) {
     for (const recorder of await this._allRecorders())
-      recorder.setHighlightedSelector(selector);
+      recorder.setHighlightedSelector(this._sdkLanguage, selector);
   }
 
   async hideHighlight() {
     // Hide all active recorder highlights.
     for (const recorder of await this._allRecorders())
-      recorder.setHighlightedSelector('');
+      recorder.hideHighlightedSelecor();
     // Hide all locator.highlight highlights.
     await this._playwright.hideHighlight();
   }
@@ -229,6 +229,7 @@ class InspectingRecorderApp extends EmptyRecorderApp {
 
   override async setSources(sources: Source[]): Promise<void> {
     const source = sources.find(s => s.id === this._debugController._codegenId);
-    this._debugController.emit(DebugController.Events.SourceChanged, source?.text || '');
+    const { text, header, footer, actions } = source || { text: '' };
+    this._debugController.emit(DebugController.Events.SourceChanged, { text, header, footer, actions });
   }
 }

@@ -340,6 +340,9 @@ scheme.DebugControllerStateChangedEvent = tObject({
 });
 scheme.DebugControllerSourceChangedEvent = tObject({
   text: tString,
+  header: tOptional(tString),
+  footer: tOptional(tString),
+  actions: tOptional(tArray(tString)),
 });
 scheme.DebugControllerBrowsersChangedEvent = tObject({
   browsers: tArray(tObject({
@@ -506,9 +509,9 @@ scheme.BrowserTypeLaunchPersistentContextParams = tObject({
   deviceScaleFactor: tOptional(tNumber),
   isMobile: tOptional(tBoolean),
   hasTouch: tOptional(tBoolean),
-  colorScheme: tOptional(tEnum(['dark', 'light', 'no-preference'])),
-  reducedMotion: tOptional(tEnum(['reduce', 'no-preference'])),
-  forcedColors: tOptional(tEnum(['active', 'none'])),
+  colorScheme: tOptional(tEnum(['dark', 'light', 'no-preference', 'no-override'])),
+  reducedMotion: tOptional(tEnum(['reduce', 'no-preference', 'no-override'])),
+  forcedColors: tOptional(tEnum(['active', 'none', 'no-override'])),
   acceptDownloads: tOptional(tBoolean),
   baseURL: tOptional(tString),
   recordVideo: tOptional(tObject({
@@ -577,9 +580,9 @@ scheme.BrowserNewContextParams = tObject({
   deviceScaleFactor: tOptional(tNumber),
   isMobile: tOptional(tBoolean),
   hasTouch: tOptional(tBoolean),
-  colorScheme: tOptional(tEnum(['dark', 'light', 'no-preference'])),
-  reducedMotion: tOptional(tEnum(['reduce', 'no-preference'])),
-  forcedColors: tOptional(tEnum(['active', 'none'])),
+  colorScheme: tOptional(tEnum(['dark', 'light', 'no-preference', 'no-override'])),
+  reducedMotion: tOptional(tEnum(['reduce', 'no-preference', 'no-override'])),
+  forcedColors: tOptional(tEnum(['active', 'none', 'no-override'])),
   acceptDownloads: tOptional(tBoolean),
   baseURL: tOptional(tString),
   recordVideo: tOptional(tObject({
@@ -637,9 +640,9 @@ scheme.BrowserNewContextForReuseParams = tObject({
   deviceScaleFactor: tOptional(tNumber),
   isMobile: tOptional(tBoolean),
   hasTouch: tOptional(tBoolean),
-  colorScheme: tOptional(tEnum(['dark', 'light', 'no-preference'])),
-  reducedMotion: tOptional(tEnum(['reduce', 'no-preference'])),
-  forcedColors: tOptional(tEnum(['active', 'none'])),
+  colorScheme: tOptional(tEnum(['dark', 'light', 'no-preference', 'no-override'])),
+  reducedMotion: tOptional(tEnum(['reduce', 'no-preference', 'no-override'])),
+  forcedColors: tOptional(tEnum(['active', 'none', 'no-override'])),
   acceptDownloads: tOptional(tBoolean),
   baseURL: tOptional(tString),
   recordVideo: tOptional(tObject({
@@ -932,10 +935,10 @@ scheme.PageCloseParams = tObject({
 });
 scheme.PageCloseResult = tOptional(tObject({}));
 scheme.PageEmulateMediaParams = tObject({
-  media: tOptional(tEnum(['screen', 'print', 'null'])),
-  colorScheme: tOptional(tEnum(['dark', 'light', 'no-preference', 'null'])),
-  reducedMotion: tOptional(tEnum(['reduce', 'no-preference', 'null'])),
-  forcedColors: tOptional(tEnum(['active', 'none', 'null'])),
+  media: tOptional(tEnum(['screen', 'print', 'no-override'])),
+  colorScheme: tOptional(tEnum(['dark', 'light', 'no-preference', 'no-override'])),
+  reducedMotion: tOptional(tEnum(['reduce', 'no-preference', 'no-override'])),
+  forcedColors: tOptional(tEnum(['active', 'none', 'no-override'])),
 });
 scheme.PageEmulateMediaResult = tOptional(tObject({}));
 scheme.PageExposeBindingParams = tObject({
@@ -2125,7 +2128,7 @@ scheme.ElectronLaunchParams = tObject({
   timeout: tOptional(tNumber),
   acceptDownloads: tOptional(tBoolean),
   bypassCSP: tOptional(tBoolean),
-  colorScheme: tOptional(tEnum(['dark', 'light', 'no-preference'])),
+  colorScheme: tOptional(tEnum(['dark', 'light', 'no-preference', 'no-override'])),
   extraHTTPHeaders: tOptional(tArray(tType('NameValue'))),
   geolocation: tOptional(tObject({
     longitude: tNumber,
@@ -2347,9 +2350,9 @@ scheme.AndroidDeviceLaunchBrowserParams = tObject({
   deviceScaleFactor: tOptional(tNumber),
   isMobile: tOptional(tBoolean),
   hasTouch: tOptional(tBoolean),
-  colorScheme: tOptional(tEnum(['dark', 'light', 'no-preference'])),
-  reducedMotion: tOptional(tEnum(['reduce', 'no-preference'])),
-  forcedColors: tOptional(tEnum(['active', 'none'])),
+  colorScheme: tOptional(tEnum(['dark', 'light', 'no-preference', 'no-override'])),
+  reducedMotion: tOptional(tEnum(['reduce', 'no-preference', 'no-override'])),
+  forcedColors: tOptional(tEnum(['active', 'none', 'no-override'])),
   acceptDownloads: tOptional(tBoolean),
   baseURL: tOptional(tString),
   recordVideo: tOptional(tObject({

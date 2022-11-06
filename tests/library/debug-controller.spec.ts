@@ -70,10 +70,10 @@ test('should pick element', async ({ backend, connectedBrowser }) => {
 
   expect(events).toEqual([
     {
-      selector: 'internal:role=button[name=\"Submit\"]',
+      selector: 'internal:role=button[name=\"Submit\"s]',
       locator: 'getByRole(\'button\', { name: \'Submit\' })',
     }, {
-      selector: 'internal:role=button[name=\"Submit\"]',
+      selector: 'internal:role=button[name=\"Submit\"s]',
       locator: 'getByRole(\'button\', { name: \'Submit\' })',
     },
   ]);
@@ -161,6 +161,14 @@ test('should record', async ({ backend, connectedBrowser }) => {
   await page.getByRole('button').click();
 
   await expect.poll(() => events[events.length - 1]).toEqual({
+    header: `import { test, expect } from '@playwright/test';
+
+test('test', async ({ page }) => {`,
+    footer: `});`,
+    actions: [
+      `  await page.goto('about:blank');`,
+      `  await page.getByRole('button', { name: 'Submit' }).click();`,
+    ],
     text: `import { test, expect } from '@playwright/test';
 
 test('test', async ({ page }) => {

@@ -260,21 +260,6 @@ export interface FullProject<TestArgs = {}, WorkerArgs = {}> {
    */
   retries: number;
   /**
-   * An integer number that defines when the project should run relative to other projects. Each project runs in exactly one
-   * stage. By default all projects run in stage 0. Stages with lower number run first. Several projects can run in each
-   * stage. Execution order between projecs in the same stage is undefined. If any test from a stage fails all tests from
-   * susequent stages are skipped, use [testProject.run](https://playwright.dev/docs/api/class-testproject#test-project-run)
-   * to change this behavior.
-   */
-  stage: number;
-  /**
-   * If set to 'always' the project will always be executed regardless of previous failures in the same test run. If set to
-   * 'always' all tests from the project will run in each shard and won't be split.  If omitted or set to 'default' the
-   * project will be skipped if there are test failures in the projects from the prior
-   * [testProject.stage](https://playwright.dev/docs/api/class-testproject#test-project-stage)'s.
-   */
-  run: 'default'|'always';
-  /**
    * Directory that will be recursively scanned for test files. Defaults to the directory of the configuration file.
    *
    * Each project can use a different directory. Here is an example that runs smoke tests in three browsers and all other
@@ -1473,7 +1458,7 @@ export interface TestInfo {
    * > NOTE: [testInfo.attach(name[, options])](https://playwright.dev/docs/api/class-testinfo#test-info-attach)
    * automatically takes care of copying attached files to a location that is accessible to reporters. You can safely remove
    * the attachment after awaiting the attach call.
-   * @param name Attachment name.
+   * @param name Attachment name. The name will also be sanitized and used as the prefix of file name when saving to disk.
    * @param options
    */
   attach(name: string, options?: {
@@ -1754,6 +1739,11 @@ export interface TestInfo {
    * Output written to `process.stdout` or `console.log` during the test execution.
    */
   stdout: Array<string|Buffer>;
+
+  /**
+   * Returns a [Storage] instance for the currently running project.
+   */
+  storage(): Storage;
 
   /**
    * Timeout in milliseconds for the currently running test. Zero means no timeout. Learn more about
@@ -2535,6 +2525,29 @@ export interface TestType<TestArgs extends KeyValue, WorkerArgs extends KeyValue
    */
   use(fixtures: Fixtures<{}, {}, TestArgs, WorkerArgs>): void;
   /**
+   * Resets options that were set up in the configuration file or with
+   * [test.use(options)](https://playwright.dev/docs/api/class-test#test-use) to their default or config-specified value.
+   *
+   * ```js
+   * import { test, expect } from '@playwright/test';
+   *
+   * test.reset({
+   *   // Reset storage state to the default empty value.
+   *   storageStage: 'default',
+   *
+   *   // Reset locale to the value specified in the config file.
+   *   locale: 'config',
+   * });
+   *
+   * test('example', async ({ page }) => {
+   *   // ...
+   * });
+   * ```
+   *
+   * @param options An object with options set to either `'config'` or `'default'`.
+   */
+  reset(options: ResetOptions<TestArgs & WorkerArgs>): void;
+  /**
    * Declares a test step.
    *
    * ```js
@@ -2658,6 +2671,7 @@ export type Fixtures<T extends KeyValue = {}, W extends KeyValue = {}, PT extend
 } & {
   [K in keyof T]?: TestFixtureValue<T[K], T & W & PT & PW> | [TestFixtureValue<T[K], T & W & PT & PW>, { scope?: 'test', auto?: boolean, option?: boolean, timeout?: number | undefined }];
 };
+type ResetOptions<T extends KeyValue> = { [K in keyof T]?: 'config' | 'default' };
 
 type BrowserName = 'chromium' | 'firefox' | 'webkit';
 type BrowserChannel = Exclude<LaunchOptions['channel'], undefined>;
@@ -2682,6 +2696,24 @@ type ConnectOptions = {
    */
   timeout?: number;
 };
+
+/**
+ * Playwright Test provides a [testInfo.storage()](https://playwright.dev/docs/api/class-testinfo#test-info-storage) object
+ * for passing values between project setup and tests. TODO: examples
+ */
+export interface Storage {
+  /**
+   * Get named item from the storage. Returns undefined if there is no value with given name.
+   * @param name Item name.
+   */
+  get<T>(name: string): Promise<T | undefined>;
+  /**
+   * Set value to the storage.
+   * @param name Item name.
+   * @param value Item value. The value must be serializable to JSON. Passing `undefined` deletes the entry with given name.
+   */
+  set<T>(name: string, value: T | undefined): Promise<void>;
+}
 
 /**
  * Playwright Test provides many options to configure test environment, [Browser], [BrowserContext] and more.
@@ -2857,8 +2889,8 @@ export interface PlaywrightTestOptions {
   bypassCSP: boolean | undefined;
   /**
    * Emulates `'prefers-colors-scheme'` media feature, supported values are `'light'`, `'dark'`, `'no-preference'`. See
-   * [page.emulateMedia([options])](https://playwright.dev/docs/api/class-page#page-emulate-media) for more details. Defaults
-   * to `'light'`.
+   * [page.emulateMedia([options])](https://playwright.dev/docs/api/class-page#page-emulate-media) for more details. Passing
+   * `null` resets emulation to system defaults. Defaults to `'light'`.
    */
   colorScheme: ColorScheme | undefined;
   /**
@@ -4430,6 +4462,12 @@ interface TestProject {
   name?: string;
 
   /**
+   * Project setup files that would be executed before all tests in the project. If project setup fails the tests in this
+   * project will be skipped. All project setup files will run in every shard if the project is sharded.
+   */
+  setup?: string|RegExp|Array<string|RegExp>;
+
+  /**
    * The base directory, relative to the config file, for snapshot files created with `toMatchSnapshot`. Defaults to
    * [testProject.testDir](https://playwright.dev/docs/api/class-testproject#test-project-test-dir).
    *
@@ -4489,23 +4527,6 @@ interface TestProject {
    * all projects.
    */
   retries?: number;
-
-  /**
-   * If set to 'always' the project will always be executed regardless of previous failures in the same test run. If set to
-   * 'always' all tests from the project will run in each shard and won't be split.  If omitted or set to 'default' the
-   * project will be skipped if there are test failures in the projects from the prior
-   * [testProject.stage](https://playwright.dev/docs/api/class-testproject#test-project-stage)'s.
-   */
-  run?: "default"|"always";
-
-  /**
-   * An integer number that defines when the project should run relative to other projects. Each project runs in exactly one
-   * stage. By default all projects run in stage 0. Stages with lower number run first. Several projects can run in each
-   * stage. Execution order between projecs in the same stage is undefined. If any test from a stage fails all tests from
-   * susequent stages are skipped, use [testProject.run](https://playwright.dev/docs/api/class-testproject#test-project-run)
-   * to change this behavior.
-   */
-  stage?: number;
 
   /**
    * Directory that will be recursively scanned for test files. Defaults to the directory of the configuration file.

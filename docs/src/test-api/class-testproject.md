@@ -162,6 +162,11 @@ Metadata that will be put directly to the test report serialized as JSON.
 
 Project name is visible in the report and during test execution.
 
+## property: TestProject.setup
+* since: v1.28
+- type: ?<[string]|[RegExp]|[Array]<[string]|[RegExp]>>
+
+Project setup files that would be executed before all tests in the project. If project setup fails the tests in this project will be skipped. All project setup files will run in every shard if the project is sharded.
 
 ## property: TestProject.screenshotsDir
 * since: v1.10
@@ -260,21 +265,6 @@ The maximum number of retry attempts given to failed tests. Learn more about [te
 Use [`method: Test.describe.configure`] to change the number of retries for a specific file or a group of tests.
 
 Use [`property: TestConfig.retries`] to change this option for all projects.
-
-## property: TestProject.run
-* since: v1.28
-- type: ?<[RunMode]<"default"|"always">>
-
-If set to 'always' the project will always be executed regardless of previous failures in the same test run. If set to 'always' all tests from the project will run in each shard and won't be split.  If omitted or set to 'default' the project will be skipped if there are test failures in the projects from the prior [`property: TestProject.stage`]'s.
-
-## property: TestProject.stage
-* since: v1.28
-- type: ?<[int]>
-
-An integer number that defines when the project should run relative to other projects. Each project runs in exactly
-one stage. By default all projects run in stage 0. Stages with lower number run first. Several projects can run in
-each stage. Execution order between projecs in the same stage is undefined. If any test from a stage fails all tests
-from susequent stages are skipped, use [`property: TestProject.run`] to change this behavior.
 
 ## property: TestProject.testDir
 * since: v1.10

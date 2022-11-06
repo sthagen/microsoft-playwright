@@ -228,13 +228,15 @@ class Recorder {
 
   private _onMouseLeave(event: MouseEvent) {
     // Leaving iframe.
-    if (this._deepEventTarget(event).nodeType === Node.DOCUMENT_NODE) {
+    if (window.top !== window && this._deepEventTarget(event).nodeType === Node.DOCUMENT_NODE) {
       this._hoveredElement = null;
       this._updateModelForHoveredElement();
     }
   }
 
   private _onFocus(userGesture: boolean) {
+    if (this._mode === 'none')
+      return;
     const activeElement = this._deepActiveElement(document);
     const result = activeElement ? generateSelector(this._injectedScript, activeElement, true) : null;
     this._activeModel = result && result.selector ? result : null;

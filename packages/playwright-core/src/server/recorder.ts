@@ -41,6 +41,7 @@ import { Debugger } from './debugger';
 import { EventEmitter } from 'events';
 import { raceAgainstTimeout } from '../utils/timeoutRunner';
 import type { Language, LanguageGenerator } from './recorder/language';
+import { locatorOrSelectorAsSelector } from './isomorphic/locatorParser';
 
 type BindingSource = { frame: Frame, page: Page };
 
@@ -106,7 +107,7 @@ export class Recorder implements InstrumentationListener {
         return;
       }
       if (data.event === 'selectorUpdated') {
-        this.setHighlightedSelector(data.params.selector);
+        this.setHighlightedSelector(data.params.language, data.params.selector);
         return;
       }
       if (data.event === 'step') {
@@ -209,8 +210,13 @@ export class Recorder implements InstrumentationListener {
     this._refreshOverlay();
   }
 
-  setHighlightedSelector(selector: string) {
-    this._highlightedSelector = selector;
+  setHighlightedSelector(language: Language, selector: string) {
+    this._highlightedSelector = locatorOrSelectorAsSelector(language, selector);
+    this._refreshOverlay();
+  }
+
+  hideHighlightedSelecor() {
+    this._highlightedSelector = '';
     this._refreshOverlay();
   }
 
@@ -339,16 +345,20 @@ class ContextRecorder extends EventEmitter {
     generator.on('change', () => {
       this._recorderSources = [];
       for (const languageGenerator of this._orderedLanguages) {
+        const { header, footer, actions, text } = generator.generateStructure(languageGenerator);
         const source: Source = {
           isRecorded: true,
           label: languageGenerator.name,
           group: languageGenerator.groupName,
           id: languageGenerator.id,
-          text: generator.generateText(languageGenerator),
+          text,
+          header,
+          footer,
+          actions,
           language: languageGenerator.highlighter,
           highlight: []
         };
-        source.revealLine = source.text.split('\n').length - 1;
+        source.revealLine = text.split('\n').length - 1;
         this._recorderSources.push(source);
         if (languageGenerator === this._orderedLanguages[0])
           this._throttledOutputFile?.setContent(source.text);
