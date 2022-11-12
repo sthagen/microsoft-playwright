@@ -37,6 +37,7 @@ const test = baseTest.extend<Fixtures>({
   backend: async ({ wsEndpoint }, use) => {
     const backend = new Backend();
     await backend.connect(wsEndpoint);
+    await backend.initialize();
     await use(backend);
     await backend.close();
   },
@@ -70,10 +71,10 @@ test('should pick element', async ({ backend, connectedBrowser }) => {
 
   expect(events).toEqual([
     {
-      selector: 'internal:role=button[name=\"Submit\"s]',
+      selector: 'internal:role=button[name=\"Submit\"i]',
       locator: 'getByRole(\'button\', { name: \'Submit\' })',
     }, {
-      selector: 'internal:role=button[name=\"Submit\"s]',
+      selector: 'internal:role=button[name=\"Submit\"i]',
       locator: 'getByRole(\'button\', { name: \'Submit\' })',
     },
   ]);
@@ -181,4 +182,47 @@ test('test', async ({ page }) => {
   await backend.setMode({ mode: 'none' });
   await page.getByRole('button').click();
   expect(events).toHaveLength(length);
+});
+
+test('should record custom data-testid', async ({ backend, connectedBrowser }) => {
+  const events = [];
+  backend.on('sourceChanged', event => events.push(event));
+
+  await backend.setMode({ mode: 'recording', testIdAttributeName: 'data-custom-id' });
+
+  const context = await connectedBrowser._newContextForReuse();
+  const [page] = context.pages();
+
+  await page.setContent(`<div data-custom-id='one'>One</div>`);
+  await page.locator('div').click();
+
+  await expect.poll(() => events[events.length - 1]).toEqual({
+    header: `import { test, expect } from '@playwright/test';
+
+test('test', async ({ page }) => {`,
+    footer: `});`,
+    actions: [
+      `  await page.goto('about:blank');`,
+      `  await page.getByTestId('one').click();`,
+    ],
+    text: `import { test, expect } from '@playwright/test';
+
+test('test', async ({ page }) => {
+  await page.goto('about:blank');
+  await page.getByTestId('one').click();
+});`
+  });
+});
+
+
+test('should pause and resume', async ({ backend, connectedBrowser }) => {
+  const events = [];
+  backend.on('paused', event => events.push(event));
+  const context = await connectedBrowser._newContextForReuse();
+  const page = await context.newPage();
+  await page.setContent('<button>Submit</button>');
+  const pausePromise = page.pause();
+  await expect.poll(() => events[events.length - 1]).toEqual({ paused: true });
+  await backend.resume();
+  await pausePromise;
 });

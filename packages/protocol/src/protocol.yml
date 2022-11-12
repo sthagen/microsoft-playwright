@@ -692,12 +692,15 @@ DebugController:
             - inspecting
             - recording
             - none
+        testIdAttributeName: string?
 
     highlight:
       parameters:
         selector: string
 
     hideHighlight:
+
+    resume:
 
     kill:
 
@@ -721,7 +724,10 @@ DebugController:
         actions:
           type: array?
           items: string
-         
+
+    paused:
+      parameters:
+        paused: boolean
 
     # Deprecated
     browsersChanged:
@@ -796,6 +802,9 @@ Selectors:
         source: string
         contentScript: boolean?
 
+    setTestIdAttributeName:
+      parameters:
+        testIdAttributeName: string
 
 BrowserType:
   type: interface
@@ -1086,6 +1095,17 @@ BrowserContext:
       returns:
         writableStream: WritableStream
 
+    updateSubscription:
+      parameters:
+        event:
+          type: enum
+          literals:
+          - request
+          - response
+          - requestFinished
+          - requestFailed
+        enabled: boolean
+
   events:
 
     bindingCall:
@@ -1162,10 +1182,6 @@ Page:
     setDefaultTimeoutNoReply:
       parameters:
         timeout: number?
-
-    setFileChooserInterceptedNoReply:
-      parameters:
-        intercepted: boolean
 
     addInitScript:
       parameters:
@@ -1481,6 +1497,18 @@ Page:
                     end: number
 
     bringToFront:
+
+    updateSubscription:
+      parameters:
+        event:
+          type: enum
+          literals:
+          - fileChooser
+          - request
+          - response
+          - requestFinished
+          - requestFailed
+        enabled: boolean
 
   events:
 

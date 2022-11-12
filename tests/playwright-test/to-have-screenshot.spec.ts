@@ -14,14 +14,12 @@
  * limitations under the License.
  */
 
-import { getComparator } from 'playwright-core/lib/utils/comparators';
 import * as fs from 'fs';
 import { PNG } from 'playwright-core/lib/utilsBundle';
 import * as path from 'path';
 import { pathToFileURL } from 'url';
 import { test, expect, stripAnsi, createImage, paintBlackPixels } from './playwright-test-fixtures';
-
-const pngComparator = getComparator('image/png');
+import { comparePNGs } from '../config/comparator';
 
 test.describe.configure({ mode: 'parallel' });
 
@@ -133,29 +131,11 @@ test('should fail with proper error when unsupported argument is given', async (
   expect(stripAnsi(result.output)).toContain(`Expected options.clip.width not to be 0`);
 });
 
-test('should use match snapshot paths by default', async ({ runInlineTest }, testInfo) => {
-  const result = await runInlineTest({
-    // The helper function `playwrightConfig` set PWTEST_USE_SCREENSHOTS env variable.
-    // Provide default config manually instead.
-    'playwright.config.js': `
-      module.exports = {};
-    `,
-    'a.spec.js': `
-      pwt.test('is a test', async ({ page }, testInfo) => {
-        testInfo.snapshotSuffix = '';
-        await expect(page).toHaveScreenshot('snapshot.png');
-      });
-    `
-  }, { 'update-snapshots': true });
-  expect(result.exitCode).toBe(0);
-
-  const snapshotOutputPath = testInfo.outputPath('a.spec.js-snapshots', 'snapshot.png');
-  expect(fs.existsSync(snapshotOutputPath)).toBe(true);
-});
-
 test('should have scale:css by default', async ({ runInlineTest }, testInfo) => {
   const result = await runInlineTest({
-    ...playwrightConfig({ screenshotsDir: '__screenshots__' }),
+    ...playwrightConfig({
+      snapshotPathTemplate: '__screenshots__/{testFilePath}/{arg}{ext}',
+    }),
     'a.spec.js': `
       pwt.test('is a test', async ({ browser }) => {
         const context = await browser.newContext({
@@ -171,13 +151,13 @@ test('should have scale:css by default', async ({ runInlineTest }, testInfo) => 
   expect(result.exitCode).toBe(0);
 
   const snapshotOutputPath = testInfo.outputPath('__screenshots__', 'a.spec.js', 'snapshot.png');
-  expect(pngComparator(fs.readFileSync(snapshotOutputPath), whiteImage)).toBe(null);
+  expect(comparePNGs(fs.readFileSync(snapshotOutputPath), whiteImage)).toBe(null);
 });
 
 test('should ignore non-documented options in toHaveScreenshot config', async ({ runInlineTest }, testInfo) => {
   const result = await runInlineTest({
     ...playwrightConfig({
-      screenshotsDir: '__screenshots__',
+      snapshotPathTemplate: '__screenshots__/{testFilePath}/{arg}{ext}',
       expect: {
         toHaveScreenshot: {
           clip: { x: 0, y: 0, width: 10, height: 10 },
@@ -193,37 +173,7 @@ test('should ignore non-documented options in toHaveScreenshot config', async ({
   expect(result.exitCode).toBe(0);
 
   const snapshotOutputPath = testInfo.outputPath('__screenshots__', 'a.spec.js', 'snapshot.png');
-  expect(pngComparator(fs.readFileSync(snapshotOutputPath), whiteImage)).toBe(null);
-});
-
-test('screenshotPath should include platform and project name by default', async ({ runInlineTest }, testInfo) => {
-  const PROJECT_NAME = 'woof-woof';
-  const result = await runInlineTest({
-    ...playwrightConfig({
-      projects: [{
-        name: PROJECT_NAME,
-      }],
-    }),
-    'a.spec.js': `
-      pwt.test('is a test', async ({ page }, testInfo) => {
-        await pwt.expect(page).toHaveScreenshot('snapshot.png');
-      });
-    `,
-    'foo/b.spec.js': `
-      pwt.test('is a test', async ({ page }, testInfo) => {
-        await pwt.expect(page).toHaveScreenshot('snapshot.png');
-      });
-    `,
-    'foo/bar/baz/c.spec.js': `
-      pwt.test('is a test', async ({ page }, testInfo) => {
-        await pwt.expect(page).toHaveScreenshot('snapshot.png');
-      });
-    `,
-  }, { 'update-snapshots': true });
-  expect(result.exitCode).toBe(0);
-  expect(fs.existsSync(testInfo.outputPath('__screenshots__', process.platform, PROJECT_NAME, 'a.spec.js', 'snapshot.png'))).toBeTruthy();
-  expect(fs.existsSync(testInfo.outputPath('__screenshots__', process.platform, PROJECT_NAME, 'foo', 'b.spec.js', 'snapshot.png'))).toBeTruthy();
-  expect(fs.existsSync(testInfo.outputPath('__screenshots__', process.platform, PROJECT_NAME, 'foo', 'bar', 'baz', 'c.spec.js', 'snapshot.png'))).toBeTruthy();
+  expect(comparePNGs(fs.readFileSync(snapshotOutputPath), whiteImage)).toBe(null);
 });
 
 test('should report toHaveScreenshot step with expectation name in title', async ({ runInlineTest }) => {
@@ -262,7 +212,7 @@ test('should not fail when racing with navigation', async ({ runInlineTest }, te
   const infiniteAnimationURL = pathToFileURL(path.join(__dirname, '../assets/rotate-z.html'));
   const result = await runInlineTest({
     ...playwrightConfig({
-      screenshotsDir: '__screenshots__',
+      snapshotPathTemplate: '__screenshots__/{testFilePath}/{arg}{ext}',
     }),
     '__screenshots__/a.spec.js/snapshot.png': createImage(10, 10, 255, 0, 0),
     'a.spec.js': `
@@ -284,7 +234,9 @@ test('should not fail when racing with navigation', async ({ runInlineTest }, te
 test('should successfully screenshot a page with infinite animation with disableAnimation: true', async ({ runInlineTest }, testInfo) => {
   const infiniteAnimationURL = pathToFileURL(path.join(__dirname, '../assets/rotate-z.html'));
   const result = await runInlineTest({
-    ...playwrightConfig({ screenshotsDir: '__screenshots__' }),
+    ...playwrightConfig({
+      snapshotPathTemplate: '__screenshots__/{testFilePath}/{arg}{ext}',
+    }),
     'a.spec.js': `
       pwt.test('is a test', async ({ page }) => {
         await page.goto('${infiniteAnimationURL}');
@@ -300,7 +252,9 @@ test('should successfully screenshot a page with infinite animation with disable
 
 test('should support clip option for page', async ({ runInlineTest }, testInfo) => {
   const result = await runInlineTest({
-    ...playwrightConfig({ screenshotsDir: '__screenshots__' }),
+    ...playwrightConfig({
+      snapshotPathTemplate: '__screenshots__/{testFilePath}/{arg}{ext}',
+    }),
     '__screenshots__/a.spec.js/snapshot.png': createImage(50, 50, 255, 255, 255),
     'a.spec.js': `
       pwt.test('is a test', async ({ page }) => {
@@ -316,7 +270,9 @@ test('should support clip option for page', async ({ runInlineTest }, testInfo) 
 
 test('should support omitBackground option for locator', async ({ runInlineTest }, testInfo) => {
   const result = await runInlineTest({
-    ...playwrightConfig({ screenshotsDir: '__screenshots__' }),
+    ...playwrightConfig({
+      snapshotPathTemplate: '__screenshots__/{testFilePath}/{arg}{ext}',
+    }),
     'a.spec.js': `
       pwt.test('is a test', async ({ page }) => {
         await page.evaluate(() => {
@@ -346,7 +302,7 @@ test('should fail to screenshot an element with infinite animation', async ({ ru
   const infiniteAnimationURL = pathToFileURL(path.join(__dirname, '../assets/rotate-z.html'));
   const result = await runInlineTest({
     ...playwrightConfig({
-      screenshotsDir: '__screenshots__',
+      snapshotPathTemplate: '__screenshots__/{testFilePath}/{arg}{ext}',
       projects: [{
         expect: {
           toHaveScreenshot: {
@@ -376,7 +332,7 @@ test('should fail to screenshot an element that keeps moving', async ({ runInlin
   const infiniteAnimationURL = pathToFileURL(path.join(__dirname, '../assets/rotate-z.html'));
   const result = await runInlineTest({
     ...playwrightConfig({
-      screenshotsDir: '__screenshots__',
+      snapshotPathTemplate: '__screenshots__/{testFilePath}/{arg}{ext}',
       expect: {
         toHaveScreenshot: {
           animations: 'allow',
@@ -401,7 +357,9 @@ test('should fail to screenshot an element that keeps moving', async ({ runInlin
 
 test('should generate default name', async ({ runInlineTest }, testInfo) => {
   const result = await runInlineTest({
-    ...playwrightConfig({ screenshotsDir: '__screenshots__' }),
+    ...playwrightConfig({
+      snapshotPathTemplate: '__screenshots__/{testFilePath}/{arg}{ext}',
+    }),
     'a.spec.js': `
       pwt.test('is a test', async ({ page }) => {
         await expect(page).toHaveScreenshot();
@@ -459,7 +417,9 @@ test('should compile with different option combinations', async ({ runTSC }) => 
 
 test('should fail when screenshot is different size', async ({ runInlineTest }) => {
   const result = await runInlineTest({
-    ...playwrightConfig({ screenshotsDir: '__screenshots__' }),
+    ...playwrightConfig({
+      snapshotPathTemplate: '__screenshots__/{testFilePath}/{arg}{ext}',
+    }),
     '__screenshots__/a.spec.js/snapshot.png': createImage(22, 33),
     'a.spec.js': `
       pwt.test('is a test', async ({ page }) => {
@@ -475,7 +435,9 @@ test('should fail when screenshot is different size', async ({ runInlineTest }) 
 
 test('should fail when given non-png snapshot name', async ({ runInlineTest }) => {
   const result = await runInlineTest({
-    ...playwrightConfig({}),
+    ...playwrightConfig({
+      snapshotPathTemplate: '__screenshots__/{testFilePath}/{arg}{ext}',
+    }),
     'a.spec.js': `
       pwt.test('is a test', async ({ page }) => {
         await expect(page).toHaveScreenshot('snapshot.jpeg');
@@ -501,7 +463,9 @@ test('should fail when given buffer', async ({ runInlineTest }) => {
 
 test('should fail when screenshot is different pixels', async ({ runInlineTest }) => {
   const result = await runInlineTest({
-    ...playwrightConfig({ screenshotsDir: '__screenshots__' }),
+    ...playwrightConfig({
+      snapshotPathTemplate: '__screenshots__/{testFilePath}/{arg}{ext}',
+    }),
     '__screenshots__/a.spec.js/snapshot.png': paintBlackPixels(whiteImage, 12345),
     'a.spec.js': `
       pwt.test('is a test', async ({ page }) => {
@@ -520,7 +484,9 @@ test('should fail when screenshot is different pixels', async ({ runInlineTest }
 
 test('doesn\'t create comparison artifacts in an output folder for passed negated snapshot matcher', async ({ runInlineTest }, testInfo) => {
   const result = await runInlineTest({
-    ...playwrightConfig({ screenshotsDir: '__screenshots__' }),
+    ...playwrightConfig({
+      snapshotPathTemplate: '__screenshots__/{testFilePath}/{arg}{ext}',
+    }),
     '__screenshots__/a.spec.js/snapshot.png': blueImage,
     'a.spec.js': `
       pwt.test('is a test', async ({ page }) => {
@@ -541,7 +507,9 @@ test('doesn\'t create comparison artifacts in an output folder for passed negate
 
 test('should fail on same snapshots with negate matcher', async ({ runInlineTest }) => {
   const result = await runInlineTest({
-    ...playwrightConfig({ screenshotsDir: '__screenshots__' }),
+    ...playwrightConfig({
+      snapshotPathTemplate: '__screenshots__/{testFilePath}/{arg}{ext}',
+    }),
     '__screenshots__/a.spec.js/snapshot.png': whiteImage,
     'a.spec.js': `
       pwt.test('is a test', async ({ page }) => {
@@ -557,7 +525,9 @@ test('should fail on same snapshots with negate matcher', async ({ runInlineTest
 
 test('should not fail if --ignore-snapshots is passed', async ({ runInlineTest }) => {
   const result = await runInlineTest({
-    ...playwrightConfig({ screenshotsDir: '__screenshots__' }),
+    ...playwrightConfig({
+      snapshotPathTemplate: '__screenshots__/{testFilePath}/{arg}{ext}',
+    }),
     '__screenshots__/a.spec.js/snapshot.png': redImage,
     'a.spec.js': `
       pwt.test('is a test', async ({ page }) => {
@@ -571,7 +541,9 @@ test('should not fail if --ignore-snapshots is passed', async ({ runInlineTest }
 
 test('should write missing expectations locally twice and continue', async ({ runInlineTest }, testInfo) => {
   const result = await runInlineTest({
-    ...playwrightConfig({ screenshotsDir: '__screenshots__' }),
+    ...playwrightConfig({
+      snapshotPathTemplate: '__screenshots__/{testFilePath}/{arg}{ext}',
+    }),
     'a.spec.js': `
       pwt.test('is a test', async ({ page }) => {
         await expect(page).toHaveScreenshot('snapshot.png');
@@ -586,11 +558,11 @@ test('should write missing expectations locally twice and continue', async ({ ru
 
   const snapshot1OutputPath = testInfo.outputPath('__screenshots__', 'a.spec.js', 'snapshot.png');
   expect(result.output).toContain(`Error: ${snapshot1OutputPath} is missing in snapshots, writing actual`);
-  expect(pngComparator(fs.readFileSync(snapshot1OutputPath), whiteImage)).toBe(null);
+  expect(comparePNGs(fs.readFileSync(snapshot1OutputPath), whiteImage)).toBe(null);
 
   const snapshot2OutputPath = testInfo.outputPath('__screenshots__', 'a.spec.js', 'snapshot2.png');
   expect(result.output).toContain(`Error: ${snapshot2OutputPath} is missing in snapshots, writing actual`);
-  expect(pngComparator(fs.readFileSync(snapshot2OutputPath), whiteImage)).toBe(null);
+  expect(comparePNGs(fs.readFileSync(snapshot2OutputPath), whiteImage)).toBe(null);
 
   expect(result.output).toContain('Here we are!');
 
@@ -601,7 +573,9 @@ test('should write missing expectations locally twice and continue', async ({ ru
 
 test('shouldn\'t write missing expectations locally for negated matcher', async ({ runInlineTest }, testInfo) => {
   const result = await runInlineTest({
-    ...playwrightConfig({ screenshotsDir: '__screenshots__' }),
+    ...playwrightConfig({
+      snapshotPathTemplate: '__screenshots__/{testFilePath}/{arg}{ext}',
+    }),
     'a.spec.js': `
       pwt.test('is a test', async ({ page }) => {
         await expect(page).not.toHaveScreenshot('snapshot.png');
@@ -617,7 +591,9 @@ test('shouldn\'t write missing expectations locally for negated matcher', async 
 
 test('should update snapshot with the update-snapshots flag', async ({ runInlineTest }, testInfo) => {
   const result = await runInlineTest({
-    ...playwrightConfig({ screenshotsDir: '__screenshots__' }),
+    ...playwrightConfig({
+      snapshotPathTemplate: '__screenshots__/{testFilePath}/{arg}{ext}',
+    }),
     '__screenshots__/a.spec.js/snapshot.png': blueImage,
     'a.spec.js': `
       pwt.test('is a test', async ({ page }) => {
@@ -629,13 +605,15 @@ test('should update snapshot with the update-snapshots flag', async ({ runInline
   expect(result.exitCode).toBe(0);
   const snapshotOutputPath = testInfo.outputPath('__screenshots__/a.spec.js/snapshot.png');
   expect(result.output).toContain(`${snapshotOutputPath} is re-generated, writing actual.`);
-  expect(pngComparator(fs.readFileSync(snapshotOutputPath), whiteImage)).toBe(null);
+  expect(comparePNGs(fs.readFileSync(snapshotOutputPath), whiteImage)).toBe(null);
 });
 
 test('shouldn\'t update snapshot with the update-snapshots flag for negated matcher', async ({ runInlineTest }, testInfo) => {
   const EXPECTED_SNAPSHOT = blueImage;
   const result = await runInlineTest({
-    ...playwrightConfig({ screenshotsDir: '__screenshots__' }),
+    ...playwrightConfig({
+      snapshotPathTemplate: '__screenshots__/{testFilePath}/{arg}{ext}',
+    }),
     '__screenshots__/a.spec.js/snapshot.png': EXPECTED_SNAPSHOT,
     'a.spec.js': `
       pwt.test('is a test', async ({ page }) => {
@@ -651,7 +629,9 @@ test('shouldn\'t update snapshot with the update-snapshots flag for negated matc
 
 test('should silently write missing expectations locally with the update-snapshots flag', async ({ runInlineTest }, testInfo) => {
   const result = await runInlineTest({
-    ...playwrightConfig({ screenshotsDir: '__screenshots__' }),
+    ...playwrightConfig({
+      snapshotPathTemplate: '__screenshots__/{testFilePath}/{arg}{ext}',
+    }),
     'a.spec.js': `
       pwt.test('is a test', async ({ page }) => {
         await expect(page).toHaveScreenshot('snapshot.png');
@@ -663,12 +643,14 @@ test('should silently write missing expectations locally with the update-snapsho
   const snapshotOutputPath = testInfo.outputPath('__screenshots__/a.spec.js/snapshot.png');
   expect(result.output).toContain(`${snapshotOutputPath} is missing in snapshots, writing actual`);
   const data = fs.readFileSync(snapshotOutputPath);
-  expect(pngComparator(data, whiteImage)).toBe(null);
+  expect(comparePNGs(data, whiteImage)).toBe(null);
 });
 
 test('should not write missing expectations locally with the update-snapshots flag for negated matcher', async ({ runInlineTest }, testInfo) => {
   const result = await runInlineTest({
-    ...playwrightConfig({ screenshotsDir: '__screenshots__' }),
+    ...playwrightConfig({
+      snapshotPathTemplate: '__screenshots__/{testFilePath}/{arg}{ext}',
+    }),
     'a.spec.js': `
       pwt.test('is a test', async ({ page }) => {
         await expect(page).not.toHaveScreenshot('snapshot.png');
@@ -684,7 +666,9 @@ test('should not write missing expectations locally with the update-snapshots fl
 
 test('should match multiple snapshots', async ({ runInlineTest }) => {
   const result = await runInlineTest({
-    ...playwrightConfig({ screenshotsDir: '__screenshots__' }),
+    ...playwrightConfig({
+      snapshotPathTemplate: '__screenshots__/{testFilePath}/{arg}{ext}',
+    }),
     '__screenshots__/a.spec.js/red.png': redImage,
     '__screenshots__/a.spec.js/green.png': greenImage,
     '__screenshots__/a.spec.js/blue.png': blueImage,
@@ -710,7 +694,9 @@ test('should match multiple snapshots', async ({ runInlineTest }) => {
 
 test('should use provided name', async ({ runInlineTest }) => {
   const result = await runInlineTest({
-    ...playwrightConfig({ screenshotsDir: '__screenshots__' }),
+    ...playwrightConfig({
+      snapshotPathTemplate: '__screenshots__/{testFilePath}/{arg}{ext}',
+    }),
     '__screenshots__/a.spec.js/provided.png': whiteImage,
     'a.spec.js': `
       pwt.test('is a test', async ({ page }) => {
@@ -723,7 +709,9 @@ test('should use provided name', async ({ runInlineTest }) => {
 
 test('should use provided name via options', async ({ runInlineTest }) => {
   const result = await runInlineTest({
-    ...playwrightConfig({ screenshotsDir: '__screenshots__' }),
+    ...playwrightConfig({
+      snapshotPathTemplate: '__screenshots__/{testFilePath}/{arg}{ext}',
+    }),
     '__screenshots__/a.spec.js/provided.png': whiteImage,
     'a.spec.js': `
       pwt.test('is a test', async ({ page }) => {
@@ -739,7 +727,9 @@ test('should respect maxDiffPixels option', async ({ runInlineTest }) => {
   const EXPECTED_SNAPSHOT = paintBlackPixels(whiteImage, BAD_PIXELS);
 
   expect((await runInlineTest({
-    ...playwrightConfig({ screenshotsDir: '__screenshots__' }),
+    ...playwrightConfig({
+      snapshotPathTemplate: '__screenshots__/{testFilePath}/{arg}{ext}',
+    }),
     '__screenshots__/a.spec.js/snapshot.png': EXPECTED_SNAPSHOT,
     'a.spec.js': `
       pwt.test('is a test', async ({ page }) => {
@@ -749,7 +739,9 @@ test('should respect maxDiffPixels option', async ({ runInlineTest }) => {
   })).exitCode, 'make sure default comparison fails').toBe(1);
 
   expect((await runInlineTest({
-    ...playwrightConfig({ screenshotsDir: '__screenshots__' }),
+    ...playwrightConfig({
+      snapshotPathTemplate: '__screenshots__/{testFilePath}/{arg}{ext}',
+    }),
     '__screenshots__/a.spec.js/snapshot.png': EXPECTED_SNAPSHOT,
     'a.spec.js': `
       pwt.test('is a test', async ({ page }) => {
@@ -769,7 +761,7 @@ test('should respect maxDiffPixels option', async ({ runInlineTest }) => {
       },
       projects: [
         {
-          screenshotsDir: '__screenshots__',
+          snapshotPathTemplate: '__screenshots__/{testFilePath}/{arg}{ext}',
         },
       ],
     }),
@@ -787,7 +779,9 @@ test('should not update screenshot that matches with maxDiffPixels option when -
   const EXPECTED_SNAPSHOT = paintBlackPixels(whiteImage, BAD_PIXELS);
 
   const result = await runInlineTest({
-    ...playwrightConfig({ screenshotsDir: '__screenshots__' }),
+    ...playwrightConfig({
+      snapshotPathTemplate: '__screenshots__/{testFilePath}/{arg}{ext}',
+    }),
     '__screenshots__/a.spec.js/snapshot.png': EXPECTED_SNAPSHOT,
     'a.spec.js': `
       pwt.test('is a test', async ({ page }) => {
@@ -804,7 +798,7 @@ test('should not update screenshot that matches with maxDiffPixels option when -
   expect(fs.existsSync(testInfo.outputPath('test-results', 'a-is-a-test', 'is-a-test-1-diff.png'))).toBe(false);
 
   const data = fs.readFileSync(testInfo.outputPath('__screenshots__/a.spec.js/snapshot.png'));
-  expect(pngComparator(data, EXPECTED_SNAPSHOT)).toBe(null);
+  expect(comparePNGs(data, EXPECTED_SNAPSHOT)).toBe(null);
 });
 
 test('should satisfy both maxDiffPixelRatio and maxDiffPixels', async ({ runInlineTest }) => {
@@ -813,7 +807,9 @@ test('should satisfy both maxDiffPixelRatio and maxDiffPixels', async ({ runInli
   const EXPECTED_SNAPSHOT = paintBlackPixels(whiteImage, BAD_COUNT);
 
   expect((await runInlineTest({
-    ...playwrightConfig({ screenshotsDir: '__screenshots__' }),
+    ...playwrightConfig({
+      snapshotPathTemplate: '__screenshots__/{testFilePath}/{arg}{ext}',
+    }),
     '__screenshots__/a.spec.js/snapshot.png': EXPECTED_SNAPSHOT,
     'a.spec.js': `
       pwt.test('is a test', async ({ page }) => {
@@ -823,7 +819,9 @@ test('should satisfy both maxDiffPixelRatio and maxDiffPixels', async ({ runInli
   })).exitCode, 'make sure default comparison fails').toBe(1);
 
   expect((await runInlineTest({
-    ...playwrightConfig({ screenshotsDir: '__screenshots__' }),
+    ...playwrightConfig({
+      snapshotPathTemplate: '__screenshots__/{testFilePath}/{arg}{ext}',
+    }),
     '__screenshots__/a.spec.js/snapshot.png': EXPECTED_SNAPSHOT,
     'a.spec.js': `
       pwt.test('is a test', async ({ page }) => {
@@ -837,7 +835,9 @@ test('should satisfy both maxDiffPixelRatio and maxDiffPixels', async ({ runInli
   })).exitCode, 'make sure it fails when maxDiffPixels < actualBadPixels < maxDiffPixelRatio').toBe(1);
 
   expect((await runInlineTest({
-    ...playwrightConfig({ screenshotsDir: '__screenshots__' }),
+    ...playwrightConfig({
+      snapshotPathTemplate: '__screenshots__/{testFilePath}/{arg}{ext}',
+    }),
     '__screenshots__/a.spec.js/snapshot.png': EXPECTED_SNAPSHOT,
     'a.spec.js': `
       pwt.test('is a test', async ({ page }) => {
@@ -851,7 +851,9 @@ test('should satisfy both maxDiffPixelRatio and maxDiffPixels', async ({ runInli
   })).exitCode, 'make sure it fails when maxDiffPixelRatio < actualBadPixels < maxDiffPixels').toBe(1);
 
   expect((await runInlineTest({
-    ...playwrightConfig({ screenshotsDir: '__screenshots__' }),
+    ...playwrightConfig({
+      snapshotPathTemplate: '__screenshots__/{testFilePath}/{arg}{ext}',
+    }),
     '__screenshots__/a.spec.js/snapshot.png': EXPECTED_SNAPSHOT,
     'a.spec.js': `
       pwt.test('is a test', async ({ page }) => {
@@ -870,7 +872,9 @@ test('should respect maxDiffPixelRatio option', async ({ runInlineTest }) => {
   const EXPECTED_SNAPSHOT = paintBlackPixels(whiteImage, BAD_PIXELS);
 
   expect((await runInlineTest({
-    ...playwrightConfig({ screenshotsDir: '__screenshots__' }),
+    ...playwrightConfig({
+      snapshotPathTemplate: '__screenshots__/{testFilePath}/{arg}{ext}',
+    }),
     '__screenshots__/a.spec.js/snapshot.png': EXPECTED_SNAPSHOT,
     'a.spec.js': `
       pwt.test('is a test', async ({ page }) => {
@@ -880,7 +884,9 @@ test('should respect maxDiffPixelRatio option', async ({ runInlineTest }) => {
   })).exitCode, 'make sure default comparison fails').toBe(1);
 
   expect((await runInlineTest({
-    ...playwrightConfig({ screenshotsDir: '__screenshots__' }),
+    ...playwrightConfig({
+      snapshotPathTemplate: '__screenshots__/{testFilePath}/{arg}{ext}',
+    }),
     '__screenshots__/a.spec.js/snapshot.png': EXPECTED_SNAPSHOT,
     'a.spec.js': `
       pwt.test('is a test', async ({ page }) => {
@@ -899,7 +905,7 @@ test('should respect maxDiffPixelRatio option', async ({ runInlineTest }) => {
         },
       },
       projects: [{
-        screenshotsDir: '__screenshots__',
+        snapshotPathTemplate: '__screenshots__/{testFilePath}/{arg}{ext}',
       }],
     }),
     '__screenshots__/a.spec.js/snapshot.png': EXPECTED_SNAPSHOT,
@@ -940,7 +946,9 @@ test('should throw for invalid maxDiffPixelRatio values', async ({ runInlineTest
 
 test('should attach expected/actual and no diff when sizes are different', async ({ runInlineTest }, testInfo) => {
   const result = await runInlineTest({
-    ...playwrightConfig({ screenshotsDir: '__screenshots__' }),
+    ...playwrightConfig({
+      snapshotPathTemplate: '__screenshots__/{testFilePath}/{arg}{ext}',
+    }),
     '__screenshots__/a.spec.js/snapshot.png': createImage(2, 2),
     'a.spec.js': `
       pwt.test.afterEach(async ({}, testInfo) => {
@@ -976,7 +984,7 @@ test('should fail with missing expectations and retries', async ({ runInlineTest
   const result = await runInlineTest({
     ...playwrightConfig({
       retries: 1,
-      screenshotsDir: '__screenshots__'
+      snapshotPathTemplate: '__screenshots__/{testFilePath}/{arg}{ext}',
     }),
     'a.spec.js': `
       pwt.test('is a test', async ({ page }) => {
@@ -990,14 +998,14 @@ test('should fail with missing expectations and retries', async ({ runInlineTest
   const snapshotOutputPath = testInfo.outputPath('__screenshots__/a.spec.js/snapshot.png');
   expect(result.output).toContain(`${snapshotOutputPath} is missing in snapshots, writing actual`);
   const data = fs.readFileSync(snapshotOutputPath);
-  expect(pngComparator(data, whiteImage)).toBe(null);
+  expect(comparePNGs(data, whiteImage)).toBe(null);
 });
 
 test('should update expectations with retries', async ({ runInlineTest }, testInfo) => {
   const result = await runInlineTest({
     ...playwrightConfig({
       retries: 1,
-      screenshotsDir: '__screenshots__'
+      snapshotPathTemplate: '__screenshots__/{testFilePath}/{arg}{ext}',
     }),
     'a.spec.js': `
       pwt.test('is a test', async ({ page }) => {
@@ -1011,13 +1019,12 @@ test('should update expectations with retries', async ({ runInlineTest }, testIn
   const snapshotOutputPath = testInfo.outputPath('__screenshots__/a.spec.js/snapshot.png');
   expect(result.output).toContain(`${snapshotOutputPath} is missing in snapshots, writing actual`);
   const data = fs.readFileSync(snapshotOutputPath);
-  expect(pngComparator(data, whiteImage)).toBe(null);
+  expect(comparePNGs(data, whiteImage)).toBe(null);
 });
 
 function playwrightConfig(obj: any) {
   return {
     'playwright.config.js': `
-      process.env.PWTEST_USE_SCREENSHOTS_DIR = '1';
       module.exports = ${JSON.stringify(obj, null, 2)}
     `,
   };

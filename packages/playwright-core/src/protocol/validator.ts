@@ -344,6 +344,9 @@ scheme.DebugControllerSourceChangedEvent = tObject({
   footer: tOptional(tString),
   actions: tOptional(tArray(tString)),
 });
+scheme.DebugControllerPausedEvent = tObject({
+  paused: tBoolean,
+});
 scheme.DebugControllerBrowsersChangedEvent = tObject({
   browsers: tArray(tObject({
     contexts: tArray(tObject({
@@ -368,6 +371,7 @@ scheme.DebugControllerNavigateParams = tObject({
 scheme.DebugControllerNavigateResult = tOptional(tObject({}));
 scheme.DebugControllerSetRecorderModeParams = tObject({
   mode: tEnum(['inspecting', 'recording', 'none']),
+  testIdAttributeName: tOptional(tString),
 });
 scheme.DebugControllerSetRecorderModeResult = tOptional(tObject({}));
 scheme.DebugControllerHighlightParams = tObject({
@@ -376,6 +380,8 @@ scheme.DebugControllerHighlightParams = tObject({
 scheme.DebugControllerHighlightResult = tOptional(tObject({}));
 scheme.DebugControllerHideHighlightParams = tOptional(tObject({}));
 scheme.DebugControllerHideHighlightResult = tOptional(tObject({}));
+scheme.DebugControllerResumeParams = tOptional(tObject({}));
+scheme.DebugControllerResumeResult = tOptional(tObject({}));
 scheme.DebugControllerKillParams = tOptional(tObject({}));
 scheme.DebugControllerKillResult = tOptional(tObject({}));
 scheme.DebugControllerCloseAllBrowsersParams = tOptional(tObject({}));
@@ -425,6 +431,10 @@ scheme.SelectorsRegisterParams = tObject({
   contentScript: tOptional(tBoolean),
 });
 scheme.SelectorsRegisterResult = tOptional(tObject({}));
+scheme.SelectorsSetTestIdAttributeNameParams = tObject({
+  testIdAttributeName: tString,
+});
+scheme.SelectorsSetTestIdAttributeNameResult = tOptional(tObject({}));
 scheme.BrowserTypeInitializer = tObject({
   executablePath: tString,
   name: tString,
@@ -864,6 +874,11 @@ scheme.BrowserContextCreateTempFileParams = tObject({
 scheme.BrowserContextCreateTempFileResult = tObject({
   writableStream: tChannel(['WritableStream']),
 });
+scheme.BrowserContextUpdateSubscriptionParams = tObject({
+  event: tEnum(['request', 'response', 'requestFinished', 'requestFailed']),
+  enabled: tBoolean,
+});
+scheme.BrowserContextUpdateSubscriptionResult = tOptional(tObject({}));
 scheme.PageInitializer = tObject({
   mainFrame: tChannel(['Frame']),
   viewportSize: tOptional(tObject({
@@ -922,10 +937,6 @@ scheme.PageSetDefaultTimeoutNoReplyParams = tObject({
   timeout: tOptional(tNumber),
 });
 scheme.PageSetDefaultTimeoutNoReplyResult = tOptional(tObject({}));
-scheme.PageSetFileChooserInterceptedNoReplyParams = tObject({
-  intercepted: tBoolean,
-});
-scheme.PageSetFileChooserInterceptedNoReplyResult = tOptional(tObject({}));
 scheme.PageAddInitScriptParams = tObject({
   source: tString,
 });
@@ -1157,6 +1168,11 @@ scheme.PageStopCSSCoverageResult = tObject({
 });
 scheme.PageBringToFrontParams = tOptional(tObject({}));
 scheme.PageBringToFrontResult = tOptional(tObject({}));
+scheme.PageUpdateSubscriptionParams = tObject({
+  event: tEnum(['fileChooser', 'request', 'response', 'requestFinished', 'requestFailed']),
+  enabled: tBoolean,
+});
+scheme.PageUpdateSubscriptionResult = tOptional(tObject({}));
 scheme.FrameInitializer = tObject({
   url: tString,
   name: tString,

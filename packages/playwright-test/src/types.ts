@@ -24,7 +24,6 @@ export type { Location } from '../types/testReporter';
 export type FixturesWithLocation = {
   fixtures: Fixtures;
   location: Location;
-  fromConfig?: boolean;
 };
 export type Annotation = { type: string, description?: string };
 
@@ -68,9 +67,9 @@ export interface FullProjectInternal extends FullProjectPublic {
   _fullConfig: FullConfigInternal;
   _fullyParallel: boolean;
   _expect: Project['expect'];
-  _screenshotsDir: string;
   _respectGitIgnore: boolean;
   _setup: string | RegExp | (string | RegExp)[];
+  snapshotPathTemplate: string;
 }
 
 export interface ReporterInternal extends Reporter {

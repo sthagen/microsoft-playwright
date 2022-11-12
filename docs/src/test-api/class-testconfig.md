@@ -331,11 +331,19 @@ test('example test', async ({}, testInfo) => {
 * since: v1.10
 - type: ?<[string]>
 
+:::note
+Use of [`property: TestConfig.snapshotDir`] is discouraged. Please use [`property: TestConfig.snapshotPathTemplate`] to configure
+snapshot paths.
+:::
+
 The base directory, relative to the config file, for snapshot files created with `toMatchSnapshot`. Defaults to [`property: TestConfig.testDir`].
 
 The directory for each test can be accessed by [`property: TestInfo.snapshotDir`] and [`method: TestInfo.snapshotPath`].
 
 This path will serve as the base directory for each test file snapshot directory. Setting `snapshotDir` to `'snapshots'`, the [`property: TestInfo.snapshotDir`] would resolve to `snapshots/a.spec.js-snapshots`.
+
+## property: TestConfig.snapshotPathTemplate = %%-test-config-snapshot-path-template-%%
+* since: v1.28
 
 ## property: TestConfig.preserveOutput
 * since: v1.10
@@ -440,43 +448,6 @@ const config: PlaywrightTestConfig = {
 };
 export default config;
 ```
-
-## property: TestConfig.screenshotsDir
-* since: v1.10
-* experimental
-- type: ?<[string]>
-
-The base directory, relative to the config file, for screenshot files created with [`method: PageAssertions.toHaveScreenshot#1`]. Defaults to
-
-```
-<directory-of-configuration-file>/__screenshots__/<platform name>/<project name>
-```
-
-This path will serve as the base directory for each test file screenshot directory. For example, the following test structure:
-
-```
-smoke-tests/
-└── basic.spec.ts
-```
-
-will result in the following screenshots folder structure:
-
-```
-__screenshots__/
-└── darwin/
-    ├── Mobile Safari/
-    │   └── smoke-tests/
-    │       └── basic.spec.ts/
-    │           └── screenshot-expectation.png
-    └── Desktop Chrome/
-        └── smoke-tests/
-            └── basic.spec.ts/
-                └── screenshot-expectation.png
-```
-
-where:
-* `darwin/` - a platform name folder
-* `Mobile Safari` and `Desktop Chrome` - project names
 
 ## property: TestConfig.shard
 * since: v1.10
@@ -656,7 +627,7 @@ export default config;
   - `port` ?<[int]> The port that your http server is expected to appear on. It does wait until it accepts connections. Exactly one of `port` or `url` is required.
   - `url` ?<[string]> The url on your http server that is expected to return a 2xx, 3xx, 400, 401, 402, or 403 status code when the server is ready to accept connections. Exactly one of `port` or `url` is required.
   - `ignoreHTTPSErrors` ?<[boolean]> Whether to ignore HTTPS errors when fetching the `url`. Defaults to `false`.
-  - `timeout` ?<[int]> How long to wait for the process to start up and be available in milliseconds. The same timeout is also used to terminate the process. Defaults to 60000.
+  - `timeout` ?<[int]> How long to wait for the process to start up and be available in milliseconds. Defaults to 60000.
   - `reuseExistingServer` ?<[boolean]> If true, it will re-use an existing server on the `port` or `url` when available. If no server is running on that `port` or `url`, it will run the command to start a new server. If `false`, it will throw if an existing process is listening on the `port` or `url`. This should be commonly set to `!process.env.CI` to allow the local dev server when running tests locally.
   - `cwd` ?<[string]> Current working directory of the spawned process, defaults to the directory of the configuration file.
   - `env` ?<[Object]<[string], [string]>> Environment variables to set for the command, `process.env` by default.

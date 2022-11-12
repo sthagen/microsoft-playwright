@@ -85,11 +85,11 @@ Locator frameLocator = locator.frameLocator(':scope');
 ```
 
 ```python async
-frameLocator = locator.frame_locator(":scope");
+frameLocator = locator.frame_locator(":scope")
 ```
 
 ```python sync
-frameLocator = locator.frame_locator(":scope");
+frameLocator = locator.frame_locator(":scope")
 ```
 
 ```csharp
@@ -153,6 +153,7 @@ in that iframe.
 ### param: FrameLocator.getByRole.role = %%-locator-get-by-role-role-%%
 ### option: FrameLocator.getByRole.-inline- = %%-locator-get-by-role-option-list-v1.27-%%
 * since: v1.27
+### option: FrameLocator.getByRole.exact = %%-locator-get-by-role-option-exact-%%
 
 
 ## method: FrameLocator.getByTestId

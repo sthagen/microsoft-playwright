@@ -45,7 +45,8 @@ import { Frame, verifyLoadState } from './frame';
 import { HarRouter } from './harRouter';
 import { Keyboard, Mouse, Touchscreen } from './input';
 import { assertMaxArguments, JSHandle, parseResult, serializeArgument } from './jsHandle';
-import type { ByRoleOptions, FrameLocator, Locator, LocatorOptions } from './locator';
+import type { FrameLocator, Locator, LocatorOptions } from './locator';
+import type { ByRoleOptions } from '../utils/isomorphic/locatorUtils';
 import type { RouteHandlerCallback } from './network';
 import { Response, Route, RouteHandler, validateHeaders, WebSocket } from './network';
 import type { Request } from './network';
@@ -65,7 +66,6 @@ type PDFOptions = Omit<channels.PagePdfParams, 'width' | 'height' | 'margin'> & 
   },
   path?: string,
 };
-type Listener = (...args: any[]) => void;
 
 type ExpectScreenshotOptions = Omit<channels.PageExpectScreenshotOptions, 'screenshotOptions' | 'locator' | 'expected'> & {
   expected?: Buffer,
@@ -160,6 +160,14 @@ export class Page extends ChannelOwner<channels.PageChannel> implements api.Page
       new Promise<void>(f => this.once(Events.Page.Close, f)),
       new Promise<void>(f => this.once(Events.Page.Crash, f)),
     ]);
+
+    this._setEventToSubscriptionMapping(new Map<string, channels.PageUpdateSubscriptionParams['event']>([
+      [Events.Page.Request, 'request'],
+      [Events.Page.Response, 'response'],
+      [Events.Page.RequestFinished, 'requestFinished'],
+      [Events.Page.RequestFailed, 'requestFailed'],
+      [Events.Page.FileChooser, 'fileChooser'],
+    ]));
   }
 
   private _onFrameAttached(frame: Frame) {
@@ -560,10 +568,6 @@ export class Page extends ChannelOwner<channels.PageChannel> implements api.Page
     return this._mainFrame.fill(selector, value, options);
   }
 
-  async clear(selector: string, options?: channels.FrameFillOptions) {
-    return this.fill(selector, '', options);
-  }
-
   locator(selector: string, options?: LocatorOptions): Locator {
     return this.mainFrame().locator(selector, options);
   }
@@ -690,41 +694,6 @@ export class Page extends ChannelOwner<channels.PageChannel> implements api.Page
 
   workers(): Worker[] {
     return [...this._workers];
-  }
-
-  override on(event: string | symbol, listener: Listener): this {
-    if (event === Events.Page.FileChooser && !this.listenerCount(event))
-      this._channel.setFileChooserInterceptedNoReply({ intercepted: true });
-    super.on(event, listener);
-    return this;
-  }
-
-  override addListener(event: string | symbol, listener: Listener): this {
-    if (event === Events.Page.FileChooser && !this.listenerCount(event))
-      this._channel.setFileChooserInterceptedNoReply({ intercepted: true });
-    super.addListener(event, listener);
-    return this;
-  }
-
-  override prependListener(event: string | symbol, listener: Listener): this {
-    if (event === Events.Page.FileChooser && !this.listenerCount(event))
-      this._channel.setFileChooserInterceptedNoReply({ intercepted: true });
-    super.prependListener(event, listener);
-    return this;
-  }
-
-  override off(event: string | symbol, listener: Listener): this {
-    super.off(event, listener);
-    if (event === Events.Page.FileChooser && !this.listenerCount(event))
-      this._channel.setFileChooserInterceptedNoReply({ intercepted: false });
-    return this;
-  }
-
-  override removeListener(event: string | symbol, listener: Listener): this {
-    super.removeListener(event, listener);
-    if (event === Events.Page.FileChooser && !this.listenerCount(event))
-      this._channel.setFileChooserInterceptedNoReply({ intercepted: false });
-    return this;
   }
 
   async pause() {

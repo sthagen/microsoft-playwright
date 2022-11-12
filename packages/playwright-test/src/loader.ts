@@ -115,8 +115,6 @@ export class Loader {
       config.testDir = path.resolve(configDir, config.testDir);
     if (config.outputDir !== undefined)
       config.outputDir = path.resolve(configDir, config.outputDir);
-    if ((config as any).screenshotsDir !== undefined)
-      (config as any).screenshotsDir = path.resolve(configDir, (config as any).screenshotsDir);
     if (config.snapshotDir !== undefined)
       config.snapshotDir = path.resolve(configDir, config.snapshotDir);
 
@@ -267,8 +265,6 @@ export class Loader {
       projectConfig.testDir = path.resolve(this._configDir, projectConfig.testDir);
     if (projectConfig.outputDir !== undefined)
       projectConfig.outputDir = path.resolve(this._configDir, projectConfig.outputDir);
-    if ((projectConfig as any).screenshotsDir !== undefined)
-      (projectConfig as any).screenshotsDir = path.resolve(this._configDir, (projectConfig as any).screenshotsDir);
     if (projectConfig.snapshotDir !== undefined)
       projectConfig.snapshotDir = path.resolve(this._configDir, projectConfig.snapshotDir);
 
@@ -280,11 +276,8 @@ export class Loader {
     const name = takeFirst(projectConfig.name, config.name, '');
     const _setup = takeFirst(projectConfig.setup, []);
 
-    let screenshotsDir = takeFirst((projectConfig as any).screenshotsDir, (config as any).screenshotsDir, path.join(testDir, '__screenshots__', process.platform, name));
-    if (process.env.PLAYWRIGHT_DOCKER) {
-      screenshotsDir = path.join(testDir, '__screenshots__', name);
-      process.env.PWTEST_USE_SCREENSHOTS_DIR = '1';
-    }
+    const defaultSnapshotPathTemplate = '{snapshotDir}/{testFileDir}/{testFileName}-snapshots/{arg}{-projectName}{-snapshotSuffix}{ext}';
+    const snapshotPathTemplate = takeFirst(projectConfig.snapshotPathTemplate, config.snapshotPathTemplate, defaultSnapshotPathTemplate);
     return {
       _id: '',
       _fullConfig: fullConfig,
@@ -301,7 +294,7 @@ export class Loader {
       _setup,
       _respectGitIgnore: respectGitIgnore,
       snapshotDir,
-      _screenshotsDir: screenshotsDir,
+      snapshotPathTemplate,
       testIgnore: takeFirst(projectConfig.testIgnore, config.testIgnore, []),
       testMatch: takeFirst(projectConfig.testMatch, config.testMatch, '**/?(*.)@(spec|test).*'),
       timeout: takeFirst(projectConfig.timeout, config.timeout, defaultTimeout),
@@ -441,17 +434,18 @@ class ProjectSuiteBuilder {
       return testType.fixtures;
     const result: FixturesWithLocation[] = [];
     for (const f of testType.fixtures) {
-      result.push(f);
       const optionsFromConfig: Fixtures = {};
+      const originalFixtures: Fixtures = {};
       for (const [key, value] of Object.entries(f.fixtures)) {
         if (isFixtureOption(value) && configKeys.has(key))
           (optionsFromConfig as any)[key] = [(configUse as any)[key], value[1]];
+        else
+          (originalFixtures as any)[key] = value;
       }
-      if (Object.entries(optionsFromConfig).length) {
-        // Add config options immediately after original option definition,
-        // so that any test.use() override it.
-        result.push({ fixtures: optionsFromConfig, location: { file: `project#${this._project._id}`, line: 1, column: 1 }, fromConfig: true });
-      }
+      if (Object.entries(optionsFromConfig).length)
+        result.push({ fixtures: optionsFromConfig, location: { file: `project#${this._project._id}`, line: 1, column: 1 } });
+      if (Object.entries(originalFixtures).length)
+        result.push({ fixtures: originalFixtures, location: f.location });
     }
     return result;
   }

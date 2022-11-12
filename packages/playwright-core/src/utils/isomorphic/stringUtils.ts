@@ -27,12 +27,17 @@ export function escapeWithQuotes(text: string, char: string = '\'') {
   throw new Error('Invalid escape char');
 }
 
+export function isString(obj: any): obj is string {
+  return typeof obj === 'string' || obj instanceof String;
+}
+
 export function toTitleCase(name: string) {
   return name.charAt(0).toUpperCase() + name.substring(1);
 }
 
 export function toSnakeCase(name: string): string {
-  return name.replace(/([a-z0-9])([A-Z])/g, '$1_$2').toLowerCase();
+  // E.g. ignoreHTTPSErrors => ignore_https_errors.
+  return name.replace(/([a-z0-9])([A-Z])/g, '$1_$2').replace(/([A-Z])([A-Z][a-z])/g, '$1_$2').toLowerCase();
 }
 
 export function cssEscape(s: string): string {

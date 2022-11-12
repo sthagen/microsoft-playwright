@@ -50,7 +50,7 @@ it.describe('selector generator', () => {
 
   it('should generate text for <input type=button>', async ({ page }) => {
     await page.setContent(`<input type=button value="Click me">`);
-    expect(await generate(page, 'input')).toBe('internal:role=button[name=\"Click me\"s]');
+    expect(await generate(page, 'input')).toBe('internal:role=button[name=\"Click me\"i]');
   });
 
   it('should trim text', async ({ page }) => {
@@ -78,7 +78,7 @@ it.describe('selector generator', () => {
       <select><option>foo</option></select>
       <select mark=1><option>bar</option></select>
     `);
-    expect(await generate(page, '[mark="1"]')).toBe('select >> nth=1');
+    expect(await generate(page, '[mark="1"]')).toBe('internal:role=combobox >> nth=1');
   });
 
   it('should use ordinal for identical nodes', async ({ page }) => {
@@ -88,7 +88,31 @@ it.describe('selector generator', () => {
 
   it('should prefer data-testid', async ({ page }) => {
     await page.setContent(`<div>Text</div><div>Text</div><div data-testid=a>Text</div><div>Text</div>`);
-    expect(await generate(page, '[data-testid="a"]')).toBe('internal:attr=[data-testid=\"a\"s]');
+    expect(await generate(page, '[data-testid="a"]')).toBe('internal:testid=[data-testid=\"a\"s]');
+  });
+
+  it('should use data-testid in strict errors', async ({ page, playwright }) => {
+    playwright.selectors.setTestIdAttribute('data-custom-id');
+    await page.setContent(`
+      <div>
+        <div></div>
+        <div>
+          <div></div>
+          <div></div>
+        </div>
+      </div>
+      <div>
+        <div class='foo bar:0' data-custom-id='One'>
+        </div>
+        <div class='foo bar:1' data-custom-id='Two'>
+        </div>
+      </div>`);
+    const error = await page.locator('.foo').hover().catch(e => e);
+    expect(error.message).toContain('strict mode violation');
+    expect(error.message).toContain('<div class=\"foo bar:0');
+    expect(error.message).toContain('<div class=\"foo bar:1');
+    expect(error.message).toContain(`aka getByTestId('One')`);
+    expect(error.message).toContain(`aka getByTestId('Two')`);
   });
 
   it('should handle first non-unique data-testid', async ({ page }) => {
@@ -99,7 +123,7 @@ it.describe('selector generator', () => {
       <div data-testid=a>
         Text
       </div>`);
-    expect(await generate(page, 'div[mark="1"]')).toBe('internal:attr=[data-testid=\"a\"s] >> nth=0');
+    expect(await generate(page, 'div[mark="1"]')).toBe('internal:testid=[data-testid=\"a\"s] >> nth=0');
   });
 
   it('should handle second non-unique data-testid', async ({ page }) => {
@@ -110,7 +134,7 @@ it.describe('selector generator', () => {
       <div data-testid=a mark=1>
         Text
       </div>`);
-    expect(await generate(page, 'div[mark="1"]')).toBe(`internal:attr=[data-testid=\"a\"s] >> nth=1`);
+    expect(await generate(page, 'div[mark="1"]')).toBe(`internal:testid=[data-testid=\"a\"s] >> nth=1`);
   });
 
   it('should use readable id', async ({ page }) => {
@@ -143,7 +167,7 @@ it.describe('selector generator', () => {
       <div>Hello <span>world</span></div>
       <b>Hello <span mark=1>world</span></b>
     `);
-    expect(await generate(page, '[mark="1"]')).toBe(`b >> internal:has-text="Hello world"i >> span`);
+    expect(await generate(page, '[mark="1"]')).toBe(`b >> internal:text="world"i`);
   });
 
   it('should use parent text', async ({ page }) => {
@@ -222,21 +246,25 @@ it.describe('selector generator', () => {
       <input value="two" mark="1">
       <input value="three">
     `);
-    expect(await generate(page, 'input[mark="1"]')).toBe('input >> nth=1');
+    expect(await generate(page, 'input[mark="1"]')).toBe('internal:role=textbox >> nth=1');
   });
 
-  it.describe('should prioritise input element attributes correctly', () => {
-    it('name', async ({ page }) => {
+  it.describe('should prioritise attributes correctly', () => {
+    it('role', async ({ page }) => {
       await page.setContent(`<input name="foobar" type="text"/>`);
-      expect(await generate(page, 'input')).toBe('input[name="foobar"]');
+      expect(await generate(page, 'input')).toBe('internal:role=textbox');
     });
     it('placeholder', async ({ page }) => {
       await page.setContent(`<input placeholder="foobar" type="text"/>`);
       expect(await generate(page, 'input')).toBe('internal:attr=[placeholder=\"foobar\"i]');
     });
+    it('name', async ({ page }) => {
+      await page.setContent(`<input role="presentation" aria-hidden="false" name="foobar" type="date"/>`);
+      expect(await generate(page, 'input')).toBe('input[name="foobar"]');
+    });
     it('type', async ({ page }) => {
-      await page.setContent(`<input type="text"/>`);
-      expect(await generate(page, 'input')).toBe('input[type="text"]');
+      await page.setContent(`<input role="presentation" aria-hidden="false" type="checkbox"/>`);
+      expect(await generate(page, 'input')).toBe('input[type="checkbox"]');
     });
   });
 
@@ -258,7 +286,7 @@ it.describe('selector generator', () => {
       const input = document.createElement('input');
       shadowRoot.appendChild(input);
     });
-    expect(await generate(page, 'input')).toBe('input');
+    expect(await generate(page, 'input')).toBe('internal:role=textbox');
   });
 
   it('should match in deep shadow dom', async ({ page }) => {
@@ -276,7 +304,7 @@ it.describe('selector generator', () => {
       input2.setAttribute('value', 'foo');
       shadowRoot2.appendChild(input2);
     });
-    expect(await generate(page, 'input[value=foo]')).toBe('input >> nth=2');
+    expect(await generate(page, 'input[value=foo]')).toBe('internal:role=textbox >> nth=2');
   });
 
   it('should work in dynamic iframes without navigation', async ({ page }) => {
@@ -319,7 +347,7 @@ it.describe('selector generator', () => {
 
     await page.setContent(`<button><span></span></button><button></button>`);
     await page.$eval('button', button => button.setAttribute('aria-label', `!#'!?:`));
-    expect(await generate(page, 'button')).toBe(`internal:role=button[name="!#'!?:"s]`);
+    expect(await generate(page, 'button')).toBe(`internal:role=button[name="!#'!?:"i]`);
     expect(await page.$(`role=button[name="!#'!?:"]`)).toBeTruthy();
 
     await page.setContent(`<div><span></span></div>`);
@@ -328,7 +356,7 @@ it.describe('selector generator', () => {
   });
 
   it('should work without CSS.escape', async ({ page }) => {
-    await page.setContent(`<button></button>`);
+    await page.setContent(`<button role="presentation" aria-hidden="false"></button>`);
     await page.$eval('button', button => {
       delete window.CSS.escape;
       button.setAttribute('name', '-tricky\u0001name');
@@ -343,7 +371,7 @@ it.describe('selector generator', () => {
 
   it('should accept valid aria-label for candidate consideration', async ({ page }) => {
     await page.setContent(`<button aria-label="ariaLabel" id="buttonId"></button>`);
-    expect(await generate(page, 'button')).toBe('internal:role=button[name=\"ariaLabel\"s]');
+    expect(await generate(page, 'button')).toBe('internal:role=button[name=\"ariaLabel\"i]');
   });
 
   it('should ignore empty role for candidate consideration', async ({ page }) => {
@@ -372,5 +400,10 @@ it.describe('selector generator', () => {
 
     await page.setContent(`<label for=target>Coun"try</label><input id=target>`);
     expect(await generate(page, 'input')).toBe('internal:label="Coun\\\"try"i');
+  });
+
+  it('should prefer role other input[type]', async ({ page }) => {
+    await page.setContent(`<input type=checkbox><div data-testid=wrapper><input type=checkbox></div>`);
+    expect(await generate(page, '[data-testid=wrapper] > input')).toBe('internal:testid=[data-testid="wrapper"s] >> internal:role=checkbox');
   });
 });

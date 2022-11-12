@@ -343,17 +343,17 @@ test('runs first', async ({ page }) => {});
 test('runs second', async ({ page }) => {});
 ```
 
-Configuring retries and timeout:
+Configuring retries and timeout for each test:
 
 ```js tab=js-js
-// All tests in the file will be retried twice and have a timeout of 20 seconds.
+// Each test in the file will be retried twice and have a timeout of 20 seconds.
 test.describe.configure({ retries: 2, timeout: 20_000 });
 test('runs first', async ({ page }) => {});
 test('runs second', async ({ page }) => {});
 ```
 
 ```js tab=js-ts
-// All tests in the file will be retried twice and have a timeout of 20 seconds.
+// Each test in the file will be retried twice and have a timeout of 20 seconds.
 test.describe.configure({ retries: 2, timeout: 20_000 });
 test('runs first', async ({ page }) => {});
 test('runs second', async ({ page }) => {});
@@ -363,13 +363,19 @@ test('runs second', async ({ page }) => {});
 * since: v1.10
 - `mode` <[TestMode]<"parallel"|"serial">>
 
+Execution mode. Learn more about the execution modes [here](../test-parallel.md).
+
 ### option: Test.describe.configure.retries
 * since: v1.28
 - `retries` <[int]>
 
+The number of retries for each test.
+
 ### option: Test.describe.configure.timeout
 * since: v1.28
 - `timeout` <[int]>
+
+Timeout for each test in milliseconds. Overrides [`property: TestProject.timeout`] and [`property: TestConfig.timeout`].
 
 
 ## method: Test.describe.fixme
@@ -1077,51 +1083,6 @@ Test function that takes one or two arguments: an object with fixtures and optio
 
 
 
-## method: Test.reset
-* since: v1.28
-
-Resets options that were set up in the configuration file or with [`method: Test.use`] to their default or config-specified value.
-
-```js tab=js-js
-const { test, expect } = require('@playwright/test');
-
-test.reset({
-  // Reset storage state to the default empty value.
-  storageStage: 'default',
-
-  // Reset locale to the value specified in the config file.
-  locale: 'config',
-});
-
-test('example', async ({ page }) => {
-  // ...
-});
-```
-
-```js tab=js-ts
-import { test, expect } from '@playwright/test';
-
-test.reset({
-  // Reset storage state to the default empty value.
-  storageStage: 'default',
-
-  // Reset locale to the value specified in the config file.
-  locale: 'config',
-});
-
-test('example', async ({ page }) => {
-  // ...
-});
-```
-
-### param: Test.reset.fixtures
-* since: v1.28
-- `options` <[Object]>
-
-An object with options set to either `'config'` or `'default'`.
-
-
-
 
 ## method: Test.setTimeout
 * since: v1.10
@@ -1592,7 +1553,7 @@ Step body.
 ## method: Test.use
 * since: v1.10
 
-Specifies options or fixtures to use in a single test file or a [`method: Test.describe#1`] group. Most useful to set an option, for example set `locale` to configure `context` fixture. `test.use` can be called either in the global scope or inside `test.describe`, it's is an error to call it within `beforeEach` or `beforeAll`.
+Specifies options or fixtures to use in a single test file or a [`method: Test.describe#1`] group. Most useful to set an option, for example set `locale` to configure `context` fixture. `test.use` can be called either in the global scope or inside `test.describe`. It is an error to call it within `beforeEach` or `beforeAll`.
 
 ```js tab=js-js
 const { test, expect } = require('@playwright/test');

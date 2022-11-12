@@ -43,6 +43,7 @@ class Recorder {
   private _actionPoint: Point | undefined;
   private _actionSelector: string | undefined;
   private _highlight: Highlight;
+  private _testIdAttributeName: string = 'data-testid';
 
   constructor(injectedScript: InjectedScript) {
     this._injectedScript = injectedScript;
@@ -94,7 +95,8 @@ class Recorder {
       return;
     }
 
-    const { mode, actionPoint, actionSelector, language } = state;
+    const { mode, actionPoint, actionSelector, language, testIdAttributeName } = state;
+    this._testIdAttributeName = testIdAttributeName;
     this._highlight.setLanguage(language);
     if (mode !== this._mode) {
       this._mode = mode;
@@ -194,7 +196,7 @@ class Recorder {
       return true;
     }
     const nodeName = target.nodeName;
-    if (nodeName === 'SELECT')
+    if (nodeName === 'SELECT' || nodeName === 'OPTION')
       return true;
     if (nodeName === 'INPUT' && ['date'].includes((target as HTMLInputElement).type))
       return true;
@@ -238,7 +240,7 @@ class Recorder {
     if (this._mode === 'none')
       return;
     const activeElement = this._deepActiveElement(document);
-    const result = activeElement ? generateSelector(this._injectedScript, activeElement, true) : null;
+    const result = activeElement ? generateSelector(this._injectedScript, activeElement, this._testIdAttributeName) : null;
     this._activeModel = result && result.selector ? result : null;
     if (userGesture)
       this._hoveredElement = activeElement as HTMLElement | null;
@@ -252,7 +254,7 @@ class Recorder {
       return;
     }
     const hoveredElement = this._hoveredElement;
-    const { selector, elements } = generateSelector(this._injectedScript, hoveredElement, true);
+    const { selector, elements } = generateSelector(this._injectedScript, hoveredElement, this._testIdAttributeName);
     if ((this._hoveredModel && this._hoveredModel.selector === selector))
       return;
     this._hoveredModel = selector ? { selector, elements } : null;
