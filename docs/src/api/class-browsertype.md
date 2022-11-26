@@ -136,6 +136,8 @@ The default browser context is accessible via [`method: Browser.contexts`].
 Connecting over the Chrome DevTools Protocol is only supported for Chromium-based browsers.
 :::
 
+**Usage**
+
 ```js
 const browser = await playwright.chromium.connectOverCDP('http://localhost:9222');
 const defaultContext = browser.contexts()[0];
@@ -218,6 +220,8 @@ A path where Playwright expects to find a bundled browser executable.
 
 Returns the browser instance.
 
+**Usage**
+
 You can use [`option: ignoreDefaultArgs`] to filter out `--mute-audio` from default arguments:
 
 ```js
@@ -264,19 +268,24 @@ describes some differences for Linux users.
 
 ### option: BrowserType.launch.-inline- = %%-shared-browser-options-list-v1.8-%%
 * since: v1.8
+
 ### option: BrowserType.launch.firefoxUserPrefs = %%-js-python-browser-option-firefoxuserprefs-%%
 * since: v1.8
+
 ### option: BrowserType.launch.firefoxUserPrefs2 = %%-csharp-java-browser-option-firefoxuserprefs-%%
 * since: v1.8
+
 ### option: BrowserType.launch.logger = %%-browser-option-logger-%%
 * since: v1.8
+
 ### option: BrowserType.launch.slowMo = %%-browser-option-slowmo-%%
 * since: v1.8
+
 ### option: BrowserType.launch.ignoreDefaultArgs = %%-csharp-java-browser-option-ignoredefaultargs-%%
 * since: v1.8
+
 ### option: BrowserType.launch.ignoreAllDefaultArgs = %%-csharp-java-browser-option-ignorealldefaultargs-%%
 * since: v1.9
-
 
 ## async method: BrowserType.launchPersistentContext
 * since: v1.8
@@ -299,12 +308,16 @@ use a temporary directory instead.
 
 ### option: BrowserType.launchPersistentContext.-inline- = %%-shared-browser-options-list-v1.8-%%
 * since: v1.8
+
 ### option: BrowserType.launchPersistentContext.slowMo = %%-browser-option-slowmo-%%
 * since: v1.8
+
 ### option: BrowserType.launchPersistentContext.ignoreDefaultArgs = %%-csharp-java-browser-option-ignoredefaultargs-%%
 * since: v1.8
+
 ### option: BrowserType.launchPersistentContext.ignoreAllDefaultArgs = %%-csharp-java-browser-option-ignorealldefaultargs-%%
 * since: v1.9
+
 ### option: BrowserType.launchPersistentContext.-inline- = %%-shared-context-params-list-v1.8-%%
 * since: v1.8
 
@@ -314,6 +327,8 @@ use a temporary directory instead.
 - returns: <[BrowserServer]>
 
 Returns the browser app instance. You can connect to it via [`method: BrowserType.connect`], which requires the major/minor client/server version to match (1.2.3 → is compatible with 1.2.x).
+
+**Usage**
 
 Launches browser server that client can connect to. An example of launching a browser executable and connecting to it
 later:
@@ -333,10 +348,13 @@ const { chromium } = require('playwright');  // Or 'webkit' or 'firefox'.
 
 ### option: BrowserType.launchServer.-inline- = %%-shared-browser-options-list-v1.8-%%
 * since: v1.8
+
 ### option: BrowserType.launchServer.firefoxUserPrefs = %%-js-python-browser-option-firefoxuserprefs-%%
 * since: v1.8
+
 ### option: BrowserType.launchServer.firefoxUserPrefs2 = %%-csharp-java-browser-option-firefoxuserprefs-%%
 * since: v1.8
+
 ### option: BrowserType.launchServer.logger = %%-browser-option-logger-%%
 * since: v1.8
 

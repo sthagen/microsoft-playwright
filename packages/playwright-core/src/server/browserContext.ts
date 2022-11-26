@@ -26,7 +26,7 @@ import { helper } from './helper';
 import * as network from './network';
 import type { PageDelegate } from './page';
 import { Page, PageBinding } from './page';
-import type { Progress } from './progress';
+import type { Progress, ProgressController } from './progress';
 import type { Selectors } from './selectors';
 import type * as types from './types';
 import type * as channels from '@protocol/channels';
@@ -56,6 +56,7 @@ export abstract class BrowserContext extends SdkObject {
 
   readonly _timeoutSettings = new TimeoutSettings();
   readonly _pageBindings = new Map<string, PageBinding>();
+  readonly _activeProgressControllers = new Set<ProgressController>();
   readonly _options: channels.BrowserNewContextParams;
   _requestInterceptor?: network.RouteHandler;
   private _isPersistentContext: boolean;
@@ -76,6 +77,7 @@ export abstract class BrowserContext extends SdkObject {
   private _settingStorageState = false;
   readonly initScripts: string[] = [];
   private _routesInFlight = new Set<network.Route>();
+  private _debugger!: Debugger;
 
   constructor(browser: Browser, options: channels.BrowserNewContextParams, browserContextId: string | undefined) {
     super(browser, 'browser-context');
@@ -112,16 +114,16 @@ export abstract class BrowserContext extends SdkObject {
     if (this.attribution.isInternalPlaywright)
       return;
     // Debugger will pause execution upon page.pause in headed mode.
-    const contextDebugger = new Debugger(this);
+    this._debugger = new Debugger(this);
 
     // When PWDEBUG=1, show inspector for each context.
     if (debugMode() === 'inspector')
       await Recorder.show(this, { pauseOnNextStatement: true });
 
     // When paused, show inspector.
-    if (contextDebugger.isPaused())
+    if (this._debugger.isPaused())
       Recorder.showInspector(this);
-    contextDebugger.on(Debugger.Events.PausedStateChanged, () => {
+    this._debugger.on(Debugger.Events.PausedStateChanged, () => {
       Recorder.showInspector(this);
     });
 
@@ -134,6 +136,10 @@ export abstract class BrowserContext extends SdkObject {
       await this.grantPermissions(this._options.permissions);
   }
 
+  debugger(): Debugger {
+    return this._debugger;
+  }
+
   async _ensureVideosPath() {
     if (this._options.recordVideo)
       await mkdirIfNeeded(path.join(this._options.recordVideo.dir, 'dummy'));
@@ -143,6 +149,11 @@ export abstract class BrowserContext extends SdkObject {
     if (this._closedStatus !== 'open')
       return false;
     return true;
+  }
+
+  async stopPendingOperations() {
+    for (const controller of this._activeProgressControllers)
+      controller.abort(new Error(`Context was reset for reuse.`));
   }
 
   static reusableContextHash(params: channels.BrowserNewContextForReuseParams): string {

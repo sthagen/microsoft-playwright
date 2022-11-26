@@ -46,7 +46,6 @@ def test_navigates_to_login_page(page: Page) -> None:
     expect(response).to_be_ok()
 ```
 
-
 ## property: APIResponseAssertions.not
 * since: v1.20
 * langs: java, js, csharp
@@ -74,6 +73,8 @@ The opposite of [`method: APIResponseAssertions.toBeOK`].
   - alias-java: isOK
 
 Ensures the response status code is within `200..299` range.
+
+**Usage**
 
 ```js
 await expect(response).toBeOK();

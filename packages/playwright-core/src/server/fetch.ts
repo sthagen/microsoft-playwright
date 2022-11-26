@@ -78,6 +78,7 @@ export abstract class APIRequestContext extends SdkObject {
   readonly fetchResponses: Map<string, Buffer> = new Map();
   readonly fetchLog: Map<string, string[]> = new Map();
   protected static allInstances: Set<APIRequestContext> = new Set();
+  readonly _activeProgressControllers = new Set<ProgressController>();
 
   static findResponseBody(guid: string): Buffer | undefined {
     for (const request of APIRequestContext.allInstances) {
@@ -206,7 +207,7 @@ export abstract class APIRequestContext extends SdkObject {
       if (!cookie.domain)
         cookie.domain = url.hostname;
       else
-        assert(cookie.domain.startsWith('.'));
+        assert(cookie.domain.startsWith('.') || !cookie.domain.includes('.'));
       if (!domainMatches(url.hostname, cookie.domain!))
         continue;
       // https://datatracker.ietf.org/doc/html/rfc6265#section-5.2.4
@@ -586,7 +587,7 @@ function parseCookie(header: string): channels.NetworkCookie | null {
         break;
       case 'domain':
         cookie.domain = value.toLocaleLowerCase() || '';
-        if (cookie.domain && !cookie.domain.startsWith('.'))
+        if (cookie.domain && !cookie.domain.startsWith('.') && cookie.domain.includes('.'))
           cookie.domain = '.' + cookie.domain;
         break;
       case 'path':

@@ -19,7 +19,7 @@
 const fs = require('fs');
 const path = require('path');
 const md = require('../markdown');
-const Documentation = require('./documentation');
+const docs = require('./documentation');
 
 /** @typedef {import('../markdown').MarkdownNode} MarkdownNode */
 /** @typedef {import('../markdown').MarkdownHeaderNode} MarkdownHeaderNode */
@@ -45,7 +45,7 @@ class ApiParser {
     const params = paramsPath ? md.parse(fs.readFileSync(paramsPath).toString()) : undefined;
     checkNoDuplicateParamEntries(params);
     const api = params ? applyTemplates(body, params) : body;
-    /** @type {Map<string, Documentation.Class>} */
+    /** @type {Map<string, docs.Class>} */
     this.classes = new Map();
     md.visitAll(api, node => {
       if (node.type === 'h1')
@@ -59,7 +59,7 @@ class ApiParser {
       if (node.type === 'h3')
         this.parseArgument(node);
     });
-    this.documentation = new Documentation([...this.classes.values()]);
+    this.documentation = new docs.Documentation([...this.classes.values()]);
     this.documentation.index();
   }
 
@@ -77,7 +77,7 @@ class ApiParser {
         continue;
       }
     }
-    const clazz = new Documentation.Class(extractMetainfo(node), name, [], extendsName, extractComments(node));
+    const clazz = new docs.Class(extractMetainfo(node), name, [], extendsName, extractComments(node));
     this.classes.set(clazz.name, clazz);
   }
 
@@ -100,16 +100,16 @@ class ApiParser {
       }
     }
     if (!returnType)
-      returnType = new Documentation.Type('void');
+      returnType = new docs.Type('void');
 
     const comments = extractComments(spec);
     let member;
     if (match[1] === 'event')
-      member = Documentation.Member.createEvent(extractMetainfo(spec), name, returnType, comments);
+      member = docs.Member.createEvent(extractMetainfo(spec), name, returnType, comments);
     if (match[1] === 'property')
-      member = Documentation.Member.createProperty(extractMetainfo(spec), name, returnType, comments, !optional);
+      member = docs.Member.createProperty(extractMetainfo(spec), name, returnType, comments, !optional);
     if (['method', 'async method', 'optional method', 'optional async method'].includes(match[1])) {
-      member = Documentation.Member.createMethod(extractMetainfo(spec), name, [], returnType, comments);
+      member = docs.Member.createMethod(extractMetainfo(spec), name, [], returnType, comments);
       if (match[1].includes('async'))
         member.async = true;
       if (match[1].includes('optional'))
@@ -118,7 +118,7 @@ class ApiParser {
     if (!member)
       throw new Error('Unknown member: ' + spec.text);
 
-    const clazz = /** @type {Documentation.Class} */(this.classes.get(match[2]));
+    const clazz = /** @type {docs.Class} */(this.classes.get(match[2]));
     const existingMember = clazz.membersArray.find(m => m.name === name && m.kind === member.kind);
     if (existingMember && isTypeOverride(existingMember, member)) {
       for (const lang of member?.langs?.only || []) {
@@ -173,8 +173,8 @@ class ApiParser {
       // match[1] === 'option'
       let options = method.argsArray.find(o => o.name === 'options');
       if (!options) {
-        const type = new Documentation.Type('Object', []);
-        options = Documentation.Member.createProperty({ langs: {}, experimental: false, since: 'v1.0' }, 'options', type, undefined, false);
+        const type = new docs.Type('Object', []);
+        options = docs.Member.createProperty({ langs: {}, experimental: false, since: 'v1.0', deprecated: undefined, discouraged: undefined }, 'options', type, undefined, false);
         method.argsArray.push(options);
       }
       const p = this.parseProperty(spec);
@@ -196,12 +196,12 @@ class ApiParser {
     const name = text.substring(0, typeStart).replace(/\`/g, '').trim();
     const comments = extractComments(spec);
     const { type, optional } = this.parseType(/** @type {MarkdownLiNode} */(param));
-    return Documentation.Member.createProperty(extractMetainfo(spec), name, type, comments, !optional);
+    return docs.Member.createProperty(extractMetainfo(spec), name, type, comments, !optional);
   }
 
   /**
    * @param {MarkdownLiNode} spec
-   * @return {{ type: Documentation.Type, optional: boolean, experimental: boolean }}
+   * @return {{ type: docs.Type, optional: boolean, experimental: boolean }}
    */
   parseType(spec) {
     const arg = parseVariable(spec.text);
@@ -210,9 +210,9 @@ class ApiParser {
       const { name, text } = parseVariable(/** @type {string} */(child.text));
       const comments = /** @type {MarkdownNode[]} */ ([{ type: 'text', text }]);
       const childType = this.parseType(child);
-      properties.push(Documentation.Member.createProperty({ langs: {}, experimental: childType.experimental, since: 'v1.0' }, name, childType.type, comments, !childType.optional));
+      properties.push(docs.Member.createProperty({ langs: {}, experimental: childType.experimental, since: 'v1.0', deprecated: undefined, discouraged: undefined }, name, childType.type, comments, !childType.optional));
     }
-    const type = Documentation.Type.parse(arg.type, properties);
+    const type = docs.Type.parse(arg.type, properties);
     return { type, optional: arg.optional, experimental: arg.experimental };
   }
 }
@@ -345,7 +345,9 @@ function extractMetainfo(spec) {
   return {
     langs: extractLangs(spec),
     since: extractSince(spec),
-    experimental: extractExperimental(spec)
+    experimental: extractExperimental(spec),
+    deprecated: extractAttribute(spec, 'deprecated'),
+    discouraged: extractAttribute(spec, 'discouraged'),
   };
 }
 
@@ -405,18 +407,31 @@ function extractSince(spec) {
 
 /**
  * @param {MarkdownHeaderNode} spec
+ * @param {string} name
+ * @returns {string | undefined}
+ */
+ function extractAttribute(spec, name) {
+  for (const child of spec.children) {
+    if (child.type !== 'li' || child.liType !== 'bullet' || !child.text.startsWith(name + ':'))
+      continue;
+    return child.text.substring(child.text.indexOf(':') + 1).trim() || undefined;
+  }
+}
+
+/**
+ * @param {MarkdownHeaderNode} spec
  * @returns {MarkdownNode[]}
  */
 function childrenWithoutProperties(spec) {
   return (spec.children || []).filter(c => {
-    const isProperty = c.type === 'li' && c.liType === 'bullet' && (c.text.startsWith('langs:') || c.text.startsWith('since:') || c.text === 'experimental');
+    const isProperty = c.type === 'li' && c.liType === 'bullet' && (c.text.startsWith('langs:') || c.text.startsWith('since:') || c.text.startsWith('deprecated:') || c.text.startsWith('discouraged:') || c.text === 'experimental');
     return !isProperty;
   });
 }
 
 /**
- * @param {Documentation.Member} existingMember
- * @param {Documentation.Member} member
+ * @param {docs.Member} existingMember
+ * @param {docs.Member} member
  * @returns {boolean}
  */
 function isTypeOverride(existingMember, member) {

@@ -47,6 +47,8 @@ Elements from child frames return the bounding box relative to the main frame, u
 Assuming the page is static, it is safe to use bounding box coordinates to perform input. For example, the following
 snippet should click the center of the element.
 
+**Usage**
+
 ```js
 const box = await element.boundingBox();
 await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
@@ -94,12 +96,16 @@ When all steps combined have not finished during the specified [`option: timeout
 
 ### option: Locator.check.position = %%-input-position-%%
 * since: v1.14
+
 ### option: Locator.check.force = %%-input-force-%%
 * since: v1.14
+
 ### option: Locator.check.noWaitAfter = %%-input-no-wait-after-%%
 * since: v1.14
+
 ### option: Locator.check.timeout = %%-input-timeout-%%
 * since: v1.14
+
 ### option: Locator.check.trial = %%-input-trial-%%
 * since: v1.14
 
@@ -112,8 +118,10 @@ If the target element is not an `<input>`, `<textarea>` or `[contenteditable]` e
 
 ### option: Locator.clear.force = %%-input-force-%%
 * since: v1.28
+
 ### option: Locator.clear.noWaitAfter = %%-input-no-wait-after-%%
 * since: v1.28
+
 ### option: Locator.clear.timeout = %%-input-timeout-%%
 * since: v1.28
 
@@ -133,20 +141,28 @@ When all steps combined have not finished during the specified [`option: timeout
 
 ### option: Locator.click.button = %%-input-button-%%
 * since: v1.14
+
 ### option: Locator.click.clickCount = %%-input-click-count-%%
 * since: v1.14
+
 ### option: Locator.click.delay = %%-input-down-up-delay-%%
 * since: v1.14
+
 ### option: Locator.click.position = %%-input-position-%%
 * since: v1.14
+
 ### option: Locator.click.modifiers = %%-input-modifiers-%%
 * since: v1.14
+
 ### option: Locator.click.force = %%-input-force-%%
 * since: v1.14
+
 ### option: Locator.click.noWaitAfter = %%-input-no-wait-after-%%
 * since: v1.14
+
 ### option: Locator.click.timeout = %%-input-timeout-%%
 * since: v1.14
+
 ### option: Locator.click.trial = %%-input-trial-%%
 * since: v1.14
 
@@ -179,18 +195,25 @@ When all steps combined have not finished during the specified [`option: timeout
 
 ### option: Locator.dblclick.button = %%-input-button-%%
 * since: v1.14
+
 ### option: Locator.dblclick.delay = %%-input-down-up-delay-%%
 * since: v1.14
+
 ### option: Locator.dblclick.position = %%-input-position-%%
 * since: v1.14
+
 ### option: Locator.dblclick.modifiers = %%-input-modifiers-%%
 * since: v1.14
+
 ### option: Locator.dblclick.force = %%-input-force-%%
 * since: v1.14
+
 ### option: Locator.dblclick.noWaitAfter = %%-input-no-wait-after-%%
 * since: v1.14
+
 ### option: Locator.dblclick.timeout = %%-input-timeout-%%
 * since: v1.14
+
 ### option: Locator.dblclick.trial = %%-input-trial-%%
 * since: v1.14
 
@@ -200,6 +223,8 @@ When all steps combined have not finished during the specified [`option: timeout
 The snippet below dispatches the `click` event on the element. Regardless of the visibility state of the element, `click`
 is dispatched. This is equivalent to calling
 [element.click()](https://developer.mozilla.org/en-US/docs/Web/API/HTMLElement/click).
+
+**Usage**
 
 ```js
 await element.dispatchEvent('click');
@@ -293,6 +318,8 @@ This method drags the locator to another target locator or target position. It w
 first move to the source element, perform a `mousedown`, then move to the target
 element or position and perform a `mouseup`.
 
+**Usage**
+
 ```js
 const source = page.locator('#source');
 const target = page.locator('#target');
@@ -362,14 +389,19 @@ Locator of the element to drag to.
 
 ### option: Locator.dragTo.force = %%-input-force-%%
 * since: v1.18
+
 ### option: Locator.dragTo.noWaitAfter = %%-input-no-wait-after-%%
 * since: v1.18
+
 ### option: Locator.dragTo.timeout = %%-input-timeout-%%
 * since: v1.18
+
 ### option: Locator.dragTo.trial = %%-input-trial-%%
 * since: v1.18
+
 ### option: Locator.dragTo.sourcePosition = %%-input-source-position-%%
 * since: v1.18
+
 ### option: Locator.dragTo.targetPosition = %%-input-target-position-%%
 * since: v1.18
 
@@ -399,7 +431,7 @@ This method passes this handle as the first argument to [`param: expression`].
 If [`param: expression`] returns a [Promise], then `handle.evaluate` would wait for the promise to resolve and return
 its value.
 
-Examples:
+**Usage**
 
 ```js
 const tweets = page.locator('.tweet .retweets');
@@ -448,7 +480,7 @@ a first argument to [`param: expression`]. Returns the result of [`param: expres
 If [`param: expression`] returns a [Promise], then [`method: Locator.evaluateAll`] would wait for the promise
 to resolve and return its value.
 
-Examples:
+**Usage**
 
 ```js
 const elements = page.locator('div');
@@ -462,17 +494,17 @@ boolean divCounts = (boolean) elements.evaluateAll("(divs, min) => divs.length >
 
 ```python async
 elements = page.locator("div")
-div_counts = await elements("(divs, min) => divs.length >= min", 10)
+div_counts = await elements.evaluate_all("(divs, min) => divs.length >= min", 10)
 ```
 
 ```python sync
 elements = page.locator("div")
-div_counts = elements("(divs, min) => divs.length >= min", 10)
+div_counts = elements.evaluate_all("(divs, min) => divs.length >= min", 10)
 ```
 
 ```csharp
 var elements = page.Locator("div");
-var divsCount = await elements.EvaluateAll<bool>("(divs, min) => divs.length >= min", 10);
+var divsCount = await elements.EvaluateAllAsync<bool>("(divs, min) => divs.length >= min", 10);
 ```
 
 ### param: Locator.evaluateAll.expression = %%-evaluate-expression-%%
@@ -483,7 +515,6 @@ var divsCount = await elements.EvaluateAll<bool>("(divs, min) => divs.length >= 
 - `arg` ?<[EvaluationArgument]>
 
 Optional argument to pass to [`param: expression`].
-
 
 ## async method: Locator.evaluateHandle
 * since: v1.14
@@ -529,8 +560,10 @@ Value to set for the `<input>`, `<textarea>` or `[contenteditable]` element.
 
 ### option: Locator.fill.force = %%-input-force-%%
 * since: v1.14
+
 ### option: Locator.fill.noWaitAfter = %%-input-no-wait-after-%%
 * since: v1.14
+
 ### option: Locator.fill.timeout = %%-input-timeout-%%
 * since: v1.14
 
@@ -541,6 +574,8 @@ Value to set for the `<input>`, `<textarea>` or `[contenteditable]` element.
 This method narrows existing locator according to the options, for example filters by text.
 It can be chained to filter multiple times.
 
+**Usage**
+
 ```js
 const rowLocator = page.locator('tr');
 // ...
@@ -549,6 +584,7 @@ await rowLocator
     .filter({ has: page.getByRole('button', { name: 'column 2 button' }) })
     .screenshot();
 ```
+
 ```java
 Locator rowLocator = page.locator("tr");
 // ...
@@ -559,6 +595,7 @@ rowLocator
     ))
     .screenshot();
 ```
+
 ```python async
 row_locator = page.locator("tr")
 # ...
@@ -567,6 +604,7 @@ await row_locator
     .filter(has=page.get_by_role("button", name="column 2 button"))
     .screenshot()
 ```
+
 ```python sync
 row_locator = page.locator("tr")
 # ...
@@ -575,6 +613,7 @@ row_locator
     .filter(has=page.get_by_role("button", name="column 2 button"))
     .screenshot()
 ```
+
 ```csharp
 var rowLocator = page.Locator("tr");
 // ...
@@ -603,10 +642,11 @@ Calls [focus](https://developer.mozilla.org/en-US/docs/Web/API/HTMLElement/focus
 ### option: Locator.focus.timeout = %%-input-timeout-%%
 * since: v1.14
 
-
 ## method: Locator.frameLocator
 * since: v1.17
 - returns: <[FrameLocator]>
+
+**Usage**
 
 When working with iframes, you can create a frame locator that will enter the iframe and allow selecting elements
 in that iframe:
@@ -639,7 +679,6 @@ await locator.ClickAsync();
 ### param: Locator.frameLocator.selector = %%-find-selector-%%
 * since: v1.17
 
-
 ## async method: Locator.getAttribute
 * since: v1.14
 - returns: <[null]|[string]>
@@ -655,7 +694,6 @@ Attribute name to get the value for.
 ### option: Locator.getAttribute.timeout = %%-input-timeout-%%
 * since: v1.14
 
-
 ## method: Locator.getByAltText
 * since: v1.27
 - returns: <[Locator]>
@@ -663,8 +701,8 @@ Attribute name to get the value for.
 %%-template-locator-get-by-alt-text-%%
 
 ### param: Locator.getByAltText.text = %%-locator-get-by-text-text-%%
-### option: Locator.getByAltText.exact = %%-locator-get-by-text-exact-%%
 
+### option: Locator.getByAltText.exact = %%-locator-get-by-text-exact-%%
 
 ## method: Locator.getByLabel
 * since: v1.27
@@ -673,8 +711,8 @@ Attribute name to get the value for.
 %%-template-locator-get-by-label-text-%%
 
 ### param: Locator.getByLabel.text = %%-locator-get-by-text-text-%%
-### option: Locator.getByLabel.exact = %%-locator-get-by-text-exact-%%
 
+### option: Locator.getByLabel.exact = %%-locator-get-by-text-exact-%%
 
 ## method: Locator.getByPlaceholder
 * since: v1.27
@@ -683,8 +721,8 @@ Attribute name to get the value for.
 %%-template-locator-get-by-placeholder-text-%%
 
 ### param: Locator.getByPlaceholder.text = %%-locator-get-by-text-text-%%
-### option: Locator.getByPlaceholder.exact = %%-locator-get-by-text-exact-%%
 
+### option: Locator.getByPlaceholder.exact = %%-locator-get-by-text-exact-%%
 
 ## method: Locator.getByRole
 * since: v1.27
@@ -693,10 +731,11 @@ Attribute name to get the value for.
 %%-template-locator-get-by-role-%%
 
 ### param: Locator.getByRole.role = %%-locator-get-by-role-role-%%
+
 ### option: Locator.getByRole.-inline- = %%-locator-get-by-role-option-list-v1.27-%%
 * since: v1.27
-### option: Locator.getByRole.exact = %%-locator-get-by-role-option-exact-%%
 
+### option: Locator.getByRole.exact = %%-locator-get-by-role-option-exact-%%
 
 ## method: Locator.getByTestId
 * since: v1.27
@@ -707,7 +746,6 @@ Attribute name to get the value for.
 ### param: Locator.getByTestId.testId = %%-locator-get-by-test-id-test-id-%%
 * since: v1.27
 
-
 ## method: Locator.getByText
 * since: v1.27
 - returns: <[Locator]>
@@ -715,8 +753,8 @@ Attribute name to get the value for.
 %%-template-locator-get-by-text-%%
 
 ### param: Locator.getByText.text = %%-locator-get-by-text-text-%%
-### option: Locator.getByText.exact = %%-locator-get-by-text-exact-%%
 
+### option: Locator.getByText.exact = %%-locator-get-by-text-exact-%%
 
 ## method: Locator.getByTitle
 * since: v1.27
@@ -725,8 +763,8 @@ Attribute name to get the value for.
 %%-template-locator-get-by-title-%%
 
 ### param: Locator.getByTitle.text = %%-locator-get-by-text-text-%%
-### option: Locator.getByTitle.exact = %%-locator-get-by-text-exact-%%
 
+### option: Locator.getByTitle.exact = %%-locator-get-by-text-exact-%%
 
 ## async method: Locator.highlight
 * since: v1.20
@@ -749,14 +787,19 @@ When all steps combined have not finished during the specified [`option: timeout
 
 ### option: Locator.hover.position = %%-input-position-%%
 * since: v1.14
+
 ### option: Locator.hover.modifiers = %%-input-modifiers-%%
 * since: v1.14
+
 ### option: Locator.hover.force = %%-input-force-%%
 * since: v1.14
+
 ### option: Locator.hover.timeout = %%-input-timeout-%%
 * since: v1.14
+
 ### option: Locator.hover.trial = %%-input-trial-%%
 * since: v1.14
+
 ### option: Locator.hover.noWaitAfter = %%-input-no-wait-after-%%
 * since: v1.28
 
@@ -833,9 +876,8 @@ Returns whether the element is hidden, the opposite of [visible](../actionabilit
 
 ### option: Locator.isHidden.timeout
 * since: v1.14
+* deprecated: This option is ignored. [`method: Locator.isHidden`] does not wait for the element to become hidden and returns immediately.
 - `timeout` <[float]>
-
-**DEPRECATED** This option is ignored. [`method: Locator.isHidden`] does not wait for the element to become hidden and returns immediately.
 
 ## async method: Locator.isVisible
 * since: v1.14
@@ -845,9 +887,8 @@ Returns whether the element is [visible](../actionability.md#visible).
 
 ### option: Locator.isVisible.timeout
 * since: v1.14
+* deprecated: This option is ignored. [`method: Locator.isVisible`] does not wait for the element to become visible and returns immediately.
 - `timeout` <[float]>
-
-**DEPRECATED** This option is ignored. [`method: Locator.isVisible`] does not wait for the element to become visible and returns immediately.
 
 ## method: Locator.last
 * since: v1.14
@@ -863,6 +904,7 @@ Returns locator to the last matching element.
 
 ### param: Locator.locator.selector = %%-find-selector-%%
 * since: v1.14
+
 ### option: Locator.locator.-inline- = %%-locator-options-list-v1.14-%%
 * since: v1.14
 
@@ -959,6 +1001,8 @@ Returns the array of option values that have been successfully selected.
 
 Triggers a `change` and `input` event once all the provided options have been selected.
 
+**Usage**
+
 ```js
 // single selection matching the value
 element.selectOption('blue');
@@ -1013,10 +1057,13 @@ await element.SelectOptionAsync(new[] {
 
 ### param: Locator.selectOption.values = %%-select-options-values-%%
 * since: v1.14
+
 ### option: Locator.selectOption.force = %%-input-force-%%
 * since: v1.14
+
 ### option: Locator.selectOption.noWaitAfter = %%-input-no-wait-after-%%
 * since: v1.14
+
 ### option: Locator.selectOption.timeout = %%-input-timeout-%%
 * since: v1.14
 
@@ -1030,6 +1077,7 @@ If the element is inside the `<label>` element that has an associated [control](
 
 ### option: Locator.selectText.force = %%-input-force-%%
 * since: v1.14
+
 ### option: Locator.selectText.timeout = %%-input-timeout-%%
 * since: v1.14
 
@@ -1051,14 +1099,19 @@ When all steps combined have not finished during the specified [`option: timeout
 
 ### param: Locator.setChecked.checked = %%-input-checked-%%
 * since: v1.15
+
 ### option: Locator.setChecked.force = %%-input-force-%%
 * since: v1.15
+
 ### option: Locator.setChecked.noWaitAfter = %%-input-no-wait-after-%%
 * since: v1.15
+
 ### option: Locator.setChecked.position = %%-input-position-%%
 * since: v1.15
+
 ### option: Locator.setChecked.timeout = %%-input-timeout-%%
 * since: v1.15
+
 ### option: Locator.setChecked.trial = %%-input-trial-%%
 * since: v1.15
 
@@ -1073,8 +1126,10 @@ This method expects [Locator] to point to an
 
 ### param: Locator.setInputFiles.files = %%-input-files-%%
 * since: v1.14
+
 ### option: Locator.setInputFiles.noWaitAfter = %%-input-no-wait-after-%%
 * since: v1.14
+
 ### option: Locator.setInputFiles.timeout = %%-input-timeout-%%
 * since: v1.14
 
@@ -1098,14 +1153,19 @@ When all steps combined have not finished during the specified [`option: timeout
 
 ### option: Locator.tap.position = %%-input-position-%%
 * since: v1.14
+
 ### option: Locator.tap.modifiers = %%-input-modifiers-%%
 * since: v1.14
+
 ### option: Locator.tap.force = %%-input-force-%%
 * since: v1.14
+
 ### option: Locator.tap.noWaitAfter = %%-input-no-wait-after-%%
 * since: v1.14
+
 ### option: Locator.tap.timeout = %%-input-timeout-%%
 * since: v1.14
+
 ### option: Locator.tap.trial = %%-input-trial-%%
 * since: v1.14
 
@@ -1124,6 +1184,8 @@ Returns the `node.textContent`.
 Focuses the element, and then sends a `keydown`, `keypress`/`input`, and `keyup` event for each character in the text.
 
 To press a special key, like `Control` or `ArrowDown`, use [`method: Locator.press`].
+
+**Usage**
 
 ```js
 await element.type('Hello'); // Types instantly
@@ -1196,6 +1258,7 @@ Time to wait between key presses in milliseconds. Defaults to 0.
 
 ### option: Locator.type.noWaitAfter = %%-input-no-wait-after-%%
 * since: v1.14
+
 ### option: Locator.type.timeout = %%-input-timeout-%%
 * since: v1.14
 
@@ -1218,12 +1281,16 @@ When all steps combined have not finished during the specified [`option: timeout
 
 ### option: Locator.uncheck.position = %%-input-position-%%
 * since: v1.14
+
 ### option: Locator.uncheck.force = %%-input-force-%%
 * since: v1.14
+
 ### option: Locator.uncheck.noWaitAfter = %%-input-no-wait-after-%%
 * since: v1.14
+
 ### option: Locator.uncheck.timeout = %%-input-timeout-%%
 * since: v1.14
+
 ### option: Locator.uncheck.trial = %%-input-trial-%%
 * since: v1.14
 
@@ -1234,6 +1301,8 @@ Returns when element specified by locator satisfies the [`option: state`] option
 
 If target element already satisfies the condition, the method returns immediately. Otherwise, waits for up to
 [`option: timeout`] milliseconds until the condition is met.
+
+**Usage**
 
 ```js
 const orderSent = page.locator('#order-sent');
@@ -1262,5 +1331,6 @@ orderSent.WaitForAsync();
 
 ### option: Locator.waitFor.state = %%-wait-for-selector-state-%%
 * since: v1.16
+
 ### option: Locator.waitFor.timeout = %%-input-timeout-%%
 * since: v1.16

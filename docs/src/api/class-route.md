@@ -41,6 +41,8 @@ Optional error code. Defaults to `failed`, could be one of the following:
 
 Continues route's request with optional overrides.
 
+**Usage**
+
 ```js
 await page.route('**/*', (route, request) => {
   // Override headers
@@ -112,7 +114,15 @@ If set changes the request method (e.g. GET or POST)
 
 ### option: Route.continue.postData
 * since: v1.8
+* langs: js, python, java
 - `postData` <[string]|[Buffer]>
+
+If set changes the post data of request
+
+### option: Route.continue.postData
+* since: v1.8
+* langs: csharp
+- `postData` <[Buffer]>
 
 If set changes the post data of request
 
@@ -129,6 +139,8 @@ When several routes match the given pattern, they run in the order opposite to t
 That way the last registered route can always override all the previous ones. In the example below,
 request will be handled by the bottom-most handler first, then it'll fall back to the previous one and
 in the end will be aborted by the first registered route.
+
+**Usage**
 
 ```js
 await page.route('**/*', route => {
@@ -378,7 +390,15 @@ If set changes the request method (e.g. GET or POST)
 
 ### option: Route.fallback.postData
 * since: v1.23
+* langs: js, python, java
 - `postData` <[string]|[Buffer]>
+
+If set changes the post data of request
+
+### option: Route.fallback.postData
+* since: v1.23
+* langs: csharp
+- `postData` <[Buffer]>
 
 If set changes the post data of request
 
@@ -392,6 +412,8 @@ If set changes the request HTTP headers. Header values will be converted to a st
 * since: v1.8
 
 Fulfills route's request with given response.
+
+**Usage**
 
 An example of fulfilling all requests with 404 responses:
 

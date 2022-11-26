@@ -33,9 +33,32 @@ test('should fire close event', async ({ playwright }) => {
   expect(events.join('|')).toBe('context|application');
 });
 
+test('should dispatch ready event', async ({ playwright }) => {
+  const electronApp = await playwright._electron.launch({
+    args: [path.join(__dirname, 'electron-app-ready-event.js')],
+  });
+  try {
+    const events = await electronApp.evaluate(() => globalThis.__playwrightLog);
+    expect(events).toEqual([
+      'isReady == false',
+      'will-finish-launching fired',
+      'ready fired',
+      'whenReady resolved',
+      'isReady == true',
+    ]);
+  } finally {
+    await electronApp.close();
+  }
+});
+
 test('should script application', async ({ electronApp }) => {
   const appPath = await electronApp.evaluate(async ({ app }) => app.getAppPath());
   expect(appPath).toBe(path.resolve(__dirname));
+});
+
+test('should preserve args', async ({ electronApp }) => {
+  const argv = await electronApp.evaluate(async () => process.argv);
+  expect(argv.slice(1)).toEqual([expect.stringContaining(path.join('electron', 'electron-app.js'))]);
 });
 
 test('should return windows', async ({ electronApp, newWindow }) => {
@@ -131,7 +154,7 @@ test('should create page for browser view', async ({ playwright }) => {
   const app = await playwright._electron.launch({
     args: [path.join(__dirname, 'electron-window-app.js')],
   });
-  const browserViewPagePromise = app.waitForEvent('window');
+  await app.firstWindow();
   await app.evaluate(async electron => {
     const window = electron.BrowserWindow.getAllWindows()[0];
     const view = new electron.BrowserView();
@@ -139,8 +162,7 @@ test('should create page for browser view', async ({ playwright }) => {
     await view.webContents.loadURL('about:blank');
     view.setBounds({ x: 0, y: 0, width: 256, height: 256 });
   });
-  await browserViewPagePromise;
-  expect(app.windows()).toHaveLength(2);
+  await expect.poll(() => app.windows().length).toBe(2);
   await app.close();
 });
 
@@ -148,7 +170,7 @@ test('should return same browser window for browser view pages', async ({ playwr
   const app = await playwright._electron.launch({
     args: [path.join(__dirname, 'electron-window-app.js')],
   });
-  const browserViewPagePromise = app.waitForEvent('window');
+  await app.firstWindow();
   await app.evaluate(async electron => {
     const window = electron.BrowserWindow.getAllWindows()[0];
     const view = new electron.BrowserView();
@@ -156,7 +178,7 @@ test('should return same browser window for browser view pages', async ({ playwr
     await view.webContents.loadURL('about:blank');
     view.setBounds({ x: 0, y: 0, width: 256, height: 256 });
   });
-  await browserViewPagePromise;
+  await expect.poll(() => app.windows().length).toBe(2);
   const [firstWindowId, secondWindowId] = await Promise.all(
       app.windows().map(async page => {
         const bwHandle = await app.browserWindow(page);
@@ -183,7 +205,6 @@ test('should record video', async ({ playwright }, testInfo) => {
 
 test('should be able to get the first window when with a delayed navigation', async ({ playwright }) => {
   test.info().annotations.push({ type: 'issue', description: 'https://github.com/microsoft/playwright/issues/17765' });
-  test.fixme();
 
   const app = await playwright._electron.launch({
     args: [path.join(__dirname, 'electron-window-app-delayed-loadURL.js')],

@@ -1218,6 +1218,8 @@ Page:
           - active
           - none
           - no-override
+      tracing:
+        snapshot: true
 
     exposeBinding:
       parameters:
@@ -2130,6 +2132,7 @@ Frame:
       returns:
         matches: boolean
         received: SerializedValue?
+        timedOut: boolean?
         log:
           type: array?
           items: string
@@ -2364,6 +2367,8 @@ ElementHandle:
         pausesBeforeInput: true
 
     focus:
+      tracing:
+        snapshot: true
 
     getAttribute:
       parameters:

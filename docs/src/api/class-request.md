@@ -29,6 +29,8 @@ An object with all the request HTTP headers associated with this request. The he
 
 The method returns `null` unless this request has failed, as reported by `requestfailed` event.
 
+**Usage**
+
 Example of logging of all the failed requests:
 
 ```js
@@ -89,7 +91,6 @@ Returns the value of the header matching the name. The name is case insensitive.
 
 Name of the header.
 
-
 ## method: Request.isNavigationRequest
 * since: v1.8
 - returns: <[boolean]>
@@ -133,6 +134,8 @@ Request that was redirected by the server to this one, if any.
 When the server responds with a redirect, Playwright creates a new [Request] object. The two requests are connected by
 `redirectedFrom()` and `redirectedTo()` methods. When multiple server redirects has happened, it is possible to
 construct the whole redirect chain by repeatedly calling `redirectedFrom()`.
+
+**Usage**
 
 For example, if the website `http://example.com` redirects to `https://example.com`:
 
@@ -193,6 +196,8 @@ Console.WriteLine(response.Request.RedirectedFrom?.Url); // null
 - returns: <[null]|[Request]>
 
 New request issued by the browser if the server responded with redirect.
+
+**Usage**
 
 This method is the opposite of [`method: Request.redirectedFrom`]:
 
@@ -272,6 +277,8 @@ Returns resource size information for given request.
 Returns resource timing information for given request. Most of the timing values become available upon the response,
 `responseEnd` becomes available when request finishes. Find more information at
 [Resource Timing API](https://developer.mozilla.org/en-US/docs/Web/API/PerformanceResourceTiming).
+
+**Usage**
 
 ```js
 const [request] = await Promise.all([
