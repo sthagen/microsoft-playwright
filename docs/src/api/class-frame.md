@@ -479,7 +479,7 @@ Optional event-specific initialization properties.
 Returns the return value of [`param: expression`].
 
 The method finds an element matching the specified selector within the frame and passes it as a first argument to
-[`param: expression`]. See [Working with selectors](../selectors.md) for more details. If no
+[`param: expression`]. If no
 elements match the selector, the method throws an error.
 
 If [`param: expression`] returns a [Promise], then [`method: Frame.evalOnSelector`] would wait for the promise to resolve and return its
@@ -544,8 +544,7 @@ Optional argument to pass to [`param: expression`].
 Returns the return value of [`param: expression`].
 
 The method finds all elements matching the specified selector within the frame and passes an array of matched elements
-as a first argument to [`param: expression`]. See [Working with selectors](../selectors.md) for
-more details.
+as a first argument to [`param: expression`].
 
 If [`param: expression`] returns a [Promise], then [`method: Frame.evalOnSelectorAll`] would wait for the promise to resolve and return its
 value.
@@ -1367,8 +1366,7 @@ Returns the ElementHandle pointing to the frame element.
 The use of [ElementHandle] is discouraged, use [Locator] objects and web-first assertions instead.
 :::
 
-The method finds an element matching the specified selector within the frame. See
-[Working with selectors](../selectors.md) for more details. If no elements match the selector,
+The method finds an element matching the specified selector within the frame. If no elements match the selector,
 returns `null`.
 
 ### param: Frame.querySelector.selector = %%-query-selector-%%
@@ -1391,8 +1389,7 @@ Returns the ElementHandles pointing to the frame elements.
 The use of [ElementHandle] is discouraged, use [Locator] objects instead.
 :::
 
-The method finds all elements matching the specified selector within the frame. See
-[Working with selectors](../selectors.md) for more details. If no elements match the selector,
+The method finds all elements matching the specified selector within the frame. If no elements match the selector,
 returns empty array.
 
 ### param: Frame.querySelectorAll.selector = %%-query-selector-%%
@@ -1928,15 +1925,15 @@ This method waits for the frame to navigate to a new URL. It is useful for when 
 the frame to navigate. Consider this example:
 
 ```js
-const [response] = await Promise.all([
-  frame.waitForNavigation(), // The promise resolves after navigation has finished
-  frame.click('a.delayed-navigation'), // Clicking the link will indirectly cause a navigation
-]);
+// Start waiting for navigation before clicking. Note no await.
+const navigationPromise = page.waitForNavigation();
+await page.getByText('Navigate after timeout').click();
+await navigationPromise;
 ```
 
 ```java
 // The method returns after navigation has finished
-Response response = frame.waitForNavigation(() -> {
+frame.waitForNavigation(() -> {
   // Clicking the link will indirectly cause a navigation
   frame.click("a.delayed-navigation");
 });

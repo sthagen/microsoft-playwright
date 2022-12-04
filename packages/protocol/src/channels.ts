@@ -1825,6 +1825,7 @@ export type PageExpectScreenshotParams = {
     selector: string,
   },
   comparatorOptions?: {
+    comparator?: string,
     maxDiffPixels?: number,
     maxDiffPixelRatio?: number,
     threshold?: number,
@@ -1850,6 +1851,7 @@ export type PageExpectScreenshotOptions = {
     selector: string,
   },
   comparatorOptions?: {
+    comparator?: string,
     maxDiffPixels?: number,
     maxDiffPixelRatio?: number,
     threshold?: number,
@@ -2392,10 +2394,12 @@ export type FrameDispatchEventResult = void;
 export type FrameEvaluateExpressionParams = {
   expression: string,
   isFunction?: boolean,
+  exposeUtilityScript?: boolean,
   arg: SerializedArgument,
 };
 export type FrameEvaluateExpressionOptions = {
   isFunction?: boolean,
+  exposeUtilityScript?: boolean,
 };
 export type FrameEvaluateExpressionResult = {
   value: SerializedValue,

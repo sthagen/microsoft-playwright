@@ -1266,6 +1266,7 @@ Page:
         comparatorOptions:
           type: object?
           properties:
+            comparator: string?
             maxDiffPixels: number?
             maxDiffPixelRatio: number?
             threshold: number?
@@ -1739,6 +1740,7 @@ Frame:
       parameters:
         expression: string
         isFunction: boolean?
+        exposeUtilityScript: boolean?
         arg: SerializedArgument
       returns:
         value: SerializedValue

@@ -107,8 +107,7 @@ Using `PWDEBUG=console` will configure the browser for debugging in Developer to
 - **Runs headed**: Browsers always launch in headed mode
 - **Disables timeout**: Sets default timeout to 0 (= no timeout)
 - **Console helper**: Configures a `playwright` object in the browser to generate and highlight
-  [Playwright selectors](./selectors.md). This can be used to verify text or
-  composite selectors.
+  [Playwright locators](./locators.md). This can be used to verify locators.
 
 ```bash tab=bash-bash lang=js
 PWDEBUG=console npx playwright test
@@ -201,7 +200,7 @@ pwsh bin/Debug/netX/playwright.ps1 codegen wikipedia.org
 
 ### Stepping through the Playwright script
 
-The Inspector opens up a browser window highlighting the selectors as you step through each line of the test. Use the explore button to find other available [selectors](./selectors.md) which you can then copy into your test file and rerun your tests to see if they pass.
+The Inspector opens up a browser window highlighting the elements as you step through each line of the test. Use the explore button to pick a [locator](./locators.md) which you can then copy into your test file and rerun your tests to see if they pass.
 
 <img width="557" alt="Paused on line" src="https://user-images.githubusercontent.com/883973/108614337-71761580-73ae-11eb-9f61-3d29c52c9520.png"></img>
 
@@ -251,7 +250,7 @@ prevent the Playwright script from executing any further.
 
 Playwright runs browsers in headless mode by default. To change this behavior,
 use `headless: false` as a launch option. You can also use the [`option: slowMo`] option
-to slow down execution and follow along while debugging.
+to slow down execution (by N milliseconds per operation) and follow along while debugging.
 
 ```js
 await chromium.launch({ headless: false, slowMo: 100 }); // or firefox, webkit

@@ -291,7 +291,7 @@ export interface Page {
    * The method finds an element matching the specified selector within the page. If no elements match the selector, the
    * return value resolves to `null`. To wait for an element on the page, use
    * [locator.waitFor([options])](https://playwright.dev/docs/api/class-locator#locator-wait-for).
-   * @param selector A selector to query for. See [working with selectors](https://playwright.dev/docs/selectors) for more details.
+   * @param selector A selector to query for.
    * @param options
    */
   $<K extends keyof HTMLElementTagNameMap>(selector: K, options?: { strict: boolean }): Promise<ElementHandleForTag<K> | null>;
@@ -301,7 +301,7 @@ export interface Page {
    * The method finds an element matching the specified selector within the page. If no elements match the selector, the
    * return value resolves to `null`. To wait for an element on the page, use
    * [locator.waitFor([options])](https://playwright.dev/docs/api/class-locator#locator-wait-for).
-   * @param selector A selector to query for. See [working with selectors](https://playwright.dev/docs/selectors) for more details.
+   * @param selector A selector to query for.
    * @param options
    */
   $(selector: string, options?: { strict: boolean }): Promise<ElementHandle<SVGElement | HTMLElement> | null>;
@@ -311,7 +311,7 @@ export interface Page {
    *
    * The method finds all elements matching the specified selector within the page. If no elements match the selector,
    * the return value resolves to `[]`.
-   * @param selector A selector to query for. See [working with selectors](https://playwright.dev/docs/selectors) for more details.
+   * @param selector A selector to query for.
    */
   $$<K extends keyof HTMLElementTagNameMap>(selector: K): Promise<ElementHandleForTag<K>[]>;
   /**
@@ -319,7 +319,7 @@ export interface Page {
    *
    * The method finds all elements matching the specified selector within the page. If no elements match the selector,
    * the return value resolves to `[]`.
-   * @param selector A selector to query for. See [working with selectors](https://playwright.dev/docs/selectors) for more details.
+   * @param selector A selector to query for.
    */
   $$(selector: string): Promise<ElementHandle<SVGElement | HTMLElement>[]>;
 
@@ -344,7 +344,7 @@ export interface Page {
    * const preloadHrefTS = await page.$eval('link[rel=preload]', (el: HTMLLinkElement) => el.href);
    * ```
    *
-   * @param selector A selector to query for. See [working with selectors](https://playwright.dev/docs/selectors) for more details.
+   * @param selector A selector to query for.
    * @param pageFunction Function to be evaluated in the page context.
    * @param arg Optional argument to pass to `pageFunction`.
    * @param options
@@ -371,7 +371,7 @@ export interface Page {
    * const preloadHrefTS = await page.$eval('link[rel=preload]', (el: HTMLLinkElement) => el.href);
    * ```
    *
-   * @param selector A selector to query for. See [working with selectors](https://playwright.dev/docs/selectors) for more details.
+   * @param selector A selector to query for.
    * @param pageFunction Function to be evaluated in the page context.
    * @param arg Optional argument to pass to `pageFunction`.
    * @param options
@@ -398,7 +398,7 @@ export interface Page {
    * const preloadHrefTS = await page.$eval('link[rel=preload]', (el: HTMLLinkElement) => el.href);
    * ```
    *
-   * @param selector A selector to query for. See [working with selectors](https://playwright.dev/docs/selectors) for more details.
+   * @param selector A selector to query for.
    * @param pageFunction Function to be evaluated in the page context.
    * @param arg Optional argument to pass to `pageFunction`.
    * @param options
@@ -425,7 +425,7 @@ export interface Page {
    * const preloadHrefTS = await page.$eval('link[rel=preload]', (el: HTMLLinkElement) => el.href);
    * ```
    *
-   * @param selector A selector to query for. See [working with selectors](https://playwright.dev/docs/selectors) for more details.
+   * @param selector A selector to query for.
    * @param pageFunction Function to be evaluated in the page context.
    * @param arg Optional argument to pass to `pageFunction`.
    * @param options
@@ -449,7 +449,7 @@ export interface Page {
    * const divCounts = await page.$$eval('div', (divs, min) => divs.length >= min, 10);
    * ```
    *
-   * @param selector A selector to query for. See [working with selectors](https://playwright.dev/docs/selectors) for more details.
+   * @param selector A selector to query for.
    * @param pageFunction Function to be evaluated in the page context.
    * @param arg Optional argument to pass to `pageFunction`.
    */
@@ -471,7 +471,7 @@ export interface Page {
    * const divCounts = await page.$$eval('div', (divs, min) => divs.length >= min, 10);
    * ```
    *
-   * @param selector A selector to query for. See [working with selectors](https://playwright.dev/docs/selectors) for more details.
+   * @param selector A selector to query for.
    * @param pageFunction Function to be evaluated in the page context.
    * @param arg Optional argument to pass to `pageFunction`.
    */
@@ -493,7 +493,7 @@ export interface Page {
    * const divCounts = await page.$$eval('div', (divs, min) => divs.length >= min, 10);
    * ```
    *
-   * @param selector A selector to query for. See [working with selectors](https://playwright.dev/docs/selectors) for more details.
+   * @param selector A selector to query for.
    * @param pageFunction Function to be evaluated in the page context.
    * @param arg Optional argument to pass to `pageFunction`.
    */
@@ -515,7 +515,7 @@ export interface Page {
    * const divCounts = await page.$$eval('div', (divs, min) => divs.length >= min, 10);
    * ```
    *
-   * @param selector A selector to query for. See [working with selectors](https://playwright.dev/docs/selectors) for more details.
+   * @param selector A selector to query for.
    * @param pageFunction Function to be evaluated in the page context.
    * @param arg Optional argument to pass to `pageFunction`.
    */
@@ -624,7 +624,7 @@ export interface Page {
    * })();
    * ```
    *
-   * @param selector A selector to query for. See [working with selectors](https://playwright.dev/docs/selectors) for more details.
+   * @param selector A selector to query for.
    * @param options
    */
   waitForSelector<K extends keyof HTMLElementTagNameMap>(selector: K, options?: PageWaitForSelectorOptionsNotHidden): Promise<ElementHandleForTag<K>>;
@@ -658,7 +658,7 @@ export interface Page {
    * })();
    * ```
    *
-   * @param selector A selector to query for. See [working with selectors](https://playwright.dev/docs/selectors) for more details.
+   * @param selector A selector to query for.
    * @param options
    */
   waitForSelector(selector: string, options?: PageWaitForSelectorOptionsNotHidden): Promise<ElementHandle<SVGElement | HTMLElement>>;
@@ -692,7 +692,7 @@ export interface Page {
    * })();
    * ```
    *
-   * @param selector A selector to query for. See [working with selectors](https://playwright.dev/docs/selectors) for more details.
+   * @param selector A selector to query for.
    * @param options
    */
   waitForSelector<K extends keyof HTMLElementTagNameMap>(selector: K, options: PageWaitForSelectorOptions): Promise<ElementHandleForTag<K> | null>;
@@ -726,7 +726,7 @@ export interface Page {
    * })();
    * ```
    *
-   * @param selector A selector to query for. See [working with selectors](https://playwright.dev/docs/selectors) for more details.
+   * @param selector A selector to query for.
    * @param options
    */
   waitForSelector(selector: string, options: PageWaitForSelectorOptions): Promise<null|ElementHandle<SVGElement | HTMLElement>>;
@@ -990,14 +990,10 @@ export interface Page {
    * "http://example.com" is done and its response has started loading in the popup.
    *
    * ```js
-   * // Note that Promise.all prevents a race condition
-   * // between evaluating and waiting for the popup.
-   * const [popup] = await Promise.all([
-   *   // It is important to call waitForEvent first.
-   *   page.waitForEvent('popup'),
-   *   // Opens the popup.
-   *   page.evaluate(() => window.open('https://example.com')),
-   * ]);
+   * // Start waiting for popup before clicking. Note no await.
+   * const popupPromise = page.waitForEvent('popup');
+   * await page.getByText('open the popup').click();
+   * const popup = await popupPromise;
    * console.log(await popup.evaluate('location.href'));
    * ```
    *
@@ -1287,14 +1283,10 @@ export interface Page {
    * "http://example.com" is done and its response has started loading in the popup.
    *
    * ```js
-   * // Note that Promise.all prevents a race condition
-   * // between evaluating and waiting for the popup.
-   * const [popup] = await Promise.all([
-   *   // It is important to call waitForEvent first.
-   *   page.waitForEvent('popup'),
-   *   // Opens the popup.
-   *   page.evaluate(() => window.open('https://example.com')),
-   * ]);
+   * // Start waiting for popup before clicking. Note no await.
+   * const popupPromise = page.waitForEvent('popup');
+   * await page.getByText('open the popup').click();
+   * const popup = await popupPromise;
    * console.log(await popup.evaluate('location.href'));
    * ```
    *
@@ -1679,14 +1671,10 @@ export interface Page {
    * "http://example.com" is done and its response has started loading in the popup.
    *
    * ```js
-   * // Note that Promise.all prevents a race condition
-   * // between evaluating and waiting for the popup.
-   * const [popup] = await Promise.all([
-   *   // It is important to call waitForEvent first.
-   *   page.waitForEvent('popup'),
-   *   // Opens the popup.
-   *   page.evaluate(() => window.open('https://example.com')),
-   * ]);
+   * // Start waiting for popup before clicking. Note no await.
+   * const popupPromise = page.waitForEvent('popup');
+   * await page.getByText('open the popup').click();
+   * const popup = await popupPromise;
    * console.log(await popup.evaluate('location.href'));
    * ```
    *
@@ -1826,7 +1814,7 @@ export interface Page {
    * When all steps combined have not finished during the specified `timeout`, this method throws a [TimeoutError].
    * Passing zero timeout disables this.
    * @param selector A selector to search for an element. If there are multiple elements satisfying the selector, the first will be
-   * used. See [working with selectors](https://playwright.dev/docs/selectors) for more details.
+   * used.
    * @param options
    */
   check(selector: string, options?: {
@@ -1888,7 +1876,7 @@ export interface Page {
    * When all steps combined have not finished during the specified `timeout`, this method throws a [TimeoutError].
    * Passing zero timeout disables this.
    * @param selector A selector to search for an element. If there are multiple elements satisfying the selector, the first will be
-   * used. See [working with selectors](https://playwright.dev/docs/selectors) for more details.
+   * used.
    * @param options
    */
   click(selector: string, options?: {
@@ -2009,7 +1997,7 @@ export interface Page {
    *
    * **NOTE** `page.dblclick()` dispatches two `click` events and a single `dblclick` event.
    * @param selector A selector to search for an element. If there are multiple elements satisfying the selector, the first will be
-   * used. See [working with selectors](https://playwright.dev/docs/selectors) for more details.
+   * used.
    * @param options
    */
   dblclick(selector: string, options?: {
@@ -2106,7 +2094,7 @@ export interface Page {
    * ```
    *
    * @param selector A selector to search for an element. If there are multiple elements satisfying the selector, the first will be
-   * used. See [working with selectors](https://playwright.dev/docs/selectors) for more details.
+   * used.
    * @param type DOM event type: `"click"`, `"dragstart"`, etc.
    * @param eventInit Optional event-specific initialization properties.
    * @param options
@@ -2143,9 +2131,9 @@ export interface Page {
    * ```
    *
    * @param source A selector to search for an element to drag. If there are multiple elements satisfying the selector, the first will
-   * be used. See [working with selectors](https://playwright.dev/docs/selectors) for more details.
+   * be used.
    * @param target A selector to search for an element to drop onto. If there are multiple elements satisfying the selector, the first
-   * will be used. See [working with selectors](https://playwright.dev/docs/selectors) for more details.
+   * will be used.
    * @param options
    */
   dragAndDrop(source: string, target: string, options?: {
@@ -2324,7 +2312,7 @@ export interface Page {
    * To send fine-grained keyboard events, use
    * [page.type(selector, text[, options])](https://playwright.dev/docs/api/class-page#page-type).
    * @param selector A selector to search for an element. If there are multiple elements satisfying the selector, the first will be
-   * used. See [working with selectors](https://playwright.dev/docs/selectors) for more details.
+   * used.
    * @param value Value to fill for the `<input>`, `<textarea>` or `[contenteditable]` element.
    * @param options
    */
@@ -2362,7 +2350,7 @@ export interface Page {
    * This method fetches an element with `selector` and focuses it. If there's no element matching `selector`, the
    * method waits until a matching element appears in the DOM.
    * @param selector A selector to search for an element. If there are multiple elements satisfying the selector, the first will be
-   * used. See [working with selectors](https://playwright.dev/docs/selectors) for more details.
+   * used.
    * @param options
    */
   focus(selector: string, options?: {
@@ -2422,7 +2410,7 @@ export interface Page {
    * await locator.click();
    * ```
    *
-   * @param selector A selector to use when resolving DOM element. See [working with selectors](https://playwright.dev/docs/selectors) for more details.
+   * @param selector A selector to use when resolving DOM element.
    */
   frameLocator(selector: string): FrameLocator;
 
@@ -2436,7 +2424,7 @@ export interface Page {
    *
    * Returns element attribute value.
    * @param selector A selector to search for an element. If there are multiple elements satisfying the selector, the first will be
-   * used. See [working with selectors](https://playwright.dev/docs/selectors) for more details.
+   * used.
    * @param name Attribute name to get the value for.
    * @param options
    */
@@ -2805,7 +2793,7 @@ export interface Page {
    * When all steps combined have not finished during the specified `timeout`, this method throws a [TimeoutError].
    * Passing zero timeout disables this.
    * @param selector A selector to search for an element. If there are multiple elements satisfying the selector, the first will be
-   * used. See [working with selectors](https://playwright.dev/docs/selectors) for more details.
+   * used.
    * @param options
    */
   hover(selector: string, options?: {
@@ -2863,7 +2851,7 @@ export interface Page {
    *
    * Returns `element.innerHTML`.
    * @param selector A selector to search for an element. If there are multiple elements satisfying the selector, the first will be
-   * used. See [working with selectors](https://playwright.dev/docs/selectors) for more details.
+   * used.
    * @param options
    */
   innerHTML(selector: string, options?: {
@@ -2887,7 +2875,7 @@ export interface Page {
    *
    * Returns `element.innerText`.
    * @param selector A selector to search for an element. If there are multiple elements satisfying the selector, the first will be
-   * used. See [working with selectors](https://playwright.dev/docs/selectors) for more details.
+   * used.
    * @param options
    */
   innerText(selector: string, options?: {
@@ -2915,7 +2903,7 @@ export interface Page {
    * [control](https://developer.mozilla.org/en-US/docs/Web/API/HTMLLabelElement/control), returns the value of the
    * control.
    * @param selector A selector to search for an element. If there are multiple elements satisfying the selector, the first will be
-   * used. See [working with selectors](https://playwright.dev/docs/selectors) for more details.
+   * used.
    * @param options
    */
   inputValue(selector: string, options?: {
@@ -2939,7 +2927,7 @@ export interface Page {
    *
    * Returns whether the element is checked. Throws if the element is not a checkbox or radio input.
    * @param selector A selector to search for an element. If there are multiple elements satisfying the selector, the first will be
-   * used. See [working with selectors](https://playwright.dev/docs/selectors) for more details.
+   * used.
    * @param options
    */
   isChecked(selector: string, options?: {
@@ -2968,7 +2956,7 @@ export interface Page {
    *
    * Returns whether the element is disabled, the opposite of [enabled](https://playwright.dev/docs/actionability#enabled).
    * @param selector A selector to search for an element. If there are multiple elements satisfying the selector, the first will be
-   * used. See [working with selectors](https://playwright.dev/docs/selectors) for more details.
+   * used.
    * @param options
    */
   isDisabled(selector: string, options?: {
@@ -2992,7 +2980,7 @@ export interface Page {
    *
    * Returns whether the element is [editable](https://playwright.dev/docs/actionability#editable).
    * @param selector A selector to search for an element. If there are multiple elements satisfying the selector, the first will be
-   * used. See [working with selectors](https://playwright.dev/docs/selectors) for more details.
+   * used.
    * @param options
    */
   isEditable(selector: string, options?: {
@@ -3016,7 +3004,7 @@ export interface Page {
    *
    * Returns whether the element is [enabled](https://playwright.dev/docs/actionability#enabled).
    * @param selector A selector to search for an element. If there are multiple elements satisfying the selector, the first will be
-   * used. See [working with selectors](https://playwright.dev/docs/selectors) for more details.
+   * used.
    * @param options
    */
   isEnabled(selector: string, options?: {
@@ -3041,7 +3029,7 @@ export interface Page {
    * Returns whether the element is hidden, the opposite of [visible](https://playwright.dev/docs/actionability#visible).  `selector` that
    * does not match any elements is considered hidden.
    * @param selector A selector to search for an element. If there are multiple elements satisfying the selector, the first will be
-   * used. See [working with selectors](https://playwright.dev/docs/selectors) for more details.
+   * used.
    * @param options
    */
   isHidden(selector: string, options?: {
@@ -3064,7 +3052,7 @@ export interface Page {
    * Returns whether the element is [visible](https://playwright.dev/docs/actionability#visible). `selector` that does not match any elements
    * is considered not visible.
    * @param selector A selector to search for an element. If there are multiple elements satisfying the selector, the first will be
-   * used. See [working with selectors](https://playwright.dev/docs/selectors) for more details.
+   * used.
    * @param options
    */
   isVisible(selector: string, options?: {
@@ -3089,7 +3077,7 @@ export interface Page {
    * performed on different DOM elements. That would happen if the DOM structure between those actions has changed.
    *
    * [Learn more about locators](https://playwright.dev/docs/locators).
-   * @param selector A selector to use when resolving DOM element. See [working with selectors](https://playwright.dev/docs/selectors) for more details.
+   * @param selector A selector to use when resolving DOM element.
    * @param options
    */
   locator(selector: string, options?: {
@@ -3321,7 +3309,7 @@ export interface Page {
    * ```
    *
    * @param selector A selector to search for an element. If there are multiple elements satisfying the selector, the first will be
-   * used. See [working with selectors](https://playwright.dev/docs/selectors) for more details.
+   * used.
    * @param key Name of the key to press or a character to generate, such as `ArrowLeft` or `a`.
    * @param options
    */
@@ -3527,7 +3515,7 @@ export interface Page {
    * ```
    *
    * @param selector A selector to search for an element. If there are multiple elements satisfying the selector, the first will be
-   * used. See [working with selectors](https://playwright.dev/docs/selectors) for more details.
+   * used.
    * @param values Options to select. If the `<select>` has the `multiple` attribute, all matching options are selected, otherwise
    * only the first option matching one of the passed options is selected. String values are equivalent to
    * `{value:'string'}`. Option is considered matching if all specified properties match.
@@ -3609,7 +3597,7 @@ export interface Page {
    * When all steps combined have not finished during the specified `timeout`, this method throws a [TimeoutError].
    * Passing zero timeout disables this.
    * @param selector A selector to search for an element. If there are multiple elements satisfying the selector, the first will be
-   * used. See [working with selectors](https://playwright.dev/docs/selectors) for more details.
+   * used.
    * @param checked Whether to check or uncheck the checkbox.
    * @param options
    */
@@ -3737,7 +3725,7 @@ export interface Page {
    * the `<label>` element that has an associated
    * [control](https://developer.mozilla.org/en-US/docs/Web/API/HTMLLabelElement/control), targets the control instead.
    * @param selector A selector to search for an element. If there are multiple elements satisfying the selector, the first will be
-   * used. See [working with selectors](https://playwright.dev/docs/selectors) for more details.
+   * used.
    * @param files
    * @param options
    */
@@ -3850,7 +3838,7 @@ export interface Page {
    * **NOTE** [page.tap(selector[, options])](https://playwright.dev/docs/api/class-page#page-tap) requires that the
    * `hasTouch` option of the browser context be set to true.
    * @param selector A selector to search for an element. If there are multiple elements satisfying the selector, the first will be
-   * used. See [working with selectors](https://playwright.dev/docs/selectors) for more details.
+   * used.
    * @param options
    */
   tap(selector: string, options?: {
@@ -3908,7 +3896,7 @@ export interface Page {
    *
    * Returns `element.textContent`.
    * @param selector A selector to search for an element. If there are multiple elements satisfying the selector, the first will be
-   * used. See [working with selectors](https://playwright.dev/docs/selectors) for more details.
+   * used.
    * @param options
    */
   textContent(selector: string, options?: {
@@ -3952,7 +3940,7 @@ export interface Page {
    * ```
    *
    * @param selector A selector to search for an element. If there are multiple elements satisfying the selector, the first will be
-   * used. See [working with selectors](https://playwright.dev/docs/selectors) for more details.
+   * used.
    * @param text A text to type into a focused element.
    * @param options
    */
@@ -4002,7 +3990,7 @@ export interface Page {
    * When all steps combined have not finished during the specified `timeout`, this method throws a [TimeoutError].
    * Passing zero timeout disables this.
    * @param selector A selector to search for an element. If there are multiple elements satisfying the selector, the first will be
-   * used. See [working with selectors](https://playwright.dev/docs/selectors) for more details.
+   * used.
    * @param options
    */
   uncheck(selector: string, options?: {
@@ -4214,14 +4202,10 @@ export interface Page {
    * "http://example.com" is done and its response has started loading in the popup.
    *
    * ```js
-   * // Note that Promise.all prevents a race condition
-   * // between evaluating and waiting for the popup.
-   * const [popup] = await Promise.all([
-   *   // It is important to call waitForEvent first.
-   *   page.waitForEvent('popup'),
-   *   // Opens the popup.
-   *   page.evaluate(() => window.open('https://example.com')),
-   * ]);
+   * // Start waiting for popup before clicking. Note no await.
+   * const popupPromise = page.waitForEvent('popup');
+   * await page.getByText('open the popup').click();
+   * const popup = await popupPromise;
    * console.log(await popup.evaluate('location.href'));
    * ```
    *
@@ -4295,13 +4279,10 @@ export interface Page {
    * ```
    *
    * ```js
-   * const [popup] = await Promise.all([
-   *   // It is important to call waitForEvent before click to set up waiting.
-   *   page.waitForEvent('popup'),
-   *   // Click triggers a popup.
-   *   page.getByRole('button').click(),
-   * ])
-   * await popup.waitForLoadState('domcontentloaded'); // The promise resolves after 'domcontentloaded' event.
+   * const popupPromise = page.waitForEvent('popup');
+   * await page.getByRole('button').click(); // Click triggers a popup.
+   * const popup = await popupPromise;
+   * await popup.waitForLoadState('domcontentloaded'); // Wait for the 'DOMContentLoaded' event.
    * console.log(await popup.title()); // Popup is ready to use.
    * ```
    *
@@ -4336,14 +4317,10 @@ export interface Page {
    * a `setTimeout`. Consider this example:
    *
    * ```js
-   * // Note that Promise.all prevents a race condition
-   * // between clicking and waiting for the navigation.
-   * const [response] = await Promise.all([
-   *   // It is important to call waitForNavigation before click to set up waiting.
-   *   page.waitForNavigation(),
-   *   // Clicking the link will indirectly cause a navigation.
-   *   page.locator('a.delayed-navigation').click(),
-   * ]);
+   * // Start waiting for navigation before clicking. Note no await.
+   * const navigationPromise = page.waitForNavigation();
+   * await page.getByText('Navigate after timeout').click();
+   * await navigationPromise;
    * ```
    *
    * **NOTE** Usage of the [History API](https://developer.mozilla.org/en-US/docs/Web/API/History_API) to change the URL
@@ -4387,22 +4364,15 @@ export interface Page {
    * **Usage**
    *
    * ```js
-   * // Note that Promise.all prevents a race condition
-   * // between clicking and waiting for the request.
-   * const [request] = await Promise.all([
-   *   // Waits for the next request with the specified url
-   *   page.waitForRequest('https://example.com/resource'),
-   *   // Triggers the request
-   *   page.click('button.triggers-request'),
-   * ]);
+   * // Start waiting for request before clicking. Note no await.
+   * const requestPromise = page.waitForRequest('https://example.com/resource');
+   * await page.getByText('trigger request').click();
+   * const request = await requestPromise;
    *
-   * // Alternative way with a predicate.
-   * const [request] = await Promise.all([
-   *   // Waits for the next request matching some conditions
-   *   page.waitForRequest(request => request.url() === 'https://example.com' && request.method() === 'GET'),
-   *   // Triggers the request
-   *   page.click('button.triggers-request'),
-   * ]);
+   * // Alternative way with a predicate. Note no await.
+   * const requestPromise = page.waitForRequest(request => request.url() === 'https://example.com' && request.method() === 'GET');
+   * await page.getByText('trigger request').click();
+   * const request = await requestPromise;
    * ```
    *
    * @param urlOrPredicate Request URL string, regex or predicate receiving [Request] object.
@@ -4424,22 +4394,15 @@ export interface Page {
    * **Usage**
    *
    * ```js
-   * // Note that Promise.all prevents a race condition
-   * // between clicking and waiting for the response.
-   * const [response] = await Promise.all([
-   *   // Waits for the next response with the specified url
-   *   page.waitForResponse('https://example.com/resource'),
-   *   // Triggers the response
-   *   page.click('button.triggers-response'),
-   * ]);
+   * // Start waiting for response before clicking. Note no await.
+   * const responsePromise = page.waitForRequest('https://example.com/resource');
+   * await page.getByText('trigger response').click();
+   * const response = await responsePromise;
    *
-   * // Alternative way with a predicate.
-   * const [response] = await Promise.all([
-   *   // Waits for the next response matching some conditions
-   *   page.waitForResponse(response => response.url() === 'https://example.com' && response.status() === 200),
-   *   // Triggers the response
-   *   page.click('button.triggers-response'),
-   * ]);
+   * // Alternative way with a predicate. Note no await.
+   * const responsePromise = page.waitForRequest(response => response.url() === 'https://example.com' && response.status() === 200);
+   * await page.getByText('trigger response').click();
+   * const response = await responsePromise;
    * ```
    *
    * @param urlOrPredicate Request URL string, regex or predicate receiving [Response] object. When a `baseURL` via the context options was
@@ -4735,9 +4698,9 @@ export interface Frame {
    *
    * **NOTE** The use of [ElementHandle] is discouraged, use [Locator] objects and web-first assertions instead.
    *
-   * The method finds an element matching the specified selector within the frame. See
-   * [Working with selectors](https://playwright.dev/docs/selectors) for more details. If no elements match the selector, returns `null`.
-   * @param selector A selector to query for. See [working with selectors](https://playwright.dev/docs/selectors) for more details.
+   * The method finds an element matching the specified selector within the frame. If no elements match the selector,
+   * returns `null`.
+   * @param selector A selector to query for.
    * @param options
    */
   $<K extends keyof HTMLElementTagNameMap>(selector: K, options?: { strict: boolean }): Promise<ElementHandleForTag<K> | null>;
@@ -4748,9 +4711,9 @@ export interface Frame {
    *
    * **NOTE** The use of [ElementHandle] is discouraged, use [Locator] objects and web-first assertions instead.
    *
-   * The method finds an element matching the specified selector within the frame. See
-   * [Working with selectors](https://playwright.dev/docs/selectors) for more details. If no elements match the selector, returns `null`.
-   * @param selector A selector to query for. See [working with selectors](https://playwright.dev/docs/selectors) for more details.
+   * The method finds an element matching the specified selector within the frame. If no elements match the selector,
+   * returns `null`.
+   * @param selector A selector to query for.
    * @param options
    */
   $(selector: string, options?: { strict: boolean }): Promise<ElementHandle<SVGElement | HTMLElement> | null>;
@@ -4762,9 +4725,9 @@ export interface Frame {
    *
    * **NOTE** The use of [ElementHandle] is discouraged, use [Locator] objects instead.
    *
-   * The method finds all elements matching the specified selector within the frame. See
-   * [Working with selectors](https://playwright.dev/docs/selectors) for more details. If no elements match the selector, returns empty array.
-   * @param selector A selector to query for. See [working with selectors](https://playwright.dev/docs/selectors) for more details.
+   * The method finds all elements matching the specified selector within the frame. If no elements match the selector,
+   * returns empty array.
+   * @param selector A selector to query for.
    */
   $$<K extends keyof HTMLElementTagNameMap>(selector: K): Promise<ElementHandleForTag<K>[]>;
   /**
@@ -4774,9 +4737,9 @@ export interface Frame {
    *
    * **NOTE** The use of [ElementHandle] is discouraged, use [Locator] objects instead.
    *
-   * The method finds all elements matching the specified selector within the frame. See
-   * [Working with selectors](https://playwright.dev/docs/selectors) for more details. If no elements match the selector, returns empty array.
-   * @param selector A selector to query for. See [working with selectors](https://playwright.dev/docs/selectors) for more details.
+   * The method finds all elements matching the specified selector within the frame. If no elements match the selector,
+   * returns empty array.
+   * @param selector A selector to query for.
    */
   $$(selector: string): Promise<ElementHandle<SVGElement | HTMLElement>[]>;
 
@@ -4787,8 +4750,7 @@ export interface Frame {
    * Returns the return value of `pageFunction`.
    *
    * The method finds an element matching the specified selector within the frame and passes it as a first argument to
-   * `pageFunction`. See [Working with selectors](https://playwright.dev/docs/selectors) for more details. If no elements match the selector,
-   * the method throws an error.
+   * `pageFunction`. If no elements match the selector, the method throws an error.
    *
    * If `pageFunction` returns a [Promise], then
    * [frame.$eval(selector, pageFunction[, arg, options])](https://playwright.dev/docs/api/class-frame#frame-eval-on-selector)
@@ -4802,7 +4764,7 @@ export interface Frame {
    * const html = await frame.$eval('.main-container', (e, suffix) => e.outerHTML + suffix, 'hello');
    * ```
    *
-   * @param selector A selector to query for. See [working with selectors](https://playwright.dev/docs/selectors) for more details.
+   * @param selector A selector to query for.
    * @param pageFunction Function to be evaluated in the page context.
    * @param arg Optional argument to pass to `pageFunction`.
    * @param options
@@ -4815,8 +4777,7 @@ export interface Frame {
    * Returns the return value of `pageFunction`.
    *
    * The method finds an element matching the specified selector within the frame and passes it as a first argument to
-   * `pageFunction`. See [Working with selectors](https://playwright.dev/docs/selectors) for more details. If no elements match the selector,
-   * the method throws an error.
+   * `pageFunction`. If no elements match the selector, the method throws an error.
    *
    * If `pageFunction` returns a [Promise], then
    * [frame.$eval(selector, pageFunction[, arg, options])](https://playwright.dev/docs/api/class-frame#frame-eval-on-selector)
@@ -4830,7 +4791,7 @@ export interface Frame {
    * const html = await frame.$eval('.main-container', (e, suffix) => e.outerHTML + suffix, 'hello');
    * ```
    *
-   * @param selector A selector to query for. See [working with selectors](https://playwright.dev/docs/selectors) for more details.
+   * @param selector A selector to query for.
    * @param pageFunction Function to be evaluated in the page context.
    * @param arg Optional argument to pass to `pageFunction`.
    * @param options
@@ -4843,8 +4804,7 @@ export interface Frame {
    * Returns the return value of `pageFunction`.
    *
    * The method finds an element matching the specified selector within the frame and passes it as a first argument to
-   * `pageFunction`. See [Working with selectors](https://playwright.dev/docs/selectors) for more details. If no elements match the selector,
-   * the method throws an error.
+   * `pageFunction`. If no elements match the selector, the method throws an error.
    *
    * If `pageFunction` returns a [Promise], then
    * [frame.$eval(selector, pageFunction[, arg, options])](https://playwright.dev/docs/api/class-frame#frame-eval-on-selector)
@@ -4858,7 +4818,7 @@ export interface Frame {
    * const html = await frame.$eval('.main-container', (e, suffix) => e.outerHTML + suffix, 'hello');
    * ```
    *
-   * @param selector A selector to query for. See [working with selectors](https://playwright.dev/docs/selectors) for more details.
+   * @param selector A selector to query for.
    * @param pageFunction Function to be evaluated in the page context.
    * @param arg Optional argument to pass to `pageFunction`.
    * @param options
@@ -4871,8 +4831,7 @@ export interface Frame {
    * Returns the return value of `pageFunction`.
    *
    * The method finds an element matching the specified selector within the frame and passes it as a first argument to
-   * `pageFunction`. See [Working with selectors](https://playwright.dev/docs/selectors) for more details. If no elements match the selector,
-   * the method throws an error.
+   * `pageFunction`. If no elements match the selector, the method throws an error.
    *
    * If `pageFunction` returns a [Promise], then
    * [frame.$eval(selector, pageFunction[, arg, options])](https://playwright.dev/docs/api/class-frame#frame-eval-on-selector)
@@ -4886,7 +4845,7 @@ export interface Frame {
    * const html = await frame.$eval('.main-container', (e, suffix) => e.outerHTML + suffix, 'hello');
    * ```
    *
-   * @param selector A selector to query for. See [working with selectors](https://playwright.dev/docs/selectors) for more details.
+   * @param selector A selector to query for.
    * @param pageFunction Function to be evaluated in the page context.
    * @param arg Optional argument to pass to `pageFunction`.
    * @param options
@@ -4900,7 +4859,7 @@ export interface Frame {
    * Returns the return value of `pageFunction`.
    *
    * The method finds all elements matching the specified selector within the frame and passes an array of matched
-   * elements as a first argument to `pageFunction`. See [Working with selectors](https://playwright.dev/docs/selectors) for more details.
+   * elements as a first argument to `pageFunction`.
    *
    * If `pageFunction` returns a [Promise], then
    * [frame.$$eval(selector, pageFunction[, arg])](https://playwright.dev/docs/api/class-frame#frame-eval-on-selector-all)
@@ -4912,7 +4871,7 @@ export interface Frame {
    * const divsCounts = await frame.$$eval('div', (divs, min) => divs.length >= min, 10);
    * ```
    *
-   * @param selector A selector to query for. See [working with selectors](https://playwright.dev/docs/selectors) for more details.
+   * @param selector A selector to query for.
    * @param pageFunction Function to be evaluated in the page context.
    * @param arg Optional argument to pass to `pageFunction`.
    */
@@ -4924,7 +4883,7 @@ export interface Frame {
    * Returns the return value of `pageFunction`.
    *
    * The method finds all elements matching the specified selector within the frame and passes an array of matched
-   * elements as a first argument to `pageFunction`. See [Working with selectors](https://playwright.dev/docs/selectors) for more details.
+   * elements as a first argument to `pageFunction`.
    *
    * If `pageFunction` returns a [Promise], then
    * [frame.$$eval(selector, pageFunction[, arg])](https://playwright.dev/docs/api/class-frame#frame-eval-on-selector-all)
@@ -4936,7 +4895,7 @@ export interface Frame {
    * const divsCounts = await frame.$$eval('div', (divs, min) => divs.length >= min, 10);
    * ```
    *
-   * @param selector A selector to query for. See [working with selectors](https://playwright.dev/docs/selectors) for more details.
+   * @param selector A selector to query for.
    * @param pageFunction Function to be evaluated in the page context.
    * @param arg Optional argument to pass to `pageFunction`.
    */
@@ -4948,7 +4907,7 @@ export interface Frame {
    * Returns the return value of `pageFunction`.
    *
    * The method finds all elements matching the specified selector within the frame and passes an array of matched
-   * elements as a first argument to `pageFunction`. See [Working with selectors](https://playwright.dev/docs/selectors) for more details.
+   * elements as a first argument to `pageFunction`.
    *
    * If `pageFunction` returns a [Promise], then
    * [frame.$$eval(selector, pageFunction[, arg])](https://playwright.dev/docs/api/class-frame#frame-eval-on-selector-all)
@@ -4960,7 +4919,7 @@ export interface Frame {
    * const divsCounts = await frame.$$eval('div', (divs, min) => divs.length >= min, 10);
    * ```
    *
-   * @param selector A selector to query for. See [working with selectors](https://playwright.dev/docs/selectors) for more details.
+   * @param selector A selector to query for.
    * @param pageFunction Function to be evaluated in the page context.
    * @param arg Optional argument to pass to `pageFunction`.
    */
@@ -4972,7 +4931,7 @@ export interface Frame {
    * Returns the return value of `pageFunction`.
    *
    * The method finds all elements matching the specified selector within the frame and passes an array of matched
-   * elements as a first argument to `pageFunction`. See [Working with selectors](https://playwright.dev/docs/selectors) for more details.
+   * elements as a first argument to `pageFunction`.
    *
    * If `pageFunction` returns a [Promise], then
    * [frame.$$eval(selector, pageFunction[, arg])](https://playwright.dev/docs/api/class-frame#frame-eval-on-selector-all)
@@ -4984,7 +4943,7 @@ export interface Frame {
    * const divsCounts = await frame.$$eval('div', (divs, min) => divs.length >= min, 10);
    * ```
    *
-   * @param selector A selector to query for. See [working with selectors](https://playwright.dev/docs/selectors) for more details.
+   * @param selector A selector to query for.
    * @param pageFunction Function to be evaluated in the page context.
    * @param arg Optional argument to pass to `pageFunction`.
    */
@@ -5089,7 +5048,7 @@ export interface Frame {
    * })();
    * ```
    *
-   * @param selector A selector to query for. See [working with selectors](https://playwright.dev/docs/selectors) for more details.
+   * @param selector A selector to query for.
    * @param options
    */
   waitForSelector<K extends keyof HTMLElementTagNameMap>(selector: K, options?: PageWaitForSelectorOptionsNotHidden): Promise<ElementHandleForTag<K>>;
@@ -5123,7 +5082,7 @@ export interface Frame {
    * })();
    * ```
    *
-   * @param selector A selector to query for. See [working with selectors](https://playwright.dev/docs/selectors) for more details.
+   * @param selector A selector to query for.
    * @param options
    */
   waitForSelector(selector: string, options?: PageWaitForSelectorOptionsNotHidden): Promise<ElementHandle<SVGElement | HTMLElement>>;
@@ -5157,7 +5116,7 @@ export interface Frame {
    * })();
    * ```
    *
-   * @param selector A selector to query for. See [working with selectors](https://playwright.dev/docs/selectors) for more details.
+   * @param selector A selector to query for.
    * @param options
    */
   waitForSelector<K extends keyof HTMLElementTagNameMap>(selector: K, options: PageWaitForSelectorOptions): Promise<ElementHandleForTag<K> | null>;
@@ -5191,7 +5150,7 @@ export interface Frame {
    * })();
    * ```
    *
-   * @param selector A selector to query for. See [working with selectors](https://playwright.dev/docs/selectors) for more details.
+   * @param selector A selector to query for.
    * @param options
    */
   waitForSelector(selector: string, options: PageWaitForSelectorOptions): Promise<null|ElementHandle<SVGElement | HTMLElement>>;
@@ -5268,7 +5227,7 @@ export interface Frame {
    * When all steps combined have not finished during the specified `timeout`, this method throws a [TimeoutError].
    * Passing zero timeout disables this.
    * @param selector A selector to search for an element. If there are multiple elements satisfying the selector, the first will be
-   * used. See [working with selectors](https://playwright.dev/docs/selectors) for more details.
+   * used.
    * @param options
    */
   check(selector: string, options?: {
@@ -5332,7 +5291,7 @@ export interface Frame {
    * When all steps combined have not finished during the specified `timeout`, this method throws a [TimeoutError].
    * Passing zero timeout disables this.
    * @param selector A selector to search for an element. If there are multiple elements satisfying the selector, the first will be
-   * used. See [working with selectors](https://playwright.dev/docs/selectors) for more details.
+   * used.
    * @param options
    */
   click(selector: string, options?: {
@@ -5423,7 +5382,7 @@ export interface Frame {
    *
    * **NOTE** `frame.dblclick()` dispatches two `click` events and a single `dblclick` event.
    * @param selector A selector to search for an element. If there are multiple elements satisfying the selector, the first will be
-   * used. See [working with selectors](https://playwright.dev/docs/selectors) for more details.
+   * used.
    * @param options
    */
   dblclick(selector: string, options?: {
@@ -5520,7 +5479,7 @@ export interface Frame {
    * ```
    *
    * @param selector A selector to search for an element. If there are multiple elements satisfying the selector, the first will be
-   * used. See [working with selectors](https://playwright.dev/docs/selectors) for more details.
+   * used.
    * @param type DOM event type: `"click"`, `"dragstart"`, etc.
    * @param eventInit Optional event-specific initialization properties.
    * @param options
@@ -5543,9 +5502,9 @@ export interface Frame {
 
   /**
    * @param source A selector to search for an element to drag. If there are multiple elements satisfying the selector, the first will
-   * be used. See [working with selectors](https://playwright.dev/docs/selectors) for more details.
+   * be used.
    * @param target A selector to search for an element to drop onto. If there are multiple elements satisfying the selector, the first
-   * will be used. See [working with selectors](https://playwright.dev/docs/selectors) for more details.
+   * will be used.
    * @param options
    */
   dragAndDrop(source: string, target: string, options?: {
@@ -5617,7 +5576,7 @@ export interface Frame {
    * To send fine-grained keyboard events, use
    * [frame.type(selector, text[, options])](https://playwright.dev/docs/api/class-frame#frame-type).
    * @param selector A selector to search for an element. If there are multiple elements satisfying the selector, the first will be
-   * used. See [working with selectors](https://playwright.dev/docs/selectors) for more details.
+   * used.
    * @param value Value to fill for the `<input>`, `<textarea>` or `[contenteditable]` element.
    * @param options
    */
@@ -5655,7 +5614,7 @@ export interface Frame {
    * This method fetches an element with `selector` and focuses it. If there's no element matching `selector`, the
    * method waits until a matching element appears in the DOM.
    * @param selector A selector to search for an element. If there are multiple elements satisfying the selector, the first will be
-   * used. See [working with selectors](https://playwright.dev/docs/selectors) for more details.
+   * used.
    * @param options
    */
   focus(selector: string, options?: {
@@ -5708,7 +5667,7 @@ export interface Frame {
    * await locator.click();
    * ```
    *
-   * @param selector A selector to use when resolving DOM element. See [working with selectors](https://playwright.dev/docs/selectors) for more details.
+   * @param selector A selector to use when resolving DOM element.
    */
   frameLocator(selector: string): FrameLocator;
 
@@ -5717,7 +5676,7 @@ export interface Frame {
    *
    * Returns element attribute value.
    * @param selector A selector to search for an element. If there are multiple elements satisfying the selector, the first will be
-   * used. See [working with selectors](https://playwright.dev/docs/selectors) for more details.
+   * used.
    * @param name Attribute name to get the value for.
    * @param options
    */
@@ -6024,7 +5983,7 @@ export interface Frame {
    * When all steps combined have not finished during the specified `timeout`, this method throws a [TimeoutError].
    * Passing zero timeout disables this.
    * @param selector A selector to search for an element. If there are multiple elements satisfying the selector, the first will be
-   * used. See [working with selectors](https://playwright.dev/docs/selectors) for more details.
+   * used.
    * @param options
    */
   hover(selector: string, options?: {
@@ -6082,7 +6041,7 @@ export interface Frame {
    *
    * Returns `element.innerHTML`.
    * @param selector A selector to search for an element. If there are multiple elements satisfying the selector, the first will be
-   * used. See [working with selectors](https://playwright.dev/docs/selectors) for more details.
+   * used.
    * @param options
    */
   innerHTML(selector: string, options?: {
@@ -6106,7 +6065,7 @@ export interface Frame {
    *
    * Returns `element.innerText`.
    * @param selector A selector to search for an element. If there are multiple elements satisfying the selector, the first will be
-   * used. See [working with selectors](https://playwright.dev/docs/selectors) for more details.
+   * used.
    * @param options
    */
   innerText(selector: string, options?: {
@@ -6134,7 +6093,7 @@ export interface Frame {
    * [control](https://developer.mozilla.org/en-US/docs/Web/API/HTMLLabelElement/control), returns the value of the
    * control.
    * @param selector A selector to search for an element. If there are multiple elements satisfying the selector, the first will be
-   * used. See [working with selectors](https://playwright.dev/docs/selectors) for more details.
+   * used.
    * @param options
    */
   inputValue(selector: string, options?: {
@@ -6158,7 +6117,7 @@ export interface Frame {
    *
    * Returns whether the element is checked. Throws if the element is not a checkbox or radio input.
    * @param selector A selector to search for an element. If there are multiple elements satisfying the selector, the first will be
-   * used. See [working with selectors](https://playwright.dev/docs/selectors) for more details.
+   * used.
    * @param options
    */
   isChecked(selector: string, options?: {
@@ -6187,7 +6146,7 @@ export interface Frame {
    *
    * Returns whether the element is disabled, the opposite of [enabled](https://playwright.dev/docs/actionability#enabled).
    * @param selector A selector to search for an element. If there are multiple elements satisfying the selector, the first will be
-   * used. See [working with selectors](https://playwright.dev/docs/selectors) for more details.
+   * used.
    * @param options
    */
   isDisabled(selector: string, options?: {
@@ -6211,7 +6170,7 @@ export interface Frame {
    *
    * Returns whether the element is [editable](https://playwright.dev/docs/actionability#editable).
    * @param selector A selector to search for an element. If there are multiple elements satisfying the selector, the first will be
-   * used. See [working with selectors](https://playwright.dev/docs/selectors) for more details.
+   * used.
    * @param options
    */
   isEditable(selector: string, options?: {
@@ -6233,7 +6192,7 @@ export interface Frame {
   /**
    * Returns whether the element is [enabled](https://playwright.dev/docs/actionability#enabled).
    * @param selector A selector to search for an element. If there are multiple elements satisfying the selector, the first will be
-   * used. See [working with selectors](https://playwright.dev/docs/selectors) for more details.
+   * used.
    * @param options
    */
   isEnabled(selector: string, options?: {
@@ -6258,7 +6217,7 @@ export interface Frame {
    * Returns whether the element is hidden, the opposite of [visible](https://playwright.dev/docs/actionability#visible).  `selector` that
    * does not match any elements is considered hidden.
    * @param selector A selector to search for an element. If there are multiple elements satisfying the selector, the first will be
-   * used. See [working with selectors](https://playwright.dev/docs/selectors) for more details.
+   * used.
    * @param options
    */
   isHidden(selector: string, options?: {
@@ -6281,7 +6240,7 @@ export interface Frame {
    * Returns whether the element is [visible](https://playwright.dev/docs/actionability#visible). `selector` that does not match any elements
    * is considered not visible.
    * @param selector A selector to search for an element. If there are multiple elements satisfying the selector, the first will be
-   * used. See [working with selectors](https://playwright.dev/docs/selectors) for more details.
+   * used.
    * @param options
    */
   isVisible(selector: string, options?: {
@@ -6306,7 +6265,7 @@ export interface Frame {
    * [Learn more about locators](https://playwright.dev/docs/locators).
    *
    * [Learn more about locators](https://playwright.dev/docs/locators).
-   * @param selector A selector to use when resolving DOM element. See [working with selectors](https://playwright.dev/docs/selectors) for more details.
+   * @param selector A selector to use when resolving DOM element.
    * @param options
    */
   locator(selector: string, options?: {
@@ -6368,7 +6327,7 @@ export interface Frame {
    * Shortcuts such as `key: "Control+o"` or `key: "Control+Shift+T"` are supported as well. When specified with the
    * modifier, modifier is pressed and being held while the subsequent key is being pressed.
    * @param selector A selector to search for an element. If there are multiple elements satisfying the selector, the first will be
-   * used. See [working with selectors](https://playwright.dev/docs/selectors) for more details.
+   * used.
    * @param key Name of the key to press or a character to generate, such as `ArrowLeft` or `a`.
    * @param options
    */
@@ -6428,7 +6387,7 @@ export interface Frame {
    * frame.selectOption('select#colors', 'red', 'green', 'blue');
    * ```
    *
-   * @param selector A selector to query for. See [working with selectors](https://playwright.dev/docs/selectors) for more details.
+   * @param selector A selector to query for.
    * @param values Options to select. If the `<select>` has the `multiple` attribute, all matching options are selected, otherwise
    * only the first option matching one of the passed options is selected. String values are equivalent to
    * `{value:'string'}`. Option is considered matching if all specified properties match.
@@ -6510,7 +6469,7 @@ export interface Frame {
    * When all steps combined have not finished during the specified `timeout`, this method throws a [TimeoutError].
    * Passing zero timeout disables this.
    * @param selector A selector to search for an element. If there are multiple elements satisfying the selector, the first will be
-   * used. See [working with selectors](https://playwright.dev/docs/selectors) for more details.
+   * used.
    * @param checked Whether to check or uncheck the checkbox.
    * @param options
    */
@@ -6596,7 +6555,7 @@ export interface Frame {
    * the `<label>` element that has an associated
    * [control](https://developer.mozilla.org/en-US/docs/Web/API/HTMLLabelElement/control), targets the control instead.
    * @param selector A selector to search for an element. If there are multiple elements satisfying the selector, the first will be
-   * used. See [working with selectors](https://playwright.dev/docs/selectors) for more details.
+   * used.
    * @param files
    * @param options
    */
@@ -6670,7 +6629,7 @@ export interface Frame {
    *
    * **NOTE** `frame.tap()` requires that the `hasTouch` option of the browser context be set to true.
    * @param selector A selector to search for an element. If there are multiple elements satisfying the selector, the first will be
-   * used. See [working with selectors](https://playwright.dev/docs/selectors) for more details.
+   * used.
    * @param options
    */
   tap(selector: string, options?: {
@@ -6728,7 +6687,7 @@ export interface Frame {
    *
    * Returns `element.textContent`.
    * @param selector A selector to search for an element. If there are multiple elements satisfying the selector, the first will be
-   * used. See [working with selectors](https://playwright.dev/docs/selectors) for more details.
+   * used.
    * @param options
    */
   textContent(selector: string, options?: {
@@ -6770,7 +6729,7 @@ export interface Frame {
    * ```
    *
    * @param selector A selector to search for an element. If there are multiple elements satisfying the selector, the first will be
-   * used. See [working with selectors](https://playwright.dev/docs/selectors) for more details.
+   * used.
    * @param text A text to type into a focused element.
    * @param options
    */
@@ -6820,7 +6779,7 @@ export interface Frame {
    * When all steps combined have not finished during the specified `timeout`, this method throws a [TimeoutError].
    * Passing zero timeout disables this.
    * @param selector A selector to search for an element. If there are multiple elements satisfying the selector, the first will be
-   * used. See [working with selectors](https://playwright.dev/docs/selectors) for more details.
+   * used.
    * @param options
    */
   uncheck(selector: string, options?: {
@@ -6916,10 +6875,10 @@ export interface Frame {
    * cause the frame to navigate. Consider this example:
    *
    * ```js
-   * const [response] = await Promise.all([
-   *   frame.waitForNavigation(), // The promise resolves after navigation has finished
-   *   frame.click('a.delayed-navigation'), // Clicking the link will indirectly cause a navigation
-   * ]);
+   * // Start waiting for navigation before clicking. Note no await.
+   * const navigationPromise = page.waitForNavigation();
+   * await page.getByText('Navigate after timeout').click();
+   * await navigationPromise;
    * ```
    *
    * **NOTE** Usage of the [History API](https://developer.mozilla.org/en-US/docs/Web/API/History_API) to change the URL
@@ -7204,10 +7163,9 @@ export interface BrowserContext {
    * "http://example.com" is done and its response has started loading in the popup.
    *
    * ```js
-   * const [newPage] = await Promise.all([
-   *   context.waitForEvent('page'),
-   *   page.locator('a[target=_blank]').click(),
-   * ]);
+   * const newPagePromise = context.waitForEvent('page');
+   * await page.getByText('open new page').click();
+   * const newPage = await newPagePromise;
    * console.log(await newPage.evaluate('location.href'));
    * ```
    *
@@ -7333,10 +7291,9 @@ export interface BrowserContext {
    * "http://example.com" is done and its response has started loading in the popup.
    *
    * ```js
-   * const [newPage] = await Promise.all([
-   *   context.waitForEvent('page'),
-   *   page.locator('a[target=_blank]').click(),
-   * ]);
+   * const newPagePromise = context.waitForEvent('page');
+   * await page.getByText('open new page').click();
+   * const newPage = await newPagePromise;
    * console.log(await newPage.evaluate('location.href'));
    * ```
    *
@@ -7502,10 +7459,9 @@ export interface BrowserContext {
    * "http://example.com" is done and its response has started loading in the popup.
    *
    * ```js
-   * const [newPage] = await Promise.all([
-   *   context.waitForEvent('page'),
-   *   page.locator('a[target=_blank]').click(),
-   * ]);
+   * const newPagePromise = context.waitForEvent('page');
+   * await page.getByText('open new page').click();
+   * const newPage = await newPagePromise;
    * console.log(await newPage.evaluate('location.href'));
    * ```
    *
@@ -8036,10 +7992,9 @@ export interface BrowserContext {
    * "http://example.com" is done and its response has started loading in the popup.
    *
    * ```js
-   * const [newPage] = await Promise.all([
-   *   context.waitForEvent('page'),
-   *   page.locator('a[target=_blank]').click(),
-   * ]);
+   * const newPagePromise = context.waitForEvent('page');
+   * await page.getByText('open new page').click();
+   * const newPage = await newPagePromise;
    * console.log(await newPage.evaluate('location.href'));
    * ```
    *
@@ -8405,28 +8360,28 @@ export interface JSHandle<T = any> {
  */
 export interface ElementHandle<T=Node> extends JSHandle<T> {
   /**
-   * The method finds an element matching the specified selector in the `ElementHandle`'s subtree. See
-   * [Working with selectors](https://playwright.dev/docs/selectors) for more details. If no elements match the selector, returns `null`.
-   * @param selector A selector to query for. See [working with selectors](https://playwright.dev/docs/selectors) for more details.
+   * The method finds an element matching the specified selector in the `ElementHandle`'s subtree. If no elements match
+   * the selector, returns `null`.
+   * @param selector A selector to query for.
    */
   $<K extends keyof HTMLElementTagNameMap>(selector: K, options?: { strict: boolean }): Promise<ElementHandleForTag<K> | null>;
   /**
-   * The method finds an element matching the specified selector in the `ElementHandle`'s subtree. See
-   * [Working with selectors](https://playwright.dev/docs/selectors) for more details. If no elements match the selector, returns `null`.
-   * @param selector A selector to query for. See [working with selectors](https://playwright.dev/docs/selectors) for more details.
+   * The method finds an element matching the specified selector in the `ElementHandle`'s subtree. If no elements match
+   * the selector, returns `null`.
+   * @param selector A selector to query for.
    */
   $(selector: string, options?: { strict: boolean }): Promise<ElementHandle<SVGElement | HTMLElement> | null>;
 
   /**
-   * The method finds all elements matching the specified selector in the `ElementHandle`s subtree. See
-   * [Working with selectors](https://playwright.dev/docs/selectors) for more details. If no elements match the selector, returns empty array.
-   * @param selector A selector to query for. See [working with selectors](https://playwright.dev/docs/selectors) for more details.
+   * The method finds all elements matching the specified selector in the `ElementHandle`s subtree. If no elements match
+   * the selector, returns empty array.
+   * @param selector A selector to query for.
    */
   $$<K extends keyof HTMLElementTagNameMap>(selector: K): Promise<ElementHandleForTag<K>[]>;
   /**
-   * The method finds all elements matching the specified selector in the `ElementHandle`s subtree. See
-   * [Working with selectors](https://playwright.dev/docs/selectors) for more details. If no elements match the selector, returns empty array.
-   * @param selector A selector to query for. See [working with selectors](https://playwright.dev/docs/selectors) for more details.
+   * The method finds all elements matching the specified selector in the `ElementHandle`s subtree. If no elements match
+   * the selector, returns empty array.
+   * @param selector A selector to query for.
    */
   $$(selector: string): Promise<ElementHandle<SVGElement | HTMLElement>[]>;
 
@@ -8434,8 +8389,7 @@ export interface ElementHandle<T=Node> extends JSHandle<T> {
    * Returns the return value of `pageFunction`.
    *
    * The method finds an element matching the specified selector in the `ElementHandle`s subtree and passes it as a
-   * first argument to `pageFunction`. See [Working with selectors](https://playwright.dev/docs/selectors) for more details. If no elements
-   * match the selector, the method throws an error.
+   * first argument to `pageFunction`. If no elements match the selector, the method throws an error.
    *
    * If `pageFunction` returns a [Promise], then
    * [elementHandle.$eval(selector, pageFunction[, arg])](https://playwright.dev/docs/api/class-elementhandle#element-handle-eval-on-selector)
@@ -8449,7 +8403,7 @@ export interface ElementHandle<T=Node> extends JSHandle<T> {
    * expect(await tweetHandle.$eval('.retweets', node => node.innerText)).toBe('10');
    * ```
    *
-   * @param selector A selector to query for. See [working with selectors](https://playwright.dev/docs/selectors) for more details.
+   * @param selector A selector to query for.
    * @param pageFunction Function to be evaluated in the page context.
    * @param arg Optional argument to pass to `pageFunction`.
    */
@@ -8458,8 +8412,7 @@ export interface ElementHandle<T=Node> extends JSHandle<T> {
    * Returns the return value of `pageFunction`.
    *
    * The method finds an element matching the specified selector in the `ElementHandle`s subtree and passes it as a
-   * first argument to `pageFunction`. See [Working with selectors](https://playwright.dev/docs/selectors) for more details. If no elements
-   * match the selector, the method throws an error.
+   * first argument to `pageFunction`. If no elements match the selector, the method throws an error.
    *
    * If `pageFunction` returns a [Promise], then
    * [elementHandle.$eval(selector, pageFunction[, arg])](https://playwright.dev/docs/api/class-elementhandle#element-handle-eval-on-selector)
@@ -8473,7 +8426,7 @@ export interface ElementHandle<T=Node> extends JSHandle<T> {
    * expect(await tweetHandle.$eval('.retweets', node => node.innerText)).toBe('10');
    * ```
    *
-   * @param selector A selector to query for. See [working with selectors](https://playwright.dev/docs/selectors) for more details.
+   * @param selector A selector to query for.
    * @param pageFunction Function to be evaluated in the page context.
    * @param arg Optional argument to pass to `pageFunction`.
    */
@@ -8482,8 +8435,7 @@ export interface ElementHandle<T=Node> extends JSHandle<T> {
    * Returns the return value of `pageFunction`.
    *
    * The method finds an element matching the specified selector in the `ElementHandle`s subtree and passes it as a
-   * first argument to `pageFunction`. See [Working with selectors](https://playwright.dev/docs/selectors) for more details. If no elements
-   * match the selector, the method throws an error.
+   * first argument to `pageFunction`. If no elements match the selector, the method throws an error.
    *
    * If `pageFunction` returns a [Promise], then
    * [elementHandle.$eval(selector, pageFunction[, arg])](https://playwright.dev/docs/api/class-elementhandle#element-handle-eval-on-selector)
@@ -8497,7 +8449,7 @@ export interface ElementHandle<T=Node> extends JSHandle<T> {
    * expect(await tweetHandle.$eval('.retweets', node => node.innerText)).toBe('10');
    * ```
    *
-   * @param selector A selector to query for. See [working with selectors](https://playwright.dev/docs/selectors) for more details.
+   * @param selector A selector to query for.
    * @param pageFunction Function to be evaluated in the page context.
    * @param arg Optional argument to pass to `pageFunction`.
    */
@@ -8506,8 +8458,7 @@ export interface ElementHandle<T=Node> extends JSHandle<T> {
    * Returns the return value of `pageFunction`.
    *
    * The method finds an element matching the specified selector in the `ElementHandle`s subtree and passes it as a
-   * first argument to `pageFunction`. See [Working with selectors](https://playwright.dev/docs/selectors) for more details. If no elements
-   * match the selector, the method throws an error.
+   * first argument to `pageFunction`. If no elements match the selector, the method throws an error.
    *
    * If `pageFunction` returns a [Promise], then
    * [elementHandle.$eval(selector, pageFunction[, arg])](https://playwright.dev/docs/api/class-elementhandle#element-handle-eval-on-selector)
@@ -8521,7 +8472,7 @@ export interface ElementHandle<T=Node> extends JSHandle<T> {
    * expect(await tweetHandle.$eval('.retweets', node => node.innerText)).toBe('10');
    * ```
    *
-   * @param selector A selector to query for. See [working with selectors](https://playwright.dev/docs/selectors) for more details.
+   * @param selector A selector to query for.
    * @param pageFunction Function to be evaluated in the page context.
    * @param arg Optional argument to pass to `pageFunction`.
    */
@@ -8531,8 +8482,7 @@ export interface ElementHandle<T=Node> extends JSHandle<T> {
    * Returns the return value of `pageFunction`.
    *
    * The method finds all elements matching the specified selector in the `ElementHandle`'s subtree and passes an array
-   * of matched elements as a first argument to `pageFunction`. See [Working with selectors](https://playwright.dev/docs/selectors) for more
-   * details.
+   * of matched elements as a first argument to `pageFunction`.
    *
    * If `pageFunction` returns a [Promise], then
    * [elementHandle.$$eval(selector, pageFunction[, arg])](https://playwright.dev/docs/api/class-elementhandle#element-handle-eval-on-selector-all)
@@ -8552,7 +8502,7 @@ export interface ElementHandle<T=Node> extends JSHandle<T> {
    * expect(await feedHandle.$$eval('.tweet', nodes => nodes.map(n => n.innerText))).toEqual(['Hello!', 'Hi!']);
    * ```
    *
-   * @param selector A selector to query for. See [working with selectors](https://playwright.dev/docs/selectors) for more details.
+   * @param selector A selector to query for.
    * @param pageFunction Function to be evaluated in the page context.
    * @param arg Optional argument to pass to `pageFunction`.
    */
@@ -8561,8 +8511,7 @@ export interface ElementHandle<T=Node> extends JSHandle<T> {
    * Returns the return value of `pageFunction`.
    *
    * The method finds all elements matching the specified selector in the `ElementHandle`'s subtree and passes an array
-   * of matched elements as a first argument to `pageFunction`. See [Working with selectors](https://playwright.dev/docs/selectors) for more
-   * details.
+   * of matched elements as a first argument to `pageFunction`.
    *
    * If `pageFunction` returns a [Promise], then
    * [elementHandle.$$eval(selector, pageFunction[, arg])](https://playwright.dev/docs/api/class-elementhandle#element-handle-eval-on-selector-all)
@@ -8582,7 +8531,7 @@ export interface ElementHandle<T=Node> extends JSHandle<T> {
    * expect(await feedHandle.$$eval('.tweet', nodes => nodes.map(n => n.innerText))).toEqual(['Hello!', 'Hi!']);
    * ```
    *
-   * @param selector A selector to query for. See [working with selectors](https://playwright.dev/docs/selectors) for more details.
+   * @param selector A selector to query for.
    * @param pageFunction Function to be evaluated in the page context.
    * @param arg Optional argument to pass to `pageFunction`.
    */
@@ -8591,8 +8540,7 @@ export interface ElementHandle<T=Node> extends JSHandle<T> {
    * Returns the return value of `pageFunction`.
    *
    * The method finds all elements matching the specified selector in the `ElementHandle`'s subtree and passes an array
-   * of matched elements as a first argument to `pageFunction`. See [Working with selectors](https://playwright.dev/docs/selectors) for more
-   * details.
+   * of matched elements as a first argument to `pageFunction`.
    *
    * If `pageFunction` returns a [Promise], then
    * [elementHandle.$$eval(selector, pageFunction[, arg])](https://playwright.dev/docs/api/class-elementhandle#element-handle-eval-on-selector-all)
@@ -8612,7 +8560,7 @@ export interface ElementHandle<T=Node> extends JSHandle<T> {
    * expect(await feedHandle.$$eval('.tweet', nodes => nodes.map(n => n.innerText))).toEqual(['Hello!', 'Hi!']);
    * ```
    *
-   * @param selector A selector to query for. See [working with selectors](https://playwright.dev/docs/selectors) for more details.
+   * @param selector A selector to query for.
    * @param pageFunction Function to be evaluated in the page context.
    * @param arg Optional argument to pass to `pageFunction`.
    */
@@ -8621,8 +8569,7 @@ export interface ElementHandle<T=Node> extends JSHandle<T> {
    * Returns the return value of `pageFunction`.
    *
    * The method finds all elements matching the specified selector in the `ElementHandle`'s subtree and passes an array
-   * of matched elements as a first argument to `pageFunction`. See [Working with selectors](https://playwright.dev/docs/selectors) for more
-   * details.
+   * of matched elements as a first argument to `pageFunction`.
    *
    * If `pageFunction` returns a [Promise], then
    * [elementHandle.$$eval(selector, pageFunction[, arg])](https://playwright.dev/docs/api/class-elementhandle#element-handle-eval-on-selector-all)
@@ -8642,7 +8589,7 @@ export interface ElementHandle<T=Node> extends JSHandle<T> {
    * expect(await feedHandle.$$eval('.tweet', nodes => nodes.map(n => n.innerText))).toEqual(['Hello!', 'Hi!']);
    * ```
    *
-   * @param selector A selector to query for. See [working with selectors](https://playwright.dev/docs/selectors) for more details.
+   * @param selector A selector to query for.
    * @param pageFunction Function to be evaluated in the page context.
    * @param arg Optional argument to pass to `pageFunction`.
    */
@@ -8669,7 +8616,7 @@ export interface ElementHandle<T=Node> extends JSHandle<T> {
    * **NOTE** This method does not work across navigations, use
    * [page.waitForSelector(selector[, options])](https://playwright.dev/docs/api/class-page#page-wait-for-selector)
    * instead.
-   * @param selector A selector to query for. See [working with selectors](https://playwright.dev/docs/selectors) for more details.
+   * @param selector A selector to query for.
    * @param options
    */
   waitForSelector<K extends keyof HTMLElementTagNameMap>(selector: K, options?: ElementHandleWaitForSelectorOptionsNotHidden): Promise<ElementHandleForTag<K>>;
@@ -8694,7 +8641,7 @@ export interface ElementHandle<T=Node> extends JSHandle<T> {
    * **NOTE** This method does not work across navigations, use
    * [page.waitForSelector(selector[, options])](https://playwright.dev/docs/api/class-page#page-wait-for-selector)
    * instead.
-   * @param selector A selector to query for. See [working with selectors](https://playwright.dev/docs/selectors) for more details.
+   * @param selector A selector to query for.
    * @param options
    */
   waitForSelector(selector: string, options?: ElementHandleWaitForSelectorOptionsNotHidden): Promise<ElementHandle<SVGElement | HTMLElement>>;
@@ -8719,7 +8666,7 @@ export interface ElementHandle<T=Node> extends JSHandle<T> {
    * **NOTE** This method does not work across navigations, use
    * [page.waitForSelector(selector[, options])](https://playwright.dev/docs/api/class-page#page-wait-for-selector)
    * instead.
-   * @param selector A selector to query for. See [working with selectors](https://playwright.dev/docs/selectors) for more details.
+   * @param selector A selector to query for.
    * @param options
    */
   waitForSelector<K extends keyof HTMLElementTagNameMap>(selector: K, options: ElementHandleWaitForSelectorOptions): Promise<ElementHandleForTag<K> | null>;
@@ -8744,7 +8691,7 @@ export interface ElementHandle<T=Node> extends JSHandle<T> {
    * **NOTE** This method does not work across navigations, use
    * [page.waitForSelector(selector[, options])](https://playwright.dev/docs/api/class-page#page-wait-for-selector)
    * instead.
-   * @param selector A selector to query for. See [working with selectors](https://playwright.dev/docs/selectors) for more details.
+   * @param selector A selector to query for.
    * @param options
    */
   waitForSelector(selector: string, options: ElementHandleWaitForSelectorOptions): Promise<null|ElementHandle<SVGElement | HTMLElement>>;
@@ -10021,6 +9968,10 @@ export interface Locator {
   }): Promise<void>;
 
   /**
+   * Click an element.
+   *
+   * **Details**
+   *
    * This method clicks the element by performing the following steps:
    * 1. Wait for [actionability](https://playwright.dev/docs/actionability) checks on the element, unless `force` option is set.
    * 1. Scroll the element into view if needed.
@@ -10423,7 +10374,7 @@ export interface Locator {
    * await locator.click();
    * ```
    *
-   * @param selector A selector to use when resolving DOM element. See [working with selectors](https://playwright.dev/docs/selectors) for more details.
+   * @param selector A selector to use when resolving DOM element.
    */
   frameLocator(selector: string): FrameLocator;
 
@@ -10863,7 +10814,7 @@ export interface Locator {
    * method.
    *
    * [Learn more about locators](https://playwright.dev/docs/locators).
-   * @param selector A selector to use when resolving DOM element. See [working with selectors](https://playwright.dev/docs/selectors) for more details.
+   * @param selector A selector to use when resolving DOM element.
    * @param options
    */
   locator(selector: string, options?: {
@@ -15289,13 +15240,11 @@ export interface BrowserServer {
  * });
  *
  * // Get the next console log
- * const [msg] = await Promise.all([
- *   page.waitForEvent('console'),
- *   // Issue console.log inside the page
- *   page.evaluate(() => {
- *     console.log('hello', 42, { foo: 'bar' });
- *   }),
- * ]);
+ * const msgPromise = page.waitForEvent('console');
+ * await page.evaluate(() => {
+ *   console.log('hello', 42, { foo: 'bar' });  // Issue console.log inside the page
+ * });
+ * const msg = await msgPromise;
  *
  * // Deconstruct console log arguments
  * await msg.args[0].jsonValue() // hello
@@ -15539,16 +15488,13 @@ export interface Dialog {
  * Download event is emitted once the download starts. Download path becomes available once download completes:
  *
  * ```js
- * // Note that Promise.all prevents a race condition
- * // between clicking and waiting for the download.
- * const [ download ] = await Promise.all([
- *   // It is important to call waitForEvent before click to set up waiting.
- *   page.waitForEvent('download'),
- *   // Triggers the download.
- *   page.getByText('Download file').click(),
- * ]);
- * // wait for download to complete
- * const path = await download.path();
+ * // Start waiting for download before clicking. Note no await.
+ * const downloadPromise = page.waitForEvent('download');
+ * await page.getByText('Download file').click();
+ * const download = await downloadPromise;
+ *
+ * // Wait for the download process to complete.
+ * console.log(await download.path());
  * ```
  *
  */
@@ -15843,14 +15789,10 @@ export interface Electron {
  * [page.on('filechooser')](https://playwright.dev/docs/api/class-page#page-event-file-chooser) event.
  *
  * ```js
- * // Note that Promise.all prevents a race condition
- * // between clicking and waiting for the file chooser.
- * const [fileChooser] = await Promise.all([
- *   // It is important to call waitForEvent before click to set up waiting.
- *   page.waitForEvent('filechooser'),
- *   // Opens the file chooser.
- *   page.getByText('Upload').click(),
- * ]);
+ * // Start waiting for file chooser before clicking. Note no await.
+ * const fileChooserPromise = page.waitForEvent('filechooser');
+ * await page.getByText('Upload file').click();
+ * const fileChooser = await fileChooserPromise;
  * await fileChooser.setFiles('myfile.pdf');
  * ```
  *
@@ -15968,7 +15910,7 @@ export interface FrameLocator {
   /**
    * When working with iframes, you can create a frame locator that will enter the iframe and allow selecting elements
    * in that iframe.
-   * @param selector A selector to use when resolving DOM element. See [working with selectors](https://playwright.dev/docs/selectors) for more details.
+   * @param selector A selector to use when resolving DOM element.
    */
   frameLocator(selector: string): FrameLocator;
 
@@ -16203,7 +16145,7 @@ export interface FrameLocator {
    * method.
    *
    * [Learn more about locators](https://playwright.dev/docs/locators).
-   * @param selector A selector to use when resolving DOM element. See [working with selectors](https://playwright.dev/docs/selectors) for more details.
+   * @param selector A selector to use when resolving DOM element.
    * @param options
    */
   locator(selector: string, options?: {
@@ -16580,7 +16522,7 @@ export const firefox: BrowserType;
 export const request: APIRequest;
 
 /**
- * Selectors can be used to install custom selector engines. See [Working with selectors](https://playwright.dev/docs/selectors) for more
+ * Selectors can be used to install custom selector engines. See [extensibility](https://playwright.dev/docs/extensibility) for more
  * information.
  */
 export const selectors: Selectors;
@@ -16794,10 +16736,9 @@ export interface Request {
    * **Usage**
    *
    * ```js
-   * const [request] = await Promise.all([
-   *   page.waitForEvent('requestfinished'),
-   *   page.goto('http://example.com')
-   * ]);
+   * const requestFinishedPromise = page.waitForEvent('requestfinished');
+   * await page.goto('http://example.com');
+   * const request = await requestFinishedPromise;
    * console.log(request.timing());
    * ```
    *
@@ -17072,12 +17013,12 @@ export interface Route {
     headers?: { [key: string]: string; };
 
     /**
-     * If set changes the request method (e.g. GET or POST)
+     * If set changes the request method (e.g. GET or POST).
      */
     method?: string;
 
     /**
-     * If set changes the post data of request
+     * If set changes the post data of request.
      */
     postData?: string|Buffer;
 
@@ -17159,12 +17100,12 @@ export interface Route {
     headers?: { [key: string]: string; };
 
     /**
-     * If set changes the request method (e.g. GET or POST)
+     * If set changes the request method (e.g. GET or POST).
      */
     method?: string;
 
     /**
-     * If set changes the post data of request
+     * If set changes the post data of request.
      */
     postData?: string|Buffer;
 
@@ -17174,6 +17115,47 @@ export interface Route {
      */
     url?: string;
   }): Promise<void>;
+
+  /**
+   * Performs the request and fetches result without fulfilling it, so that the response could be modified and then
+   * fulfilled.
+   *
+   * **Usage**
+   *
+   * ```js
+   * await page.route('https://dog.ceo/api/breeds/list/all', async route => {
+   *   const response = await route.fetch();
+   *   const json = await response.json();
+   *   json.message['big_red_dog'] = [];
+   *   await route.fulfill({ response, json });
+   * });
+   * ```
+   *
+   * @param options
+   */
+  fetch(options?: {
+    /**
+     * Allows to set post data of the request. If the data parameter is an object, it will be serialized to json string
+     * and `content-type` header will be set to `application/json` if not explicitly set. Otherwise the `content-type`
+     * header will be set to `application/octet-stream` if not explicitly set.
+     */
+    data?: string|Buffer|Serializable;
+
+    /**
+     * If set changes the request HTTP headers. Header values will be converted to a string.
+     */
+    headers?: { [key: string]: string; };
+
+    /**
+     * If set changes the request method (e.g. GET or POST).
+     */
+    method?: string;
+
+    /**
+     * If set changes the request URL. New URL must have same protocol as original one.
+     */
+    url?: string;
+  }): Promise<APIResponse>;
 
   /**
    * Fulfills route's request with given response.
@@ -17217,6 +17199,23 @@ export interface Route {
     headers?: { [key: string]: string; };
 
     /**
+     * JSON response. This method will set the content type to `application/json` if not set.
+     *
+     * **Usage**
+     *
+     * ```js
+     * await page.route('https://dog.ceo/api/breeds/list/all', async route => {
+     *   const json = {
+     *     message: { 'test_breed': [] }
+     *   };
+     *   await route.fulfill({ json });
+     * });
+     * ```
+     *
+     */
+    json?: Serializable;
+
+    /**
      * File path to respond with. The content type will be inferred from file extension. If `path` is a relative path,
      * then it is resolved relative to the current working directory.
      */
@@ -17241,7 +17240,7 @@ export interface Route {
 }
 
 /**
- * Selectors can be used to install custom selector engines. See [Working with selectors](https://playwright.dev/docs/selectors) for more
+ * Selectors can be used to install custom selector engines. See [extensibility](https://playwright.dev/docs/extensibility) for more
  * information.
  */
 export interface Selectors {

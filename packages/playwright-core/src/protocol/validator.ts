@@ -987,6 +987,7 @@ scheme.PageExpectScreenshotParams = tObject({
     selector: tString,
   })),
   comparatorOptions: tOptional(tObject({
+    comparator: tOptional(tString),
     maxDiffPixels: tOptional(tNumber),
     maxDiffPixelRatio: tOptional(tNumber),
     threshold: tOptional(tNumber),
@@ -1295,6 +1296,7 @@ scheme.FrameDispatchEventResult = tOptional(tObject({}));
 scheme.FrameEvaluateExpressionParams = tObject({
   expression: tString,
   isFunction: tOptional(tBoolean),
+  exposeUtilityScript: tOptional(tBoolean),
   arg: tType('SerializedArgument'),
 });
 scheme.FrameEvaluateExpressionResult = tObject({

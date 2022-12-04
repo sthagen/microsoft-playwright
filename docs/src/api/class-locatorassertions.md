@@ -22,7 +22,7 @@ public class TestLocator {
   @Test
   void statusBecomesSubmitted() {
     ...
-    page.getByRole("button").click();
+    page.getByRole(AriaRole.BUTTON).click();
     assertThat(page.locator(".status")).hasText("Submitted");
   }
 }
@@ -61,7 +61,7 @@ public class ExampleTests : PageTest
     public async Task StatusBecomesSubmitted()
     {
         // ..
-        await Page.GetByRole("button").ClickAsync();
+        await Page.GetByRole(AriaRole.Button).ClickAsync();
         await Expect(Page.Locator(".status")).ToHaveTextAsync("Submitted");
     }
 }
@@ -360,7 +360,7 @@ The opposite of [`method: LocatorAssertions.toHaveText`].
 * since: v1.18
 - `expected` <[string]|[RegExp]|[Array]<[string]>|[Array]<[RegExp]>|[Array]<[string]|[RegExp]>>
 
-Expected substring or RegExp or a list of those.
+Expected string or RegExp or a list of those.
 
 ### option: LocatorAssertions.NotToHaveText.ignoreCase
 * since: v1.23
@@ -525,7 +525,7 @@ await expect(locator).toBeEditable();
 ```
 
 ```java
-assertThat(page.getByRole("textbox")).isEditable();
+assertThat(page.getByRole(AriaRole.TEXTBOX)).isEditable();
 ```
 
 ```python async
@@ -543,7 +543,7 @@ expect(locator).to_be_editable()
 ```
 
 ```csharp
-var locator = Page.GetByRole("textbox");
+var locator = Page.GetByRole(AriaRole.Textbox);
 await Expect(locator).ToBeEditableAsync();
 ```
 
@@ -662,7 +662,7 @@ await expect(locator).toBeFocused();
 ```
 
 ```java
-assertThat(page.getByRole("textbox")).isFocused();
+assertThat(page.getByRole(AriaRole.TEXTBOX)).isFocused();
 ```
 
 ```python async
@@ -680,7 +680,7 @@ expect(locator).to_be_focused()
 ```
 
 ```csharp
-var locator = Page.GetByRole("textbox");
+var locator = Page.GetByRole(AriaRole.Textbox);
 await Expect(locator).ToBeFocusedAsync();
 ```
 
@@ -1177,7 +1177,7 @@ await expect(locator).toHaveCSS('display', 'flex');
 ```
 
 ```java
-assertThat(page.getByRole("button")).hasCSS("display", "flex");
+assertThat(page.getByRole(AriaRole.BUTTON)).hasCSS("display", "flex");
 ```
 
 ```python async
@@ -1195,7 +1195,7 @@ expect(locator).to_have_css("display", "flex")
 ```
 
 ```csharp
-var locator = Page.GetByRole("button");
+var locator = Page.GetByRole(AriaRole.Button);
 await Expect(locator).ToHaveCSSAsync("display", "flex");
 ```
 
@@ -1232,7 +1232,7 @@ await expect(locator).toHaveId('lastname');
 ```
 
 ```java
-assertThat(page.getByRole("textbox")).hasId("lastname");
+assertThat(page.getByRole(AriaRole.TEXTBOX)).hasId("lastname");
 ```
 
 ```python async
@@ -1250,7 +1250,7 @@ expect(locator).to_have_id("lastname")
 ```
 
 ```csharp
-var locator = Page.GetByRole("textbox");
+var locator = Page.GetByRole(AriaRole.Textbox);
 await Expect(locator).ToHaveIdAsync("lastname");
 ```
 
@@ -1336,6 +1336,8 @@ const locator = page.getByRole('button');
 await expect(locator).toHaveScreenshot('image.png');
 ```
 
+Note that screenshot assertions only work with Playwright test runner.
+
 ### param: LocatorAssertions.toHaveScreenshot#1.name
 * since: v1.23
 - `name` <[string]|[Array]<[string]>>
@@ -1360,6 +1362,9 @@ Snapshot name.
 ### option: LocatorAssertions.toHaveScreenshot#1.scale = %%-screenshot-option-scale-default-css-%%
 * since: v1.23
 
+### option: LocatorAssertions.toHaveScreenshot#1.comparator = %%-assertions-comparator-%%
+* since: v1.29
+
 ### option: LocatorAssertions.toHaveScreenshot#1.maxDiffPixels = %%-assertions-max-diff-pixels-%%
 * since: v1.23
 
@@ -1383,6 +1388,8 @@ const locator = page.getByRole('button');
 await expect(locator).toHaveScreenshot();
 ```
 
+Note that screenshot assertions only work with Playwright test runner.
+
 ### option: LocatorAssertions.toHaveScreenshot#2.timeout = %%-js-assertions-timeout-%%
 * since: v1.23
 
@@ -1400,6 +1407,9 @@ await expect(locator).toHaveScreenshot();
 
 ### option: LocatorAssertions.toHaveScreenshot#2.scale = %%-screenshot-option-scale-default-css-%%
 * since: v1.23
+
+### option: LocatorAssertions.toHaveScreenshot#2.comparator = %%-assertions-comparator-%%
+* since: v1.29
 
 ### option: LocatorAssertions.toHaveScreenshot#2.maxDiffPixels = %%-assertions-max-diff-pixels-%%
 * since: v1.23
@@ -1550,21 +1560,21 @@ await Expect(Page.Locator("ul")).ToHaveTextAsync(new string[] {"Text 1", "Text 2
 * langs: js
 - `expected` <[string]|[RegExp]|[Array]<[string]|[RegExp]>>
 
-Expected substring or RegExp or a list of those.
+Expected string or RegExp or a list of those.
 
 ### param: LocatorAssertions.toHaveText.expected
 * since: v1.18
 * langs: python
 - `expected` <[string]|[RegExp]|[Array]<[string]>|[Array]<[RegExp]>|[Array]<[string]|[RegExp]>>
 
-Expected substring or RegExp or a list of those.
+Expected string or RegExp or a list of those.
 
 ### param: LocatorAssertions.toHaveText.expected
 * since: v1.18
 * langs: java, csharp
 - `expected` <[string]|[RegExp]|[Array]<[string]>|[Array]<[RegExp]>>
 
-Expected substring or RegExp or a list of those.
+Expected string or RegExp or a list of those.
 
 ### option: LocatorAssertions.toHaveText.ignoreCase
 * since: v1.23

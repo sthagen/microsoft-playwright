@@ -47,7 +47,7 @@ test.describe('cli codegen', () => {
       page.getByRole(AriaRole.BUTTON, new Page.GetByRoleOptions().setName("Submit")).click()`);
 
     expect.soft(sources.get('C#').text).toContain(`
-        await page.GetByRole(AriaRole.Button, new() { NameString = "Submit" }).ClickAsync();`);
+        await page.GetByRole(AriaRole.Button, new() { Name = "Submit" }).ClickAsync();`);
 
     expect(message.text()).toBe('click');
   });
@@ -189,7 +189,7 @@ test.describe('cli codegen', () => {
       page.getByRole(AriaRole.BUTTON, new Page.GetByRoleOptions().setName("Submit")).click()`);
 
     expect.soft(sources.get('C#').text).toContain(`
-        await page.GetByRole(AriaRole.Button, new() { NameString = "Submit" }).ClickAsync();`);
+        await page.GetByRole(AriaRole.Button, new() { Name = "Submit" }).ClickAsync();`);
 
     expect(message.text()).toBe('click');
   });
@@ -304,6 +304,23 @@ test.describe('cli codegen', () => {
     expect(sources.get('JavaScript').text).toContain(`
   await page.locator('#textarea').fill('John');`);
     expect(message.text()).toBe('John');
+  });
+
+  test('should fill [contentEditable]', async ({ page, openRecorder }) => {
+    const recorder = await openRecorder();
+
+    await recorder.setContentAndWait(`<div id="content" contenteditable="" oninput="console.log(content.innerText)"/>`);
+    const locator = await recorder.focusElement('div');
+    expect(locator).toBe(`locator('#content')`);
+
+    const [message, sources] = await Promise.all([
+      page.waitForEvent('console', msg => msg.type() !== 'error'),
+      recorder.waitForOutput('JavaScript', 'fill'),
+      page.fill('div', 'John Doe')
+    ]);
+    expect(sources.get('JavaScript').text).toContain(`
+  await page.locator('#content').fill('John Doe');`);
+    expect(message.text()).toBe('John Doe');
   });
 
   test('should press', async ({ page, openRecorder }) => {
@@ -607,10 +624,9 @@ test.describe('cli codegen', () => {
     ]);
 
     expect.soft(sources.get('JavaScript').text).toContain(`
-  const [page1] = await Promise.all([
-    page.waitForEvent('popup'),
-    page.getByRole('link', { name: 'link' }).click()
-  ]);`);
+  const page1Promise = page.waitForEvent('popup');
+  await page.getByRole('link', { name: 'link' }).click();
+  const page1 = await page1Promise;`);
 
     expect.soft(sources.get('Java').text).toContain(`
       Page page1 = page.waitForPopup(() -> {
@@ -618,19 +634,19 @@ test.describe('cli codegen', () => {
       });`);
 
     expect.soft(sources.get('Python').text).toContain(`
-    with page.expect_popup() as popup_info:
+    with page.expect_popup() as page1_info:
         page.get_by_role("link", name="link").click()
-    page1 = popup_info.value`);
+    page1 = page1_info.value`);
 
     expect.soft(sources.get('Python Async').text).toContain(`
-    async with page.expect_popup() as popup_info:
+    async with page.expect_popup() as page1_info:
         await page.get_by_role("link", name="link").click()
-    page1 = await popup_info.value`);
+    page1 = await page1_info.value`);
 
     expect.soft(sources.get('C#').text).toContain(`
         var page1 = await page.RunAndWaitForPopupAsync(async () =>
         {
-            await page.GetByRole(AriaRole.Link, new() { NameString = "link" }).ClickAsync();
+            await page.GetByRole(AriaRole.Link, new() { Name = "link" }).ClickAsync();
         });`);
 
     expect(popup.url()).toBe('about:blank');

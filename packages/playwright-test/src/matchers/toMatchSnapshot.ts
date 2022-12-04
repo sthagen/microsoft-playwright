@@ -145,13 +145,14 @@ class SnapshotHelper<T extends ImageComparatorOptions> {
       maxDiffPixels: options.maxDiffPixels,
       maxDiffPixelRatio: options.maxDiffPixelRatio,
       threshold: options.threshold,
+      comparator: options.comparator,
     };
     this.kind = this.mimeType.startsWith('image/') ? 'Screenshot' : 'Snapshot';
   }
 
   handleMissingNegated() {
     const isWriteMissingMode = this.updateSnapshots === 'all' || this.updateSnapshots === 'missing';
-    const message = `${this.snapshotPath} is missing in snapshots${isWriteMissingMode ? ', matchers using ".not" won\'t write them automatically.' : '.'}`;
+    const message = `A snapshot doesn't exist at ${this.snapshotPath}${isWriteMissingMode ? ', matchers using ".not" won\'t write them automatically.' : '.'}`;
     return {
       // NOTE: 'isNot' matcher implies inversed value.
       pass: true,
@@ -180,7 +181,7 @@ class SnapshotHelper<T extends ImageComparatorOptions> {
       writeFileSync(this.snapshotPath, actual);
       writeFileSync(this.actualPath, actual);
     }
-    const message = `${this.snapshotPath} is missing in snapshots${isWriteMissingMode ? ', writing actual.' : '.'}`;
+    const message = `A snapshot doesn't exist at ${this.snapshotPath}${isWriteMissingMode ? ', writing actual.' : '.'}`;
     if (this.updateSnapshots === 'all') {
       /* eslint-disable no-console */
       console.log(message);
@@ -305,6 +306,7 @@ export async function toHaveScreenshot(
   const helper = new SnapshotHelper(
       testInfo, snapshotPathResolver, 'png',
       {
+        comparator: config?.comparator,
         maxDiffPixels: config?.maxDiffPixels,
         maxDiffPixelRatio: config?.maxDiffPixelRatio,
         threshold: config?.threshold,
@@ -327,7 +329,7 @@ export async function toHaveScreenshot(
     maxDiffPixelRatio: undefined,
   };
 
-  const customStackTrace = captureStackTrace(`expect.toHaveScreenshot`);
+  const customStackTrace = captureStackTrace(`expect.${this.isNot ? 'not.' : ''}toHaveScreenshot`);
   const hasSnapshot = fs.existsSync(helper.snapshotPath);
   if (this.isNot) {
     if (!hasSnapshot)
@@ -349,7 +351,7 @@ export async function toHaveScreenshot(
 
   // Fast path: there's no screenshot and we don't intend to update it.
   if (helper.updateSnapshots === 'none' && !hasSnapshot)
-    return { pass: false, message: () => `${helper.snapshotPath} is missing in snapshots.` };
+    return { pass: false, message: () => `A snapshot doesn't exist at ${helper.snapshotPath}.` };
 
   if (!hasSnapshot) {
     // Regenerate a new screenshot by waiting until two screenshots are the same.

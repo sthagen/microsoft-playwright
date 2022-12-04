@@ -216,11 +216,11 @@ test('should write missing expectations locally twice and continue', async ({ ru
   expect(result.failed).toBe(1);
 
   const snapshot1OutputPath = testInfo.outputPath('a.spec.js-snapshots/snapshot.txt');
-  expect(result.output).toContain(`Error: ${snapshot1OutputPath} is missing in snapshots, writing actual`);
+  expect(result.output).toContain(`Error: A snapshot doesn't exist at ${snapshot1OutputPath}, writing actual`);
   expect(fs.readFileSync(snapshot1OutputPath, 'utf-8')).toBe('Hello world');
 
   const snapshot2OutputPath = testInfo.outputPath('a.spec.js-snapshots/snapshot2.txt');
-  expect(result.output).toContain(`Error: ${snapshot2OutputPath} is missing in snapshots, writing actual`);
+  expect(result.output).toContain(`Error: A snapshot doesn't exist at ${snapshot2OutputPath}, writing actual`);
   expect(fs.readFileSync(snapshot2OutputPath, 'utf-8')).toBe('Hello world2');
 
   expect(result.output).toContain('Here we are!');
@@ -243,7 +243,7 @@ test('should not write missing expectations for negated matcher', async ({ runIn
 
   expect(result.exitCode).toBe(1);
   const snapshotOutputPath = testInfo.outputPath('a.spec.js-snapshots/snapshot.txt');
-  expect(result.output).toContain(`${snapshotOutputPath} is missing in snapshots, matchers using ".not" won\'t write them automatically.`);
+  expect(result.output).toContain(`A snapshot doesn't exist at ${snapshotOutputPath}, matchers using ".not" won\'t write them automatically.`);
   expect(fs.existsSync(snapshotOutputPath)).toBe(false);
 });
 
@@ -323,7 +323,7 @@ test('should silently write missing expectations locally with the update-snapsho
 
   expect(result.exitCode).toBe(0);
   const snapshotOutputPath = testInfo.outputPath('a.spec.js-snapshots/snapshot.txt');
-  expect(result.output).toContain(`${snapshotOutputPath} is missing in snapshots, writing actual`);
+  expect(result.output).toContain(`A snapshot doesn't exist at ${snapshotOutputPath}, writing actual`);
   const data = fs.readFileSync(snapshotOutputPath);
   expect(data.toString()).toBe(ACTUAL_SNAPSHOT);
 });
@@ -341,7 +341,7 @@ test('should silently write missing expectations locally with the update-snapsho
 
   expect(result.exitCode).toBe(1);
   const snapshotOutputPath = testInfo.outputPath('a.spec.js-snapshots/snapshot.txt');
-  expect(result.output).toContain(`${snapshotOutputPath} is missing in snapshots, matchers using ".not" won\'t write them automatically.`);
+  expect(result.output).toContain(`A snapshot doesn't exist at ${snapshotOutputPath}, matchers using ".not" won\'t write them automatically.`);
   expect(fs.existsSync(snapshotOutputPath)).toBe(false);
 });
 
@@ -620,6 +620,80 @@ test('should respect project threshold', async ({ runInlineTest }) => {
   expect(result.exitCode).toBe(0);
 });
 
+test('should respect comparator name', async ({ runInlineTest }) => {
+  const expected = fs.readFileSync(path.join(__dirname, '../image_tools/fixtures/should-match/tiny-antialiasing-sample/tiny-expected.png'));
+  const actual = fs.readFileSync(path.join(__dirname, '../image_tools/fixtures/should-match/tiny-antialiasing-sample/tiny-actual.png'));
+  const result = await runInlineTest({
+    ...files,
+    'a.spec.js-snapshots/snapshot.png': expected,
+    'a.spec.js': `
+      const { test } = require('./helper');
+      test('should pass', ({}) => {
+        expect(Buffer.from('${actual.toString('base64')}', 'base64')).toMatchSnapshot('snapshot.png', {
+          threshold: 0,
+          comparator: 'ssim-cie94',
+        });
+      });
+      test('should fail', ({}) => {
+        expect(Buffer.from('${actual.toString('base64')}', 'base64')).toMatchSnapshot('snapshot.png', {
+          threshold: 0,
+          comparator: 'pixelmatch',
+        });
+      });
+    `
+  });
+  expect(result.exitCode).toBe(1);
+  expect(result.report.suites[0].specs[0].title).toBe('should pass');
+  expect(result.report.suites[0].specs[0].ok).toBe(true);
+  expect(result.report.suites[0].specs[1].title).toBe('should fail');
+  expect(result.report.suites[0].specs[1].ok).toBe(false);
+});
+
+test('should respect comparator in config', async ({ runInlineTest }) => {
+  const expected = fs.readFileSync(path.join(__dirname, '../image_tools/fixtures/should-match/tiny-antialiasing-sample/tiny-expected.png'));
+  const actual = fs.readFileSync(path.join(__dirname, '../image_tools/fixtures/should-match/tiny-antialiasing-sample/tiny-actual.png'));
+  const result = await runInlineTest({
+    ...files,
+    'playwright.config.ts': `
+      module.exports = {
+        snapshotPathTemplate: '__screenshots__/{testFilePath}/{arg}{ext}',
+        projects: [
+          {
+            name: 'should-pass',
+            expect: {
+              toMatchSnapshot: {
+                comparator: 'ssim-cie94',
+              }
+            },
+          },
+          {
+            name: 'should-fail',
+            expect: {
+              toMatchSnapshot: {
+                comparator: 'pixelmatch',
+              }
+            },
+          },
+        ],
+      };
+    `,
+    '__screenshots__/a.spec.js/snapshot.png': expected,
+    'a.spec.js': `
+      const { test } = require('./helper');
+      test('test', ({}) => {
+        expect(Buffer.from('${actual.toString('base64')}', 'base64')).toMatchSnapshot('snapshot.png', {
+          threshold: 0,
+        });
+      });
+    `
+  });
+  expect(result.exitCode).toBe(1);
+  expect(result.report.suites[0].specs[0].tests[0].projectName).toBe('should-pass');
+  expect(result.report.suites[0].specs[0].tests[0].status).toBe('expected');
+  expect(result.report.suites[0].specs[0].tests[1].projectName).toBe('should-fail');
+  expect(result.report.suites[0].specs[0].tests[1].status).toBe('unexpected');
+});
+
 test('should sanitize snapshot name when passed as string', async ({ runInlineTest }) => {
   const result = await runInlineTest({
     ...files,
@@ -647,7 +721,7 @@ test('should write missing expectations with sanitized snapshot name', async ({ 
 
   expect(result.exitCode).toBe(1);
   const snapshotOutputPath = testInfo.outputPath('a.spec.js-snapshots/-snapshot-.txt');
-  expect(result.output).toContain(`${snapshotOutputPath} is missing in snapshots, writing actual`);
+  expect(result.output).toContain(`A snapshot doesn't exist at ${snapshotOutputPath}, writing actual`);
   const data = fs.readFileSync(snapshotOutputPath);
   expect(data.toString()).toBe('Hello world');
 });
@@ -768,7 +842,7 @@ test('should update snapshot with array of path segments', async ({ runInlineTes
 
   expect(result.exitCode).toBe(0);
   const snapshotOutputPath = testInfo.outputPath('a.spec.js-snapshots/test/path/snapshot.txt');
-  expect(result.output).toContain(`${snapshotOutputPath} is missing in snapshots, writing actual`);
+  expect(result.output).toContain(`A snapshot doesn't exist at ${snapshotOutputPath}, writing actual`);
   const data = fs.readFileSync(snapshotOutputPath);
   expect(data.toString()).toBe('Hello world');
 });
@@ -905,7 +979,7 @@ test('should fail with missing expectations and retries', async ({ runInlineTest
   expect(result.exitCode).toBe(1);
   expect(result.failed).toBe(1);
   const snapshotOutputPath = testInfo.outputPath('a.spec.js-snapshots/snapshot.txt');
-  expect(result.output).toContain(`${snapshotOutputPath} is missing in snapshots, writing actual`);
+  expect(result.output).toContain(`A snapshot doesn't exist at ${snapshotOutputPath}, writing actual`);
   const data = fs.readFileSync(snapshotOutputPath);
   expect(data.toString()).toBe('Hello world');
 });
@@ -927,7 +1001,7 @@ test('should update expectations with retries', async ({ runInlineTest }, testIn
   expect(result.exitCode).toBe(0);
   expect(result.passed).toBe(1);
   const snapshotOutputPath = testInfo.outputPath('a.spec.js-snapshots/snapshot.txt');
-  expect(result.output).toContain(`${snapshotOutputPath} is missing in snapshots, writing actual`);
+  expect(result.output).toContain(`A snapshot doesn't exist at ${snapshotOutputPath}, writing actual`);
   const data = fs.readFileSync(snapshotOutputPath);
   expect(data.toString()).toBe('Hello world');
 });

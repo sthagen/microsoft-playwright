@@ -128,6 +128,10 @@ If the target element is not an `<input>`, `<textarea>` or `[contenteditable]` e
 ## async method: Locator.click
 * since: v1.14
 
+Click an element.
+
+**Details**
+
 This method clicks the element by performing the following steps:
 1. Wait for [actionability](../actionability.md) checks on the element, unless [`option: force`] option is set.
 1. Scroll the element into view if needed.
@@ -591,7 +595,7 @@ Locator rowLocator = page.locator("tr");
 rowLocator
     .filter(new Locator.FilterOptions().setHasText("text in column 1"))
     .filter(new Locator.FilterOptions().setHas(
-        page.getByRole("button", new Page.GetByRoleOptions().setName("column 2 button"))
+        page.getByRole(AriaRole.BUTTON, new Page.GetByRoleOptions().setName("column 2 button"))
     ))
     .screenshot();
 ```
@@ -620,7 +624,7 @@ var rowLocator = page.Locator("tr");
 await rowLocator
     .Filter(new LocatorFilterOptions { HasText = "text in column 1" })
     .Filter(new LocatorFilterOptions {
-        Has = page.GetByRole("button", new() { Name = "column 2 button" } )
+        Has = page.GetByRole(AriaRole.Button, new() { Name = "column 2 button" } )
     })
     .ScreenshotAsync();
 ```

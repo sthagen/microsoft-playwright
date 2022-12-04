@@ -138,6 +138,8 @@ yield the same result, and then compare the last screenshot with the expectation
 await expect(page).toHaveScreenshot('image.png');
 ```
 
+Note that screenshot assertions only work with Playwright test runner.
+
 ### param: PageAssertions.toHaveScreenshot#1.name
 * since: v1.23
 - `name` <[string]|[Array]<[string]>>
@@ -168,6 +170,9 @@ Snapshot name.
 ### option: PageAssertions.toHaveScreenshot#1.scale = %%-screenshot-option-scale-default-css-%%
 * since: v1.23
 
+### option: PageAssertions.toHaveScreenshot#1.comparator = %%-assertions-comparator-%%
+* since: v1.29
+
 ### option: PageAssertions.toHaveScreenshot#1.maxDiffPixels = %%-assertions-max-diff-pixels-%%
 * since: v1.23
 
@@ -189,6 +194,8 @@ yield the same result, and then compare the last screenshot with the expectation
 ```js
 await expect(page).toHaveScreenshot();
 ```
+
+Note that screenshot assertions only work with Playwright test runner.
 
 ### option: PageAssertions.toHaveScreenshot#2.timeout = %%-js-assertions-timeout-%%
 * since: v1.23
@@ -213,6 +220,9 @@ await expect(page).toHaveScreenshot();
 
 ### option: PageAssertions.toHaveScreenshot#2.scale = %%-screenshot-option-scale-default-css-%%
 * since: v1.23
+
+### option: PageAssertions.toHaveScreenshot#2.comparator = %%-assertions-comparator-%%
+* since: v1.29
 
 ### option: PageAssertions.toHaveScreenshot#2.maxDiffPixels = %%-assertions-max-diff-pixels-%%
 * since: v1.23

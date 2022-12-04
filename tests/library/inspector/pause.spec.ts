@@ -230,6 +230,7 @@ it.describe('pause', () => {
     const scriptPromise = (async () => {
       await page.pause();
       await expect(page.locator('button')).toHaveText('Submit');
+      await expect(page.locator('button')).not.toHaveText('Submit2');
       await page.pause();  // 2
     })();
     const recorderPage = await recorderPageGetter();
@@ -238,6 +239,7 @@ it.describe('pause', () => {
     expect(await sanitizeLog(recorderPage)).toEqual([
       'page.pause- XXms',
       'expect(page.locator(\'button\')).toHaveText()- XXms',
+      'expect(page.locator(\'button\')).not.toHaveText()- XXms',
       'page.pause',
     ]);
     await recorderPage.click('[title="Resume (F8)"]');
@@ -410,6 +412,25 @@ it.describe('pause', () => {
       'keyup',
       'keyup',
     ]);
+  });
+
+  it('should highlight locators with custom testId', async ({ page, playwright, recorderPageGetter }) => {
+    await page.setContent('<div data-custom-id=foo id=target>and me</div>');
+    const scriptPromise = (async () => {
+      await page.pause();
+      playwright.selectors.setTestIdAttribute('data-custom-id');
+      await page.getByTestId('foo').click();
+    })();
+    const recorderPage = await recorderPageGetter();
+
+    const box1Promise = waitForTestLog<Box>(page, 'Highlight box for test: ');
+    await recorderPage.click('[title="Step over (F10)"]');
+    const box2 = roundBox(await page.locator('#target').boundingBox());
+    const box1 = roundBox(await box1Promise);
+    expect(box1).toEqual(box2);
+
+    await recorderPage.click('[title="Resume (F8)"]');
+    await scriptPromise;
   });
 });
 
