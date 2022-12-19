@@ -16,12 +16,12 @@
  */
 
 import { colors, jpegjs } from '../utilsBundle';
-import pixelmatch from '../third_party/pixelmatch';
+const pixelmatch = require('../third_party/pixelmatch');
 import { compare } from '../image_tools/compare';
-import { diff_match_patch, DIFF_INSERT, DIFF_DELETE, DIFF_EQUAL } from '../third_party/diff_match_patch';
+const { diff_match_patch, DIFF_INSERT, DIFF_DELETE, DIFF_EQUAL } = require('../third_party/diff_match_patch');
 import { PNG } from '../utilsBundle';
 
-export type ImageComparatorOptions = { threshold?: number, maxDiffPixels?: number, maxDiffPixelRatio?: number, comparator?: string };
+export type ImageComparatorOptions = { threshold?: number, maxDiffPixels?: number, maxDiffPixelRatio?: number, _comparator?: string };
 export type ComparatorResult = { diff?: Buffer; errorMessage: string; } | null;
 export type Comparator = (actualBuffer: Buffer | string, expectedBuffer: Buffer, options?: any) => ComparatorResult;
 
@@ -60,16 +60,18 @@ function compareImages(mimeType: string, actualBuffer: Buffer | string, expected
   }
   const diff = new PNG({ width: expected.width, height: expected.height });
   let count;
-  if (options.comparator === 'ssim-cie94') {
+  if (options._comparator === 'ssim-cie94') {
     count = compare(expected.data, actual.data, diff.data, expected.width, expected.height, {
-      maxColorDeltaE94: (options.threshold ?? 0.01) * 100,
+      // All ΔE* formulae are originally designed to have the difference of 1.0 stand for a "just noticeable difference" (JND).
+      // See https://en.wikipedia.org/wiki/Color_difference#CIELAB_%CE%94E*
+      maxColorDeltaE94: 1.0,
     });
-  } else if ((options.comparator ?? 'pixelmatch') === 'pixelmatch') {
+  } else if ((options._comparator ?? 'pixelmatch') === 'pixelmatch') {
     count = pixelmatch(expected.data, actual.data, diff.data, expected.width, expected.height, {
       threshold: options.threshold ?? 0.2,
     });
   } else {
-    throw new Error(`Configuration specifies unknown comparator "${options.comparator}"`);
+    throw new Error(`Configuration specifies unknown comparator "${options._comparator}"`);
   }
 
   const maxDiffPixels1 = options.maxDiffPixels;
@@ -100,7 +102,7 @@ function compareText(actual: Buffer | string, expectedBuffer: Buffer): Comparato
   };
 }
 
-function diff_prettyTerminal(diffs: diff_match_patch.Diff[]) {
+function diff_prettyTerminal(diffs: [number, string][]) {
   const html = [];
   for (let x = 0; x < diffs.length; x++) {
     const op = diffs[x][0];    // Operation (insert, delete, equal)

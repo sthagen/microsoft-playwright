@@ -677,8 +677,9 @@ contexts override the proxy, global proxy will be never used and can be any stri
 ## context-option-strict
 - `strictSelectors` <[boolean]>
 
-If specified, enables strict selectors mode for this context. In the strict selectors mode all operations
+If set to true, enables strict selectors mode for this context. In the strict selectors mode all operations
 on selectors that imply single target DOM element will throw when more than one element matches the selector.
+This option does not affect any Locator APIs (Locators are always strict).
 See [Locator] to learn more about the strict mode.
 
 ## context-option-service-worker-policy
@@ -697,7 +698,7 @@ Whether to allow sites to register Service workers. Defaults to `'allow'`.
   - `index` ?<[int]> Matches by the index. Optional.
 
 Options to select. If the `<select>` has the `multiple` attribute, all matching options are selected, otherwise only the
-first option matching one of the passed options is selected. String values are equivalent to `{value:'string'}`. Option
+first option matching one of the passed options is selected. String values are matching both values and labels. Option
 is considered matching if all specified properties match.
 
 ## wait-for-navigation-url
@@ -797,12 +798,6 @@ Time to retry the assertion for.
 
 An acceptable amount of pixels that could be different. Default is configurable with `TestConfig.expect`. Unset by default.
 
-## assertions-comparator
-* langs: js
-- `comparator` <[string]> Either `"pixelmatch"` or `"ssim-cie94"`.
-
-A comparator function to use when comparing images.
-
 ## assertions-max-diff-pixel-ratio
 * langs: js
 - `maxDiffPixelRatio` <[float]>
@@ -813,7 +808,9 @@ An acceptable ratio of pixels that are different to the total amount of pixels, 
 * langs: js
 - `threshold` <[float]>
 
-An acceptable perceived color difference in the [YIQ color space](https://en.wikipedia.org/wiki/YIQ) between the same pixel in compared images, between zero (strict) and one (lax), default is configurable with `TestConfig.expect`. Defaults to `0.2`.
+An acceptable perceived color difference in the [YIQ color space](https://en.wikipedia.org/wiki/YIQ)
+between the same pixel in compared images, between zero (strict) and one (lax), default is configurable with
+`TestConfig.expect`. Defaults to `0.2`.
 
 ## shared-context-params-list-v1.8
 - %%-context-option-acceptdownloads-%%
@@ -1084,7 +1081,7 @@ When set to `"hide"`, screenshot will hide text caret. When set to `"initial"`, 
 
 ## locator-get-by-test-id-test-id
 * since: v1.27
-- `testId` <[string]>
+- `testId` <[string]|[RegExp]>
 
 Id to locate the element by.
 

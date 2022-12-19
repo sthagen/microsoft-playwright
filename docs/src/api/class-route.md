@@ -114,7 +114,14 @@ If set changes the request method (e.g. GET or POST).
 
 ### option: Route.continue.postData
 * since: v1.8
-* langs: js, python, java
+* langs: js, python
+- `postData` <[string]|[Buffer]|[Serializable]>
+
+If set changes the post data of request.
+
+### option: Route.continue.postData
+* since: v1.8
+* langs: java
 - `postData` <[string]|[Buffer]>
 
 If set changes the post data of request.
@@ -390,7 +397,14 @@ If set changes the request method (e.g. GET or POST).
 
 ### option: Route.fallback.postData
 * since: v1.23
-* langs: js, python, java
+* langs: js, python
+- `postData` <[string]|[Buffer]|[Serializable]>
+
+If set changes the post data of request.
+
+### option: Route.fallback.postData
+* since: v1.23
+* langs: java
 - `postData` <[string]|[Buffer]>
 
 If set changes the post data of request.
@@ -480,10 +494,23 @@ If set changes the request URL. New URL must have same protocol as original one.
 
 If set changes the request method (e.g. GET or POST).
 
-### option: Route.fetch.postData = %%-js-python-csharp-fetch-option-data-%%
+### option: Route.fetch.postData
+* langs: js, python
 * since: v1.29
+- `postData` <[string]|[Buffer]|[Serializable]>
 
-### option: Route.fetch.data
+Allows to set post data of the request. If the data parameter is an object, it will be serialized to json string
+and `content-type` header will be set to `application/json` if not explicitly set. Otherwise the `content-type` header will be
+set to `application/octet-stream` if not explicitly set.
+
+### option: Route.fetch.postData
+* langs: java
+* since: v1.29
+- `postData` <[string]|[Buffer]>
+
+If set changes the post data of request.
+
+### option: Route.fetch.postData
 * since: v1.29
 * langs: csharp
 - `postData` <[Buffer]>
@@ -615,33 +642,6 @@ Optional response body as raw bytes.
 - `json` <[Serializable]>
 
 JSON response. This method will set the content type to `application/json` if not set.
-
-**Usage**
-
-```js
-await page.route('https://dog.ceo/api/breeds/list/all', async route => {
-  const json = {
-    message: { 'test_breed': [] }
-  };
-  await route.fulfill({ json });
-});
-```
-
-```python async
-async def handle(route):
-    json = { "test_breed": [] }
-    await route.fulfill(json=json)
-
-await page.route("https://dog.ceo/api/breeds/list/all", handle)
-```
-
-```python sync
-async def handle(route):
-    json = { "test_breed": [] }
-    route.fulfill(json=json)
-
-page.route("https://dog.ceo/api/breeds/list/all", handle)
-```
 
 ### option: Route.fulfill.json
 * since: v1.29

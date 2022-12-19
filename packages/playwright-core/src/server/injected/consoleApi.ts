@@ -53,21 +53,16 @@ class Locator {
     self.getByText = (text: string | RegExp, options?: { exact?: boolean }): Locator => self.locator(getByTextSelector(text, options));
     self.getByTitle = (text: string | RegExp, options?: { exact?: boolean }): Locator => self.locator(getByTitleSelector(text, options));
     self.getByRole = (role: string, options: ByRoleOptions = {}): Locator => self.locator(getByRoleSelector(role, options));
+    self.filter = (options?: { hasText?: string | RegExp, has?: Locator }): Locator => new Locator(injectedScript, selector, options);
+    self.first = (): Locator => self.locator('nth=0');
+    self.last = (): Locator => self.locator('nth=-1');
+    self.nth = (index: number): Locator => self.locator(`nth=${index}`);
   }
 }
 
-type ConsoleAPIInterface = {
-  $: (selector: string) => void;
-  $$: (selector: string) => void;
-  inspect: (selector: string) => void;
-  selector: (element: Element) => void;
-  generateLocator: (element: Element, language?: Language) => void;
-  resume: () => void;
-};
-
 declare global {
   interface Window {
-    playwright?: ConsoleAPIInterface;
+    playwright?: any;
     inspect: (element: Element | undefined) => void;
     __pw_resume: () => Promise<void>;
   }
@@ -89,6 +84,10 @@ class ConsoleAPI {
       resume: () => this._resume(),
       ...new Locator(injectedScript, ''),
     };
+    delete window.playwright.filter;
+    delete window.playwright.first;
+    delete window.playwright.last;
+    delete window.playwright.nth;
   }
 
   private _querySelector(selector: string, strict: boolean): (Element | undefined) {

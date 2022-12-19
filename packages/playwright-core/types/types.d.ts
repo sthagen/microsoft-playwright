@@ -2597,7 +2597,7 @@ export interface Page {
    *
    * @param testId Id to locate the element by.
    */
-  getByTestId(testId: string): Locator;
+  getByTestId(testId: string|RegExp): Locator;
 
   /**
    * Allows locating elements that contain given text. Consider the following DOM structure:
@@ -3517,8 +3517,8 @@ export interface Page {
    * @param selector A selector to search for an element. If there are multiple elements satisfying the selector, the first will be
    * used.
    * @param values Options to select. If the `<select>` has the `multiple` attribute, all matching options are selected, otherwise
-   * only the first option matching one of the passed options is selected. String values are equivalent to
-   * `{value:'string'}`. Option is considered matching if all specified properties match.
+   * only the first option matching one of the passed options is selected. String values are matching both values and
+   * labels. Option is considered matching if all specified properties match.
    * @param options
    */
   selectOption(selector: string, values: null|string|ElementHandle|Array<string>|{
@@ -5849,7 +5849,7 @@ export interface Frame {
    *
    * @param testId Id to locate the element by.
    */
-  getByTestId(testId: string): Locator;
+  getByTestId(testId: string|RegExp): Locator;
 
   /**
    * Allows locating elements that contain given text. Consider the following DOM structure:
@@ -6389,8 +6389,8 @@ export interface Frame {
    *
    * @param selector A selector to query for.
    * @param values Options to select. If the `<select>` has the `multiple` attribute, all matching options are selected, otherwise
-   * only the first option matching one of the passed options is selected. String values are equivalent to
-   * `{value:'string'}`. Option is considered matching if all specified properties match.
+   * only the first option matching one of the passed options is selected. String values are matching both values and
+   * labels. Option is considered matching if all specified properties match.
    * @param options
    */
   selectOption(selector: string, values: null|string|ElementHandle|Array<string>|{
@@ -9316,8 +9316,8 @@ export interface ElementHandle<T=Node> extends JSHandle<T> {
    * ```
    *
    * @param values Options to select. If the `<select>` has the `multiple` attribute, all matching options are selected, otherwise
-   * only the first option matching one of the passed options is selected. String values are equivalent to
-   * `{value:'string'}`. Option is considered matching if all specified properties match.
+   * only the first option matching one of the passed options is selected. String values are matching both values and
+   * labels. Option is considered matching if all specified properties match.
    * @param options
    */
   selectOption(values: null|string|ElementHandle|Array<string>|{
@@ -9803,6 +9803,19 @@ export interface Locator {
   elementHandle(options?: {
     timeout?: number;
   }): Promise<null|ElementHandle<SVGElement | HTMLElement>>;
+  /**
+   * When locator points to a list of elements, returns array of locators, pointing to respective elements.
+   *
+   * **Usage**
+   *
+   * ```js
+   * for (const li of await page.getByRole('listitem').all())
+   *   await li.click();
+   * ```
+   *
+   */
+  all(): Promise<Array<Locator>>;
+
   /**
    * Returns an array of `node.innerText` values for all matching nodes.
    */
@@ -10546,7 +10559,7 @@ export interface Locator {
    *
    * @param testId Id to locate the element by.
    */
-  getByTestId(testId: string): Locator;
+  getByTestId(testId: string|RegExp): Locator;
 
   /**
    * Allows locating elements that contain given text. Consider the following DOM structure:
@@ -10923,6 +10936,10 @@ export interface Locator {
   }): Promise<void>;
 
   /**
+   * Selects option or options in `<select>`.
+   *
+   * **Details**
+   *
    * This method waits for [actionability](https://playwright.dev/docs/actionability) checks, waits until all specified options are present in
    * the `<select>` element and selects these options.
    *
@@ -10937,20 +10954,28 @@ export interface Locator {
    *
    * **Usage**
    *
+   * ```html
+   * <select multiple>
+   *   <option value="red">Red</div>
+   *   <option value="green">Green</div>
+   *   <option value="blue">Blue</div>
+   * </select>
+   * ```
+   *
    * ```js
-   * // single selection matching the value
+   * // single selection matching the value or label
    * element.selectOption('blue');
    *
    * // single selection matching the label
    * element.selectOption({ label: 'Blue' });
    *
-   * // multiple selection
+   * // multiple selection for red, green and blue options
    * element.selectOption(['red', 'green', 'blue']);
    * ```
    *
    * @param values Options to select. If the `<select>` has the `multiple` attribute, all matching options are selected, otherwise
-   * only the first option matching one of the passed options is selected. String values are equivalent to
-   * `{value:'string'}`. Option is considered matching if all specified properties match.
+   * only the first option matching one of the passed options is selected. String values are matching both values and
+   * labels. Option is considered matching if all specified properties match.
    * @param options
    */
   selectOption(values: null|string|ElementHandle|Array<string>|{
@@ -11818,9 +11843,10 @@ export interface BrowserType<Unused = {}> {
     slowMo?: number;
 
     /**
-     * If specified, enables strict selectors mode for this context. In the strict selectors mode all operations on
-     * selectors that imply single target DOM element will throw when more than one element matches the selector. See
-     * [Locator] to learn more about the strict mode.
+     * If set to true, enables strict selectors mode for this context. In the strict selectors mode all operations on
+     * selectors that imply single target DOM element will throw when more than one element matches the selector. This
+     * option does not affect any Locator APIs (Locators are always strict). See [Locator] to learn more about the strict
+     * mode.
      */
     strictSelectors?: boolean;
 
@@ -12934,6 +12960,12 @@ export interface AndroidDevice {
     acceptDownloads?: boolean;
 
     /**
+     * Additional arguments to pass to the browser instance. The list of Chromium flags can be found
+     * [here](http://peter.sh/experiments/chromium-command-line-switches/).
+     */
+    args?: Array<string>;
+
+    /**
      * When using [page.goto(url[, options])](https://playwright.dev/docs/api/class-page#page-goto),
      * [page.route(url, handler[, options])](https://playwright.dev/docs/api/class-page#page-route),
      * [page.waitForURL(url[, options])](https://playwright.dev/docs/api/class-page#page-wait-for-url),
@@ -13056,6 +13088,32 @@ export interface AndroidDevice {
     permissions?: Array<string>;
 
     /**
+     * Network proxy settings.
+     */
+    proxy?: {
+      /**
+       * Proxy to be used for all requests. HTTP and SOCKS proxies are supported, for example `http://myproxy.com:3128` or
+       * `socks5://myproxy.com:3128`. Short form `myproxy.com:3128` is considered an HTTP proxy.
+       */
+      server: string;
+
+      /**
+       * Optional comma-separated domains to bypass proxy, for example `".com, chromium.org, .domain.com"`.
+       */
+      bypass?: string;
+
+      /**
+       * Optional username to use if HTTP proxy requires authentication.
+       */
+      username?: string;
+
+      /**
+       * Optional password to use if HTTP proxy requires authentication.
+       */
+      password?: string;
+    };
+
+    /**
      * Enables [HAR](http://www.softwareishard.com/blog/har-12-spec) recording for all pages into `recordHar.path` file.
      * If not specified, the HAR is not recorded. Make sure to await
      * [browserContext.close()](https://playwright.dev/docs/api/class-browsercontext#browser-context-close) for the HAR to
@@ -13158,9 +13216,10 @@ export interface AndroidDevice {
     serviceWorkers?: "allow"|"block";
 
     /**
-     * If specified, enables strict selectors mode for this context. In the strict selectors mode all operations on
-     * selectors that imply single target DOM element will throw when more than one element matches the selector. See
-     * [Locator] to learn more about the strict mode.
+     * If set to true, enables strict selectors mode for this context. In the strict selectors mode all operations on
+     * selectors that imply single target DOM element will throw when more than one element matches the selector. This
+     * option does not affect any Locator APIs (Locators are always strict). See [Locator] to learn more about the strict
+     * mode.
      */
     strictSelectors?: boolean;
 
@@ -15059,9 +15118,10 @@ export interface Browser extends EventEmitter {
     };
 
     /**
-     * If specified, enables strict selectors mode for this context. In the strict selectors mode all operations on
-     * selectors that imply single target DOM element will throw when more than one element matches the selector. See
-     * [Locator] to learn more about the strict mode.
+     * If set to true, enables strict selectors mode for this context. In the strict selectors mode all operations on
+     * selectors that imply single target DOM element will throw when more than one element matches the selector. This
+     * option does not affect any Locator APIs (Locators are always strict). See [Locator] to learn more about the strict
+     * mode.
      */
     strictSelectors?: boolean;
 
@@ -16067,7 +16127,7 @@ export interface FrameLocator {
    *
    * @param testId Id to locate the element by.
    */
-  getByTestId(testId: string): Locator;
+  getByTestId(testId: string|RegExp): Locator;
 
   /**
    * Allows locating elements that contain given text. Consider the following DOM structure:
@@ -17020,7 +17080,7 @@ export interface Route {
     /**
      * If set changes the post data of request.
      */
-    postData?: string|Buffer;
+    postData?: string|Buffer|Serializable;
 
     /**
      * If set changes the request URL. New URL must have same protocol as original one.
@@ -17107,7 +17167,7 @@ export interface Route {
     /**
      * If set changes the post data of request.
      */
-    postData?: string|Buffer;
+    postData?: string|Buffer|Serializable;
 
     /**
      * If set changes the request URL. New URL must have same protocol as original one. Changing the URL won't affect the
@@ -17135,13 +17195,6 @@ export interface Route {
    */
   fetch(options?: {
     /**
-     * Allows to set post data of the request. If the data parameter is an object, it will be serialized to json string
-     * and `content-type` header will be set to `application/json` if not explicitly set. Otherwise the `content-type`
-     * header will be set to `application/octet-stream` if not explicitly set.
-     */
-    data?: string|Buffer|Serializable;
-
-    /**
      * If set changes the request HTTP headers. Header values will be converted to a string.
      */
     headers?: { [key: string]: string; };
@@ -17150,6 +17203,13 @@ export interface Route {
      * If set changes the request method (e.g. GET or POST).
      */
     method?: string;
+
+    /**
+     * Allows to set post data of the request. If the data parameter is an object, it will be serialized to json string
+     * and `content-type` header will be set to `application/json` if not explicitly set. Otherwise the `content-type`
+     * header will be set to `application/octet-stream` if not explicitly set.
+     */
+    postData?: string|Buffer|Serializable;
 
     /**
      * If set changes the request URL. New URL must have same protocol as original one.
@@ -17200,18 +17260,6 @@ export interface Route {
 
     /**
      * JSON response. This method will set the content type to `application/json` if not set.
-     *
-     * **Usage**
-     *
-     * ```js
-     * await page.route('https://dog.ceo/api/breeds/list/all', async route => {
-     *   const json = {
-     *     message: { 'test_breed': [] }
-     *   };
-     *   await route.fulfill({ json });
-     * });
-     * ```
-     *
      */
     json?: Serializable;
 
@@ -18019,9 +18067,10 @@ export interface BrowserContextOptions {
   };
 
   /**
-   * If specified, enables strict selectors mode for this context. In the strict selectors mode all operations on
-   * selectors that imply single target DOM element will throw when more than one element matches the selector. See
-   * [Locator] to learn more about the strict mode.
+   * If set to true, enables strict selectors mode for this context. In the strict selectors mode all operations on
+   * selectors that imply single target DOM element will throw when more than one element matches the selector. This
+   * option does not affect any Locator APIs (Locators are always strict). See [Locator] to learn more about the strict
+   * mode.
    */
   strictSelectors?: boolean;
 

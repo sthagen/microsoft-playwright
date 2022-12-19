@@ -32,6 +32,7 @@ import type { HeadersArray, URLMatch } from '../common/types';
 import { urlMatches } from '../common/netUtils';
 import { MultiMap } from '../utils/multimap';
 import { APIResponse } from './fetch';
+import type { Serializable } from '../../types/structs';
 
 export type NetworkCookie = {
   name: string,
@@ -56,11 +57,18 @@ export type SetNetworkCookieParam = {
   sameSite?: 'Strict' | 'Lax' | 'None'
 };
 
+type SerializedFallbackOverrides = {
+  url?: string;
+  method?: string;
+  headers?: Headers;
+  postDataBuffer?: Buffer;
+};
+
 type FallbackOverrides = {
   url?: string;
   method?: string;
   headers?: Headers;
-  postData?: string | Buffer;
+  postData?: string | Buffer | Serializable;
 };
 
 export class Request extends ChannelOwner<channels.RequestChannel> implements api.Request {
@@ -69,9 +77,8 @@ export class Request extends ChannelOwner<channels.RequestChannel> implements ap
   _failureText: string | null = null;
   private _provisionalHeaders: RawHeaders;
   private _actualHeadersPromise: Promise<RawHeaders> | undefined;
-  private _postData: Buffer | null;
   _timing: ResourceTiming;
-  private _fallbackOverrides: FallbackOverrides = {};
+  private _fallbackOverrides: SerializedFallbackOverrides = {};
 
   static from(request: channels.RequestChannel): Request {
     return (request as any)._object;
@@ -87,7 +94,7 @@ export class Request extends ChannelOwner<channels.RequestChannel> implements ap
     if (this._redirectedFrom)
       this._redirectedFrom._redirectedTo = this;
     this._provisionalHeaders = new RawHeaders(initializer.headers);
-    this._postData = initializer.postData ?? null;
+    this._fallbackOverrides.postDataBuffer = initializer.postData;
     this._timing = {
       startTime: 0,
       domainLookupStart: -1,
@@ -114,18 +121,11 @@ export class Request extends ChannelOwner<channels.RequestChannel> implements ap
   }
 
   postData(): string | null {
-    if (this._fallbackOverrides.postData)
-      return this._fallbackOverrides.postData.toString('utf-8');
-    return this._postData ? this._postData.toString('utf8') : null;
+    return this._fallbackOverrides.postDataBuffer?.toString('utf-8') || null;
   }
 
   postDataBuffer(): Buffer | null {
-    if (this._fallbackOverrides.postData) {
-      if (isString(this._fallbackOverrides.postData))
-        return Buffer.from(this._fallbackOverrides.postData, 'utf-8');
-      return this._fallbackOverrides.postData;
-    }
-    return this._postData;
+    return this._fallbackOverrides.postDataBuffer || null;
   }
 
   postDataJSON(): Object | null {
@@ -251,7 +251,19 @@ export class Request extends ChannelOwner<channels.RequestChannel> implements ap
   }
 
   _applyFallbackOverrides(overrides: FallbackOverrides) {
-    this._fallbackOverrides = { ...this._fallbackOverrides, ...overrides };
+    if (overrides.url)
+      this._fallbackOverrides.url = overrides.url;
+    if (overrides.method)
+      this._fallbackOverrides.method = overrides.method;
+    if (overrides.headers)
+      this._fallbackOverrides.headers = overrides.headers;
+
+    if (isString(overrides.postData))
+      this._fallbackOverrides.postDataBuffer = Buffer.from(overrides.postData, 'utf-8');
+    else if (overrides.postData instanceof Buffer)
+      this._fallbackOverrides.postDataBuffer = overrides.postData;
+    else if (overrides.postData)
+      this._fallbackOverrides.postDataBuffer = Buffer.from(JSON.stringify(overrides.postData), 'utf-8');
   }
 
   _fallbackOverridesForContinue() {
@@ -400,12 +412,11 @@ export class Route extends ChannelOwner<channels.RouteChannel> implements api.Ro
   async _innerContinue(internal = false) {
     const options = this.request()._fallbackOverridesForContinue();
     return await this._wrapApiCall(async () => {
-      const postDataBuffer = isString(options.postData) ? Buffer.from(options.postData, 'utf8') : options.postData;
       await this._raceWithTargetClose(this._channel.continue({
         url: options.url,
         method: options.method,
         headers: options.headers ? headersObjectToArray(options.headers) : undefined,
-        postData: postDataBuffer,
+        postData: options.postDataBuffer,
       }));
     }, !!internal);
   }
