@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import type { Fixtures, TestError, Project } from '../types/test';
+import type { Fixtures, TestInfoError, Project } from '../types/test';
 import type { Location, Reporter } from '../types/testReporter';
 import type { WorkerIsolation } from './ipc';
 import type { FullConfig as FullConfigPublic, FullProject as FullProjectPublic } from './types';
@@ -24,11 +24,12 @@ export type { Location } from '../types/testReporter';
 export type FixturesWithLocation = {
   fixtures: Fixtures;
   location: Location;
+  fromConfig?: boolean;
 };
 export type Annotation = { type: string, description?: string };
 
 export interface TestStepInternal {
-  complete(result: { error?: Error | TestError }): void;
+  complete(result: { error?: Error | TestInfoError }): void;
   title: string;
   category: string;
   canHaveChildren: boolean;

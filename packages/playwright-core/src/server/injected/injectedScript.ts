@@ -43,12 +43,10 @@ export type InjectedScriptProgress = {
   aborted: boolean;
   log: (message: string) => void;
   logRepeating: (message: string) => void;
-  setIntermediateResult: (intermediateResult: any) => void;
 };
 
 export type LogEntry = {
   message?: string;
-  intermediateResult?: string;
 };
 
 export type FrameExpectParams = Omit<channels.FrameExpectParams, 'expectedValue'> & { expectedValue?: any };
@@ -80,6 +78,7 @@ export class InjectedScript {
   readonly isUnderTest: boolean;
   private _sdkLanguage: Language;
   private _testIdAttributeNameForStrictErrorAndConsoleCodegen: string = 'data-testid';
+  private _markedTargetElements = new Set<Element>();
 
   constructor(isUnderTest: boolean, sdkLanguage: Language, testIdAttributeNameForStrictErrorAndConsoleCodegen: string, stableRafCount: number, browserName: string, customEngines: { name: string, engine: SelectorEngine }[]) {
     this.isUnderTest = isUnderTest;
@@ -438,7 +437,6 @@ export class InjectedScript {
     });
 
     let lastMessage = '';
-    let lastIntermediateResult: any = undefined;
     const progress: InjectedScriptProgress = {
       injectedScript: this,
       aborted: false,
@@ -451,13 +449,6 @@ export class InjectedScript {
       logRepeating: (message: string) => {
         if (message !== lastMessage)
           progress.log(message);
-      },
-      setIntermediateResult: (intermediateResult: any) => {
-        if (lastIntermediateResult === intermediateResult)
-          return;
-        lastIntermediateResult = intermediateResult;
-        unsentLog.push({ intermediateResult });
-        logReady();
       },
     };
 
@@ -1070,6 +1061,18 @@ export class InjectedScript {
     }
   }
 
+  markTargetElements(markedElements: Set<Element>, snapshotName: string) {
+    for (const e of this._markedTargetElements) {
+      if (!markedElements.has(e))
+        e.removeAttribute('__playwright_target__');
+    }
+    for (const e of markedElements) {
+      if (!this._markedTargetElements.has(e))
+        e.setAttribute('__playwright_target__', snapshotName);
+    }
+    this._markedTargetElements = markedElements;
+  }
+
   private _setupGlobalListenersRemovalDetection() {
     const customEventName = '__playwright_global_listeners_check__';
 
@@ -1105,43 +1108,59 @@ export class InjectedScript {
     this.onGlobalListenersRemoved.add(addHitTargetInterceptorListeners);
   }
 
-  expectSingleElement(progress: InjectedScriptProgress, element: Element, options: FrameExpectParams): { matches: boolean, received?: any } {
-    const injected = progress.injectedScript;
+  expect(element: Element | undefined, options: FrameExpectParams, elements: Element[]) {
+    const isArray = options.expression === 'to.have.count' || options.expression.endsWith('.array');
+    if (isArray)
+      return this.expectArray(elements, options);
+    if (!element) {
+      // expect(locator).toBeHidden() passes when there is no element.
+      if (!options.isNot && options.expression === 'to.be.hidden')
+        return { matches: true };
+      // expect(locator).not.toBeVisible() passes when there is no element.
+      if (options.isNot && options.expression === 'to.be.visible')
+        return { matches: false };
+      // When none of the above applies, expect does not match.
+      return { matches: options.isNot };
+    }
+    return this.expectSingleElement(element, options);
+  }
+
+  private expectSingleElement(element: Element, options: FrameExpectParams): { matches: boolean, received?: any } {
     const expression = options.expression;
 
     {
       // Element state / boolean values.
       let elementState: boolean | 'error:notconnected' | 'error:notcheckbox' | undefined;
       if (expression === 'to.be.checked') {
-        elementState = progress.injectedScript.elementState(element, 'checked');
+        elementState = this.elementState(element, 'checked');
       } else if (expression === 'to.be.unchecked') {
-        elementState = progress.injectedScript.elementState(element, 'unchecked');
+        elementState = this.elementState(element, 'unchecked');
       } else if (expression === 'to.be.disabled') {
-        elementState = progress.injectedScript.elementState(element, 'disabled');
+        elementState = this.elementState(element, 'disabled');
       } else if (expression === 'to.be.editable') {
-        elementState = progress.injectedScript.elementState(element, 'editable');
+        elementState = this.elementState(element, 'editable');
       } else if (expression === 'to.be.readonly') {
-        elementState = !progress.injectedScript.elementState(element, 'editable');
+        elementState = !this.elementState(element, 'editable');
       } else if (expression === 'to.be.empty') {
         if (element.nodeName === 'INPUT' || element.nodeName === 'TEXTAREA')
           elementState = !(element as HTMLInputElement).value;
         else
           elementState = !element.textContent?.trim();
       } else if (expression === 'to.be.enabled') {
-        elementState = progress.injectedScript.elementState(element, 'enabled');
+        elementState = this.elementState(element, 'enabled');
       } else if (expression === 'to.be.focused') {
         elementState = this._activelyFocused(element).isFocused;
       } else if (expression === 'to.be.hidden') {
-        elementState = progress.injectedScript.elementState(element, 'hidden');
+        elementState = this.elementState(element, 'hidden');
       } else if (expression === 'to.be.visible') {
-        elementState = progress.injectedScript.elementState(element, 'visible');
+        elementState = this.elementState(element, 'visible');
       }
 
       if (elementState !== undefined) {
         if (elementState === 'error:notcheckbox')
-          throw injected.createStacklessError('Element is not a checkbox');
+          throw this.createStacklessError('Element is not a checkbox');
         if (elementState === 'error:notconnected')
-          throw injected.createStacklessError('Element is not connected');
+          throw this.createStacklessError('Element is not connected');
         return { received: elementState, matches: elementState };
       }
     }
@@ -1205,31 +1224,7 @@ export class InjectedScript {
     throw this.createStacklessError('Unknown expect matcher: ' + expression);
   }
 
-  renderUnexpectedValue(expression: string, received: any): string {
-    if (expression === 'to.be.checked')
-      return received ? 'checked' : 'unchecked';
-    if (expression === 'to.be.unchecked')
-      return received ? 'unchecked' : 'checked';
-    if (expression === 'to.be.visible')
-      return received ? 'visible' : 'hidden';
-    if (expression === 'to.be.hidden')
-      return received ? 'hidden' : 'visible';
-    if (expression === 'to.be.enabled')
-      return received ? 'enabled' : 'disabled';
-    if (expression === 'to.be.disabled')
-      return received ? 'disabled' : 'enabled';
-    if (expression === 'to.be.editable')
-      return received ? 'editable' : 'readonly';
-    if (expression === 'to.be.readonly')
-      return received ? 'readonly' : 'editable';
-    if (expression === 'to.be.empty')
-      return received ? 'empty' : 'not empty';
-    if (expression === 'to.be.focused')
-      return received ? 'focused' : 'not focused';
-    return received;
-  }
-
-  expectArray(elements: Element[], options: FrameExpectParams): { matches: boolean, received?: any } {
+  private expectArray(elements: Element[], options: FrameExpectParams): { matches: boolean, received?: any } {
     const expression = options.expression;
 
     if (expression === 'to.have.count') {

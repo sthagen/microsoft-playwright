@@ -1074,14 +1074,7 @@ export class Frame extends SdkObject {
           continue;
         return result as R;
       } catch (e) {
-        // Always fail on JavaScript errors or when the main connection is closed.
-        if (js.isJavaScriptErrorInEvaluate(e) || isSessionClosedError(e))
-          throw e;
-        // Certain error opt-out of the retries, throw.
-        if (dom.isNonRecoverableDOMError(e))
-          throw e;
-        // If the call is made on the detached frame - throw.
-        if (this.isDetached())
+        if (this._isErrorThatCannotBeRetried(e))
           throw e;
         // If there is scope, and scope is within the frame we use to select, assume context is destroyed and
         // operation is not recoverable.
@@ -1095,19 +1088,97 @@ export class Frame extends SdkObject {
     return undefined as any;
   }
 
+  async retryWithProgressAndTimeouts<R>(progress: Progress, timeouts: number[], action: (continuePolling: symbol) => Promise<R | symbol>): Promise<R> {
+    const continuePolling = Symbol('continuePolling');
+    timeouts = [0, ...timeouts];
+    let timeoutIndex = 0;
+    while (progress.isRunning()) {
+      const timeout = timeouts[Math.min(timeoutIndex++, timeouts.length - 1)];
+      if (timeout) {
+        // Make sure we react immediately upon page close or frame detach.
+        // We need this to show expected/received values in time.
+        await Promise.race([
+          this._page._disconnectedPromise,
+          this._page._crashedPromise,
+          this._detachedPromise,
+          new Promise(f => setTimeout(f, timeout)),
+        ]);
+      }
+      progress.throwIfAborted();
+      try {
+        const result = await action(continuePolling);
+        if (result === continuePolling)
+          continue;
+        return result as R;
+      } catch (e) {
+        if (this._isErrorThatCannotBeRetried(e))
+          throw e;
+        continue;
+      }
+    }
+    progress.throwIfAborted();
+    return undefined as any;
+  }
+
+  private _isErrorThatCannotBeRetried(e: Error) {
+    // Always fail on JavaScript errors or when the main connection is closed.
+    if (js.isJavaScriptErrorInEvaluate(e) || isSessionClosedError(e))
+      return true;
+    // Certain errors opt-out of the retries, throw.
+    if (dom.isNonRecoverableDOMError(e) || isInvalidSelectorError(e))
+      return true;
+    // If the call is made on the detached frame - throw.
+    if (this.isDetached())
+      return true;
+    // Retry upon all other errors.
+    return false;
+  }
+
+  private async _resolveInjectedForSelector(progress: Progress, selector: string, strict: boolean | undefined): Promise<{ injected: js.JSHandle<InjectedScript>, info: SelectorInfo } | undefined> {
+    const selectorInFrame = await this.resolveFrameForSelectorNoWait(selector, { strict });
+    if (!selectorInFrame)
+      return;
+    progress.throwIfAborted();
+
+    // Be careful, |this| can be different from |selectorInFrame.frame|.
+    const context = await selectorInFrame.frame._context(selectorInFrame.info.world);
+    const injected = await context.injectedScript();
+    progress.throwIfAborted();
+    return { injected, info: selectorInFrame.info };
+  }
+
   private async _retryWithProgressIfNotConnected<R>(
     progress: Progress,
     selector: string,
     strict: boolean | undefined,
     action: (handle: dom.ElementHandle<Element>) => Promise<R | 'error:notconnected'>): Promise<R> {
-    return this.retryWithProgress(progress, selector, { strict }, async (selectorInFrame, continuePolling) => {
-      // We did not pass omitAttached, so selectorInFrame is not null.
-      const { frame, info } = selectorInFrame!;
-      // Be careful, |this| can be different from |frame|.
-      const task = dom.waitForSelectorTask(info, 'attached');
-      progress.log(`waiting for ${this._asLocator(selector)}`);
-      const handle = await frame._scheduleRerunnableHandleTask(progress, info.world, task);
-      const element = handle.asElement() as dom.ElementHandle<Element>;
+    progress.log(`waiting for ${this._asLocator(selector)}`);
+    return this.retryWithProgressAndTimeouts(progress, [0, 20, 50, 100, 100, 500], async continuePolling => {
+      const resolved = await this._resolveInjectedForSelector(progress, selector, strict);
+      if (!resolved)
+        return continuePolling;
+      const result = await resolved.injected.evaluateHandle((injected, { info }) => {
+        const elements = injected.querySelectorAll(info.parsed, document);
+        const element = elements[0] as Element | undefined;
+        let log = '';
+        if (elements.length > 1) {
+          if (info.strict)
+            throw injected.strictModeViolationError(info.parsed, elements);
+          log = `  locator resolved to ${elements.length} elements. Proceeding with the first one: ${injected.previewNode(elements[0])}`;
+        } else if (element) {
+          log = `  locator resolved to ${injected.previewNode(element)}`;
+        }
+        return { log, success: !!element, element };
+      }, { info: resolved.info });
+      const { log, success } = await result.evaluate(r => ({ log: r.log, success: r.success }));
+      if (log)
+        progress.log(log);
+      if (!success) {
+        result.dispose();
+        return continuePolling;
+      }
+      const element = await result.evaluateHandle(r => r.element) as dom.ElementHandle<Element>;
+      result.dispose();
       try {
         const result = await action(element);
         if (result === 'error:notconnected') {
@@ -1350,7 +1421,8 @@ export class Frame extends SdkObject {
   async expect(metadata: CallMetadata, selector: string, options: FrameExpectParams): Promise<{ matches: boolean, received?: any, log?: string[], timedOut?: boolean }> {
     let timeout = this._page._timeoutSettings.timeout(options);
     const start = timeout > 0 ? monotonicTime() : 0;
-    const resultOneShot = await this._expectInternal(metadata, selector, options, true, timeout);
+    const lastIntermediateResult: { received?: any, isSet: boolean } = { isSet: false };
+    const resultOneShot = await this._expectInternal(metadata, selector, options, true, timeout, lastIntermediateResult);
     if (resultOneShot.matches !== options.isNot)
       return resultOneShot;
     if (timeout > 0) {
@@ -1359,73 +1431,64 @@ export class Frame extends SdkObject {
     }
     if (timeout < 0)
       return { matches: options.isNot, log: metadata.log, timedOut: true };
-    return await this._expectInternal(metadata, selector, options, false, timeout);
+    return await this._expectInternal(metadata, selector, options, false, timeout, lastIntermediateResult);
   }
 
-  private async _expectInternal(metadata: CallMetadata, selector: string, options: FrameExpectParams, oneShot: boolean, timeout: number): Promise<{ matches: boolean, received?: any, log?: string[], timedOut?: boolean }> {
+  private async _expectInternal(metadata: CallMetadata, selector: string, options: FrameExpectParams, oneShot: boolean, timeout: number, lastIntermediateResult: { received?: any, isSet: boolean }): Promise<{ matches: boolean, received?: any, log?: string[], timedOut?: boolean }> {
     const controller = new ProgressController(metadata, this);
-    const isArray = options.expression === 'to.have.count' || options.expression.endsWith('.array');
-    const mainWorld = options.expression === 'to.have.property';
-
-    // List all combinations that are satisfied with the detached node(s).
-    let omitAttached = oneShot;
-    if (!options.isNot && options.expression === 'to.be.hidden')
-      omitAttached = true;
-    else if (options.isNot && options.expression === 'to.be.visible')
-      omitAttached = true;
-    else if (!options.isNot && options.expression === 'to.have.count' && options.expectedNumber === 0)
-      omitAttached = true;
-    else if (options.isNot && options.expression === 'to.have.count' && options.expectedNumber !== 0)
-      omitAttached = true;
-    else if (!options.isNot && options.expression.endsWith('.array') && options.expectedText!.length === 0)
-      omitAttached = true;
-    else if (options.isNot && options.expression.endsWith('.array') && options.expectedText!.length > 0)
-      omitAttached = true;
-
-    return controller.run(async outerProgress => {
+    return controller.run(async progress => {
       if (oneShot)
-        outerProgress.log(`${metadata.apiName}${timeout ? ` with timeout ${timeout}ms` : ''}`);
-      return await this._scheduleRerunnableTaskWithProgress(outerProgress, selector, (progress, element, options, elements) => {
-        let result: { matches: boolean, received?: any };
+        progress.log(`${metadata.apiName}${timeout ? ` with timeout ${timeout}ms` : ''}`);
+      progress.log(`waiting for ${this._asLocator(selector)}`);
+      return await this.retryWithProgressAndTimeouts(progress, [100, 250, 500, 1000], async continuePolling => {
+        const selectorInFrame = await this.resolveFrameForSelectorNoWait(selector, { strict: true });
+        progress.throwIfAborted();
 
-        if (options.isArray) {
-          result = progress.injectedScript.expectArray(elements, options);
-        } else {
-          if (!element) {
-            // expect(locator).toBeHidden() passes when there is no element.
-            if (!options.isNot && options.expression === 'to.be.hidden')
-              return { matches: true };
-            // expect(locator).not.toBeVisible() passes when there is no element.
-            if (options.isNot && options.expression === 'to.be.visible')
-              return { matches: false };
-            // When none of the above applies, keep waiting for the element.
-            return options.oneShot ? { matches: options.isNot } : progress.continuePolling;
-          }
-          result = progress.injectedScript.expectSingleElement(progress, element, options);
+        const { frame, info } = selectorInFrame || { frame: this, info: undefined };
+        const world = options.expression === 'to.have.property' ? 'main' : (info?.world ?? 'utility');
+        const context = await frame._context(world);
+        const injected = await context.injectedScript();
+        progress.throwIfAborted();
+
+        const { log, matches, received } = await injected.evaluate((injected, { info, options, snapshotName }) => {
+          const elements = info ? injected.querySelectorAll(info.parsed, document) : [];
+          const isArray = options.expression === 'to.have.count' || options.expression.endsWith('.array');
+          let log = '';
+          if (isArray)
+            log = `  locator resolved to ${elements.length} element${elements.length === 1 ? '' : 's'}`;
+          else if (elements.length > 1)
+            throw injected.strictModeViolationError(info!.parsed, elements);
+          else if (elements.length)
+            log = `  locator resolved to ${injected.previewNode(elements[0])}`;
+          if (snapshotName)
+            injected.markTargetElements(new Set(elements), snapshotName);
+          return { log, ...injected.expect(elements[0], options, elements) };
+        }, { info, options, snapshotName: progress.metadata.afterSnapshot });
+
+        if (log)
+          progress.log(log);
+        if (matches === options.isNot) {
+          lastIntermediateResult.received = received;
+          lastIntermediateResult.isSet = true;
+          if (!Array.isArray(received))
+            progress.log(`  unexpected value "${renderUnexpectedValue(options.expression, received)}"`);
         }
-
-        if (result.matches === options.isNot) {
+        if (!oneShot && matches === options.isNot) {
           // Keep waiting in these cases:
           // expect(locator).conditionThatDoesNotMatch
           // expect(locator).not.conditionThatDoesMatch
-          progress.setIntermediateResult(result.received);
-          if (!Array.isArray(result.received))
-            progress.log(`  unexpected value "${progress.injectedScript.renderUnexpectedValue(options.expression, result.received)}"`);
-          return options.oneShot ? result : progress.continuePolling;
+          return continuePolling;
         }
-
-        // Reached the expected state!
-        return result;
-      }, { ...options, isArray, oneShot }, { strict: true, querySelectorAll: isArray, mainWorld, omitAttached, logScale: true, ...options });
+        return { matches, received };
+      });
     }, oneShot ? 0 : timeout).catch(e => {
       // Q: Why not throw upon isSessionClosedError(e) as in other places?
       // A: We want user to receive a friendly message containing the last intermediate result.
       if (js.isJavaScriptErrorInEvaluate(e) || isInvalidSelectorError(e))
         throw e;
       const result: { matches: boolean, received?: any, log?: string[], timedOut?: boolean } = { matches: options.isNot, log: metadata.log };
-      const intermediateResult = controller.lastIntermediateResult();
-      if (intermediateResult)
-        result.received = intermediateResult.value;
+      if (lastIntermediateResult.isSet)
+        result.received = lastIntermediateResult.received;
       else
         result.timedOut = true;
       return result;
@@ -1545,7 +1608,6 @@ export class Frame extends SdkObject {
         return injectedScript.evaluateHandle((injected, { info, taskData, callbackText, querySelectorAll, logScale, omitAttached, snapshotName }) => {
           const callback = injected.eval(callbackText) as DomTaskBody<T, R, Element | undefined>;
           const poller = logScale ? injected.pollLogScale.bind(injected) : injected.pollRaf.bind(injected);
-          let markedElements = new Set<Element>();
           return poller(progress => {
             let element: Element | undefined;
             let elements: Element[] = [];
@@ -1563,19 +1625,8 @@ export class Frame extends SdkObject {
             if (!element && !omitAttached)
               return progress.continuePolling;
 
-            if (snapshotName) {
-              const previouslyMarkedElements = markedElements;
-              markedElements = new Set(elements);
-              for (const e of previouslyMarkedElements) {
-                if (!markedElements.has(e))
-                  e.removeAttribute('__playwright_target__');
-              }
-              for (const e of markedElements) {
-                if (!previouslyMarkedElements.has(e))
-                  e.setAttribute('__playwright_target__', snapshotName);
-              }
-            }
-
+            if (snapshotName)
+              injected.markTargetElements(new Set(elements), snapshotName);
             return callback(progress, element, taskData as T, elements);
           });
         }, { info, taskData, callbackText, querySelectorAll: options.querySelectorAll, logScale: options.logScale, omitAttached: options.omitAttached, snapshotName: progress.metadata.afterSnapshot });
@@ -1694,7 +1745,7 @@ export class Frame extends SdkObject {
     return { frame, info: this._page.parseSelector(frameChunks[frameChunks.length - 1], options) };
   }
 
-  async resolveFrameForSelectorNoWait(selector: string, options: types.StrictOptions & types.TimeoutOptions = {}, scope?: dom.ElementHandle): Promise<SelectorInFrame | null> {
+  async resolveFrameForSelectorNoWait(selector: string, options: types.StrictOptions = {}, scope?: dom.ElementHandle): Promise<SelectorInFrame | null> {
     let frame: Frame | null = this;
     const frameChunks = splitSelectorByFrame(selector);
 
@@ -1867,4 +1918,28 @@ function verifyLifecycle(name: string, waitUntil: types.LifecycleEvent): types.L
   if (!types.kLifecycleEvents.has(waitUntil))
     throw new Error(`${name}: expected one of (load|domcontentloaded|networkidle|commit)`);
   return waitUntil;
+}
+
+function renderUnexpectedValue(expression: string, received: any): string {
+  if (expression === 'to.be.checked')
+    return received ? 'checked' : 'unchecked';
+  if (expression === 'to.be.unchecked')
+    return received ? 'unchecked' : 'checked';
+  if (expression === 'to.be.visible')
+    return received ? 'visible' : 'hidden';
+  if (expression === 'to.be.hidden')
+    return received ? 'hidden' : 'visible';
+  if (expression === 'to.be.enabled')
+    return received ? 'enabled' : 'disabled';
+  if (expression === 'to.be.disabled')
+    return received ? 'disabled' : 'enabled';
+  if (expression === 'to.be.editable')
+    return received ? 'editable' : 'readonly';
+  if (expression === 'to.be.readonly')
+    return received ? 'readonly' : 'editable';
+  if (expression === 'to.be.empty')
+    return received ? 'empty' : 'not empty';
+  if (expression === 'to.be.focused')
+    return received ? 'focused' : 'not focused';
+  return received;
 }
