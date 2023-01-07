@@ -4447,12 +4447,12 @@ export interface Page {
    *
    * ```js
    * // Start waiting for response before clicking. Note no await.
-   * const responsePromise = page.waitForRequest('https://example.com/resource');
+   * const responsePromise = page.waitForResponse('https://example.com/resource');
    * await page.getByText('trigger response').click();
    * const response = await responsePromise;
    *
    * // Alternative way with a predicate. Note no await.
-   * const responsePromise = page.waitForRequest(response => response.url() === 'https://example.com' && response.status() === 200);
+   * const responsePromise = page.waitForResponse(response => response.url() === 'https://example.com' && response.status() === 200);
    * await page.getByText('trigger response').click();
    * const response = await responsePromise;
    * ```
@@ -11447,6 +11447,12 @@ export interface Locator {
      */
     trial?: boolean;
   }): Promise<void>;
+
+  /**
+   * Returns the ratio of intersection between viewport and the element, according to the
+   * [intersection observer API](https://developer.mozilla.org/en-US/docs/Web/API/Intersection_Observer_API).
+   */
+  viewportRatio(): Promise<number>;
 
   /**
    * Returns when element specified by locator satisfies the `state` option.

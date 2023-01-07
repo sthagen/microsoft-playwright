@@ -15,6 +15,8 @@
  */
 
 import { test, expect } from './playwright-test-fixtures';
+import { parseTrace } from '../config/utils';
+import fs from 'fs';
 
 test('should reuse context', async ({ runInlineTest }) => {
   const result = await runInlineTest({
@@ -56,7 +58,7 @@ test('should reuse context', async ({ runInlineTest }) => {
   expect(result.passed).toBe(5);
 });
 
-test('should not reuse context with video', async ({ runInlineTest }) => {
+test('should not reuse context with video if mode=when-possible', async ({ runInlineTest }, testInfo) => {
   const result = await runInlineTest({
     'playwright.config.ts': `
       export default {
@@ -65,45 +67,99 @@ test('should not reuse context with video', async ({ runInlineTest }) => {
     `,
     'src/reuse.test.ts': `
       const { test } = pwt;
-      let lastContext;
+      let lastContextGuid;
 
       test('one', async ({ context }) => {
-        lastContext = context;
+        lastContextGuid = context._guid;
       });
 
       test('two', async ({ context }) => {
-        expect(context).not.toBe(lastContext);
+        expect(context._guid).not.toBe(lastContextGuid);
+      });
+    `,
+  }, { workers: 1 }, { PW_TEST_REUSE_CONTEXT: 'when-possible' });
+
+  expect(result.exitCode).toBe(0);
+  expect(result.passed).toBe(2);
+  expect(fs.existsSync(testInfo.outputPath('test-results', 'reuse-one', 'video.webm'))).toBeFalsy();
+  expect(fs.existsSync(testInfo.outputPath('test-results', 'reuse-two', 'video.webm'))).toBeFalsy();
+});
+
+test('should reuse context and disable video if mode=force', async ({ runInlineTest }, testInfo) => {
+  const result = await runInlineTest({
+    'playwright.config.ts': `
+      export default {
+        use: { video: 'on' },
+      };
+    `,
+    'reuse.test.ts': `
+      const { test } = pwt;
+      let lastContextGuid;
+
+      test('one', async ({ context, page }) => {
+        lastContextGuid = context._guid;
+        await page.waitForTimeout(2000);
+      });
+
+      test('two', async ({ context, page }) => {
+        expect(context._guid).toBe(lastContextGuid);
+        await page.waitForTimeout(2000);
       });
     `,
   }, { workers: 1 }, { PW_TEST_REUSE_CONTEXT: '1' });
 
   expect(result.exitCode).toBe(0);
   expect(result.passed).toBe(2);
+  expect(fs.existsSync(testInfo.outputPath('test-results', 'reuse-one', 'video.webm'))).toBeFalsy();
+  expect(fs.existsSync(testInfo.outputPath('test-results', 'reuse-two', 'video.webm'))).toBeFalsy();
 });
 
-test('should not reuse context with trace', async ({ runInlineTest }) => {
+test('should reuse context with trace if mode=when-possible', async ({ runInlineTest }, testInfo) => {
   const result = await runInlineTest({
     'playwright.config.ts': `
       export default {
         use: { trace: 'on' },
       };
     `,
-    'src/reuse.test.ts': `
+    'reuse.spec.ts': `
       const { test } = pwt;
-      let lastContext;
+      let lastContextGuid;
 
-      test('one', async ({ context }) => {
-        lastContext = context;
+      test('one', async ({ context, page }) => {
+        lastContextGuid = context._guid;
+        await page.setContent('<button>Click</button>');
+        await page.click('button');
       });
 
-      test('two', async ({ context }) => {
-        expect(context).not.toBe(lastContext);
+      test('two', async ({ context, page }) => {
+        expect(context._guid).toBe(lastContextGuid);
+        await page.setContent('<input>');
+        await page.fill('input', 'value');
+        await page.locator('input').click();
       });
     `,
-  }, { workers: 1 }, { PW_TEST_REUSE_CONTEXT: '1' });
+  }, { workers: 1 }, { PW_TEST_REUSE_CONTEXT: 'when-possible' });
 
   expect(result.exitCode).toBe(0);
   expect(result.passed).toBe(2);
+
+  const trace1 = await parseTrace(testInfo.outputPath('test-results', 'reuse-one', 'trace.zip'));
+  expect(trace1.actions).toEqual([
+    'browserContext.newPage',
+    'page.setContent',
+    'page.click',
+  ]);
+  expect(trace1.events.some(e => e.type === 'frame-snapshot')).toBe(true);
+  expect(fs.existsSync(testInfo.outputPath('test-results', 'reuse-one', 'trace-1.zip'))).toBe(false);
+
+  const trace2 = await parseTrace(testInfo.outputPath('test-results', 'reuse-two', 'trace.zip'));
+  expect(trace2.actions).toEqual([
+    'page.setContent',
+    'page.fill',
+    'locator.click',
+  ]);
+  expect(trace2.events.some(e => e.type === 'frame-snapshot')).toBe(true);
+  expect(fs.existsSync(testInfo.outputPath('test-results', 'reuse-two', 'trace-1.zip'))).toBe(false);
 });
 
 test('should work with manually closed pages', async ({ runInlineTest }) => {
@@ -397,4 +453,45 @@ test('should cancel pending operations upon reuse', async ({ runInlineTest }) =>
 
   expect(result.exitCode).toBe(0);
   expect(result.passed).toBe(2);
+});
+
+test('should reset tracing', async ({ runInlineTest }, testInfo) => {
+  const traceFile1 = testInfo.outputPath('trace1.zip');
+  const traceFile2 = testInfo.outputPath('trace2.zip');
+  const result = await runInlineTest({
+    'reuse.spec.ts': `
+      const { test } = pwt;
+      test('one', async ({ page }) => {
+        await page.context().tracing.start({ snapshots: true });
+        await page.setContent('<button>Click</button>');
+        await page.click('button');
+        await page.context().tracing.stopChunk({ path: ${JSON.stringify(traceFile1)} });
+      });
+      test('two', async ({ page }) => {
+        await page.context().tracing.start({ snapshots: true });
+        await page.setContent('<input>');
+        await page.fill('input', 'value');
+        await page.locator('input').click();
+        await page.context().tracing.stopChunk({ path: ${JSON.stringify(traceFile2)} });
+      });
+    `,
+  }, { workers: 1 }, { PW_TEST_REUSE_CONTEXT: '1' });
+
+  expect(result.exitCode).toBe(0);
+  expect(result.passed).toBe(2);
+
+  const trace1 = await parseTrace(traceFile1);
+  expect(trace1.actions).toEqual([
+    'page.setContent',
+    'page.click',
+  ]);
+  expect(trace1.events.some(e => e.type === 'frame-snapshot')).toBe(true);
+
+  const trace2 = await parseTrace(traceFile2);
+  expect(trace2.actions).toEqual([
+    'page.setContent',
+    'page.fill',
+    'locator.click',
+  ]);
+  expect(trace2.events.some(e => e.type === 'frame-snapshot')).toBe(true);
 });

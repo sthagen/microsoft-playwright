@@ -298,6 +298,11 @@ export class InjectedScript {
         const allElements = this._evaluator._queryCSS({ scope: root as Document | Element, pierceShadow: true }, '*');
         return allElements.filter(element => {
           let labels: Element[] | NodeListOf<Element> | null | undefined = getAriaLabelledByElements(element);
+          if (labels === null) {
+            const ariaLabel = element.getAttribute('aria-label');
+            if (ariaLabel !== null)
+              return matcher({ full: ariaLabel, immediate: [ariaLabel] });
+          }
           if (labels === null)
             labels = (element as HTMLInputElement).labels;
           return !!labels && [...labels].some(label => matcher(elementText(this._evaluator._cacheText, label)));
@@ -378,21 +383,24 @@ export class InjectedScript {
     return isElementVisible(element);
   }
 
+  async viewportRatio(element: Element): Promise<number> {
+    return await new Promise(resolve => {
+      const observer = new IntersectionObserver(entries => {
+        resolve(entries[0].intersectionRatio);
+        observer.disconnect();
+      });
+      observer.observe(element);
+      // Firefox doesn't call IntersectionObserver callback unless
+      // there are rafs.
+      requestAnimationFrame(() => {});
+    });
+  }
+
   pollRaf<T>(predicate: Predicate<T>): InjectedScriptPoll<T> {
     return this.poll(predicate, next => requestAnimationFrame(next));
   }
 
-  pollInterval<T>(pollInterval: number, predicate: Predicate<T>): InjectedScriptPoll<T> {
-    return this.poll(predicate, next => setTimeout(next, pollInterval));
-  }
-
-  pollLogScale<T>(predicate: Predicate<T>): InjectedScriptPoll<T> {
-    const pollIntervals = [100, 250, 500];
-    let attempts = 0;
-    return this.poll(predicate, next => setTimeout(next, pollIntervals[attempts++] || 1000));
-  }
-
-  poll<T>(predicate: Predicate<T>, scheduleNext: (next: () => void) => void): InjectedScriptPoll<T> {
+  private poll<T>(predicate: Predicate<T>, scheduleNext: (next: () => void) => void): InjectedScriptPoll<T> {
     return this._runAbortableTask(progress => {
       let fulfill: (result: T) => void;
       let reject: (error: Error) => void;
@@ -481,7 +489,7 @@ export class InjectedScript {
     return { left: parseInt(style.borderLeftWidth || '', 10), top: parseInt(style.borderTopWidth || '', 10) };
   }
 
-  describeIFrameStyle(iframe: Element): 'error:notconnected' | 'transformed' | { borderLeft: number, borderTop: number } {
+  describeIFrameStyle(iframe: Element): 'error:notconnected' | 'transformed' | { left: number, top: number } {
     if (!iframe.ownerDocument || !iframe.ownerDocument.defaultView)
       return 'error:notconnected';
     const defaultView = iframe.ownerDocument.defaultView;
@@ -490,7 +498,10 @@ export class InjectedScript {
         return 'transformed';
     }
     const iframeStyle = defaultView.getComputedStyle(iframe);
-    return { borderLeft: parseInt(iframeStyle.borderLeftWidth || '', 10), borderTop: parseInt(iframeStyle.borderTopWidth || '', 10) };
+    return {
+      left: parseInt(iframeStyle.borderLeftWidth || '', 10) + parseInt(iframeStyle.paddingLeft || '', 10),
+      top: parseInt(iframeStyle.borderTopWidth || '', 10) + parseInt(iframeStyle.paddingTop || '', 10),
+    };
   }
 
   retarget(node: Node, behavior: 'none' | 'follow-label' | 'no-follow-label' | 'button-link'): Element | null {
@@ -1108,7 +1119,7 @@ export class InjectedScript {
     this.onGlobalListenersRemoved.add(addHitTargetInterceptorListeners);
   }
 
-  expect(element: Element | undefined, options: FrameExpectParams, elements: Element[]) {
+  async expect(element: Element | undefined, options: FrameExpectParams, elements: Element[]) {
     const isArray = options.expression === 'to.have.count' || options.expression.endsWith('.array');
     if (isArray)
       return this.expectArray(elements, options);
@@ -1119,13 +1130,16 @@ export class InjectedScript {
       // expect(locator).not.toBeVisible() passes when there is no element.
       if (options.isNot && options.expression === 'to.be.visible')
         return { matches: false };
+      // expect(locator).not.toIntersectViewport() passes when there is no element.
+      if (options.isNot && options.expression === 'to.intersect.viewport')
+        return { matches: false };
       // When none of the above applies, expect does not match.
       return { matches: options.isNot };
     }
-    return this.expectSingleElement(element, options);
+    return await this.expectSingleElement(element, options);
   }
 
-  private expectSingleElement(element: Element, options: FrameExpectParams): { matches: boolean, received?: any } {
+  private async expectSingleElement(element: Element, options: FrameExpectParams): Promise<{ matches: boolean, received?: any }> {
     const expression = options.expression;
 
     {
@@ -1171,6 +1185,13 @@ export class InjectedScript {
         const received = (element as any)[options.expressionArg];
         const matches = deepEquals(received, options.expectedValue);
         return { received, matches };
+      }
+    }
+    {
+      // Viewport intersection
+      if (expression === 'to.intersect.viewport') {
+        const ratio = await this.viewportRatio(element);
+        return { received: `viewport ratio ${ratio}`, matches: ratio > 0 };
       }
     }
 

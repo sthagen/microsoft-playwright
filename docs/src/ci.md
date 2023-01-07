@@ -29,7 +29,7 @@ configurations for common CI providers.
    playwright install --with-deps
    ```
    ```bash java
-   mvn exec:java -e -Dexec.mainClass=com.microsoft.playwright.CLI -Dexec.args="install --with-deps"
+   mvn exec:java -e -D exec.mainClass=com.microsoft.playwright.CLI -D exec.args="install --with-deps"
    ```
    ```bash csharp
    pwsh bin/Debug/netX/playwright.ps1 install --with-deps
@@ -103,7 +103,7 @@ steps:
   - name: Build & Install
     run: mvn -B install -D skipTests --no-transfer-progress
   - name: Install Playwright
-    run: mvn exec:java -e -Dexec.mainClass=com.microsoft.playwright.CLI -Dexec.args="install --with-deps"
+    run: mvn exec:java -e -D exec.mainClass=com.microsoft.playwright.CLI -D exec.args="install --with-deps"
   - name: Run tests
     run: mvn test
 ```
@@ -228,7 +228,7 @@ steps:
       - name: Build & Install
         run: mvn -B install -D skipTests --no-transfer-progress
       - name: Install Playwright
-        run: mvn exec:java -e -Dexec.mainClass=com.microsoft.playwright.CLI -Dexec.args="install --with-deps"
+        run: mvn exec:java -e -D exec.mainClass=com.microsoft.playwright.CLI -D exec.args="install --with-deps"
       - name: Run tests
         run: mvn test
 ```
@@ -370,8 +370,6 @@ Running Playwright on CircleCI is very similar to running on GitHub Actions. In 
       pw-focal-development:
         docker:
           - image: mcr.microsoft.com/playwright:v1.30.0-focal
-      environment:
-        NODE_ENV: development # Needed if playwright is in `devDependencies`
    ```
 
 Note: When using the docker agent definition, you are specifying the resource class of where playwright runs to the 'medium' tier [here](https://circleci.com/docs/configuration-reference?#docker-execution-environment). The default behavior of Playwright is to set the number of workers to the detected core count (2 in the case of the medium tier). Overriding the number of workers to greater than this number will cause unnecessary timeouts and failures.

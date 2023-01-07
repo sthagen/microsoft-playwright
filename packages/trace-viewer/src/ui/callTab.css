@@ -49,7 +49,7 @@
 
 .call-line {
   padding: 4px 0 4px 6px;
-  flex: none;
+  display: flex;
   align-items: center;
   text-overflow: ellipsis;
   overflow: hidden;
@@ -57,13 +57,37 @@
   white-space: nowrap;
 }
 
+.call-line__copy-icon {
+  visibility: hidden;
+  margin-right: 4px;
+}
+
+.call-line:hover .call-line__copy-icon {
+  visibility: visible;
+}
+
+.call-value {
+  text-overflow: ellipsis;
+  overflow: hidden;
+  flex: 1;
+}
+
+.call-value::before {
+  content: '\00a0';
+}
+
 .call-line .datetime,
-.call-line .string {
+.call-line .string,
+.call-line .locator {
   color: var(--orange);
 }
 
 .call-line .number,
+.call-line .bigint,
 .call-line .boolean,
+.call-line .symbol,
+.call-line .undefined,
+.call-line .function,
 .call-line .object {
   color: var(--blue);
 }

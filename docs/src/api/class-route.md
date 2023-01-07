@@ -454,7 +454,7 @@ page.route("https://dog.ceo/api/breeds/list/all", route -> {
 
 ```python async
 async def handle(route):
-    response = await route.fulfill()
+    response = await route.fetch()
     json = await response.json()
     json["message"]["big_red_dog"] = []
     await route.fulfill(response=response, json=json)
@@ -464,7 +464,7 @@ await page.route("https://dog.ceo/api/breeds/list/all", handle)
 
 ```python sync
 def handle(route):
-    response = route.fulfill()
+    response = route.fetch()
     json = response.json()
     json["message"]["big_red_dog"] = []
     route.fulfill(response=response, json=json)
@@ -638,27 +638,10 @@ Optional response body as raw bytes.
 
 ### option: Route.fulfill.json
 * since: v1.29
-* langs: js, python
+* langs: js, python, csharp
 - `json` <[Serializable]>
 
 JSON response. This method will set the content type to `application/json` if not set.
-
-### option: Route.fulfill.json
-* since: v1.29
-* langs: csharp
-- `json` <[JsonElement]>
-
-JSON response. This method will set the content type to `application/json` if not set.
-
-**Usage**
-
-```csharp
-await page.RouteAsync("https://dog.ceo/api/breeds/list/all", async route =>
-{
-    var json = /* JsonElement with test payload */;
-    await route.FulfillAsync(new () { Json: json });
-});
-```
 
 ### option: Route.fulfill.path
 * since: v1.8

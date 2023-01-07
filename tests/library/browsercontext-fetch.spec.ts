@@ -14,35 +14,25 @@
  * limitations under the License.
  */
 
+import type { LookupAddress } from 'dns';
 import formidable from 'formidable';
-import http from 'http';
-import zlib from 'zlib';
 import fs from 'fs';
+import type { IncomingMessage } from 'http';
 import { pipeline } from 'stream';
+import zlib from 'zlib';
 import { contextTest as it, expect } from '../config/browserTest';
 import { suppressCertificateWarning } from '../config/utils';
 
 it.skip(({ mode }) => mode !== 'default');
 
-let prevAgent: http.Agent;
-it.beforeAll(() => {
-  prevAgent = http.globalAgent;
-  http.globalAgent = new http.Agent({
-    // @ts-expect-error
-    lookup: (hostname, options, callback) => {
-      if (hostname === 'localhost' || hostname.endsWith('playwright.dev'))
-        callback(null, '127.0.0.1', 4);
-      else
-        throw new Error(`Failed to resolve hostname: ${hostname}`);
-    }
-  });
-});
+const __testHookLookup = (hostname: string): LookupAddress[] => {
+  if (hostname === 'localhost' || hostname.endsWith('playwright.dev'))
+    return [{ address: '127.0.0.1', family: 4 }];
+  else
+    throw new Error(`Failed to resolve hostname: ${hostname}`);
+};
 
-it.afterAll(() => {
-  http.globalAgent = prevAgent;
-});
-
-it('get should work @smoke', async ({ context, server }) => {
+it('get should work @smoke', async ({ context, server, mode }) => {
   const response = await context.request.get(server.PREFIX + '/simple.json');
   expect(response.url()).toBe(server.PREFIX + '/simple.json');
   expect(response.status()).toBe(200);
@@ -123,7 +113,9 @@ it('should add session cookies to request', async ({ context, server }) => {
   }]);
   const [req] = await Promise.all([
     server.waitForRequest('/simple.json'),
-    context.request.get(`http://www.my.playwright.dev:${server.PORT}/simple.json`),
+    context.request.get(`http://www.my.playwright.dev:${server.PORT}/simple.json`, {
+      __testHookLookup
+    } as any),
   ]);
   expect(req.headers.cookie).toEqual('username=John Doe');
 });
@@ -176,8 +168,9 @@ it('should not add context cookie if cookie header passed as a parameter', async
     context.request.get(`http://www.my.playwright.dev:${server.PORT}/empty.html`, {
       headers: {
         'Cookie': 'foo=bar'
-      }
-    }),
+      },
+      __testHookLookup
+    } as any),
   ]);
   expect(req.headers.cookie).toEqual('foo=bar');
 });
@@ -197,7 +190,7 @@ it('should follow redirects', async ({ context, server }) => {
   }]);
   const [req, response] = await Promise.all([
     server.waitForRequest('/simple.json'),
-    context.request.get(`http://www.my.playwright.dev:${server.PORT}/redirect1`),
+    context.request.get(`http://www.my.playwright.dev:${server.PORT}/redirect1`, { __testHookLookup } as any),
   ]);
   expect(req.headers.cookie).toEqual('username=John Doe');
   expect(response.url()).toBe(`http://www.my.playwright.dev:${server.PORT}/simple.json`);
@@ -758,6 +751,22 @@ it('should respect timeout after redirects', async function({ context, server })
   expect(error.message).toContain(`Request timed out after 100ms`);
 });
 
+it('should throw on a redirect with an invalid URL', async ({ context, server }) => {
+  server.setRedirect('/redirect', '/test');
+  server.setRoute('/test', (req, res) => {
+    // Node.js prevents us from responding with an invalid header, therefore we manually write the response.
+    const conn = res.connection;
+    conn.write('HTTP/1.1 302\r\n');
+    conn.write('Location: https://здравствуйте/\r\n');
+    conn.write('\r\n');
+    conn.uncork();
+    conn.end();
+  });
+  console.log(server.PREFIX + '/test');
+  const error = await context.request.get(server.PREFIX + '/redirect').catch(e => e);
+  expect(error.message).toContain('apiRequestContext.get: uri requested responds with an invalid redirect URL');
+});
+
 it('should not hang on a brotli encoded Range request', async ({ context, server }) => {
   it.info().annotations.push({ type: 'issue', description: 'https://github.com/microsoft/playwright/issues/18190' });
   it.skip(+process.versions.node.split('.')[0] < 18);
@@ -858,7 +867,7 @@ it('should encode to application/json by default', async function({ context, pag
 });
 
 it('should support multipart/form-data', async function({ context, server }) {
-  const formReceived = new Promise<{error: any, fields: formidable.Fields, files: Record<string, formidable.File>, serverRequest: http.IncomingMessage}>(resolve => {
+  const formReceived = new Promise<{error: any, fields: formidable.Fields, files: Record<string, formidable.File>, serverRequest: IncomingMessage}>(resolve => {
     server.setRoute('/empty.html', async (serverRequest, res) => {
       const form = new formidable.IncomingForm();
       form.parse(serverRequest, (error, fields, files) => {
@@ -895,7 +904,7 @@ it('should support multipart/form-data', async function({ context, server }) {
 });
 
 it('should support multipart/form-data with ReadSream values', async function({ context, page, asset, server }) {
-  const formReceived = new Promise<{error: any, fields: formidable.Fields, files: Record<string, formidable.File>, serverRequest: http.IncomingMessage}>(resolve => {
+  const formReceived = new Promise<{error: any, fields: formidable.Fields, files: Record<string, formidable.File>, serverRequest: IncomingMessage}>(resolve => {
     server.setRoute('/empty.html', async (serverRequest, res) => {
       const form = new formidable.IncomingForm();
       form.parse(serverRequest, (error, fields, files) => {
