@@ -14,16 +14,24 @@
  * limitations under the License.
  */
 
-import type { PlaywrightTestConfig } from '@playwright/experimental-ct-svelte';
+import { defineConfig } from '@playwright/experimental-ct-svelte';
 import { devices } from '@playwright/test';
+import { resolve } from 'path';
 
-const config: PlaywrightTestConfig = {
-  testDir: 'src',
+export default defineConfig({
+  testDir: 'tests',
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
   reporter: 'html',
   use: {
     trace: 'on-first-retry',
+    ctViteConfig: {
+      resolve: {
+        alias: {
+          '@': resolve('./src'),
+        }
+      }
+    }
   },
   projects: [
     {
@@ -39,6 +47,4 @@ const config: PlaywrightTestConfig = {
       use: { ...devices['Desktop Safari'] },
     },
   ],
-};
-
-export default config;
+});

@@ -11,16 +11,15 @@ Playwright provides APIs to **monitor** and **modify** network traffic, both HTT
 Perform HTTP Authentication.
 
 ```js tab=js-ts
-import type { PlaywrightTestConfig } from '@playwright/test';
-const config: PlaywrightTestConfig = {
+import { defineConfig } from '@playwright/test';
+export default defineConfig({
   use: {
     httpCredentials: {
       username: 'bill',
       password: 'pa55w0rd',
     }
   }
-};
-export default config;
+});
 ```
 
 ```js tab=js-library
@@ -80,8 +79,8 @@ bypass proxy for.
 Here is an example of a global proxy:
 
 ```js tab=js-ts
-import type { PlaywrightTestConfig } from '@playwright/test';
-const config: PlaywrightTestConfig = {
+import { defineConfig } from '@playwright/test';
+export default defineConfig({
   use: {
     proxy: {
       server: 'http://myproxy.com:3128',
@@ -89,8 +88,7 @@ const config: PlaywrightTestConfig = {
       password: 'pwd'
     }
   }
-};
-export default config;
+});
 ```
 
 ```js tab=js-library
@@ -142,8 +140,8 @@ await using var browser = await BrowserType.LaunchAsync(new()
 When specifying proxy for each context individually, **Chromium on Windows** needs a hint that proxy will be set. This is done via passing a non-empty proxy server to the browser itself. Here is an example of a context-specific proxy:
 
 ```js tab=js-ts
-import type { PlaywrightTestConfig } from '@playwright/test';
-const config: PlaywrightTestConfig = {
+import { defineConfig } from '@playwright/test';
+export default defineConfig({
   use: {
     launchOptions: {
       // Browser proxy option is required for Chromium on Windows.
@@ -153,8 +151,7 @@ const config: PlaywrightTestConfig = {
       server: 'http://myproxy.com:3128',
     }
   }
-};
-export default config;
+});
 ```
 
 ```js tab=js-library
@@ -575,7 +572,7 @@ To modify a response use [APIRequestContext] to get the original response and th
 ```js
 await page.route('**/title.html', async route => {
   // Fetch original response.
-  const response = await page.request.fetch(route.request());
+  const response = await route.fetch();
   // Add a prefix to the title.
   let body = await response.text();
   body = body.replace('<title>', '<title>My prefix:');
@@ -596,7 +593,7 @@ await page.route('**/title.html', async route => {
 ```java
 page.route("**/title.html", route -> {
   // Fetch original response.
-  APIResponse response = page.request().fetch(route.request());
+  APIResponse response = route.fetch();
   // Add a prefix to the title.
   String body = response.text();
   body = body.replace("<title>", "<title>My prefix:");
@@ -615,7 +612,7 @@ page.route("**/title.html", route -> {
 ```python async
 async def handle_route(route: Route) -> None:
     # Fetch original response.
-    response = await page.request.fetch(route.request)
+    response = await route.fetch()
     # Add a prefix to the title.
     body = await response.text()
     body = body.replace("<title>", "<title>My prefix:")
@@ -634,7 +631,7 @@ await page.route("**/title.html", handle_route)
 ```python sync
 def handle_route(route: Route) -> None:
     # Fetch original response.
-    response = page.request.fetch(route.request)
+    response = route.fetch()
     # Add a prefix to the title.
     body = response.text()
     body = body.replace("<title>", "<title>My prefix:")
@@ -654,7 +651,7 @@ page.route("**/title.html", handle_route)
 await Page.RouteAsync("**/title.html", async route =>
 {
     // Fetch original response.
-    var response = await Page.APIRequest.FetchAsync(route.Request);
+    var response = await route.FetchAsync();
     // Add a prefix to the title.
     var body = await response.TextAsync();
     body = body.Replace("<title>", "<title>My prefix:");

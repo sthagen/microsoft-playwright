@@ -203,7 +203,7 @@ For example, consider the following DOM structure.
 You can locate each element by it's implicit role:
 
 ```js
-await expect(page.getByRole('heading', { name: 'Sign up' })).toBeVisible()
+await expect(page.getByRole('heading', { name: 'Sign up' })).toBeVisible();
 
 await page.getByRole('checkbox', { name: 'Subscribe' }).check();
 
@@ -557,25 +557,23 @@ Set the test id to use a custom data attribute for your tests.
 // playwright.config.js
 // @ts-check
 
-/** @type {import('@playwright/test').PlaywrightTestConfig} */
-const config = {
+const { defineConfig } = require('@playwright/test');
+module.exports = defineConfig({
   use: {
     testIdAttribute: 'data-pw'
   },
-};
-module.exports = config;
+});
 ```
 
 ```js tab=js-ts
 // playwright.config.ts
-import type { PlaywrightTestConfig } from '@playwright/test';
+import { defineConfig } from '@playwright/test';
 
-const config: PlaywrightTestConfig = {
+export default defineConfig({
   use: {
     testIdAttribute: 'data-pw'
   }
-};
-export default config;
+});
 ```
 
 ```java
@@ -1273,7 +1271,7 @@ Locator banana = page.getByRole(AriaRole.LISTITEM).nth(1);
 ```
 
 ```csharp
-var banana = await page.GetByRole(AriaRole.Listitem).NthAsync(1);
+var banana = await page.GetByRole(AriaRole.Listitem).Nth(1);
 ```
 However, use this method with caution. Often times, the page might change, and the locator will point to a completely different element from the one you expected. Instead, try to come up with a unique locator that will pass the [strictness criteria](#strictness).
 

@@ -18,11 +18,11 @@ import { colors, rimraf } from 'playwright-core/lib/utilsBundle';
 import util from 'util';
 import { EventEmitter } from 'events';
 import { debugTest, formatLocation, relativeFilePath, serializeError } from './util';
-import type { TestBeginPayload, TestEndPayload, RunPayload, DonePayload, WorkerInitParams, StepBeginPayload, StepEndPayload, TeardownErrorsPayload, WatchTestResolvedPayload } from './ipc';
+import type { TestBeginPayload, TestEndPayload, RunPayload, DonePayload, WorkerInitParams, TeardownErrorsPayload, WatchTestResolvedPayload } from './ipc';
 import { setCurrentTestInfo } from './globals';
 import { Loader } from './loader';
 import type { Suite, TestCase } from './test';
-import type { Annotation, FullProjectInternal, TestInfoError, TestStepInternal } from './types';
+import type { Annotation, FullProjectInternal, TestInfoError } from './types';
 import { FixtureRunner } from './fixtures';
 import { ManualPromise } from 'playwright-core/lib/utils/manualPromise';
 import { TestInfoImpl } from './testInfo';
@@ -160,7 +160,11 @@ export class WorkerRunner extends EventEmitter {
       return;
 
     this._loader = await Loader.deserialize(this._params.loader);
-    this._project = this._loader.fullConfig().projects.find(p => p._id === this._params.projectId)!;
+    const globalProject = this._loader.fullConfig()._globalProject;
+    if (this._params.projectId === globalProject._id)
+      this._project = globalProject;
+    else
+      this._project = this._loader.fullConfig().projects.find(p => p._id === this._params.projectId)!;
   }
 
   async runTestGroup(runPayload: RunPayload) {
@@ -169,7 +173,7 @@ export class WorkerRunner extends EventEmitter {
     let fatalUnknownTestIds;
     try {
       await this._loadIfNeeded();
-      const fileSuite = await this._loader.loadTestFile(runPayload.file, 'worker', runPayload.projectSetup);
+      const fileSuite = await this._loader.loadTestFile(runPayload.file, 'worker', runPayload.phase);
       const suite = this._loader.buildFileSuiteForProject(this._project, fileSuite, this._params.repeatEachIndex, test => {
         if (runPayload.watchMode) {
           const testResolvedPayload: WatchTestResolvedPayload = {
@@ -226,40 +230,9 @@ export class WorkerRunner extends EventEmitter {
   }
 
   private async _runTest(test: TestCase, retry: number, nextTest: TestCase | undefined) {
-    let lastStepId = 0;
-    const testInfo = new TestInfoImpl(this._loader, this._project, this._params, test, retry, data => {
-      const stepId = `${data.category}@${data.title}@${++lastStepId}`;
-      let callbackHandled = false;
-      const step: TestStepInternal = {
-        ...data,
-        complete: result => {
-          if (callbackHandled)
-            return;
-          callbackHandled = true;
-          const error = result.error instanceof Error ? serializeError(result.error) : result.error;
-          const payload: StepEndPayload = {
-            testId: test.id,
-            refinedTitle: step.refinedTitle,
-            stepId,
-            wallTime: Date.now(),
-            error,
-          };
-          this.emit('stepEnd', payload);
-        }
-      };
-      const hasLocation = data.location && !data.location.file.includes('@playwright');
-      // Sanitize location that comes from user land, it might have extra properties.
-      const location = data.location && hasLocation ? { file: data.location.file, line: data.location.line, column: data.location.column } : undefined;
-      const payload: StepBeginPayload = {
-        testId: test.id,
-        stepId,
-        ...data,
-        location,
-        wallTime: Date.now(),
-      };
-      this.emit('stepBegin', payload);
-      return step;
-    });
+    const testInfo = new TestInfoImpl(this._loader, this._project, this._params, test, retry,
+        stepBeginPayload => this.emit('stepBegin', stepBeginPayload),
+        stepEndPayload => this.emit('stepEnd', stepEndPayload));
 
     const processAnnotation = (annotation: Annotation) => {
       testInfo.annotations.push(annotation);

@@ -14,15 +14,23 @@
  * limitations under the License.
  */
 
-import { type PlaywrightTestConfig, devices } from '@playwright/experimental-ct-vue2';
+import { defineConfig, devices } from '@playwright/experimental-ct-vue2';
+import { resolve } from 'path';
 
-const config: PlaywrightTestConfig = {
-  testDir: 'src',
+export default defineConfig({
+  testDir: 'tests',
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
   reporter: 'html',
   use: {
     trace: 'on-first-retry',
+    ctViteConfig: {
+      resolve: {
+        alias: {
+          '@': resolve(__dirname, './src'),
+        }
+      }
+    }
   },
   projects: [
     {
@@ -38,6 +46,4 @@ const config: PlaywrightTestConfig = {
       use: { ...devices['Desktop Safari'] },
     },
   ],
-};
-
-export default config;
+});

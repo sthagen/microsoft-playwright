@@ -71,6 +71,7 @@ test('should generate report', async ({ runInlineTest, showReport, page }) => {
   await expect(page.locator('.test-file-test-outcome-skipped >> text=skipped')).toBeVisible();
 
   await expect(page.getByTestId('overall-duration'), 'should contain humanized total time with at most 1 decimal place').toContainText(/^Total time: \d+(\.\d)?(ms|s|m)$/);
+  await expect(page.getByTestId('project-name'), 'should contain project name').toContainText('project-name');
 
   await expect(page.locator('.metadata-view')).not.toBeVisible();
 });
@@ -482,7 +483,7 @@ test('should warn user when viewing via file:// protocol', async ({ runInlineTes
   });
 });
 
-test('should show timed out steps and hooks', async ({ runInlineTest, page, showReport }) => {
+test('should show failed and timed out steps and hooks', async ({ runInlineTest, page, showReport }) => {
   const result = await runInlineTest({
     'playwright.config.js': `
       module.exports = { timeout: 3000 };
@@ -508,6 +509,12 @@ test('should show timed out steps and hooks', async ({ runInlineTest, page, show
         console.log('afterAll 1');
       });
       test('fails', async ({ page }) => {
+        await test.step('outer error', async () => {
+          await test.step('inner error', async () => {
+            expect.soft(1).toBe(2);
+          });
+        });
+
         await test.step('outer step', async () => {
           await test.step('inner step', async () => {
             await new Promise(() => {});
@@ -521,9 +528,16 @@ test('should show timed out steps and hooks', async ({ runInlineTest, page, show
 
   await showReport();
   await page.click('text=fails');
+
+  await page.click('.tree-item:has-text("outer error") >> text=outer error');
+  await page.click('.tree-item:has-text("outer error") >> .tree-item >> text=inner error');
+  await expect(page.locator('.tree-item:has-text("outer error") svg.color-text-danger')).toHaveCount(3);
+  await expect(page.locator('.tree-item:has-text("expect.soft.toBe"):not(:has-text("inner"))')).toBeVisible();
+
   await page.click('text=outer step');
   await expect(page.locator('.tree-item:has-text("outer step") svg.color-text-danger')).toHaveCount(2);
   await expect(page.locator('.tree-item:has-text("inner step") svg.color-text-danger')).toHaveCount(2);
+
   await page.click('text=Before Hooks');
   await expect(page.locator('.tree-item:has-text("Before Hooks") .tree-item')).toContainText([
     /beforeAll hook/,

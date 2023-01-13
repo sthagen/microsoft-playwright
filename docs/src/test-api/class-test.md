@@ -782,8 +782,7 @@ Configure the option in config file.
 // playwright.config.js
 // @ts-check
 
-/** @type {import('@playwright/test').PlaywrightTestConfig<{ defaultItem: string }>} */
-const config = {
+module.exports = defineConfig({
   projects: [
     {
       name: 'shopping',
@@ -794,17 +793,15 @@ const config = {
       use: { defaultItem: 'Exercise!' },
     },
   ]
-};
-
-module.exports = config;
+});
 ```
 
 ```js tab=js-ts
 // playwright.config.ts
-import type { PlaywrightTestConfig } from '@playwright/test';
+import { defineConfig } from '@playwright/test';
 import { Options } from './my-test';
 
-const config: PlaywrightTestConfig<Options> = {
+export default defineConfig<Options>({
   projects: [
     {
       name: 'shopping',
@@ -815,8 +812,7 @@ const config: PlaywrightTestConfig<Options> = {
       use: { defaultItem: 'Exercise!' },
     },
   ]
-};
-export default config;
+});
 ```
 
 Learn more about [fixtures](../test-fixtures.md) and [parametrizing tests](../test-parameterize.md).
@@ -1174,6 +1170,22 @@ Test title.
 Test function that takes one or two arguments: an object with fixtures and optional [TestInfo].
 
 
+## method: Test.projectSetup
+* since: v1.30
+
+Declares a project setup function. The function will be run before all other tests in the same project and if it fails the project execution will be aborted.
+
+### param: Test.projectSetup.title
+* since: v1.30
+- `title` <[string]>
+
+Project setup title.
+
+### param: Test.projectSetup.testFunction
+* since: v1.30
+- `testFunction` <[function]\([Fixtures], [TestInfo]\)>
+
+Project setup function that takes one or two arguments: an object with fixtures and optional [TestInfo].
 
 
 ## method: Test.setTimeout
