@@ -21,11 +21,10 @@ import path from 'path';
 import url from 'url';
 import { colors, debug, minimatch } from 'playwright-core/lib/utilsBundle';
 import type { TestInfoError, Location } from './types';
-import { calculateSha1, isRegExp, isString } from 'playwright-core/lib/utils';
-import { isInternalFileName } from 'playwright-core/lib/utils/stackTrace';
+import { calculateSha1, isRegExp, isString, captureStackTrace as coreCaptureStackTrace } from 'playwright-core/lib/utils';
+import { isInternalFileName } from 'playwright-core/lib/utils';
 import { currentTestInfo } from './globals';
-import type { ParsedStackTrace } from 'playwright-core/lib/utils/stackTrace';
-import { captureStackTrace as coreCaptureStackTrace } from 'playwright-core/lib/utils/stackTrace';
+import type { ParsedStackTrace } from 'playwright-core/lib/utils';
 
 export type { ParsedStackTrace };
 
@@ -297,4 +296,20 @@ export async function normalizeAndSaveAttachment(outputPath: string, name: strin
     const contentType = options.contentType ?? (typeof options.body === 'string' ? 'text/plain' : 'application/octet-stream');
     return { name, contentType, body: typeof options.body === 'string' ? Buffer.from(options.body) : options.body };
   }
+}
+
+export function fileIsModule(file: string): boolean {
+  if (file.endsWith('.mjs'))
+    return true;
+
+  const folder = path.dirname(file);
+  return folderIsModule(folder);
+}
+
+export function folderIsModule(folder: string): boolean {
+  const packageJsonPath = getPackageJsonPath(folder);
+  if (!packageJsonPath)
+    return false;
+  // Rely on `require` internal caching logic.
+  return require(packageJsonPath).type === 'module';
 }

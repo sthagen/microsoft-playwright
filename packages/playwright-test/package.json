@@ -1,6 +1,6 @@
 {
   "name": "@playwright/test",
-  "version": "1.30.0-next",
+  "version": "1.31.0-next",
   "description": "A high-level API to automate web browsers",
   "repository": "github:Microsoft/playwright",
   "homepage": "https://playwright.dev",
@@ -17,7 +17,6 @@
     },
     "./cli": "./cli.js",
     "./package.json": "./package.json",
-    "./lib/ci": "./lib/ci.js",
     "./lib/cli": "./lib/cli.js",
     "./lib/experimentalLoader": "./lib/experimentalLoader.js",
     "./lib/mount": "./lib/mount.js",
@@ -34,6 +33,6 @@
   "license": "Apache-2.0",
   "dependencies": {
     "@types/node": "*",
-    "playwright-core": "1.30.0-next"
+    "playwright-core": "1.31.0-next"
   }
 }

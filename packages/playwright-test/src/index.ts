@@ -18,17 +18,16 @@ import * as fs from 'fs';
 import * as path from 'path';
 import type { APIRequestContext, BrowserContext, BrowserContextOptions, LaunchOptions, Page, Tracing, Video } from 'playwright-core';
 import * as playwrightLibrary from 'playwright-core';
-import { createGuid, debugMode } from 'playwright-core/lib/utils';
-import { removeFolders } from 'playwright-core/lib/utils/fileUtils';
+import { createGuid, debugMode, removeFolders, addStackIgnoreFilter } from 'playwright-core/lib/utils';
 import type { Fixtures, PlaywrightTestArgs, PlaywrightTestOptions, PlaywrightWorkerArgs, PlaywrightWorkerOptions, ScreenshotMode, TestInfo, TestType, TraceMode, VideoMode } from '../types/test';
-import { store as _baseStore } from './store';
 import type { TestInfoImpl } from './testInfo';
 import { rootTestType } from './testType';
 import { type ContextReuseMode } from './types';
 export { expect } from './expect';
 export { addRunnerPlugin as _addRunnerPlugin } from './plugins';
 export const _baseTest: TestType<{}, {}> = rootTestType.test;
-export const store = _baseStore;
+
+addStackIgnoreFilter((frame: StackFrame) => frame.file.startsWith(path.dirname(require.resolve('../package.json'))));
 
 if ((process as any)['__pw_initiator__']) {
   const originalStackTraceLimit = Error.stackTraceLimit;
@@ -144,7 +143,6 @@ const playwrightFixtures: Fixtures<TestFixtures, WorkerFixtures> = ({
   permissions: [({ contextOptions }, use) => use(contextOptions.permissions), { option: true }],
   proxy: [({ contextOptions }, use) => use(contextOptions.proxy), { option: true }],
   storageState: [({ contextOptions }, use) => use(contextOptions.storageState), { option: true }],
-  storageStateName: [undefined, { option: true }],
   timezoneId: [({ contextOptions }, use) => use(contextOptions.timezoneId), { option: true }],
   userAgent: [({ contextOptions }, use) => use(contextOptions.userAgent), { option: true }],
   viewport: [({ contextOptions }, use) => use(contextOptions.viewport === undefined ? { width: 1280, height: 720 } : contextOptions.viewport), { option: true }],
@@ -174,7 +172,6 @@ const playwrightFixtures: Fixtures<TestFixtures, WorkerFixtures> = ({
     permissions,
     proxy,
     storageState,
-    storageStateName,
     viewport,
     timezoneId,
     userAgent,
@@ -213,14 +210,8 @@ const playwrightFixtures: Fixtures<TestFixtures, WorkerFixtures> = ({
       options.permissions = permissions;
     if (proxy !== undefined)
       options.proxy = proxy;
-    if (storageStateName !== undefined) {
-      const value = await store.get(storageStateName);
-      if (!value)
-        throw new Error(`Cannot find value in the store for storageStateName: "${storageStateName}"`);
-      options.storageState = value as any;
-    } else if (storageState !== undefined) {
+    if (storageState !== undefined)
       options.storageState = storageState;
-    }
     if (timezoneId !== undefined)
       options.timezoneId = timezoneId;
     if (userAgent !== undefined)

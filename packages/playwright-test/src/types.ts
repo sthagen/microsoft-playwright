@@ -16,7 +16,6 @@
 
 import type { Fixtures, TestInfoError, Project } from '../types/test';
 import type { Location, Reporter } from '../types/testReporter';
-import type { WorkerIsolation } from './ipc';
 import type { FullConfig as FullConfigPublic, FullProject as FullProjectPublic } from './types';
 export * from '../types/test';
 export type { Location } from '../types/testReporter';
@@ -48,16 +47,11 @@ export interface FullConfigInternal extends FullConfigPublic {
   _storeDir: string;
   _maxConcurrentTestGroups: number;
   _ignoreSnapshots: boolean;
-  _workerIsolation: WorkerIsolation;
   /**
    * If populated, this should also be the first/only entry in _webServers. Legacy singleton `webServer` as well as those provided via an array in the user-facing playwright.config.{ts,js} will be in `_webServers`. The legacy field (`webServer`) field additionally stores the backwards-compatible singleton `webServer` since it had been showing up in globalSetup to the user.
    */
   webServer: FullConfigPublic['webServer'];
   _webServers: Exclude<FullConfigPublic['webServer'], null>[];
-  _globalScripts: string | RegExp | (string | RegExp)[] | null;
-
-  // This is an ephemeral project that is not added to `projects` list below.
-  _globalProject:  FullProjectInternal;
 
   // Overrides the public field.
   projects: FullProjectInternal[];
@@ -73,7 +67,6 @@ export interface FullProjectInternal extends FullProjectPublic {
   _fullyParallel: boolean;
   _expect: Project['expect'];
   _respectGitIgnore: boolean;
-  _setupMatch: string | RegExp | (string | RegExp)[];
   snapshotPathTemplate: string;
 }
 

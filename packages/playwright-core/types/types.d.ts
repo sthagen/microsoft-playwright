@@ -4181,7 +4181,7 @@ export interface Page {
    * @param url A glob pattern, regex pattern or predicate receiving [URL] to match while routing.
    * @param handler Optional handler function to route the request.
    */
-  unroute(url: string|RegExp|((url: URL) => boolean), handler?: ((route: Route, request: Request) => void)): Promise<void>;
+  unroute(url: string|RegExp|((url: URL) => boolean), handler?: ((route: Route, request: Request) => Promise<any>|any)): Promise<void>;
 
   url(): string;
 
@@ -8234,7 +8234,7 @@ export interface BrowserContext {
    * @param handler Optional handler function used to register a routing with
    * [browserContext.route(url, handler[, options])](https://playwright.dev/docs/api/class-browsercontext#browser-context-route).
    */
-  unroute(url: string|RegExp|((url: URL) => boolean), handler?: ((route: Route, request: Request) => void)): Promise<void>;
+  unroute(url: string|RegExp|((url: URL) => boolean), handler?: ((route: Route, request: Request) => Promise<any>|any)): Promise<void>;
 
   /**
    * **NOTE** Only works with Chromium browser's persistent context.
@@ -11962,12 +11962,6 @@ export interface Locator {
      */
     trial?: boolean;
   }): Promise<void>;
-
-  /**
-   * Returns the ratio of intersection between viewport and the element, according to the
-   * [intersection observer API](https://developer.mozilla.org/en-US/docs/Web/API/Intersection_Observer_API).
-   */
-  viewportRatio(): Promise<number>;
 
   /**
    * Returns when element specified by locator satisfies the `state` option.

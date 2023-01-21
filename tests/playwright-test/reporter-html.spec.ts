@@ -18,9 +18,9 @@ import fs from 'fs';
 import path from 'path';
 import url from 'url';
 import { test as baseTest, expect, createImage, stripAnsi } from './playwright-test-fixtures';
-import type { HttpServer } from '../../packages/playwright-core/lib/utils/httpServer';
+import type { HttpServer } from '../../packages/playwright-core/lib/utils';
 import { startHtmlReportServer } from '../../packages/playwright-test/lib/reporters/html';
-import { spawnAsync } from 'playwright-core/lib/utils/spawnAsync';
+import { spawnAsync } from 'playwright-core/lib/utils';
 
 const test = baseTest.extend<{ showReport: () => Promise<void> }>({
   showReport: async ({ page }, use, testInfo) => {
@@ -137,6 +137,7 @@ test('should include image diff', async ({ runInlineTest, page, showReport }) =>
   set.add(await expectedImage.getAttribute('src'));
   set.add(await actualImage.getAttribute('src'));
   expect(set.size, 'Should be two images overlaid').toBe(2);
+  await expect(imageDiff).toContainText('200x200');
 
   const sliderElement = imageDiff.locator('data-testid=test-result-image-mismatch-grip');
   await expect.poll(() => sliderElement.evaluate(e => e.style.left), 'Actual slider is on the right').toBe('590px');
@@ -775,11 +776,14 @@ test.describe('gitCommitInfo plugin', () => {
 
     const result = await runInlineTest({
       'uncommitted.txt': `uncommitted file`,
-      'playwright.config.ts': `export default {};`,
-      'example.spec.ts': `
+      'playwright.config.ts': `
         import { gitCommitInfo } from '@playwright/test/lib/plugins';
         const { test, _addRunnerPlugin } = pwt;
         _addRunnerPlugin(gitCommitInfo());
+        export default {};
+      `,
+      'example.spec.ts': `
+        const { test } = pwt;
         test('sample', async ({}) => { expect(2).toBe(2); });
       `,
     }, { reporter: 'dot,html' }, { PW_TEST_HTML_REPORT_OPEN: 'never', GITHUB_REPOSITORY: 'microsoft/playwright-example-for-test', GITHUB_RUN_ID: 'example-run-id', GITHUB_SERVER_URL: 'https://playwright.dev', GITHUB_SHA: 'example-sha' }, undefined, beforeRunPlaywrightTest);
@@ -805,9 +809,6 @@ test.describe('gitCommitInfo plugin', () => {
     const result = await runInlineTest({
       'uncommitted.txt': `uncommitted file`,
       'playwright.config.ts': `
-        export default {};
-      `,
-      'example.spec.ts': `
         import { gitCommitInfo } from '@playwright/test/lib/plugins';
         const { test, _addRunnerPlugin } = pwt;
         _addRunnerPlugin(gitCommitInfo({
@@ -819,6 +820,11 @@ test.describe('gitCommitInfo plugin', () => {
             'revision.email': 'shakespeare@example.local',
           },
         }));
+        export default {};
+      `,
+      'example.spec.ts': `
+        import { gitCommitInfo } from '@playwright/test/lib/plugins';
+        const { test } = pwt;
         test('sample', async ({}) => { expect(2).toBe(2); });
       `,
     }, { reporter: 'dot,html' }, { PW_TEST_HTML_REPORT_OPEN: 'never', GITHUB_REPOSITORY: 'microsoft/playwright-example-for-test', GITHUB_RUN_ID: 'example-run-id', GITHUB_SERVER_URL: 'https://playwright.dev', GITHUB_SHA: 'example-sha' }, undefined);

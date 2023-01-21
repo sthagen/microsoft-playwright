@@ -17,7 +17,7 @@
 import type { ConfigCLIOverrides } from './runner';
 import type { TestInfoError, TestStatus } from './types';
 
-export type SerializedLoaderData = {
+export type SerializedConfig = {
   configFile: string | undefined;
   configDir: string;
   configCLIOverrides: ConfigCLIOverrides;
@@ -29,26 +29,18 @@ export type TtyParams = {
   colorDepth: number;
 };
 
-export type WorkerIsolation =
-  'isolate-projects' |  // create new worker for new project type
-  'isolate-pools';      // create new worker for new worker fixture pool digest
-
+export type ProcessInitParams = {
+  stdoutParams: TtyParams;
+  stderrParams: TtyParams;
+  processName: string;
+};
 
 export type WorkerInitParams = {
-  workerIsolation: WorkerIsolation;
   workerIndex: number;
   parallelIndex: number;
   repeatEachIndex: number;
   projectId: string;
-  loader: SerializedLoaderData;
-  stdoutParams: TtyParams;
-  stderrParams: TtyParams;
-};
-
-export type WatchTestResolvedPayload = {
-  testId: string;
-  title: string;
-  location: { file: string, line: number, column: number };
+  config: SerializedConfig;
 };
 
 export type TestBeginPayload = {
@@ -94,8 +86,6 @@ export type TestEntry = {
 export type RunPayload = {
   file: string;
   entries: TestEntry[];
-  watchMode: boolean;
-  phase: 'test' | 'projectSetup' | 'globalSetup';
 };
 
 export type DonePayload = {
@@ -105,7 +95,6 @@ export type DonePayload = {
 };
 
 export type TestOutputPayload = {
-  testId?: string;
   text?: string;
   buffer?: string;
 };

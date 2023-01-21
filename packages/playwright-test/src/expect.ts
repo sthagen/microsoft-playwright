@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { pollAgainstTimeout } from 'playwright-core/lib/utils/timeoutRunner';
+import { pollAgainstTimeout } from 'playwright-core/lib/utils';
 import path from 'path';
 import {
   toBeChecked,
@@ -38,7 +38,6 @@ import {
   toHaveURL,
   toHaveValue,
   toHaveValues,
-  toIntersectViewport,
   toPass
 } from './matchers/matchers';
 import { toMatchSnapshot, toHaveScreenshot } from './matchers/toMatchSnapshot';
@@ -144,7 +143,6 @@ const customMatchers = {
   toHaveURL,
   toHaveValue,
   toHaveValues,
-  toIntersectViewport,
   toMatchSnapshot,
   toHaveScreenshot,
   toPass,
