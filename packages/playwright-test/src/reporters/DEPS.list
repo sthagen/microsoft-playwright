@@ -1,4 +1,6 @@
 [*]
-../util.ts
+../common/
 ../babelBundle.ts
+../test.ts
+../util.ts
 ../utilsBundle.ts

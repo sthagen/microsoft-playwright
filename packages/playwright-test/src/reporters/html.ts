@@ -20,13 +20,13 @@ import { open } from '../utilsBundle';
 import path from 'path';
 import type { TransformCallback } from 'stream';
 import { Transform } from 'stream';
-import type { FullConfig, Suite } from '../../types/testReporter';
+import type { FullConfig, Reporter, Suite } from '../../types/testReporter';
 import { HttpServer, assert, calculateSha1, monotonicTime, copyFileAndMakeWritable, removeFolders } from 'playwright-core/lib/utils';
 import type { JsonAttachment, JsonReport, JsonSuite, JsonTestCase, JsonTestResult, JsonTestStep } from './raw';
 import RawReporter from './raw';
 import { stripAnsiEscapes } from './base';
 import { getPackageJsonPath, sanitizeForFilePath } from '../util';
-import type { FullConfigInternal, Metadata, ReporterInternal } from '../types';
+import type { FullConfigInternal, Metadata } from '../common/types';
 import type { ZipFile } from 'playwright-core/lib/zipBundle';
 import { yazl } from 'playwright-core/lib/zipBundle';
 import { mime } from 'playwright-core/lib/utilsBundle';
@@ -47,7 +47,7 @@ type HtmlReporterOptions = {
   port?: number,
 };
 
-class HtmlReporter implements ReporterInternal {
+class HtmlReporter implements Reporter {
   private config!: FullConfigInternal;
   private suite!: Suite;
   private _montonicStartTime: number = 0;
@@ -112,11 +112,11 @@ class HtmlReporter implements ReporterInternal {
     this._buildResult = await builder.build({ ...this.config.metadata, duration }, reports);
   }
 
-  async _onExit() {
-    if (process.env.CI)
+  async onExit() {
+    if (process.env.CI || !this._buildResult)
       return;
 
-    const { ok, singleTestId } = this._buildResult!;
+    const { ok, singleTestId } = this._buildResult;
     const shouldOpen = this._open === 'always' || (!ok && this._open === 'on-failure');
     if (shouldOpen) {
       await showHTMLReport(this._outputFolder, this._options.host, this._options.port, singleTestId);

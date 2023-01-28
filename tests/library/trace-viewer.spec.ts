@@ -79,11 +79,17 @@ test('should show empty trace viewer', async ({ showTraceViewer }, testInfo) => 
 });
 
 test('should open two trace viewers', async ({ showTraceViewer }, testInfo) => {
-  const preferredPort = testInfo.workerIndex + 48321;
-  const traceViewer1 = await showTraceViewer([testInfo.outputPath()], preferredPort);
+  const port = testInfo.workerIndex + 48321;
+  const traceViewer1 = await showTraceViewer([testInfo.outputPath()], { host: 'localhost', port });
   await expect(traceViewer1.page).toHaveTitle('Playwright Trace Viewer');
-  const traceViewer2 = await showTraceViewer([testInfo.outputPath()], preferredPort);
+  const traceViewer2 = await showTraceViewer([testInfo.outputPath()], { host: 'localhost', port });
   await expect(traceViewer2.page).toHaveTitle('Playwright Trace Viewer');
+});
+
+test('should open trace viewer on specific host', async ({ showTraceViewer }, testInfo) => {
+  const traceViewer = await showTraceViewer([testInfo.outputPath()], { host: '127.0.0.1' });
+  await expect(traceViewer.page).toHaveTitle('Playwright Trace Viewer');
+  await expect(traceViewer.page).toHaveURL(/127.0.0.1/);
 });
 
 test('should open simple trace viewer', async ({ showTraceViewer }) => {
@@ -120,7 +126,6 @@ test('should render events', async ({ showTraceViewer }) => {
 });
 
 test('should render console', async ({ showTraceViewer, browserName }) => {
-  test.fixme(browserName === 'firefox', 'Firefox generates stray console message for page error');
   const traceViewer = await showTraceViewer([traceFile]);
   await traceViewer.selectAction('page.evaluate');
   await traceViewer.showConsoleTab();
@@ -131,7 +136,6 @@ test('should render console', async ({ showTraceViewer, browserName }) => {
 });
 
 test('should open console errors on click', async ({ showTraceViewer, browserName }) => {
-  test.fixme(browserName === 'firefox', 'Firefox generates stray console message for page error');
   const traceViewer = await showTraceViewer([traceFile]);
   expect(await traceViewer.actionIconsText('page.evaluate')).toEqual(['2', '1']);
   expect(await traceViewer.page.isHidden('.console-tab')).toBeTruthy();

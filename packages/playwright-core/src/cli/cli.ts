@@ -270,14 +270,11 @@ program
     .option('--port <port>', 'Server port')
     .option('--path <path>', 'Endpoint Path', '/')
     .option('--max-clients <maxClients>', 'Maximum clients')
-    .option('--proxy-mode <mode>', 'Either `client` or `tether`. Defaults to `client`.', 'client')
     .action(function(options) {
       runServer({
         port: options.port ? +options.port : undefined,
         path: options.path,
         maxConnections: options.maxClients ? +options.maxClients : Infinity,
-        browserProxyMode: options.proxyMode,
-        ownedByTetherClient: !!process.env.PW_OWNED_BY_TETHER_CLIENT,
       }).catch(logErrorAndExit);
     });
 
@@ -298,6 +295,8 @@ program
 program
     .command('show-trace [trace...]')
     .option('-b, --browser <browserType>', 'browser to use, one of cr, chromium, ff, firefox, wk, webkit', 'chromium')
+    .option('-h, --host <host>', 'Host to serve trace on', 'localhost')
+    .option('-p, --port <port>', 'Port to serve trace on', '9322')
     .description('show trace viewer')
     .action(function(traces, options) {
       if (options.browser === 'cr')
@@ -306,7 +305,8 @@ program
         options.browser = 'firefox';
       if (options.browser === 'wk')
         options.browser = 'webkit';
-      showTraceViewer(traces, options.browser, false, 9322).catch(logErrorAndExit);
+
+      showTraceViewer(traces, options.browser, { headless: false, host: options.host, port: +options.port }).catch(logErrorAndExit);
     }).addHelpText('afterAll', `
 Examples:
 

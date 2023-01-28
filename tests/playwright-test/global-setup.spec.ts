@@ -137,11 +137,7 @@ test('globalTeardown does not run when globalSetup times out', async ({ runInlin
       });
     `,
   });
-  // We did not run tests, so we should only have 1 skipped test.
-  expect(result.skipped).toBe(1);
-  expect(result.passed).toBe(0);
-  expect(result.failed).toBe(0);
-  expect(result.exitCode).toBe(1);
+  expect(result.output).toContain('Timed out waiting 1s for the global setup to run');
   expect(result.output).not.toContain('teardown=');
 });
 
@@ -324,4 +320,68 @@ test('globalSetup should work for auth', async ({ runInlineTest }) => {
 test('globalSetup auth should compile', async ({ runTSC }) => {
   const result = await runTSC(authFiles);
   expect(result.exitCode).toBe(0);
+});
+
+test('teardown order', async ({ runInlineTest }) => {
+  const result = await runInlineTest({
+    'playwright.config.ts': `
+      const _plugins = [];
+      for (let i = 1; i < 4; ++i) {
+        _plugins.push(() => ({
+          setup: () => console.log('\\n%%setup ' + i),
+          teardown: () => console.log('\\n%%teardown ' + i),
+        }));
+      }
+      export default { _plugins };
+    `,
+    'a.test.js': `
+      pwt.test('test', () => {});
+    `,
+  });
+  expect(result.exitCode).toBe(0);
+  expect(result.passed).toBe(1);
+  expect(stripAnsi(result.output).split('\n').filter(line => line.startsWith('%%'))).toEqual([
+    '%%setup 1',
+    '%%setup 2',
+    '%%setup 3',
+    '%%teardown 3',
+    '%%teardown 2',
+    '%%teardown 1',
+  ]);
+});
+
+test('teardown after error', async ({ runInlineTest }) => {
+  const result = await runInlineTest({
+    'playwright.config.ts': `
+      const _plugins = [];
+      for (let i = 1; i < 4; ++i) {
+        _plugins.push(() => ({
+          setup: () => console.log('\\n%%setup ' + i),
+          teardown: () => {
+            console.log('\\n%%teardown ' + i);
+            throw new Error('failed teardown ' + i)
+          },
+        }));
+      }
+      export default { _plugins };
+    `,
+    'a.test.js': `
+      pwt.test('test', () => {});
+    `,
+  });
+  expect(result.exitCode).toBe(0);
+  expect(result.passed).toBe(1);
+  const output = stripAnsi(result.output);
+  expect(output).toContain('Error: failed teardown 1');
+  expect(output).toContain('Error: failed teardown 2');
+  expect(output).toContain('Error: failed teardown 3');
+  expect(output).toContain('throw new Error(\'failed teardown');
+  expect(stripAnsi(result.output).split('\n').filter(line => line.startsWith('%%'))).toEqual([
+    '%%setup 1',
+    '%%setup 2',
+    '%%setup 3',
+    '%%teardown 3',
+    '%%teardown 2',
+    '%%teardown 1',
+  ]);
 });

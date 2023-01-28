@@ -20,17 +20,16 @@ import util from 'util';
 import path from 'path';
 import url from 'url';
 import { colors, debug, minimatch } from 'playwright-core/lib/utilsBundle';
-import type { TestInfoError, Location } from './types';
+import type { TestInfoError, Location } from './common/types';
 import { calculateSha1, isRegExp, isString, captureStackTrace as coreCaptureStackTrace } from 'playwright-core/lib/utils';
 import { isInternalFileName } from 'playwright-core/lib/utils';
-import { currentTestInfo } from './globals';
 import type { ParsedStackTrace } from 'playwright-core/lib/utils';
 
 export type { ParsedStackTrace };
 
 const PLAYWRIGHT_CORE_PATH = path.dirname(require.resolve('playwright-core'));
-const EXPECT_PATH = require.resolve('./expectBundle');
-const EXPECT_PATH_IMPL = require.resolve('./expectBundleImpl');
+const EXPECT_PATH = require.resolve('./common/expectBundle');
+const EXPECT_PATH_IMPL = require.resolve('./common/expectBundleImpl');
 const PLAYWRIGHT_TEST_PATH = path.join(__dirname, '..');
 
 function filterStackTrace(e: Error) {
@@ -243,16 +242,6 @@ Call log:
 `;
 }
 
-export function currentExpectTimeout(options: { timeout?: number }) {
-  const testInfo = currentTestInfo();
-  if (options.timeout !== undefined)
-    return options.timeout;
-  let defaultExpectTimeout = testInfo?.project._expect?.timeout;
-  if (typeof defaultExpectTimeout === 'undefined')
-    defaultExpectTimeout = 5000;
-  return defaultExpectTimeout;
-}
-
 const folderToPackageJsonPath = new Map<string, string>();
 
 export function getPackageJsonPath(folderPath: string): string {
@@ -312,4 +301,16 @@ export function folderIsModule(folder: string): boolean {
     return false;
   // Rely on `require` internal caching logic.
   return require(packageJsonPath).type === 'module';
+}
+
+export function experimentalLoaderOption() {
+  return ` --no-warnings --experimental-loader=${url.pathToFileURL(require.resolve('@playwright/test/lib/experimentalLoader')).toString()}`;
+}
+
+export function envWithoutExperimentalLoaderOptions(): NodeJS.ProcessEnv {
+  const substring = experimentalLoaderOption();
+  const result = { ...process.env };
+  if (result.NODE_OPTIONS)
+    result.NODE_OPTIONS = result.NODE_OPTIONS.replace(substring, '').trim() || undefined;
+  return result;
 }

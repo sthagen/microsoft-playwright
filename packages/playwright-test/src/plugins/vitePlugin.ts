@@ -19,11 +19,11 @@ import type { Suite } from '../../types/testReporter';
 import path from 'path';
 import type { InlineConfig, Plugin } from 'vite';
 import type { TestRunnerPlugin } from '.';
-import { parse, traverse, types as t } from '../babelBundle';
+import { parse, traverse, types as t } from '../common/babelBundle';
 import { stoppable } from '../utilsBundle';
-import type { ComponentInfo } from '../tsxTransform';
-import { collectComponentUsages, componentInfo } from '../tsxTransform';
-import type { FullConfig } from '../types';
+import type { ComponentInfo } from '../common/tsxTransform';
+import { collectComponentUsages, componentInfo } from '../common/tsxTransform';
+import type { FullConfig } from '../common/types';
 import { assert, calculateSha1 } from 'playwright-core/lib/utils';
 import type { AddressInfo } from 'net';
 import { getPlaywrightVersion } from 'playwright-core/lib/utils';
@@ -36,7 +36,7 @@ type CtConfig = BasePlaywrightTestConfig['use'] & {
   ctPort?: number;
   ctTemplateDir?: string;
   ctCacheDir?: string;
-  ctViteConfig?: InlineConfig;
+  ctViteConfig?: InlineConfig | (() => Promise<InlineConfig>);
 };
 
 const importReactRE = /(^|\n)import\s+(\*\s+as\s+)?React(,|\s+)/;
@@ -46,14 +46,19 @@ export function createPlugin(
   registerSourceFile: string,
   frameworkPluginFactory: () => Promise<Plugin>): TestRunnerPlugin {
   let configDir: string;
+  let config: FullConfig;
   return {
     name: 'playwright-vite-plugin',
 
-    setup: async (config: FullConfig, configDirectory: string, suite: Suite) => {
+    setup: async (configObject: FullConfig, configDirectory: string) => {
+      config = configObject;
       configDir = configDirectory;
+    },
+
+    begin: async (suite: Suite) => {
       const use = config.projects[0].use as CtConfig;
       const port = use.ctPort || 3100;
-      const viteConfig: InlineConfig = use.ctViteConfig || {};
+      const viteConfig = typeof use.ctViteConfig === 'function' ? await use.ctViteConfig() : (use.ctViteConfig || {});
       const relativeTemplateDir = use.ctTemplateDir || 'playwright';
 
       const rootDir = viteConfig.root || configDir;

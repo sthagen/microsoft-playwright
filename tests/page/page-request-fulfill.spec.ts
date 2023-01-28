@@ -52,10 +52,10 @@ it('should work', async ({ page, server }) => {
 });
 
 it('should work with buffer as body', async ({ page, server, browserName, isLinux }) => {
-  it.fail(browserName === 'webkit' && isLinux, 'Loading of application/octet-stream resource fails');
   await page.route('**/*', route => {
     route.fulfill({
       status: 200,
+      contentType: 'text/plain',
       body: Buffer.from('Yo, page!')
     });
   });
@@ -308,7 +308,7 @@ it('should fulfill with fetch response that has multiple set-cookie', async ({ p
 
 it('headerValue should return set-cookie from intercepted response', async ({ page, server, browserName }) => {
   it.fail(browserName === 'chromium', 'Set-Cookie is missing in response after interception');
-  it.fixme(browserName === 'webkit', 'Set-Cookie with \n in intercepted response does not pass validation in WebCore, see also https://github.com/microsoft/playwright/pull/9273');
+  it.skip(browserName === 'webkit', 'Set-Cookie with \n in intercepted response does not pass validation in WebCore, see also https://github.com/microsoft/playwright/pull/9273');
   await page.route('**/empty.html', async route => {
     route.fulfill({
       status: 200,

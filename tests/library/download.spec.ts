@@ -305,7 +305,7 @@ it.describe('download event', () => {
   });
 
   it('should report alt-click downloads', async ({ browser, server, browserName }) => {
-    it.fixme(browserName === 'firefox' || browserName === 'webkit');
+    it.fixme(browserName === 'firefox');
 
     // Firefox does not download on alt-click by default.
     // Our WebKit embedder does not download on alt-click, although Safari does.
@@ -524,8 +524,6 @@ it.describe('download event', () => {
   });
 
   it('should be able to cancel pending downloads', async ({ browser, server, browserName, browserVersion }) => {
-    // The exact upstream change is in b449b5c, which still does not appear in the first few 91.* tags until 91.0.4437.0.
-    it.fixme(browserName === 'chromium' && Number(browserVersion.split('.')[0]) < 91, 'The upstream Browser.cancelDownload command is not available before Chrome 91');
     const page = await browser.newPage();
     await page.setContent(`<a href="${server.PREFIX}/downloadWithDelay">download</a>`);
     const [download] = await Promise.all([
@@ -539,8 +537,6 @@ it.describe('download event', () => {
   });
 
   it('should not fail explicitly to cancel a download even if that is already finished', async ({ browser, server, browserName, browserVersion }) => {
-    // The exact upstream change is in b449b5c, which still does not appear in the first few 91.* tags until 91.0.4437.0.
-    it.fixme(browserName === 'chromium' && Number(browserVersion.split('.')[0]) < 91, 'The upstream Browser.cancelDownload command is not available before Chrome 91');
     const page = await browser.newPage();
     await page.setContent(`<a href="${server.PREFIX}/download">download</a>`);
     const [download] = await Promise.all([
@@ -639,8 +635,8 @@ it('should be able to download a inline PDF file via response interception', asy
   await page.close();
 });
 
-it('should be able to download a inline PDF file via navigation', async ({ browser, server, asset, browserName }) => {
-  it.fixme(browserName === 'chromium' || browserName === 'webkit');
+it('should be able to download a inline PDF file via navigation', async ({ browser, server, asset, browserName, headless }) => {
+  it.fixme((!headless && browserName === 'chromium') || browserName === 'webkit');
   const page = await browser.newPage();
   await page.goto(server.EMPTY_PAGE);
   await page.setContent(`
@@ -678,8 +674,7 @@ it('should save to user-specified path', async ({ browser, server, mode }, testI
   await page.close();
 });
 
-it('should download even if there is no "attachment" value', async ({ browser, server, mode, browserName }, testInfo) => {
-  it.fixme(browserName === 'webkit');
+it('should download even if there is no "attachment" value', async ({ browser, server }) => {
   it.info().annotations.push({ type: 'issue', description: 'https://github.com/microsoft/playwright/issues/19939' });
   server.setRoute('/download', (req, res) => {
     res.setHeader('Content-Type', 'application/octet-stream');
@@ -693,6 +688,20 @@ it('should download even if there is no "attachment" value', async ({ browser, s
   await Promise.all([
     page.waitForEvent('download'),
     page.click('a')
+  ]);
+  await page.close();
+});
+
+it('should convert navigation to a resource with unsupported mime type into download', async ({ browser, server }) => {
+  it.info().annotations.push({ type: 'issue', description: 'https://github.com/microsoft/playwright/issues/19939' });
+  server.setRoute('/download', (req, res) => {
+    res.setHeader('Content-Type', 'application/octet-stream');
+    res.end(`Hello world`);
+  });
+  const page = await browser.newPage();
+  await Promise.all([
+    page.waitForEvent('download'),
+    page.goto(`${server.PREFIX}/download`).catch(() => {})
   ]);
   await page.close();
 });

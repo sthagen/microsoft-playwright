@@ -107,8 +107,6 @@ Resolved configuration.
 
 The root suite that contains all projects, files and test cases.
 
-
-
 ## optional async method: Reporter.onEnd
 * since: v1.10
 
@@ -124,9 +122,6 @@ Result of the full test run.
 * `'failed'` - Any test has failed.
 * `'timedout'` - The [`property: TestConfig.globalTimeout`] has been reached.
 * `'interrupted'` - Interrupted by the user.
-
-
-
 
 ## optional method: Reporter.onError
 * since: v1.10

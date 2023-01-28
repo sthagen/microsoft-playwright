@@ -304,18 +304,12 @@ export class FrameManager {
     this._page.emitOnContext(BrowserContext.Events.Request, request);
     if (route) {
       const r = new network.Route(request, route);
-      if (this._page._serverRequestInterceptor) {
-        this._page._serverRequestInterceptor(r, request);
+      if (this._page._serverRequestInterceptor?.(r, request))
         return;
-      }
-      if (this._page._clientRequestInterceptor) {
-        this._page._clientRequestInterceptor(r, request);
+      if (this._page._clientRequestInterceptor?.(r, request))
         return;
-      }
-      if (this._page._browserContext._requestInterceptor) {
-        this._page._browserContext._requestInterceptor(r, request);
+      if (this._page._browserContext._requestInterceptor?.(r, request))
         return;
-      }
       r.continue();
     }
   }
@@ -1217,6 +1211,8 @@ export class Frame extends SdkObject {
   }
 
   async tap(metadata: CallMetadata, selector: string, options: types.PointerActionWaitOptions & types.NavigatingActionWaitOptions) {
+    if (!this._page._browserContext._options.hasTouch)
+      throw new Error('The page does not support tap. Use hasTouch context option to enable touch support.');
     const controller = new ProgressController(metadata, this);
     return controller.run(async progress => {
       return dom.assertDone(await this._retryWithProgressIfNotConnected(progress, selector, options.strict, handle => handle._tap(progress, options)));

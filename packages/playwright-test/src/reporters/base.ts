@@ -17,9 +17,9 @@
 import { colors, ms as milliseconds, parseStackTraceLine } from 'playwright-core/lib/utilsBundle';
 import fs from 'fs';
 import path from 'path';
-import type { FullConfig, TestCase, Suite, TestResult, TestError, FullResult, TestStep, Location } from '../../types/testReporter';
-import type { FullConfigInternal, ReporterInternal } from '../types';
-import { codeFrameColumns } from '../babelBundle';
+import type { FullConfig, TestCase, Suite, TestResult, TestError, FullResult, TestStep, Location, Reporter } from '../../types/testReporter';
+import type { FullConfigInternal } from '../common/types';
+import { codeFrameColumns } from '../common/babelBundle';
 import { monotonicTime } from 'playwright-core/lib/utils';
 
 export type TestResultOutput = { chunk: string | Buffer, type: 'stdout' | 'stderr' };
@@ -46,7 +46,7 @@ type TestSummary = {
   fatalErrors: TestError[];
 };
 
-export class BaseReporter implements ReporterInternal  {
+export class BaseReporter implements Reporter {
   duration = 0;
   config!: FullConfigInternal;
   suite!: Suite;

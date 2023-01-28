@@ -130,7 +130,7 @@ test('should respect global timeout', async ({ runInlineTest }) => {
     `
   }, { 'timeout': 100000, 'global-timeout': 3000 });
   expect(exitCode).toBe(1);
-  expect(output).toContain('Timed out waiting 3s for the entire test run');
+  expect(output).toContain('Timed out waiting 3s for the test suite to run');
   expect(monotonicTime() - now).toBeGreaterThan(2900);
 });
 
@@ -141,7 +141,7 @@ test('should exit with code 1 if the specified folder does not exist', async ({ 
     `,
   });
   expect(result.exitCode).toBe(1);
-  expect(result.output).toContain(`no tests found.`);
+  expect(result.output).toContain(`No tests found`);
 });
 
 test('should exit with code 1 if passed a file name', async ({ runInlineTest }) => {
@@ -153,7 +153,7 @@ test('should exit with code 1 if passed a file name', async ({ runInlineTest }) 
     `,
   });
   expect(result.exitCode).toBe(1);
-  expect(result.output).toContain(`no tests found.`);
+  expect(result.output).toContain(`No tests found`);
 });
 
 test('should exit with code 0 with --pass-with-no-tests', async ({ runInlineTest }) => {
