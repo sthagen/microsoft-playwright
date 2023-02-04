@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-import { filterSuiteWithOnlySemantics } from '../common/suiteUtils';
 import type { Suite, TestCase } from '../common/test';
+import type { FullProjectInternal } from '../common/types';
 
 export type TestGroup = {
   workerHash: string;
@@ -25,7 +25,7 @@ export type TestGroup = {
   tests: TestCase[];
 };
 
-export function createTestGroups(projectSuites: Suite[], workers: number): TestGroup[] {
+export function createTestGroups(projectSuite: Suite, workers: number): TestGroup[] {
   // This function groups tests that can be run together.
   // Tests cannot be run together when:
   // - They belong to different projects - requires different workers.
@@ -62,49 +62,47 @@ export function createTestGroups(projectSuites: Suite[], workers: number): TestG
     };
   };
 
-  for (const projectSuite of projectSuites) {
-    for (const test of projectSuite.allTests()) {
-      let withWorkerHash = groups.get(test._workerHash);
-      if (!withWorkerHash) {
-        withWorkerHash = new Map();
-        groups.set(test._workerHash, withWorkerHash);
-      }
-      let withRequireFile = withWorkerHash.get(test._requireFile);
-      if (!withRequireFile) {
-        withRequireFile = {
-          general: createGroup(test),
-          parallel: new Map(),
-          parallelWithHooks: createGroup(test),
-        };
-        withWorkerHash.set(test._requireFile, withRequireFile);
-      }
+  for (const test of projectSuite.allTests()) {
+    let withWorkerHash = groups.get(test._workerHash);
+    if (!withWorkerHash) {
+      withWorkerHash = new Map();
+      groups.set(test._workerHash, withWorkerHash);
+    }
+    let withRequireFile = withWorkerHash.get(test._requireFile);
+    if (!withRequireFile) {
+      withRequireFile = {
+        general: createGroup(test),
+        parallel: new Map(),
+        parallelWithHooks: createGroup(test),
+      };
+      withWorkerHash.set(test._requireFile, withRequireFile);
+    }
 
-      // Note that a parallel suite cannot be inside a serial suite. This is enforced in TestType.
-      let insideParallel = false;
-      let outerMostSerialSuite: Suite | undefined;
-      let hasAllHooks = false;
-      for (let parent: Suite | undefined = test.parent; parent; parent = parent.parent) {
-        if (parent._parallelMode === 'serial')
-          outerMostSerialSuite = parent;
-        insideParallel = insideParallel || parent._parallelMode === 'parallel';
-        hasAllHooks = hasAllHooks || parent._hooks.some(hook => hook.type === 'beforeAll' || hook.type === 'afterAll');
-      }
+    // Note that a parallel suite cannot be inside a serial suite. This is enforced in TestType.
+    let insideParallel = false;
+    let outerMostSerialSuite: Suite | undefined;
+    let hasAllHooks = false;
+    for (let parent: Suite | undefined = test.parent; parent; parent = parent.parent) {
+      if (parent._parallelMode === 'serial')
+        outerMostSerialSuite = parent;
+      insideParallel = insideParallel || parent._parallelMode === 'parallel';
+      hasAllHooks = hasAllHooks || parent._hooks.some(hook => hook.type === 'beforeAll' || hook.type === 'afterAll');
+    }
 
-      if (insideParallel) {
-        if (hasAllHooks && !outerMostSerialSuite) {
-          withRequireFile.parallelWithHooks.tests.push(test);
-        } else {
-          const key = outerMostSerialSuite || test;
-          let group = withRequireFile.parallel.get(key);
-          if (!group) {
-            group = createGroup(test);
-            withRequireFile.parallel.set(key, group);
-          }
-          group.tests.push(test);
-        }
+    if (insideParallel) {
+      if (hasAllHooks && !outerMostSerialSuite) {
+        withRequireFile.parallelWithHooks.tests.push(test);
       } else {
-        withRequireFile.general.tests.push(test);
+        const key = outerMostSerialSuite || test;
+        let group = withRequireFile.parallel.get(key);
+        if (!group) {
+          group = createGroup(test);
+          withRequireFile.parallel.set(key, group);
+        }
+        group.tests.push(test);
       }
+    } else {
+      withRequireFile.general.tests.push(test);
     }
   }
 
@@ -133,15 +131,10 @@ export function createTestGroups(projectSuites: Suite[], workers: number): TestG
   return result;
 }
 
-export async function filterForShard(shard: { total: number, current: number }, rootSuite: Suite, testGroups: TestGroup[]) {
-  // Each shard includes:
-  // - its portion of the regular tests
-  // - project setup tests for the projects that have regular tests in this shard
+export function filterForShard(shard: { total: number, current: number }, filesByProject: Map<FullProjectInternal, string[]>): Map<FullProjectInternal, string[]> {
   let shardableTotal = 0;
-  for (const group of testGroups)
-    shardableTotal += group.tests.length;
-
-  const shardTests = new Set<TestCase>();
+  for (const files of filesByProject.values())
+    shardableTotal += files.length;
 
   // Each shard gets some tests.
   const shardSize = Math.floor(shardableTotal / shard.total);
@@ -152,27 +145,16 @@ export async function filterForShard(shard: { total: number, current: number }, 
   const from = shardSize * currentShard + Math.min(extraOne, currentShard);
   const to = from + shardSize + (currentShard < extraOne ? 1 : 0);
   let current = 0;
-  const shardProjects = new Set<string>();
-  const shardTestGroups = [];
-  for (const group of testGroups) {
-    // Any test group goes to the shard that contains the first test of this group.
-    // So, this shard gets any group that starts at [from; to)
-    if (current >= from && current < to) {
-      shardProjects.add(group.projectId);
-      shardTestGroups.push(group);
-      for (const test of group.tests)
-        shardTests.add(test);
+  const result = new Map<FullProjectInternal, string[]>();
+  for (const [project, files] of filesByProject) {
+    const shardFiles: string[] = [];
+    for (const file of files) {
+      if (current >= from && current < to)
+        shardFiles.push(file);
+      ++current;
     }
-    current += group.tests.length;
+    if (shardFiles.length)
+      result.set(project, shardFiles);
   }
-  testGroups.length = 0;
-  testGroups.push(...shardTestGroups);
-
-  if (!shardTests.size) {
-    // Filtering with "only semantics" does not work when we have zero tests - it leaves all the tests.
-    // We need an empty suite in this case.
-    rootSuite._entries = [];
-  } else {
-    filterSuiteWithOnlySemantics(rootSuite, () => false, test => shardTests.has(test));
-  }
+  return result;
 }

@@ -19,20 +19,12 @@ import { monotonicTime } from 'playwright-core/lib/utils';
 import type { FullResult } from '../../types/testReporter';
 import { dockerPlugin } from '../plugins/dockerPlugin';
 import { webServerPluginsForConfig } from '../plugins/webServerPlugin';
-import { collectFilesForProjects, filterProjects } from './projectUtils';
+import { collectFilesForProject, filterProjects } from './projectUtils';
 import { createReporter } from './reporters';
 import { createTaskRunner, createTaskRunnerForList } from './tasks';
 import type { TaskRunnerState } from './tasks';
 import type { FullConfigInternal } from '../common/types';
-import type { Matcher, TestFileFilter } from '../util';
-
-export type RunOptions = {
-  listOnly: boolean;
-  testFileFilters: TestFileFilter[];
-  testTitleMatcher: Matcher;
-  projectFilter?: string[];
-  passWithNoTests?: boolean;
-};
+import { colors } from 'playwright-core/lib/utilsBundle';
 
 export class Runner {
   private _config: FullConfigInternal;
@@ -43,43 +35,52 @@ export class Runner {
 
   async listTestFiles(projectNames: string[] | undefined): Promise<any> {
     const projects = filterProjects(this._config.projects, projectNames);
-    const filesByProject = await collectFilesForProjects(projects, []);
     const report: any = {
       projects: []
     };
-    for (const [project, files] of filesByProject) {
+    for (const project of projects) {
       report.projects.push({
         ...sanitizeConfigForJSON(project, new Set()),
-        files
+        files: await collectFilesForProject(project)
       });
     }
     return report;
   }
 
-  async runAllTests(options: RunOptions): Promise<FullResult['status']> {
+  async runAllTests(): Promise<FullResult['status']> {
     const config = this._config;
+    const listOnly = config._internal.listOnly;
     const deadline = config.globalTimeout ? monotonicTime() + config.globalTimeout : 0;
 
     // Legacy webServer support.
-    config._pluginRegistrations.push(...webServerPluginsForConfig(config));
+    webServerPluginsForConfig(config).forEach(p => config._internal.plugins.push({ factory: p }));
     // Docker support.
-    config._pluginRegistrations.push(dockerPlugin);
+    config._internal.plugins.push({ factory: dockerPlugin });
 
-    const reporter = await createReporter(config, options.listOnly);
-    const taskRunner = options.listOnly ? createTaskRunnerForList(config, reporter)
+    const reporter = await createReporter(config, listOnly);
+    const taskRunner = listOnly ? createTaskRunnerForList(config, reporter)
       : createTaskRunner(config, reporter);
 
     const context: TaskRunnerState = {
       config,
-      options,
       reporter,
-      plugins: [],
+      phases: [],
     };
 
     reporter.onConfigure(config);
+
+    if (!listOnly && config._internal.ignoreSnapshots) {
+      reporter.onStdOut(colors.dim([
+        'NOTE: running with "ignoreSnapshots" option. All of the following asserts are silently ignored:',
+        '- expect().toMatchSnapshot()',
+        '- expect().toHaveScreenshot()',
+        '',
+      ].join('\n')));
+    }
+
     const taskStatus = await taskRunner.run(context, deadline);
     let status: FullResult['status'] = 'passed';
-    if (context.dispatcher?.hasWorkerErrors() || context.rootSuite?.allTests().some(test => !test.ok()))
+    if (context.phases.find(p => p.dispatcher.hasWorkerErrors()) || context.rootSuite?.allTests().some(test => !test.ok()))
       status = 'failed';
     if (status === 'passed' && taskStatus !== 'passed')
       status = taskStatus;

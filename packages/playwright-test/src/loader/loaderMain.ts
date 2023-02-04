@@ -17,9 +17,10 @@
 import type { SerializedConfig } from '../common/ipc';
 import { ConfigLoader } from '../common/configLoader';
 import { ProcessRunner } from '../common/process';
-import { loadTestFilesInProcess } from '../common/testLoader';
-import type { LoadError } from '../common/fixtures';
 import type { FullConfigInternal } from '../common/types';
+import { loadTestFile } from '../common/testLoader';
+import type { TestError } from '../../reporter';
+import { addToCompilationCache, serializeCompilationCache } from '../common/compilationCache';
 
 export class LoaderMain extends ProcessRunner {
   private _serializedConfig: SerializedConfig;
@@ -27,6 +28,7 @@ export class LoaderMain extends ProcessRunner {
 
   constructor(serializedConfig: SerializedConfig) {
     super();
+    addToCompilationCache(serializedConfig.compilationCache);
     this._serializedConfig = serializedConfig;
   }
 
@@ -36,11 +38,15 @@ export class LoaderMain extends ProcessRunner {
     return this._configPromise;
   }
 
-  async loadTestFiles(params: { files: string[] }) {
-    const loadErrors: LoadError[] = [];
+  async loadTestFile(params: { file: string }) {
+    const testErrors: TestError[] = [];
     const config = await this._config();
-    const rootSuite = await loadTestFilesInProcess(config.rootDir, params.files, loadErrors);
-    return { rootSuite: rootSuite._deepSerialize(), loadErrors };
+    const fileSuite = await loadTestFile(params.file, config.rootDir, testErrors);
+    return { fileSuite: fileSuite._deepSerialize(), testErrors };
+  }
+
+  async serializeCompilationCache() {
+    return serializeCompilationCache();
   }
 }
 
