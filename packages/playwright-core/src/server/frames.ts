@@ -1402,7 +1402,7 @@ export class Frame extends SdkObject {
       timeout -= elapsed;
     }
     if (timeout < 0)
-      return { matches: options.isNot, log: metadata.log, timedOut: true };
+      return { matches: options.isNot, log: metadata.log, timedOut: true, received: lastIntermediateResult.received };
     return await this._expectInternal(metadata, selector, options, false, timeout, lastIntermediateResult);
   }
 
@@ -1422,7 +1422,7 @@ export class Frame extends SdkObject {
         const injected = await context.injectedScript();
         progress.throwIfAborted();
 
-        const { log, matches, received } = await injected.evaluate((injected, { info, options, snapshotName }) => {
+        const { log, matches, received, missingRecevied } = await injected.evaluate(async (injected, { info, options, snapshotName }) => {
           const elements = info ? injected.querySelectorAll(info.parsed, document) : [];
           const isArray = options.expression === 'to.have.count' || options.expression.endsWith('.array');
           let log = '';
@@ -1434,12 +1434,13 @@ export class Frame extends SdkObject {
             log = `  locator resolved to ${injected.previewNode(elements[0])}`;
           if (snapshotName)
             injected.markTargetElements(new Set(elements), snapshotName);
-          return { log, ...injected.expect(elements[0], options, elements) };
+          return { log, ...(await injected.expect(elements[0], options, elements)) };
         }, { info, options, snapshotName: progress.metadata.afterSnapshot });
 
         if (log)
           progress.log(log);
-        if (matches === options.isNot) {
+        // Note: missingReceived avoids `unexpected value "undefined"` when element was not found.
+        if (matches === options.isNot && !missingRecevied) {
           lastIntermediateResult.received = received;
           lastIntermediateResult.isSet = true;
           if (!Array.isArray(received))

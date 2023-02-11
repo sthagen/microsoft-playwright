@@ -106,7 +106,19 @@ export type TestFileFilter = {
   column: number | null;
 };
 
-export function createFileMatcherFromFilters(filters: TestFileFilter[]): Matcher {
+export function createFileFiltersFromArguments(args: string[]): TestFileFilter[] {
+  return args.map(arg => {
+    const match = /^(.*?):(\d+):?(\d+)?$/.exec(arg);
+    return {
+      re: forceRegExp(match ? match[1] : arg),
+      line: match ? parseInt(match[2], 10) : null,
+      column: match?.[3] ? parseInt(match[3], 10) : null,
+    };
+  });
+}
+
+export function createFileMatcherFromArguments(args: string[]): Matcher {
+  const filters = createFileFiltersFromArguments(args);
   return createFileMatcher(filters.map(filter => filter.re || filter.exact || ''));
 }
 
@@ -174,7 +186,7 @@ export function forceRegExp(pattern: string): RegExp {
   const match = pattern.match(/^\/(.*)\/([gi]*)$/);
   if (match)
     return new RegExp(match[1], match[2]);
-  return new RegExp(pattern, 'g');
+  return new RegExp(pattern, 'gi');
 }
 
 export function relativeFilePath(file: string): string {

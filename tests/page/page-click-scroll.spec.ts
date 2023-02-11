@@ -87,14 +87,12 @@ it('should not crash when force-clicking hidden input', async ({ page, browserNa
   expect(error.message).toContain('Element is not visible');
 });
 
-it('should scroll into view span element', async ({ page, browserName }) => {
+it('should scroll into view span element', async ({ page }) => {
   it.info().annotations.push({ type: 'issue', description: 'https://github.com/microsoft/playwright/issues/20165' });
-  it.fixme(browserName === 'webkit');
   await page.setContent(`
     <div id=big style="height: 10000px;"></div>
     <span id=small>foo</span>
   `);
   await page.locator('#small').scrollIntoViewIfNeeded();
-  console.log(await page.evaluate(() => window.scrollY));
   expect(await page.evaluate(() => window.scrollY)).toBeGreaterThan(9000);
 });

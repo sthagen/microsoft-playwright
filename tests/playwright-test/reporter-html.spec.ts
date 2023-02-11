@@ -17,17 +17,17 @@
 import fs from 'fs';
 import path from 'path';
 import url from 'url';
-import { test as baseTest, expect, createImage, stripAnsi } from './playwright-test-fixtures';
-import type { HttpServer } from '../../packages/playwright-core/lib/utils';
+import { test as baseTest, expect, createImage } from './playwright-test-fixtures';
+import type { HttpServer } from '../../packages/playwright-core/src/utils';
 import { startHtmlReportServer } from '../../packages/playwright-test/lib/reporters/html';
 import { spawnAsync } from 'playwright-core/lib/utils';
 
-const test = baseTest.extend<{ showReport: () => Promise<void> }>({
+const test = baseTest.extend<{ showReport: (reportFolder?: string) => Promise<void> }>({
   showReport: async ({ page }, use, testInfo) => {
     let server: HttpServer | undefined;
-    await use(async () => {
-      const reportFolder = testInfo.outputPath('playwright-report');
-      server = startHtmlReportServer(reportFolder);
+    await use(async (reportFolder?: string) => {
+      reportFolder ??=  testInfo.outputPath('playwright-report');
+      server = startHtmlReportServer(reportFolder) as HttpServer;
       const location = await server.start();
       await page.goto(location);
     });
@@ -760,23 +760,8 @@ test('open tests from required file', async ({ runInlineTest, showReport, page }
 });
 
 test.describe('gitCommitInfo plugin', () => {
-  test('should include metadata', async ({ runInlineTest, showReport, page }) => {
-    const beforeRunPlaywrightTest = async ({ baseDir }: { baseDir: string }) => {
-      const execGit = async (args: string[]) => {
-        const { code, stdout, stderr } = await spawnAsync('git', args, { stdio: 'pipe', cwd: baseDir });
-        if (!!code)
-          throw new Error(`Non-zero exit of:\n$ git ${args.join(' ')}\nConsole:\nstdout:\n${stdout}\n\nstderr:\n${stderr}\n\n`);
-        return;
-      };
-
-      await execGit(['init']);
-      await execGit(['config', '--local', 'user.email', 'shakespeare@example.local']);
-      await execGit(['config', '--local', 'user.name', 'William']);
-      await execGit(['add', '*.ts']);
-      await execGit(['commit', '-m', 'awesome commit message']);
-    };
-
-    const result = await runInlineTest({
+  test('should include metadata', async ({ runInlineTest, writeFiles, showReport, page }) => {
+    const files = {
       'uncommitted.txt': `uncommitted file`,
       'playwright.config.ts': `
         import { gitCommitInfo } from '@playwright/test/lib/plugins';
@@ -787,7 +772,29 @@ test.describe('gitCommitInfo plugin', () => {
         const { test } = pwt;
         test('sample', async ({}) => { expect(2).toBe(2); });
       `,
-    }, { reporter: 'dot,html' }, { PW_TEST_HTML_REPORT_OPEN: 'never', GITHUB_REPOSITORY: 'microsoft/playwright-example-for-test', GITHUB_RUN_ID: 'example-run-id', GITHUB_SERVER_URL: 'https://playwright.dev', GITHUB_SHA: 'example-sha' }, undefined, beforeRunPlaywrightTest);
+    };
+    const baseDir = await writeFiles(files);
+
+    const execGit = async (args: string[]) => {
+      const { code, stdout, stderr } = await spawnAsync('git', args, { stdio: 'pipe', cwd: baseDir });
+      if (!!code)
+        throw new Error(`Non-zero exit of:\n$ git ${args.join(' ')}\nConsole:\nstdout:\n${stdout}\n\nstderr:\n${stderr}\n\n`);
+      return;
+    };
+
+    await execGit(['init']);
+    await execGit(['config', '--local', 'user.email', 'shakespeare@example.local']);
+    await execGit(['config', '--local', 'user.name', 'William']);
+    await execGit(['add', '*.ts']);
+    await execGit(['commit', '-m', 'awesome commit message']);
+
+    const result = await runInlineTest(files, { reporter: 'dot,html' }, {
+      PW_TEST_HTML_REPORT_OPEN: 'never',
+      GITHUB_REPOSITORY: 'microsoft/playwright-example-for-test',
+      GITHUB_RUN_ID: 'example-run-id',
+      GITHUB_SERVER_URL: 'https://playwright.dev',
+      GITHUB_SHA: 'example-sha',
+    });
 
     await showReport();
 
@@ -905,7 +912,7 @@ test('should report clashing folders', async ({ runInlineTest }) => {
     `,
   },  {}, {}, { usesCustomReporters: true });
   expect(result.exitCode).toBe(0);
-  const output = stripAnsi(result.output);
+  const output = result.output;
   expect(output).toContain('Configuration Error');
   expect(output).toContain('html-report');
 });
@@ -976,3 +983,171 @@ test.describe('report location', () => {
 });
 
 
+test('should shard report', async ({ runInlineTest, showReport, page }, testInfo) => {
+  const totalShards = 3;
+
+  const testFiles = {
+    'playwright.config.ts': `
+      module.exports = { reporter: [['html', { sharded: true }]] };
+    `,
+  };
+  for (let i = 0; i < totalShards; i++) {
+    testFiles[`a-${i}.spec.ts`] = `
+      const { test } = pwt;
+      test('passes', async ({}) => { expect(2).toBe(2); });
+      test('fails', async ({}) => { expect(1).toBe(2); });
+      test('skipped', async ({}) => { test.skip('Does not work') });
+      test('flaky', async ({}, testInfo) => { expect(testInfo.retry).toBe(1); });
+    `;
+  }
+
+  const allReports = testInfo.outputPath(`aggregated-report`);
+  await fs.promises.mkdir(allReports, { recursive: true });
+
+  for (let i = 1; i <= totalShards; i++) {
+    const result = await runInlineTest(testFiles,
+        { 'retries': 1, 'shard': `${i}/${totalShards}` },
+        { PW_TEST_HTML_REPORT_OPEN: 'never' },
+        { usesCustomReporters: true });
+
+
+    expect(result.exitCode).toBe(1);
+    const files = await fs.promises.readdir(testInfo.outputPath(`playwright-report`));
+    expect(new Set(files)).toEqual(new Set([
+      'index.html',
+      `report-${i}-of-${totalShards}.zip`
+    ]));
+    await Promise.all(files.map(name => fs.promises.rename(testInfo.outputPath(`playwright-report/${name}`), `${allReports}/${name}`)));
+  }
+
+  // Show aggregated report
+  await showReport(allReports);
+
+  await expect(page.locator('.subnav-item:has-text("All") .counter')).toHaveText('' + (4 * totalShards));
+  await expect(page.locator('.subnav-item:has-text("Passed") .counter')).toHaveText('' + totalShards);
+  await expect(page.locator('.subnav-item:has-text("Failed") .counter')).toHaveText('' + totalShards);
+  await expect(page.locator('.subnav-item:has-text("Flaky") .counter')).toHaveText('' + totalShards);
+  await expect(page.locator('.subnav-item:has-text("Skipped") .counter')).toHaveText('' + totalShards);
+
+  await expect(page.locator('.test-file-test-outcome-unexpected >> text=fails')).toHaveCount(totalShards);
+  await expect(page.locator('.test-file-test-outcome-flaky >> text=flaky')).toHaveCount(totalShards);
+  await expect(page.locator('.test-file-test-outcome-expected >> text=passes')).toHaveCount(totalShards);
+  await expect(page.locator('.test-file-test-outcome-skipped >> text=skipped')).toHaveCount(totalShards);
+});
+
+test('should pad report numbers with zeros', async ({ runInlineTest }, testInfo) => {
+  const testFiles = {
+    'playwright.config.ts': `
+      module.exports = { reporter: [['html', { sharded: true }]] };
+    `,
+  };
+  for (let i = 0; i < 100; i++) {
+    testFiles[`a-${i}.spec.ts`] = `
+      const { test } = pwt;
+      test('passes', async ({}) => { });
+    `;
+  }
+  const result = await runInlineTest(testFiles, { shard: '3/100' }, { PW_TEST_HTML_REPORT_OPEN: 'never' }, { usesCustomReporters: true });
+  expect(result.exitCode).toBe(0);
+  const files = await fs.promises.readdir(testInfo.outputPath(`playwright-report`));
+  expect(new Set(files)).toEqual(new Set([
+    'index.html',
+    `report-003-of-100.zip`
+  ]));
+});
+
+test('should show report with missing shards', async ({ runInlineTest, showReport, page }, testInfo) => {
+  const totalShards = 15;
+
+  const testFiles = {
+    'playwright.config.ts': `
+      module.exports = { reporter: [['html', { sharded: true }]] };
+    `,
+  };
+  for (let i = 0; i < totalShards; i++) {
+    testFiles[`a-${String(i).padStart(2, '0')}.spec.ts`] = `
+      const { test } = pwt;
+      test('passes', async ({}) => { expect(2).toBe(2); });
+      test('fails', async ({}) => { expect(1).toBe(2); });
+      test('skipped', async ({}) => { test.skip('Does not work') });
+      test('flaky', async ({}, testInfo) => { expect(testInfo.retry).toBe(1); });
+    `;
+  }
+
+  const allReports = testInfo.outputPath(`aggregated-report`);
+  await fs.promises.mkdir(allReports, { recursive: true });
+
+  // Run tests in 2 out of 15 shards.
+  for (const i of [10, 13]) {
+    const result = await runInlineTest(testFiles,
+        { 'retries': 1, 'shard': `${i}/${totalShards}` },
+        { PW_TEST_HTML_REPORT_OPEN: 'never' },
+        { usesCustomReporters: true });
+
+
+    expect(result.exitCode).toBe(1);
+    const files = await fs.promises.readdir(testInfo.outputPath(`playwright-report`));
+    expect(new Set(files)).toEqual(new Set([
+      'index.html',
+      `report-${i}-of-${totalShards}.zip`
+    ]));
+    await Promise.all(files.map(name => fs.promises.rename(testInfo.outputPath(`playwright-report/${name}`), `${allReports}/${name}`)));
+  }
+
+  // Show aggregated report
+  await showReport(allReports);
+
+  await expect(page.getByText('Only 2 of 15 report shards loaded')).toBeVisible();
+
+  await expect(page.locator('.subnav-item:has-text("All") .counter')).toHaveText('8');
+  await expect(page.locator('.subnav-item:has-text("Passed") .counter')).toHaveText('2');
+  await expect(page.locator('.subnav-item:has-text("Failed") .counter')).toHaveText('2');
+  await expect(page.locator('.subnav-item:has-text("Flaky") .counter')).toHaveText('2');
+  await expect(page.locator('.subnav-item:has-text("Skipped") .counter')).toHaveText('2');
+
+  await expect(page.locator('.test-file-test-outcome-unexpected >> text=fails')).toHaveCount(2);
+  await expect(page.locator('.test-file-test-outcome-flaky >> text=flaky')).toHaveCount(2);
+  await expect(page.locator('.test-file-test-outcome-expected >> text=passes')).toHaveCount(2);
+  await expect(page.locator('.test-file-test-outcome-skipped >> text=skipped')).toHaveCount(2);
+});
+
+
+test('should produce single file report when shard: false', async ({ runInlineTest, showReport, page }, testInfo) => {
+  const totalShards = 5;
+
+  const testFiles = {};
+  for (let i = 0; i < totalShards; i++) {
+    testFiles[`a-${String(i).padStart(2, '0')}.spec.ts`] = `
+      const { test } = pwt;
+      test('passes', async ({}) => { expect(2).toBe(2); });
+      test('fails', async ({}) => { expect(1).toBe(2); });
+      test('skipped', async ({}) => { test.skip('Does not work') });
+      test('flaky', async ({}, testInfo) => { expect(testInfo.retry).toBe(1); });
+    `;
+  }
+
+  // Run single shard.
+  const currentShard = 3;
+  const result = await runInlineTest(testFiles,
+      { 'reporter': 'dot,html', 'retries': 1, 'shard': `${currentShard}/${totalShards}` },
+      { PW_TEST_HTML_REPORT_OPEN: 'never' },
+      { usesCustomReporters: true });
+
+
+  expect(result.exitCode).toBe(1);
+  const files = await fs.promises.readdir(testInfo.outputPath(`playwright-report`));
+  expect(files).toEqual(['index.html']);
+
+  await showReport();
+
+  await expect(page.locator('.subnav-item:has-text("All") .counter')).toHaveText('4');
+  await expect(page.locator('.subnav-item:has-text("Passed") .counter')).toHaveText('1');
+  await expect(page.locator('.subnav-item:has-text("Failed") .counter')).toHaveText('1');
+  await expect(page.locator('.subnav-item:has-text("Flaky") .counter')).toHaveText('1');
+  await expect(page.locator('.subnav-item:has-text("Skipped") .counter')).toHaveText('1');
+
+  await expect(page.locator('.test-file-test-outcome-unexpected >> text=fails')).toHaveCount(1);
+  await expect(page.locator('.test-file-test-outcome-flaky >> text=flaky')).toHaveCount(1);
+  await expect(page.locator('.test-file-test-outcome-expected >> text=passes')).toHaveCount(1);
+  await expect(page.locator('.test-file-test-outcome-skipped >> text=skipped')).toHaveCount(1);
+});

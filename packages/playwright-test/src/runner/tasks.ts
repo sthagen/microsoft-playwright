@@ -28,7 +28,7 @@ import { TaskRunner } from './taskRunner';
 import type { Suite } from '../common/test';
 import type { FullConfigInternal, FullProjectInternal } from '../common/types';
 import { loadAllTests, loadGlobalHook } from './loadUtils';
-import { createFileMatcherFromFilters } from '../util';
+import { createFileMatcherFromArguments } from '../util';
 import type { Matcher } from '../util';
 
 const removeFolderAsync = promisify(rimraf);
@@ -52,27 +52,49 @@ export type TaskRunnerState = {
 
 export function createTaskRunner(config: FullConfigInternal, reporter: Multiplexer): TaskRunner<TaskRunnerState> {
   const taskRunner = new TaskRunner<TaskRunnerState>(reporter, config.globalTimeout);
+  addGlobalSetupTasks(taskRunner, config);
+  taskRunner.addTask('load tests', createLoadTask('in-process'));
+  addRunTasks(taskRunner, config);
+  return taskRunner;
+}
 
+export function createTaskRunnerForWatchSetup(config: FullConfigInternal, reporter: Multiplexer): TaskRunner<TaskRunnerState> {
+  const taskRunner = new TaskRunner<TaskRunnerState>(reporter, 0);
+  addGlobalSetupTasks(taskRunner, config);
+  return taskRunner;
+}
+
+export function createTaskRunnerForWatch(config: FullConfigInternal, reporter: Multiplexer, projectsToIgnore?: Set<FullProjectInternal>, additionalFileMatcher?: Matcher): TaskRunner<TaskRunnerState> {
+  const taskRunner = new TaskRunner<TaskRunnerState>(reporter, 0);
+  taskRunner.addTask('load tests', createLoadTask('out-of-process', projectsToIgnore, additionalFileMatcher));
+  addRunTasks(taskRunner, config);
+  return taskRunner;
+}
+
+function addGlobalSetupTasks(taskRunner: TaskRunner<TaskRunnerState>, config: FullConfigInternal) {
   for (const plugin of config._internal.plugins)
     taskRunner.addTask('plugin setup', createPluginSetupTask(plugin));
-  taskRunner.addTask('load tests', createLoadTask());
+  if (config.globalSetup || config.globalTeardown)
+    taskRunner.addTask('global setup', createGlobalSetupTask());
   taskRunner.addTask('clear output', createRemoveOutputDirsTask());
-  taskRunner.addTask('prepare workers', createTestGroupsTask());
-  for (const plugin of config._internal.plugins)
-    taskRunner.addTask('plugin begin', async ({ rootSuite }) => plugin.instance?.begin?.(rootSuite!));
+}
+
+function addRunTasks(taskRunner: TaskRunner<TaskRunnerState>, config: FullConfigInternal) {
+  taskRunner.addTask('create tasks', createTestGroupsTask());
   taskRunner.addTask('report begin', async ({ reporter, rootSuite }) => {
     reporter.onBegin?.(config, rootSuite!);
     return () => reporter.onEnd();
   });
-  if (config.globalSetup || config.globalTeardown)
-    taskRunner.addTask('global setup', createGlobalSetupTask());
+  for (const plugin of config._internal.plugins)
+    taskRunner.addTask('plugin begin', createPluginBeginTask(plugin));
+  taskRunner.addTask('start workers', createWorkersTask());
   taskRunner.addTask('test suite', createRunTestsTask());
   return taskRunner;
 }
 
 export function createTaskRunnerForList(config: FullConfigInternal, reporter: Multiplexer): TaskRunner<TaskRunnerState> {
   const taskRunner = new TaskRunner<TaskRunnerState>(reporter, config.globalTimeout);
-  taskRunner.addTask('load tests', createLoadTask());
+  taskRunner.addTask('load tests', createLoadTask('in-process'));
   taskRunner.addTask('report begin', async ({ reporter, rootSuite }) => {
     reporter.onBegin?.(config, rootSuite!);
     return () => reporter.onEnd();
@@ -88,6 +110,13 @@ function createPluginSetupTask(plugin: TestRunnerPluginRegistration): Task<TaskR
       plugin.instance = plugin.factory;
     await plugin.instance?.setup?.(config, config._internal.configDir, reporter);
     return () => plugin.instance?.teardown?.();
+  };
+}
+
+function createPluginBeginTask(plugin: TestRunnerPluginRegistration): Task<TaskRunnerState> {
+  return async ({ rootSuite }) => {
+    await plugin.instance?.begin?.(rootSuite!);
+    return () => plugin.instance?.end?.();
   };
 }
 
@@ -126,12 +155,12 @@ function createRemoveOutputDirsTask(): Task<TaskRunnerState> {
   };
 }
 
-function createLoadTask(projectsToIgnore = new Set<FullProjectInternal>(), additionalFileMatcher?: Matcher): Task<TaskRunnerState> {
+function createLoadTask(mode: 'out-of-process' | 'in-process', projectsToIgnore = new Set<FullProjectInternal>(), additionalFileMatcher?: Matcher): Task<TaskRunnerState> {
   return async (context, errors) => {
     const { config } = context;
-    const cliMatcher = config._internal.cliFileFilters.length ? createFileMatcherFromFilters(config._internal.cliFileFilters) : () => true;
+    const cliMatcher = config._internal.cliArgs.length ? createFileMatcherFromArguments(config._internal.cliArgs) : () => true;
     const fileMatcher = (value: string) => cliMatcher(value) && (additionalFileMatcher ? additionalFileMatcher(value) : true);
-    context.rootSuite = await loadAllTests(config, projectsToIgnore, fileMatcher, errors);
+    context.rootSuite = await loadAllTests(mode, config, projectsToIgnore, fileMatcher, errors);
     // Fail when no tests.
     if (!context.rootSuite.allTests().length && !config._internal.passWithNoTests && !config.shard)
       throw new Error(`No tests found`);
@@ -141,6 +170,7 @@ function createLoadTask(projectsToIgnore = new Set<FullProjectInternal>(), addit
 function createTestGroupsTask(): Task<TaskRunnerState> {
   return async context => {
     const { config, rootSuite, reporter } = context;
+    context.config._internal.maxConcurrentTestGroups = 0;
     for (const phase of buildPhases(rootSuite!.suites)) {
       // Go over the phases, for each phase create list of task groups.
       const projects: ProjectWithTestGroups[] = [];
@@ -158,9 +188,13 @@ function createTestGroupsTask(): Task<TaskRunnerState> {
       context.phases.push({ dispatcher: new Dispatcher(config, reporter), projects });
       context.config._internal.maxConcurrentTestGroups = Math.max(context.config._internal.maxConcurrentTestGroups, testGroupsInPhase);
     }
+  };
+}
 
+function createWorkersTask(): Task<TaskRunnerState> {
+  return async ({ phases }) => {
     return async () => {
-      for (const { dispatcher } of context.phases.reverse())
+      for (const { dispatcher } of phases.reverse())
         await dispatcher.stop();
     };
   };

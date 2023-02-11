@@ -17,7 +17,6 @@
 
 import { monotonicTime } from 'playwright-core/lib/utils';
 import type { FullResult } from '../../types/testReporter';
-import { dockerPlugin } from '../plugins/dockerPlugin';
 import { webServerPluginsForConfig } from '../plugins/webServerPlugin';
 import { collectFilesForProject, filterProjects } from './projectUtils';
 import { createReporter } from './reporters';
@@ -25,6 +24,7 @@ import { createTaskRunner, createTaskRunnerForList } from './tasks';
 import type { TaskRunnerState } from './tasks';
 import type { FullConfigInternal } from '../common/types';
 import { colors } from 'playwright-core/lib/utilsBundle';
+import { runWatchModeLoop } from './watchMode';
 
 export class Runner {
   private _config: FullConfigInternal;
@@ -54,10 +54,8 @@ export class Runner {
 
     // Legacy webServer support.
     webServerPluginsForConfig(config).forEach(p => config._internal.plugins.push({ factory: p }));
-    // Docker support.
-    config._internal.plugins.push({ factory: dockerPlugin });
 
-    const reporter = await createReporter(config, listOnly);
+    const reporter = await createReporter(config, listOnly ? 'list' : 'run');
     const taskRunner = listOnly ? createTaskRunnerForList(config, reporter)
       : createTaskRunner(config, reporter);
 
@@ -92,6 +90,12 @@ export class Runner {
     await new Promise<void>(resolve => process.stdout.write('', () => resolve()));
     await new Promise<void>(resolve => process.stderr.write('', () => resolve()));
     return status;
+  }
+
+  async watchAllTests(): Promise<FullResult['status']> {
+    const config = this._config;
+    webServerPluginsForConfig(config).forEach(p => config._internal.plugins.push({ factory: p }));
+    return await runWatchModeLoop(config);
   }
 }
 
