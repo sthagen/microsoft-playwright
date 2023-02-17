@@ -24,7 +24,7 @@ export type ReporterDescription =
   ['github'] |
   ['junit'] | ['junit', { outputFile?: string, stripANSIControlSequences?: boolean }] |
   ['json'] | ['json', { outputFile?: string }] |
-  ['html'] | ['html', { outputFolder?: string, open?: 'always' | 'never' | 'on-failure', sharded?: boolean }] |
+  ['html'] | ['html', { outputFolder?: string, open?: 'always' | 'never' | 'on-failure' }] |
   ['null'] |
   [string] | [string, any];
 
@@ -196,6 +196,11 @@ type ConnectOptions = {
    */
   timeout?: number;
 };
+
+export interface TestStore {
+  get<T>(path: string): Promise<T | undefined>;
+  set<T>(path: string, value: T | undefined): Promise<void>;
+}
 
 export interface PlaywrightWorkerOptions {
   browserName: BrowserName;
@@ -371,6 +376,7 @@ export default test;
 
 export const _baseTest: TestType<{}, {}>;
 export const expect: Expect;
+export const store: TestStore;
 
 /**
  * Defines Playwright config

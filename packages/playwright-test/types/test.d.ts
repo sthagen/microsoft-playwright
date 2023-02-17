@@ -25,7 +25,7 @@ export type ReporterDescription =
   ['github'] |
   ['junit'] | ['junit', { outputFile?: string, stripANSIControlSequences?: boolean }] |
   ['json'] | ['json', { outputFile?: string }] |
-  ['html'] | ['html', { outputFolder?: string, open?: 'always' | 'never' | 'on-failure', sharded?: boolean }] |
+  ['html'] | ['html', { outputFolder?: string, open?: 'always' | 'never' | 'on-failure' }] |
   ['null'] |
   [string] | [string, any];
 
@@ -552,15 +552,9 @@ interface TestConfig {
      */
     toHaveScreenshot?: {
       /**
-       * a comparator function to use, either `"pixelmatch"` or `"ssim-cie94"`. Defaults to `"pixelmatch"`.
-       */
-      comparator?: string;
-
-      /**
        * an acceptable perceived color difference between the same pixel in compared images, ranging from `0` (strict) and
        * `1` (lax). `"pixelmatch"` comparator computes color difference in
-       * [YIQ color space](https://en.wikipedia.org/wiki/YIQ) and defaults `threshold` value to `0.2`. This option is used
-       * by `pixelmatch` image comparator.
+       * [YIQ color space](https://en.wikipedia.org/wiki/YIQ) and defaults `threshold` value to `0.2`.
        */
       threshold?: number;
 
@@ -601,15 +595,9 @@ interface TestConfig {
      */
     toMatchSnapshot?: {
       /**
-       * a comparator function to use, either `"pixelmatch"` or `"ssim-cie94"`. Defaults to `"pixelmatch"`.
-       */
-      comparator?: string;
-
-      /**
        * an acceptable perceived color difference between the same pixel in compared images, ranging from `0` (strict) and
        * `1` (lax). `"pixelmatch"` comparator computes color difference in
-       * [YIQ color space](https://en.wikipedia.org/wiki/YIQ) and defaults `threshold` value to `0.2`. This option is used
-       * by `pixelmatch` image comparator.
+       * [YIQ color space](https://en.wikipedia.org/wiki/YIQ) and defaults `threshold` value to `0.2`.
        */
       threshold?: number;
 
@@ -1160,6 +1148,24 @@ interface TestConfig {
    * 1. Forward slashes `"/"` can be used as path separators on any platform.
    */
   snapshotPathTemplate?: string;
+
+  /**
+   * Directory where the values accessible via [TestStore] are persisted. All pahts in [TestStore] are relative to
+   * `storeDir`. Defaults to `./playwright`.
+   *
+   * **Usage**
+   *
+   * ```js
+   * // playwright.config.ts
+   * import { defineConfig } from '@playwright/test';
+   *
+   * export default defineConfig({
+   *   storeDir: './playwright-store',
+   * });
+   * ```
+   *
+   */
+  storeDir?: string;
 
   /**
    * Directory that will be recursively scanned for test files. Defaults to the directory of the configuration file.
@@ -3317,6 +3323,42 @@ type ConnectOptions = {
 };
 
 /**
+ * Playwright Test provides a global `store` object that can be used to read/write values on the filesystem. Each
+ * value is stored in its own file inside './playwright' directory, configurable with
+ * [testConfig.storeDir](https://playwright.dev/docs/api/class-testconfig#test-config-store-dir).
+ *
+ */
+export interface TestStore {
+  /**
+   * Get named item from the store. Returns undefined if there is no value with given path.
+   * @param path Item path.
+   */
+  get<T>(path: string): Promise<T | undefined>;
+  /**
+   * Set value to the store.
+   * @param path Item path.
+   * @param value Item value. The value must be serializable to JSON. Passing `undefined` deletes the entry with given path.
+   */
+  set<T>(path: string, value: T | undefined): Promise<void>;
+  /**
+   * Delete named item from the store. Does nothing if the path is not in the store.
+   * @param path Item path.
+   */
+  delete(path: string): Promise<void>;
+
+  /**
+   * Returns absolute path of the corresponding store entry on the file system.
+   * @param path Path of the item in the store.
+   */
+  path(path: string): string;
+
+  /**
+   * Returns absolute path of the store root directory.
+   */
+  root(): string;
+}
+
+/**
  * Playwright Test provides many options to configure test environment, [Browser], [BrowserContext] and more.
  *
  * These options are usually provided in the [configuration file](https://playwright.dev/docs/test-configuration) through
@@ -4266,6 +4308,7 @@ export default test;
 
 export const _baseTest: TestType<{}, {}>;
 export const expect: Expect;
+export const store: TestStore;
 
 /**
  * Defines Playwright config
@@ -4280,8 +4323,7 @@ export {};
 
 /**
  * The [APIResponseAssertions] class provides assertion methods that can be used to make assertions about the
- * [APIResponse] in the tests. A new instance of [APIResponseAssertions] is created by calling
- * [expect(response)](https://playwright.dev/docs/api/class-playwrightassertions#playwright-assertions-expect-api-response):
+ * [APIResponse] in the tests.
  *
  * ```js
  * import { test, expect } from '@playwright/test';
@@ -4321,8 +4363,7 @@ interface APIResponseAssertions {
 
 /**
  * The [LocatorAssertions] class provides assertion methods that can be used to make assertions about the [Locator]
- * state in the tests. A new instance of [LocatorAssertions] is created by calling
- * [expect(locator)](https://playwright.dev/docs/api/class-playwrightassertions#playwright-assertions-expect-locator):
+ * state in the tests.
  *
  * ```js
  * import { test, expect } from '@playwright/test';
@@ -4487,12 +4528,12 @@ interface LocatorAssertions {
    * **Usage**
    *
    * ```js
-   * const locator = page.locator('button.submit');
+   * const locator = page.getByRole('button');
    * // Make sure at least some part of element intersects viewport.
    * await expect(locator).toBeInViewport();
    * // Make sure element is fully outside of viewport.
    * await expect(locator).not.toBeInViewport();
-   * // Make sure strictly more than half of the element intersects viewport.
+   * // Make sure that at least half of the element intersects viewport.
    * await expect(locator).toBeInViewport({ ratio: 0.5 });
    * ```
    *
@@ -4500,8 +4541,8 @@ interface LocatorAssertions {
    */
   toBeInViewport(options?: {
     /**
-     * The minimal ratio of the element to intersect viewport. Element's ratio should be strictly greater than this
-     * number. Defaults to `0`.
+     * The minimal ratio of the element to intersect viewport. If equals to `0`, then element should intersect viewport at
+     * any positive ratio. Defaults to `0`.
      */
     ratio?: number;
 
@@ -4768,11 +4809,6 @@ interface LocatorAssertions {
     caret?: "hide"|"initial";
 
     /**
-     * A comparator function to use when comparing images. Defaults to `"pixelmatch"`.
-     */
-    comparator?: string;
-
-    /**
      * Specify locators that should be masked when the screenshot is taken. Masked elements will be overlaid with a pink
      * box `#FF00FF` that completely covers its bounding box.
      */
@@ -4808,7 +4844,7 @@ interface LocatorAssertions {
     /**
      * An acceptable perceived color difference in the [YIQ color space](https://en.wikipedia.org/wiki/YIQ) between the
      * same pixel in compared images, between zero (strict) and one (lax), default is configurable with
-     * `TestConfig.expect`. Defaults to `0.2`. This option is used by "pixelmatch" image comparator.
+     * `TestConfig.expect`. Defaults to `0.2`.
      */
     threshold?: number;
 
@@ -4850,11 +4886,6 @@ interface LocatorAssertions {
     caret?: "hide"|"initial";
 
     /**
-     * A comparator function to use when comparing images. Defaults to `"pixelmatch"`.
-     */
-    comparator?: string;
-
-    /**
      * Specify locators that should be masked when the screenshot is taken. Masked elements will be overlaid with a pink
      * box `#FF00FF` that completely covers its bounding box.
      */
@@ -4890,7 +4921,7 @@ interface LocatorAssertions {
     /**
      * An acceptable perceived color difference in the [YIQ color space](https://en.wikipedia.org/wiki/YIQ) between the
      * same pixel in compared images, between zero (strict) and one (lax), default is configurable with
-     * `TestConfig.expect`. Defaults to `0.2`. This option is used by "pixelmatch" image comparator.
+     * `TestConfig.expect`. Defaults to `0.2`.
      */
     threshold?: number;
 
@@ -5031,8 +5062,7 @@ interface LocatorAssertions {
 
 /**
  * The [PageAssertions] class provides assertion methods that can be used to make assertions about the [Page] state in
- * the tests. A new instance of [PageAssertions] is created by calling
- * [expect(page)](https://playwright.dev/docs/api/class-playwrightassertions#playwright-assertions-expect-page):
+ * the tests.
  *
  * ```js
  * import { test, expect } from '@playwright/test';
@@ -5103,11 +5133,6 @@ interface PageAssertions {
     };
 
     /**
-     * A comparator function to use when comparing images. Defaults to `"pixelmatch"`.
-     */
-    comparator?: string;
-
-    /**
      * When true, takes a screenshot of the full scrollable page, instead of the currently visible viewport. Defaults to
      * `false`.
      */
@@ -5149,7 +5174,7 @@ interface PageAssertions {
     /**
      * An acceptable perceived color difference in the [YIQ color space](https://en.wikipedia.org/wiki/YIQ) between the
      * same pixel in compared images, between zero (strict) and one (lax), default is configurable with
-     * `TestConfig.expect`. Defaults to `0.2`. This option is used by "pixelmatch" image comparator.
+     * `TestConfig.expect`. Defaults to `0.2`.
      */
     threshold?: number;
 
@@ -5215,11 +5240,6 @@ interface PageAssertions {
     };
 
     /**
-     * A comparator function to use when comparing images. Defaults to `"pixelmatch"`.
-     */
-    comparator?: string;
-
-    /**
      * When true, takes a screenshot of the full scrollable page, instead of the currently visible viewport. Defaults to
      * `false`.
      */
@@ -5261,7 +5281,7 @@ interface PageAssertions {
     /**
      * An acceptable perceived color difference in the [YIQ color space](https://en.wikipedia.org/wiki/YIQ) between the
      * same pixel in compared images, between zero (strict) and one (lax), default is configurable with
-     * `TestConfig.expect`. Defaults to `0.2`. This option is used by "pixelmatch" image comparator.
+     * `TestConfig.expect`. Defaults to `0.2`.
      */
     threshold?: number;
 
@@ -5361,11 +5381,6 @@ interface SnapshotAssertions {
    */
   toMatchSnapshot(name: string|Array<string>, options?: {
     /**
-     * A comparator function to use when comparing images. Defaults to `"pixelmatch"`.
-     */
-    comparator?: string;
-
-    /**
      * An acceptable ratio of pixels that are different to the total amount of pixels, between `0` and `1`. Default is
      * configurable with `TestConfig.expect`. Unset by default.
      */
@@ -5380,7 +5395,7 @@ interface SnapshotAssertions {
     /**
      * An acceptable perceived color difference in the [YIQ color space](https://en.wikipedia.org/wiki/YIQ) between the
      * same pixel in compared images, between zero (strict) and one (lax), default is configurable with
-     * `TestConfig.expect`. Defaults to `0.2`. This option is used by "pixelmatch" image comparator.
+     * `TestConfig.expect`. Defaults to `0.2`.
      */
     threshold?: number;
   }): void;
@@ -5414,11 +5429,6 @@ interface SnapshotAssertions {
    */
   toMatchSnapshot(options?: {
     /**
-     * A comparator function to use when comparing images. Defaults to `"pixelmatch"`.
-     */
-    comparator?: string;
-
-    /**
      * An acceptable ratio of pixels that are different to the total amount of pixels, between `0` and `1`. Default is
      * configurable with `TestConfig.expect`. Unset by default.
      */
@@ -5438,7 +5448,7 @@ interface SnapshotAssertions {
     /**
      * An acceptable perceived color difference in the [YIQ color space](https://en.wikipedia.org/wiki/YIQ) between the
      * same pixel in compared images, between zero (strict) and one (lax), default is configurable with
-     * `TestConfig.expect`. Defaults to `0.2`. This option is used by "pixelmatch" image comparator.
+     * `TestConfig.expect`. Defaults to `0.2`.
      */
     threshold?: number;
   }): void;
@@ -5576,15 +5586,9 @@ interface TestProject {
      */
     toHaveScreenshot?: {
       /**
-       * a comparator function to use, either `"pixelmatch"` or `"ssim-cie94"`. Defaults to `"pixelmatch"`.
-       */
-      comparator?: string;
-
-      /**
        * an acceptable perceived color difference between the same pixel in compared images, ranging from `0` (strict) and
        * `1` (lax). `"pixelmatch"` comparator computes color difference in
-       * [YIQ color space](https://en.wikipedia.org/wiki/YIQ) and defaults `threshold` value to `0.2`. This option is used
-       * by `pixelmatch` image comparator.
+       * [YIQ color space](https://en.wikipedia.org/wiki/YIQ) and defaults `threshold` value to `0.2`.
        */
       threshold?: number;
 
@@ -5625,15 +5629,9 @@ interface TestProject {
      */
     toMatchSnapshot?: {
       /**
-       * a comparator function to use, either `"pixelmatch"` or `"ssim-cie94"`. Defaults to `"pixelmatch"`.
-       */
-      comparator?: string;
-
-      /**
        * an acceptable perceived color difference between the same pixel in compared images, ranging from `0` (strict) and
        * `1` (lax). `"pixelmatch"` comparator computes color difference in
-       * [YIQ color space](https://en.wikipedia.org/wiki/YIQ) and defaults `threshold` value to `0.2`. This option is used
-       * by `pixelmatch` image comparator.
+       * [YIQ color space](https://en.wikipedia.org/wiki/YIQ) and defaults `threshold` value to `0.2`.
        */
       threshold?: number;
 
