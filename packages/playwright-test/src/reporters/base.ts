@@ -441,12 +441,12 @@ export function prepareErrorStack(stack: string): {
   const stackLines = lines.slice(firstStackLine);
   let location: Location | undefined;
   for (const line of stackLines) {
-    const { frame: parsed, fileName: resolvedFile } = parseStackTraceLine(line);
-    if (!parsed || !resolvedFile)
+    const frame = parseStackTraceLine(line);
+    if (!frame || !frame.file)
       continue;
-    if (belongsToNodeModules(resolvedFile))
+    if (belongsToNodeModules(frame.file))
       continue;
-    location = { file: resolvedFile, column: parsed.column || 0, line: parsed.line || 0 };
+    location = { file: frame.file, column: frame.column || 0, line: frame.line || 0 };
     break;
   }
   return { message, stackLines, location };

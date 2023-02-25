@@ -15,17 +15,16 @@
  */
 
 import type { ParsedStackTrace } from '../utils/stackTrace';
-
 export interface ClientInstrumentation {
   addListener(listener: ClientInstrumentationListener): void;
   removeListener(listener: ClientInstrumentationListener): void;
   removeAllListeners(): void;
-  onApiCallBegin(apiCall: string, stackTrace: ParsedStackTrace | null, userData: any): void;
+  onApiCallBegin(apiCall: string, stackTrace: ParsedStackTrace | null, wallTime: number, userData: any): void;
   onApiCallEnd(userData: any, error?: Error): any;
 }
 
 export interface ClientInstrumentationListener {
-  onApiCallBegin?(apiCall: string, stackTrace: ParsedStackTrace | null, userData: any): any;
+  onApiCallBegin?(apiCall: string, stackTrace: ParsedStackTrace | null, wallTime: number, userData: any): any;
   onApiCallEnd?(userData: any, error?: Error): any;
 }
 
