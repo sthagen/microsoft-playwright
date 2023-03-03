@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { captureRawStack, pollAgainstTimeout } from 'playwright-core/lib/utils';
+import { captureRawStack, createTraceEventForExpect, monotonicTime, pollAgainstTimeout } from 'playwright-core/lib/utils';
 import type { ExpectZone } from 'playwright-core/lib/utils';
 import {
   toBeChecked,
@@ -101,7 +101,7 @@ export const printReceivedStringContainExpectedResult = (
 
 type ExpectMessageOrOptions = undefined | string | { message?: string, timeout?: number, intervals?: number[] };
 
-function createExpect(actual: unknown, messageOrOptions: ExpectMessageOrOptions, isSoft: boolean, isPoll: boolean, generator?: Generator) {
+function createExpect(actual: unknown, messageOrOptions: ExpectMessageOrOptions, isSoft: boolean, isPoll: boolean, generator?: Generator): any {
   return new Proxy(expectLibrary(actual), new ExpectMetaInfoProxyHandler(messageOrOptions, isSoft, isPoll, generator));
 }
 
@@ -164,7 +164,7 @@ type ExpectMetaInfo = {
   generator?: Generator;
 };
 
-class ExpectMetaInfoProxyHandler {
+class ExpectMetaInfoProxyHandler implements ProxyHandler<any> {
   private _info: ExpectMetaInfo;
 
   constructor(messageOrOptions: ExpectMessageOrOptions, isSoft: boolean, isPoll: boolean, generator?: Generator) {
@@ -178,8 +178,10 @@ class ExpectMetaInfoProxyHandler {
     }
   }
 
-  get(target: any, matcherName: any, receiver: any): any {
+  get(target: Object, matcherName: string | symbol, receiver: any): any {
     let matcher = Reflect.get(target, matcherName, receiver);
+    if (typeof matcherName !== 'string')
+      return matcher;
     if (matcher === undefined)
       throw new Error(`expect: Property '${matcherName}' not found.`);
     if (typeof matcher !== 'function') {
@@ -212,6 +214,11 @@ class ExpectMetaInfoProxyHandler {
       });
       testInfo.currentStep = step;
 
+      const generateTraceEvent = matcherName !== 'poll' && matcherName !== 'toPass';
+      const traceEvent = generateTraceEvent ? createTraceEventForExpect(defaultTitle, args[0], stackFrames, wallTime) : undefined;
+      if (traceEvent)
+        testInfo._traceEvents.push(traceEvent);
+
       const reportStepError = (jestError: Error) => {
         const message = jestError.message;
         if (customMessage) {
@@ -236,11 +243,21 @@ class ExpectMetaInfoProxyHandler {
         }
 
         const serializerError = serializeError(jestError);
-        step.complete({ error: serializerError });
+        if (traceEvent) {
+          traceEvent.error = { name: jestError.name, message: jestError.message, stack: jestError.stack };
+          traceEvent.endTime = monotonicTime();
+          step.complete({ error: serializerError });
+        }
         if (this._info.isSoft)
           testInfo._failWithError(serializerError, false /* isHardError */);
         else
           throw jestError;
+      };
+
+      const finalizer = () => {
+        if (traceEvent)
+          traceEvent.endTime = monotonicTime();
+        step.complete({});
       };
 
       try {
@@ -249,9 +266,9 @@ class ExpectMetaInfoProxyHandler {
           return matcher.call(target, ...args);
         });
         if (result instanceof Promise)
-          return result.then(() => step.complete({})).catch(reportStepError);
+          return result.then(() => finalizer()).catch(reportStepError);
         else
-          step.complete({});
+          finalizer();
       } catch (e) {
         reportStepError(e);
       }

@@ -460,7 +460,7 @@ export class Page extends ChannelOwner<channels.PageChannel> implements api.Page
     await this._updateInterceptionPatterns();
   }
 
-  async routeFromHAR(har: string, options: { url?: string | RegExp, notFound?: 'abort' | 'fallback', update?: boolean } = {}): Promise<void> {
+  async routeFromHAR(har: string, options: { url?: string | RegExp, notFound?: 'abort' | 'fallback', update?: boolean, content?: 'omit' | 'attach' | 'embed' | undefined, mode?: 'minimal' | 'full'} = {}): Promise<void> {
     if (options.update) {
       await this._browserContext._recordIntoHAR(har, this, options);
       return;
@@ -532,7 +532,7 @@ export class Page extends ChannelOwner<channels.PageChannel> implements api.Page
       else
         await this._channel.close(options);
     } catch (e) {
-      if (isSafeCloseError(e))
+      if (isSafeCloseError(e) && !options.runBeforeUnload)
         return;
       throw e;
     }
