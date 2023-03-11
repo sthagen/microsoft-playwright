@@ -18,12 +18,16 @@
   background-color: var(--vscode-sideBar-background);
 }
 
-.watch-mode-sidebar input {
+.watch-mode-sidebar input[type=search] {
   flex: auto;
 }
 
 .watch-mode-sidebar .toolbar-button:not([disabled]) .codicon-play {
-  color: var(--vscode-testing-runAction);
+  color: var(--vscode-debugIcon-restartForeground);
+}
+
+.watch-mode-sidebar .toolbar-button:not([disabled]) .codicon-debug-stop {
+  color: var(--vscode-debugIcon-stopForeground);
 }
 
 .watch-mode-list-item {
@@ -38,4 +42,69 @@
 
 .watch-mode-sidebar .toolbar-button {
   margin: 0;
+}
+
+.watch-mode-sidebar .section-title {
+  font-size: 11px;
+  text-transform: uppercase;
+  font-weight: bold;
+  margin: 5px;
+}
+
+.status-line {
+  flex: none;
+  line-height: 22px;
+  padding: 0 10px;
+  color: var(--vscode-statusBar-foreground);
+  background-color: var(--vscode-statusBar-background);
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+}
+
+.status-line > div {
+  display: flex;
+  align-items: center;
+  margin: 0 5px;
+}
+
+.list-view {
+  margin-top: 5px;
+}
+
+.list-view-entry:not(.selected):not(.highlighted) .toolbar-button {
+  display: none;
+}
+
+.filters {
+  flex: none;
+  margin-left: 5px;
+  line-height: 24px;
+}
+
+.filters > span {
+  color: var(--vscode-panelTitle-inactiveForeground);
+  padding-left: 3px;
+}
+
+.filters > div {
+  display: inline-block;
+  margin: 0 5px;
+  user-select: none;
+  cursor: pointer;
+}
+
+.filters > div:hover,
+.filters > div.filters-toggled {
+  color: var(--vscode-notificationLink-foreground);
+}
+
+.watch-mode-sidebar input[type=search] {
+  padding: 0 5px;
+  line-height: 24px;
+  outline: none;
+  margin: 0 4px;
+  border: none;
+  color: var(--vscode-input-foreground);
+  background-color: var(--vscode-input-background);
 }
