@@ -840,6 +840,15 @@ export class InjectedScript {
           elements.unshift(singleElement);
         }
       }
+      if (elements[0] && elements[0].shadowRoot === root && elements[1] === singleElement) {
+        // Workaround webkit but where first two elements are swapped:
+        // <host>
+        //   #shadow root
+        //     <target>
+        // elementsFromPoint produces [<host>, <target>], while it should be [<target>, <host>]
+        // In this case, just ignore <host>.
+        elements.shift();
+      }
       const innerElement = elements[0] as Element | undefined;
       if (!innerElement)
         break;
@@ -1078,14 +1087,14 @@ export class InjectedScript {
     }
   }
 
-  markTargetElements(markedElements: Set<Element>, snapshotName: string) {
+  markTargetElements(markedElements: Set<Element>, callId: string) {
     for (const e of this._markedTargetElements) {
       if (!markedElements.has(e))
         e.removeAttribute('__playwright_target__');
     }
     for (const e of markedElements) {
       if (!this._markedTargetElements.has(e))
-        e.setAttribute('__playwright_target__', snapshotName);
+        e.setAttribute('__playwright_target__', callId);
     }
     this._markedTargetElements = markedElements;
   }

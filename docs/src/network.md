@@ -45,7 +45,7 @@ test('loads page without images', async ({ page }) => {
 
 Perform HTTP Authentication.
 
-```js tab=js-ts
+```js tab=js-test
 import { defineConfig } from '@playwright/test';
 export default defineConfig({
   use: {
@@ -113,7 +113,7 @@ bypass proxy for.
 
 Here is an example of a global proxy:
 
-```js tab=js-ts
+```js tab=js-test
 import { defineConfig } from '@playwright/test';
 export default defineConfig({
   use: {
@@ -174,7 +174,7 @@ await using var browser = await BrowserType.LaunchAsync(new()
 
 When specifying proxy for each context individually, **Chromium on Windows** needs a hint that proxy will be set. This is done via passing a non-empty proxy server to the browser itself. Here is an example of a context-specific proxy:
 
-```js tab=js-ts
+```js tab=js-test
 import { defineConfig } from '@playwright/test';
 export default defineConfig({
   use: {
@@ -539,7 +539,7 @@ page.route("**/*", lambda route: route.continue_(method="POST"))
 await page.RouteAsync("**/*", async route => {
     var headers = new Dictionary<string, string>(route.Request.Headers.ToDictionary(x => x.Key, x => x.Value));
     headers.Remove("X-Secret");
-    await route.ContinueAsync(new RouteContinueOptions { Headers = headers });
+    await route.ContinueAsync(new() { Headers = headers });
 });
 
 // Continue requests as POST.

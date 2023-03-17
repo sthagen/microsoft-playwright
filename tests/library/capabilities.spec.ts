@@ -188,17 +188,23 @@ it('should set CloseEvent.wasClean to false when the server terminates a WebSock
   expect(wasClean).toBe(false);
 });
 
-it('serviceWorker should intercept document request', async ({ page, server, browserName }) => {
+it('serviceWorker should intercept document request', async ({ page, server }) => {
   server.setRoute('/sw.js', (req, res) => {
     res.setHeader('Content-Type', 'application/javascript');
     res.end(`
       self.addEventListener('fetch', event => {
         event.respondWith(new Response('intercepted'));
       });
+      self.addEventListener('activate', event => {
+        event.waitUntil(clients.claim());
+      });
     `);
   });
   await page.goto(server.EMPTY_PAGE);
-  await page.evaluate(() => navigator.serviceWorker.register('/sw.js'));
+  await page.evaluate(async () => {
+    await navigator.serviceWorker.register('/sw.js');
+    await new Promise(resolve => navigator.serviceWorker.oncontrollerchange = resolve);
+  });
   await page.reload();
   expect(await page.textContent('body')).toBe('intercepted');
 });
@@ -211,9 +217,8 @@ it('webkit should define window.safari', async ({ page, server, browserName }) =
   expect(defined).toBeTruthy();
 });
 
-it('make sure that XMLHttpRequest upload events are emitted correctly', async ({ page, server, browserName, platform }) => {
+it('make sure that XMLHttpRequest upload events are emitted correctly', async ({ page, server }) => {
   it.info().annotations.push({ type: 'issue', description: 'https://github.com/microsoft/playwright/issues/21489' });
-  it.fixme(browserName === 'webkit' && platform === 'win32');
 
   await page.goto(server.EMPTY_PAGE);
   const events = await page.evaluate(async () => {

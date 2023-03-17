@@ -16,7 +16,7 @@
 
 import { showTraceViewer } from 'playwright-core/lib/server';
 import type { Page } from 'playwright-core/lib/server/page';
-import { ManualPromise } from 'playwright-core/lib/utils';
+import { isUnderTest, ManualPromise } from 'playwright-core/lib/utils';
 import type { FullResult } from '../../reporter';
 import { clearCompilationCache, dependenciesForTestFile } from '../common/compilationCache';
 import type { FullConfigInternal } from '../common/types';
@@ -35,11 +35,11 @@ class UIMode {
   private _testRun: { run: Promise<FullResult['status']>, stop: ManualPromise<void> } | undefined;
   globalCleanup: (() => Promise<FullResult['status']>) | undefined;
   private _testWatcher: FSWatcher | undefined;
-  private _watchTestFile: string | undefined;
   private _originalStderr: (buffer: string | Uint8Array) => void;
 
   constructor(config: FullConfigInternal) {
     this._config = config;
+    process.env.PW_LIVE_TRACE_STACKS = '1';
     config._internal.configCLIOverrides.forbidOnly = false;
     config._internal.configCLIOverrides.globalTimeout = 0;
     config._internal.configCLIOverrides.repeatEach = 0;
@@ -47,6 +47,8 @@ class UIMode {
     config._internal.configCLIOverrides.updateSnapshots = undefined;
     config._internal.listOnly = false;
     config._internal.passWithNoTests = true;
+    for (const project of config.projects)
+      project._internal.deps = [];
 
     for (const p of config.projects)
       p.retries = 0;
@@ -54,15 +56,6 @@ class UIMode {
     config._internal.configCLIOverrides.use.trace = { mode: 'on', sources: false };
 
     this._originalStderr = process.stderr.write.bind(process.stderr);
-    process.stdout.write = (chunk: string | Buffer) => {
-      this._dispatchEvent({ method: 'stdio', params: chunkToPayload('stdout', chunk) });
-      return true;
-    };
-    process.stderr.write = (chunk: string | Buffer) => {
-      this._dispatchEvent({ method: 'stdio', params: chunkToPayload('stderr', chunk) });
-      return true;
-    };
-
     this._installGlobalWatcher();
   }
 
@@ -72,7 +65,7 @@ class UIMode {
       projectDirs.add(p.testDir);
     let coalescingTimer: NodeJS.Timeout | undefined;
     const watcher = chokidar.watch([...projectDirs], { ignoreInitial: true, persistent: true }).on('all', async event => {
-      if (event !== 'add' && event !== 'change')
+      if (event !== 'add' && event !== 'change' && event !== 'unlink')
         return;
       if (coalescingTimer)
         clearTimeout(coalescingTimer);
@@ -102,7 +95,15 @@ class UIMode {
   }
 
   async showUI() {
-    this._page = await showTraceViewer([], 'chromium', { app: 'watch.html' });
+    this._page = await showTraceViewer([], 'chromium', { app: 'watch.html', headless: isUnderTest() && process.env.PWTEST_HEADED_FOR_TEST !== '1' });
+    process.stdout.write = (chunk: string | Buffer) => {
+      this._dispatchEvent({ method: 'stdio', params: chunkToPayload('stdout', chunk) });
+      return true;
+    };
+    process.stderr.write = (chunk: string | Buffer) => {
+      this._dispatchEvent({ method: 'stdio', params: chunkToPayload('stderr', chunk) });
+      return true;
+    };
     const exitPromise = new ManualPromise();
     this._page.on('close', () => exitPromise.resolve());
     let queue = Promise.resolve();
@@ -113,7 +114,7 @@ class UIMode {
         return;
       }
       if (method === 'watch') {
-        this._watchFile(params.fileName);
+        this._watchFiles(params.fileNames);
         return;
       }
       if (method === 'open' && params.location) {
@@ -185,17 +186,19 @@ class UIMode {
     await run;
   }
 
-  private async _watchFile(fileName: string) {
-    if (this._watchTestFile === fileName)
-      return;
+  private async _watchFiles(fileNames: string[]) {
     if (this._testWatcher)
       await this._testWatcher.close();
-    this._watchTestFile = fileName;
-    if (!fileName)
+    if (!fileNames.length)
       return;
 
-    const files = [fileName, ...dependenciesForTestFile(fileName)];
-    this._testWatcher = chokidar.watch(files, { ignoreInitial: true }).on('all', async (event, file) => {
+    const files = new Set<string>();
+    for (const fileName of fileNames) {
+      files.add(fileName);
+      dependenciesForTestFile(fileName).forEach(file => files.add(file));
+    }
+
+    this._testWatcher = chokidar.watch([...files], { ignoreInitial: true }).on('all', async (event, file) => {
       if (event !== 'add' && event !== 'change')
         return;
       this._dispatchEvent({ method: 'fileChanged', params: { fileName: file } });

@@ -113,7 +113,8 @@ test('should not include buffers in the trace', async ({ context, page, server, 
   await context.tracing.stop({ path: testInfo.outputPath('trace.zip') });
   const { events } = await parseTrace(testInfo.outputPath('trace.zip'));
   const screenshotEvent = events.find(e => e.type === 'action' && e.apiName === 'page.screenshot');
-  expect(screenshotEvent.snapshots.length).toBe(2);
+  expect(screenshotEvent.beforeSnapshot).toBeTruthy();
+  expect(screenshotEvent.afterSnapshot).toBeTruthy();
   expect(screenshotEvent.result).toEqual({});
 });
 
@@ -176,6 +177,58 @@ test('should collect two traces', async ({ context, page, server }, testInfo) =>
     expect(actions).toEqual([
       'page.dblclick',
       'page.close',
+    ]);
+  }
+});
+
+test('should respect tracesDir and name', async ({ browserType, server }, testInfo) => {
+  const tracesDir = testInfo.outputPath('traces');
+  const browser = await browserType.launch({ tracesDir });
+  const context = await browser.newContext();
+  const page = await context.newPage();
+
+  await context.tracing.start({ name: 'name1', snapshots: true });
+  await page.goto(server.PREFIX + '/one-style.html');
+  await context.tracing.stopChunk({ path: testInfo.outputPath('trace1.zip') });
+  expect(fs.existsSync(path.join(tracesDir, 'name1.trace'))).toBe(true);
+  expect(fs.existsSync(path.join(tracesDir, 'name1.network'))).toBe(true);
+
+  await context.tracing.startChunk({ name: 'name2' });
+  await page.goto(server.PREFIX + '/har.html');
+  await context.tracing.stop({ path: testInfo.outputPath('trace2.zip') });
+  expect(fs.existsSync(path.join(tracesDir, 'name2.trace'))).toBe(true);
+  expect(fs.existsSync(path.join(tracesDir, 'name2.network'))).toBe(true);
+
+  await browser.close();
+
+  function resourceNames(resources: Map<string, Buffer>) {
+    return [...resources.keys()].map(file => {
+      return file.replace(/^resources\/.*\.(html|css)$/, 'resources/XXX.$1');
+    }).sort();
+  }
+
+  {
+    const { resources, actions } = await parseTrace(testInfo.outputPath('trace1.zip'));
+    expect(actions).toEqual(['page.goto']);
+    expect(resourceNames(resources)).toEqual([
+      'resources/XXX.css',
+      'resources/XXX.html',
+      'trace.network',
+      'trace.stacks',
+      'trace.trace',
+    ]);
+  }
+
+  {
+    const { resources, actions } = await parseTrace(testInfo.outputPath('trace2.zip'));
+    expect(actions).toEqual(['page.goto']);
+    expect(resourceNames(resources)).toEqual([
+      'resources/XXX.css',
+      'resources/XXX.html',
+      'resources/XXX.html',
+      'trace.network',
+      'trace.stacks',
+      'trace.trace',
     ]);
   }
 });
@@ -353,7 +406,6 @@ test('should include interrupted actions', async ({ context, page, server }, tes
   const { events } = await parseTrace(testInfo.outputPath('trace.zip'));
   const clickEvent = events.find(e => e.apiName === 'page.click');
   expect(clickEvent).toBeTruthy();
-  expect(clickEvent.error.message).toBe('Action was interrupted');
 });
 
 test('should throw when starting with different options', async ({ context }) => {
@@ -396,8 +448,6 @@ test('should work with multiple chunks', async ({ context, page, server }, testI
     'page.click',
     'page.click',
   ]);
-  expect(trace1.events.find(e => e.apiName === 'page.click' && !!e.error)).toBeTruthy();
-  expect(trace1.events.find(e => e.apiName === 'page.click' && e.error?.message === 'Action was interrupted')).toBeTruthy();
   expect(trace1.events.some(e => e.type === 'frame-snapshot')).toBeTruthy();
   expect(trace1.events.some(e => e.type === 'resource-snapshot' && e.snapshot.request.url.endsWith('style.css'))).toBeTruthy();
 

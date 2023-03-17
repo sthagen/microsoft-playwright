@@ -19,6 +19,7 @@ import { ListView } from './listView';
 
 export type TreeItem = {
   id: string,
+  parent: TreeItem | undefined,
   children: TreeItem[],
 };
 
@@ -39,6 +40,7 @@ export type TreeViewProps<T> = {
   dataTestId?: string,
   treeState: TreeState,
   setTreeState: (treeState: TreeState) => void,
+  autoExpandDeep?: boolean,
 };
 
 const TreeListView = ListView<TreeItem>;
@@ -55,14 +57,19 @@ export function TreeView<T extends TreeItem>({
   treeState,
   setTreeState,
   noItemsMessage,
+  dataTestId,
+  autoExpandDeep,
 }: TreeViewProps<T>) {
   const treeItems = React.useMemo(() => {
-    return flattenTree<T>(rootItem, treeState.expandedItems);
-  }, [rootItem, treeState]);
+    for (let item: TreeItem | undefined = selectedItem?.parent; item; item = item.parent)
+      treeState.expandedItems.set(item.id, true);
+    return flattenTree<T>(rootItem, treeState.expandedItems, autoExpandDeep);
+  }, [rootItem, selectedItem, treeState, autoExpandDeep]);
 
   return <TreeListView
     items={[...treeItems.keys()]}
     id={item => item.id}
+    dataTestId={dataTestId}
     render={item => {
       const rendered = render(item as T);
       return <>
@@ -98,10 +105,18 @@ export function TreeView<T extends TreeItem>({
     }}
     onIconClicked={item => {
       const { expanded } = treeItems.get(item as T)!;
-      if (expanded)
+      if (expanded) {
+        // Move nested selection up.
+        for (let i: TreeItem | undefined = selectedItem; i; i = i.parent) {
+          if (i === item) {
+            onSelected?.(item as T);
+            break;
+          }
+        }
         treeState.expandedItems.set(item.id, false);
-      else
+      } else {
         treeState.expandedItems.set(item.id, true);
+      }
       setTreeState({ ...treeState });
     }}
     noItemsMessage={noItemsMessage} />;
@@ -113,12 +128,12 @@ type TreeItemData = {
   parent: TreeItem | null,
 };
 
-function flattenTree<T extends TreeItem>(rootItem: T, expandedItems: Map<string, boolean | undefined>): Map<T, TreeItemData> {
+function flattenTree<T extends TreeItem>(rootItem: T, expandedItems: Map<string, boolean | undefined>, autoExpandDeep?: boolean): Map<T, TreeItemData> {
   const result = new Map<T, TreeItemData>();
   const appendChildren = (parent: T, depth: number) => {
     for (const item of parent.children as T[]) {
       const expandState = expandedItems.get(item.id);
-      const autoExpandMatches = depth === 0 && result.size < 25 && expandState !== false;
+      const autoExpandMatches = (autoExpandDeep || depth === 0) && result.size < 25 && expandState !== false;
       const expanded = item.children.length ? expandState || autoExpandMatches : undefined;
       result.set(item, { depth, expanded, parent: rootItem === parent ? null : parent });
       if (expanded)
