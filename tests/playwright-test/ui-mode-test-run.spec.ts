@@ -61,6 +61,25 @@ test('should run visible', async ({ runUITest }) => {
   `);
 });
 
+test('should run on hover', async ({ runUITest }) => {
+  const page = await runUITest({
+    'a.test.ts': `
+      import { test, expect } from '@playwright/test';
+      test('passes', () => {});
+      test('fails', () => { expect(1).toBe(2); });
+    `,
+  });
+
+  await page.getByText('passes').hover();
+  await page.getByRole('listitem').filter({ hasText: 'passes' }).getByTitle('Run').click();
+
+  await expect.poll(dumpTestTree(page), { timeout: 15000 }).toBe(`
+    ▼ ◯ a.test.ts
+        ✅ passes <=
+        ◯ fails
+  `);
+});
+
 test('should run on double click', async ({ runUITest }) => {
   const page = await runUITest({
     'a.test.ts': `
@@ -174,5 +193,43 @@ test('should run by project', async ({ runUITest }) => {
     ▼ ✅ c.test.ts
       ► ✅ passes
       ► ⊘ skipped
+  `);
+});
+
+test('should stop', async ({ runUITest }) => {
+  const page = await runUITest({
+    'a.test.ts': `
+      import { test, expect } from '@playwright/test';
+      test('test 0', () => { test.skip(); });
+      test('test 1', () => {});
+      test('test 2', async () => { await new Promise(() => {}); });
+      test('test 3', () => {});
+    `,
+  });
+
+  await expect(page.getByTitle('Run all')).toBeEnabled();
+  await expect(page.getByTitle('Stop')).toBeDisabled();
+
+  await page.getByTitle('Run all').click();
+
+  await expect.poll(dumpTestTree(page), { timeout: 15000 }).toBe(`
+    ▼ ↻ a.test.ts
+        ⊘ test 0
+        ✅ test 1
+        ↻ test 2
+        ↻ test 3
+  `);
+
+  await expect(page.getByTitle('Run all')).toBeDisabled();
+  await expect(page.getByTitle('Stop')).toBeEnabled();
+
+  await page.getByTitle('Stop').click();
+
+  await expect.poll(dumpTestTree(page), { timeout: 15000 }).toBe(`
+    ▼ ◯ a.test.ts
+        ⊘ test 0
+        ✅ test 1
+        ◯ test 2
+        ◯ test 3
   `);
 });
