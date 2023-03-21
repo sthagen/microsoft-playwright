@@ -137,7 +137,6 @@ export const SnapshotTab: React.FunctionComponent<{
         setHighlightedLocator('');
         setIsInspecting(!pickerVisible);
       }}>Pick locator</ToolbarButton>
-      <div style={{ width: 5 }}></div>
       {['action', 'before', 'after'].map(tab => {
         return <TabbedPaneTab
           id={tab}
@@ -151,7 +150,7 @@ export const SnapshotTab: React.FunctionComponent<{
         window.open(popoutUrl || '', '_blank');
       }}></ToolbarButton>
     </Toolbar>
-    {pickerVisible && <Toolbar>
+    {pickerVisible && <Toolbar noMinHeight={true}>
       <ToolbarButton icon='microscope' title='Pick locator' disabled={!popoutUrl} toggled={isInspecting} onClick={() => {
         setIsInspecting(!isInspecting);
       }}></ToolbarButton>
