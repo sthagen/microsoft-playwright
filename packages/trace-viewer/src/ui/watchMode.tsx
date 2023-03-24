@@ -22,7 +22,7 @@ import { TreeView } from '@web/components/treeView';
 import type { TreeState } from '@web/components/treeView';
 import { baseFullConfig, TeleReporterReceiver, TeleSuite } from '@testIsomorphic/teleReceiver';
 import type { TeleTestCase } from '@testIsomorphic/teleReceiver';
-import type { FullConfig, Suite, TestCase, Location } from '../../../playwright-test/types/testReporter';
+import type { FullConfig, Suite, TestCase, Location, TestError } from '../../../playwright-test/types/testReporter';
 import { SplitView } from '@web/components/splitView';
 import { MultiTraceModel } from './modelUtil';
 import './watchMode.css';
@@ -307,8 +307,11 @@ const TestList: React.FC<{
 
   // Build the test tree.
   const { rootItem, treeItemMap, fileNames } = React.useMemo(() => {
-    const rootItem = createTree(testModel.rootSuite, projectFilters);
+    let rootItem = createTree(testModel.rootSuite, projectFilters);
     filterTree(rootItem, filterText, statusFilters, runningState?.testIds);
+    sortAndPropagateStatus(rootItem);
+    rootItem = shortenRoot(rootItem);
+
     hideOnlyTests(rootItem);
     const treeItemMap = new Map<string, TreeItem>();
     const visibleTestIds = new Set<string>();
@@ -368,8 +371,8 @@ const TestList: React.FC<{
     } else {
       const fileNames = new Set<string>();
       for (const itemId of watchedTreeIds.value) {
-        const treeItem = treeItemMap.get(itemId)!;
-        const fileName = treeItem.location.file;
+        const treeItem = treeItemMap.get(itemId);
+        const fileName = treeItem?.location.file;
         if (fileName)
           fileNames.add(fileName);
       }
@@ -396,8 +399,8 @@ const TestList: React.FC<{
       visit(rootItem);
     } else {
       for (const treeId of watchedTreeIds.value) {
-        const treeItem = treeItemMap.get(treeId)!;
-        const fileName = treeItem.location.file;
+        const treeItem = treeItemMap.get(treeId);
+        const fileName = treeItem?.location.file;
         if (fileName && set.has(fileName))
           testIds.push(...collectTestIds(treeItem));
       }
@@ -413,7 +416,7 @@ const TestList: React.FC<{
     render={treeItem => {
       return <div className='hbox watch-mode-list-item'>
         <div className='watch-mode-list-item-title'>{treeItem.title}</div>
-        {!!treeItem.duration && <div className='watch-mode-list-item-time'>{msToString(treeItem.duration)}</div>}
+        {!!treeItem.duration && treeItem.status !== 'skipped' && <div className='watch-mode-list-item-time'>{msToString(treeItem.duration)}</div>}
         <Toolbar noMinHeight={true} noShadow={true}>
           <ToolbarButton icon='play' title='Run' onClick={() => runTreeItem(treeItem)} disabled={!!runningState}></ToolbarButton>
           <ToolbarButton icon='go-to-file' title='Open in VS Code' onClick={() => sendMessageNoReply('open', { location: locationToOpen(treeItem) })}></ToolbarButton>
@@ -549,7 +552,7 @@ const refreshRootSuite = (eraseResults: boolean): Promise<void> => {
     skipped: 0,
   };
   let config: FullConfig;
-  receiver = new TeleReporterReceiver({
+  receiver = new TeleReporterReceiver(pathSeparator, {
     onBegin: (c: FullConfig, suite: Suite) => {
       if (!rootSuite)
         rootSuite = suite;
@@ -577,6 +580,10 @@ const refreshRootSuite = (eraseResults: boolean): Promise<void> => {
         ++progress.passed;
       throttleUpdateRootSuite(config, rootSuite, progress);
     },
+
+    onError: (error: TestError) => {
+      xtermDataSource.write((error.stack || error.value || '') + '\n');
+    },
   });
   return sendMessage('list', {});
 };
@@ -587,8 +594,8 @@ const refreshRootSuite = (eraseResults: boolean): Promise<void> => {
     return;
   }
 
-  if (message.method === 'filesChanged') {
-    runWatchedTests(message.params.fileNames);
+  if (message.method === 'testFilesChanged') {
+    runWatchedTests(message.params.testFileNames);
     return;
   }
 
@@ -610,6 +617,10 @@ const sendMessage = async (method: string, params: any) => {
 };
 
 const sendMessageNoReply = (method: string, params?: any) => {
+  if ((window as any)._overrideProtocolForTest) {
+    (window as any)._overrideProtocolForTest({ method, params }).catch(() => {});
+    return;
+  }
   sendMessage(method, params).catch((e: Error) => {
     // eslint-disable-next-line no-console
     console.error(e);
@@ -761,18 +772,19 @@ function createTree(rootSuite: Suite | undefined, projectFilters: Map<string, bo
         parentGroup.children.push(testCaseItem);
       }
 
+      const result = (test as TeleTestCase).results[0];
       let status: 'none' | 'running' | 'scheduled' | 'passed' | 'failed' | 'skipped' = 'none';
-      if (test.results.some(r => r.workerIndex === -1))
+      if (result?.statusEx === 'scheduled')
         status = 'scheduled';
-      else if (test.results.some(r => r.duration === -1))
+      else if (result?.statusEx === 'running')
         status = 'running';
-      else if (test.results.length && test.results[0].status === 'skipped')
+      else if (result?.status === 'skipped')
         status = 'skipped';
-      else if (test.results.length && test.results[0].status === 'interrupted')
+      else if (result?.status === 'interrupted')
         status = 'none';
-      else if (test.results.length && test.outcome() !== 'expected')
+      else if (result && test.outcome() !== 'expected')
         status = 'failed';
-      else if (test.results.length && test.outcome() === 'expected')
+      else if (result && test.outcome() === 'expected')
         status = 'passed';
 
       testCaseItem.tests.push(test);
@@ -801,50 +813,7 @@ function createTree(rootSuite: Suite | undefined, projectFilters: Map<string, bo
       visitSuite(projectSuite.title, fileSuite, fileItem);
     }
   }
-
-  const sortAndPropagateStatus = (treeItem: TreeItem) => {
-    for (const child of treeItem.children)
-      sortAndPropagateStatus(child);
-
-    if (treeItem.kind === 'group') {
-      treeItem.children.sort((a, b) => {
-        const fc = a.location.file.localeCompare(b.location.file);
-        return fc || a.location.line - b.location.line;
-      });
-    }
-
-    let allPassed = treeItem.children.length > 0;
-    let allSkipped = treeItem.children.length > 0;
-    let hasFailed = false;
-    let hasRunning = false;
-    let hasScheduled = false;
-
-    for (const child of treeItem.children) {
-      allSkipped = allSkipped && child.status === 'skipped';
-      allPassed = allPassed && (child.status === 'passed' || child.status === 'skipped');
-      hasFailed = hasFailed || child.status === 'failed';
-      hasRunning = hasRunning || child.status === 'running';
-      hasScheduled = hasScheduled || child.status === 'scheduled';
-    }
-
-    if (hasRunning)
-      treeItem.status = 'running';
-    else if (hasScheduled)
-      treeItem.status = 'scheduled';
-    else if (hasFailed)
-      treeItem.status = 'failed';
-    else if (allSkipped)
-      treeItem.status = 'skipped';
-    else if (allPassed)
-      treeItem.status = 'passed';
-  };
-  sortAndPropagateStatus(rootItem);
-
-  let shortRoot = rootItem;
-  while (shortRoot.children.length === 1 && shortRoot.children[0].kind === 'group' && shortRoot.children[0].subKind === 'folder')
-    shortRoot = shortRoot.children[0];
-  shortRoot.location = rootItem.location;
-  return shortRoot;
+  return rootItem;
 }
 
 function filterTree(rootItem: GroupItem, filterText: string, statusFilters: Map<string, boolean>, runningTestIds: Set<string> | undefined) {
@@ -877,6 +846,51 @@ function filterTree(rootItem: GroupItem, filterText: string, statusFilters: Map<
     treeItem.children = newChildren;
   };
   visit(rootItem);
+}
+
+function sortAndPropagateStatus(treeItem: TreeItem) {
+  for (const child of treeItem.children)
+    sortAndPropagateStatus(child);
+
+  if (treeItem.kind === 'group') {
+    treeItem.children.sort((a, b) => {
+      const fc = a.location.file.localeCompare(b.location.file);
+      return fc || a.location.line - b.location.line;
+    });
+  }
+
+  let allPassed = treeItem.children.length > 0;
+  let allSkipped = treeItem.children.length > 0;
+  let hasFailed = false;
+  let hasRunning = false;
+  let hasScheduled = false;
+
+  for (const child of treeItem.children) {
+    allSkipped = allSkipped && child.status === 'skipped';
+    allPassed = allPassed && (child.status === 'passed' || child.status === 'skipped');
+    hasFailed = hasFailed || child.status === 'failed';
+    hasRunning = hasRunning || child.status === 'running';
+    hasScheduled = hasScheduled || child.status === 'scheduled';
+  }
+
+  if (hasRunning)
+    treeItem.status = 'running';
+  else if (hasScheduled)
+    treeItem.status = 'scheduled';
+  else if (hasFailed)
+    treeItem.status = 'failed';
+  else if (allSkipped)
+    treeItem.status = 'skipped';
+  else if (allPassed)
+    treeItem.status = 'passed';
+}
+
+function shortenRoot(rootItem: GroupItem): GroupItem {
+  let shortRoot = rootItem;
+  while (shortRoot.children.length === 1 && shortRoot.children[0].kind === 'group' && shortRoot.children[0].subKind === 'folder')
+    shortRoot = shortRoot.children[0];
+  shortRoot.location = rootItem.location;
+  return shortRoot;
 }
 
 function hideOnlyTests(rootItem: GroupItem) {

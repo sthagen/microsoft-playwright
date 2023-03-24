@@ -17,7 +17,7 @@
 import type { ActionTraceEvent } from '@trace/trace';
 import { SplitView } from '@web/components/splitView';
 import * as React from 'react';
-import { useAsyncMemo } from './helpers';
+import { useAsyncMemo } from '@web/uiUtils';
 import './sourceTab.css';
 import { StackTraceView } from './stackTrace';
 import { CodeMirrorWrapper } from '@web/components/codeMirrorWrapper';
@@ -59,7 +59,7 @@ export const SourceTab: React.FunctionComponent<{
     const highlight: SourceHighlight[] = source.errors.map(e => ({ type: 'error', line: e.location.line, message: e.error!.message }));
     highlight.push({ line: targetLine, type: 'running' });
 
-    if (source.content === undefined) {
+    if (source.content === undefined || fallbackLocation) {
       const sha1 = await calculateSha1(location.file);
       try {
         let response = await fetch(`sha1/src@${sha1}.txt`);
