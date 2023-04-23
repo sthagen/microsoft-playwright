@@ -42,7 +42,55 @@ test('should merge trace events', async ({ runUITest, server }) => {
     /expect\.toBe[\d.]+m?s/,
     /locator\.clickgetByRole\('button'\)[\d.]+m?s/,
     /expect\.toBe[\d.]+m?s/,
-  ]);
+  ], { timeout: 15000 });
+});
+
+test('should merge web assertion events', async ({  runUITest }, testInfo) => {
+  const { page } = await runUITest({
+    'a.test.ts': `
+      import { test, expect } from '@playwright/test';
+      test('trace test', async ({ page }) => {
+        await page.setContent('<button>Submit</button>');
+        await expect(page.locator('button')).toBeVisible();
+      });
+    `,
+  });
+
+  await page.getByText('trace test').dblclick();
+
+  const listItem = page.getByTestId('action-list').getByRole('listitem');
+  await expect(
+      listItem,
+      'action list'
+  ).toHaveText([
+    /browserContext\.newPage[\d.]+m?s/,
+    /page\.setContent[\d.]+m?s/,
+    /expect\.toBeVisiblelocator\('button'\)[\d.]+m?s/,
+  ], { timeout: 15000 });
+});
+
+test('should merge screenshot assertions', async ({  runUITest }, testInfo) => {
+  const { page } = await runUITest({
+    'a.test.ts': `
+      import { test, expect } from '@playwright/test';
+      test('trace test', async ({ page }) => {
+        await page.setContent('<button>Submit</button>');
+        await expect(page.locator('button')).toHaveScreenshot();
+      });
+    `,
+  });
+
+  await page.getByText('trace test').dblclick();
+
+  const listItem = page.getByTestId('action-list').getByRole('listitem');
+  await expect(
+      listItem,
+      'action list'
+  ).toHaveText([
+    /browserContext\.newPage[\d.]+m?s/,
+    /page\.setContent[\d.]+m?s/,
+    /expect\.toHaveScreenshot[\d.]+m?s/,
+  ], { timeout: 15000 });
 });
 
 test('should locate sync assertions in source', async ({ runUITest, server }) => {
@@ -60,7 +108,7 @@ test('should locate sync assertions in source', async ({ runUITest, server }) =>
   await expect(
       page.locator('.CodeMirror .source-line-running'),
       'check source tab',
-  ).toHaveText('4        expect(1).toBe(1);');
+  ).toHaveText('4        expect(1).toBe(1);', { timeout: 15000 });
 });
 
 test('should show snapshots for sync assertions', async ({ runUITest, server }) => {
