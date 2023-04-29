@@ -193,7 +193,7 @@ export interface FullProject<TestArgs = {}, WorkerArgs = {}> {
    * Using dependencies allows global setup to produce traces and other artifacts, see the setup steps in the test
    * report, etc.
    *
-   * For example:
+   * **Usage**
    *
    * ```js
    * // playwright.config.ts
@@ -284,6 +284,54 @@ export interface FullProject<TestArgs = {}, WorkerArgs = {}> {
    * option for all projects.
    */
   retries: number;
+  /**
+   * Name of a project that needs to run after this and any dependent projects have finished. Teardown is useful to
+   * cleanup any resources acquired by this project.
+   *
+   * Passing `--no-deps` argument ignores
+   * [testProject.teardown](https://playwright.dev/docs/api/class-testproject#test-project-teardown) and behaves as if
+   * it was not specified.
+   *
+   * **Usage**
+   *
+   * A common pattern is a "setup" dependency that has a corresponding "teardown":
+   *
+   * ```js
+   * // playwright.config.ts
+   * import { defineConfig } from '@playwright/test';
+   *
+   * export default defineConfig({
+   *   projects: [
+   *     {
+   *       name: 'setup',
+   *       testMatch: /global.setup\.ts/,
+   *       teardown: 'teardown',
+   *     },
+   *     {
+   *       name: 'teardown',
+   *       testMatch: /global.teardown\.ts/,
+   *     },
+   *     {
+   *       name: 'chromium',
+   *       use: devices['Desktop Chrome'],
+   *       dependencies: ['setup'],
+   *     },
+   *     {
+   *       name: 'firefox',
+   *       use: devices['Desktop Firefox'],
+   *       dependencies: ['setup'],
+   *     },
+   *     {
+   *       name: 'webkit',
+   *       use: devices['Desktop Safari'],
+   *       dependencies: ['setup'],
+   *     },
+   *   ],
+   * });
+   * ```
+   *
+   */
+  teardown?: string;
   /**
    * Directory that will be recursively scanned for test files. Defaults to the directory of the configuration file.
    *
@@ -4654,6 +4702,12 @@ export type Expect = {
      not: BaseMatchers<Promise<void>, T>;
   };
   extend(matchers: any): void;
+  configure: (configuration: {
+    message?: string,
+    timeout?: number,
+    soft?: boolean,
+    poll?: boolean | { timeout?: number, intervals?: number[] },
+  }) => Expect;
   getState(): {
     expand?: boolean;
     isNot: boolean;
@@ -5926,7 +5980,7 @@ interface TestProject {
    * Using dependencies allows global setup to produce traces and other artifacts, see the setup steps in the test
    * report, etc.
    *
-   * For example:
+   * **Usage**
    *
    * ```js
    * // playwright.config.ts
@@ -6240,6 +6294,55 @@ interface TestProject {
   snapshotPathTemplate?: string;
 
   /**
+   * Name of a project that needs to run after this and any dependent projects have finished. Teardown is useful to
+   * cleanup any resources acquired by this project.
+   *
+   * Passing `--no-deps` argument ignores
+   * [testProject.teardown](https://playwright.dev/docs/api/class-testproject#test-project-teardown) and behaves as if
+   * it was not specified.
+   *
+   * **Usage**
+   *
+   * A common pattern is a "setup" dependency that has a corresponding "teardown":
+   *
+   * ```js
+   * // playwright.config.ts
+   * import { defineConfig } from '@playwright/test';
+   *
+   * export default defineConfig({
+   *   projects: [
+   *     {
+   *       name: 'setup',
+   *       testMatch: /global.setup\.ts/,
+   *       teardown: 'teardown',
+   *     },
+   *     {
+   *       name: 'teardown',
+   *       testMatch: /global.teardown\.ts/,
+   *     },
+   *     {
+   *       name: 'chromium',
+   *       use: devices['Desktop Chrome'],
+   *       dependencies: ['setup'],
+   *     },
+   *     {
+   *       name: 'firefox',
+   *       use: devices['Desktop Firefox'],
+   *       dependencies: ['setup'],
+   *     },
+   *     {
+   *       name: 'webkit',
+   *       use: devices['Desktop Safari'],
+   *       dependencies: ['setup'],
+   *     },
+   *   ],
+   * });
+   * ```
+   *
+   */
+  teardown?: string;
+
+  /**
    * Directory that will be recursively scanned for test files. Defaults to the directory of the configuration file.
    *
    * Each project can use a different directory. Here is an example that runs smoke tests in three browsers and all
@@ -6363,6 +6466,12 @@ interface TestConfigWebServer {
    * when running tests locally.
    */
   reuseExistingServer?: boolean;
+
+  /**
+   * If `"pipe"`, it will pipe the stdout of the command to the process stdout. If `"ignore"`, it will ignore the stdout
+   * of the command. Default to `"ignore"`.
+   */
+  stdout?: "pipe"|"ignore";
 
   /**
    * Current working directory of the spawned process, defaults to the directory of the configuration file.

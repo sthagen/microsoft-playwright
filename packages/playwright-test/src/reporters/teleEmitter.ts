@@ -126,7 +126,7 @@ export class TeleReporterEmitter implements Reporter {
     return {
       rootDir: config.rootDir,
       configFile: this._relativePath(config.configFile),
-      listOnly: FullConfigInternal.from(config).cliListOnly,
+      listOnly: FullConfigInternal.from(config)?.cliListOnly,
       workers: config.workers,
     };
   }
@@ -151,6 +151,7 @@ export class TeleReporterEmitter implements Reporter {
       grepInvert: serializeRegexPatterns(project.grepInvert || []),
       dependencies: project.dependencies,
       snapshotDir: this._relativePath(project.snapshotDir),
+      teardown: project.teardown,
     };
     return report;
   }
@@ -193,8 +194,12 @@ export class TeleReporterEmitter implements Reporter {
       duration: result.duration,
       status: result.status,
       errors: result.errors,
-      attachments: result.attachments,
+      attachments: this._serializeAttachments(result.attachments),
     };
+  }
+
+  _serializeAttachments(attachments: TestResult['attachments']): TestResult['attachments'] {
+    return attachments;
   }
 
   private _serializeStepStart(step: TestStep): JsonTestStepStart {

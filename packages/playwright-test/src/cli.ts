@@ -23,20 +23,15 @@ import { Runner } from './runner/runner';
 import { stopProfiling, startProfiling } from 'playwright-core/lib/utils';
 import { experimentalLoaderOption, fileIsModule } from './util';
 import { showHTMLReport } from './reporters/html';
-import { createMergedReport } from './reporters/blob';
+import { createMergedReport } from './reporters/merge';
 import { ConfigLoader, kDefaultConfigFiles, resolveConfigFile } from './common/configLoader';
 import type { ConfigCLIOverrides } from './common/ipc';
 import type { FullResult } from '../reporter';
 import type { TraceMode } from '../types/test';
 import { builtInReporters, defaultReporter, defaultTimeout } from './common/config';
 import type { FullConfigInternal } from './common/config';
-
-export function addTestCommands(program: Command) {
-  addTestCommand(program);
-  addShowReportCommand(program);
-  addListFilesCommand(program);
-  addMergeReportsCommand(program);
-}
+import program from 'playwright-core/lib/cli/program';
+import type { ReporterDescription } from '..';
 
 function addTestCommand(program: Command) {
   const command = program.command('test [test-filter...]');
@@ -104,7 +99,7 @@ function addMergeReportsCommand(program: Command) {
     }
   });
   command.option('-c, --config <file>', `Configuration file. Can be used to specify additional configuration for the output report.`);
-  command.option('--reporter <reporter>', 'Output report type', 'list');
+  command.option('--reporter <reporter>', `Reporter to use, comma-separated, can be ${builtInReporters.map(name => `"${name}"`).join(', ')} (default: "${defaultReporter}")`);
   command.addHelpText('afterAll', `
 Arguments [dir]:
   Directory containing blob reports.
@@ -184,8 +179,15 @@ async function mergeReports(reportDir: string | undefined, opts: { [key: string]
 
   const configLoader = new ConfigLoader();
   const config = await (configFile ? configLoader.loadConfigFile(configFile) : configLoader.loadEmptyConfig(process.cwd()));
-  const dir = path.resolve(process.cwd(), reportDir || 'playwright-report');
-  await createMergedReport(config, dir, opts.reporter || 'list');
+  const dir = path.resolve(process.cwd(), reportDir || '');
+  if (!(await fs.promises.stat(dir)).isDirectory())
+    throw new Error('Directory does not exist: ' + dir);
+  let reporterDescriptions: ReporterDescription[] | undefined = resolveReporterOption(opts.reporter);
+  if (!reporterDescriptions && configFile)
+    reporterDescriptions = config.config.reporter;
+  if (!reporterDescriptions)
+    reporterDescriptions = [[defaultReporter]];
+  await createMergedReport(config, dir, reporterDescriptions!);
 }
 
 function overridesFromOptions(options: { [key: string]: any }): ConfigCLIOverrides {
@@ -199,7 +201,7 @@ function overridesFromOptions(options: { [key: string]: any }): ConfigCLIOverrid
     quiet: options.quiet ? options.quiet : undefined,
     repeatEach: options.repeatEach ? parseInt(options.repeatEach, 10) : undefined,
     retries: options.retries ? parseInt(options.retries, 10) : undefined,
-    reporter: (options.reporter && options.reporter.length) ? options.reporter.split(',').map((r: string) => [resolveReporter(r)]) : undefined,
+    reporter: resolveReporterOption(options.reporter),
     shard: shardPair ? { current: shardPair[0], total: shardPair[1] } : undefined,
     timeout: options.timeout ? parseInt(options.timeout, 10) : undefined,
     ignoreSnapshots: options.ignoreSnapshots ? !!options.ignoreSnapshots : undefined,
@@ -237,6 +239,12 @@ function overridesFromOptions(options: { [key: string]: any }): ConfigCLIOverrid
   return overrides;
 }
 
+function resolveReporterOption(reporter?: string): ReporterDescription[] | undefined {
+  if (!reporter || !reporter.length)
+    return undefined;
+  return reporter.split(',').map((r: string) => [resolveReporter(r)]);
+}
+
 function resolveReporter(id: string) {
   if (builtInReporters.includes(id as any))
     return id;
@@ -260,7 +268,7 @@ function restartWithExperimentalTsEsm(configFile: string | null): boolean {
   if (!fileIsModule(configFile))
     return false;
   const NODE_OPTIONS = (process.env.NODE_OPTIONS || '') + experimentalLoaderOption();
-  const innerProcess = require('child_process').fork(require.resolve('playwright-core/cli'), process.argv.slice(2), {
+  const innerProcess = require('child_process').fork(require.resolve('./cli'), process.argv.slice(2), {
     env: {
       ...process.env,
       NODE_OPTIONS,
@@ -306,3 +314,10 @@ const testOptions: [string, string][] = [
   ['-j, --workers <workers>', `Number of concurrent workers or percentage of logical CPU cores, use 1 to run in a single worker (default: 50%)`],
   ['-x', `Stop after the first failure`],
 ];
+
+addTestCommand(program);
+addShowReportCommand(program);
+addListFilesCommand(program);
+addMergeReportsCommand(program);
+
+program.parse(process.argv);
