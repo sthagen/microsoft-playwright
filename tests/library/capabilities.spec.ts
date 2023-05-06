@@ -233,3 +233,20 @@ it('make sure that XMLHttpRequest upload events are emitted correctly', async ({
   });
   expect(events).toEqual(['loadstart', 'progress', 'load', 'loadend']);
 });
+
+it('loading in HTMLImageElement.prototype', async ({ page, server, browserName }) => {
+  it.info().annotations.push({ type: 'issue', description: 'https://github.com/microsoft/playwright/issues/22738' });
+  it.fixme(browserName === 'webkit');
+  await page.goto(server.EMPTY_PAGE);
+  const defined = await page.evaluate(() => 'loading' in HTMLImageElement.prototype);
+  expect(defined).toBeTruthy();
+});
+
+it('window.GestureEvent in WebKit', async ({ page, server, browserName }) => {
+  it.info().annotations.push({ type: 'issue', description: 'https://github.com/microsoft/playwright/issues/22735' });
+  await page.goto(server.EMPTY_PAGE);
+  const defined = await page.evaluate(() => 'GestureEvent' in window);
+  expect(defined).toBe(browserName === 'webkit');
+  const type = await page.evaluate(() => typeof (window as any).GestureEvent);
+  expect(type).toBe(browserName === 'webkit' ? 'function' : 'undefined');
+});

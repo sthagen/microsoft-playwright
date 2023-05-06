@@ -86,9 +86,6 @@ function mergeEvents(shardReports: string[]) {
   for (const reportJsonl of shardReports) {
     const parsedEvents = parseEvents(reportJsonl);
     for (const event of parsedEvents) {
-      // TODO: show remaining events?
-      if (event.method === 'onError')
-        throw new Error('Error in shard');
       if (event.method === 'onBegin')
         beginEvents.push(event);
       else if (event.method === 'onEnd')
@@ -97,7 +94,7 @@ function mergeEvents(shardReports: string[]) {
         events.push(event);
     }
   }
-  return [mergeBeginEvents(beginEvents), ...events, mergeEndEvents(endEvents)];
+  return [mergeBeginEvents(beginEvents), ...events, mergeEndEvents(endEvents), { method: 'onExit', params: undefined }];
 }
 
 function mergeBeginEvents(beginEvents: JsonEvent[]): JsonEvent {
