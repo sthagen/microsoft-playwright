@@ -276,6 +276,12 @@ export interface Page {
    * await page.addInitScript({ path: './preload.js' });
    * ```
    *
+   * ```js
+   * await page.addInitScript(mock => {
+   *   window.mock = mock;
+   * }, mock);
+   * ```
+   *
    * **NOTE** The order of evaluation of multiple scripts installed via
    * [browserContext.addInitScript(script[, arg])](https://playwright.dev/docs/api/class-browsercontext#browser-context-add-init-script)
    * and [page.addInitScript(script[, arg])](https://playwright.dev/docs/api/class-page#page-add-init-script) is not
@@ -5182,7 +5188,7 @@ export interface Frame {
    *   const browser = await firefox.launch();
    *   const page = await browser.newPage();
    *   const watchDog = page.mainFrame().waitForFunction('window.innerWidth < 100');
-   *   page.setViewportSize({width: 50, height: 50});
+   *   await page.setViewportSize({width: 50, height: 50});
    *   await watchDog;
    *   await browser.close();
    * })();
@@ -5216,7 +5222,7 @@ export interface Frame {
    *   const browser = await firefox.launch();
    *   const page = await browser.newPage();
    *   const watchDog = page.mainFrame().waitForFunction('window.innerWidth < 100');
-   *   page.setViewportSize({width: 50, height: 50});
+   *   await page.setViewportSize({width: 50, height: 50});
    *   await watchDog;
    *   await browser.close();
    * })();
@@ -7289,6 +7295,9 @@ export interface Frame {
   }): Promise<null|Response>;
 
   /**
+   * **NOTE** Never wait for timeout in production. Tests that wait for time are inherently flaky. Use [Locator] actions and web
+   * assertions that wait automatically.
+   *
    * Waits for the given `timeout` in milliseconds.
    *
    * Note that `frame.waitForTimeout()` should only be used for debugging. Tests using the timer in production are going
@@ -8057,7 +8066,9 @@ export interface BrowserContext {
    * await browserContext.addCookies([cookieObject1, cookieObject2]);
    * ```
    *
-   * @param cookies
+   * @param cookies Adds cookies to the browser context.
+   *
+   * For the cookie to apply to all subdomains as well, prefix domain with a dot, like this: ".example.com".
    */
   addCookies(cookies: Array<{
     name: string;
@@ -16148,11 +16159,10 @@ export interface Browser extends EventEmitter {
      * Populates context with given storage state. This option can be used to initialize context with logged-in
      * information obtained via
      * [browserContext.storageState([options])](https://playwright.dev/docs/api/class-browsercontext#browser-context-storage-state).
-     * Either a path to the file with saved storage, or an object with the following fields:
      */
     storageState?: string|{
       /**
-       * cookies to set for context
+       * Cookies to set for context
        */
       cookies: Array<{
         name: string;
@@ -16160,12 +16170,13 @@ export interface Browser extends EventEmitter {
         value: string;
 
         /**
-         * domain and path are required
+         * Domain and path are required. For the cookie to apply to all subdomains as well, prefix domain with a dot, like
+         * this: ".example.com"
          */
         domain: string;
 
         /**
-         * domain and path are required
+         * Domain and path are required
          */
         path: string;
 
@@ -18536,7 +18547,7 @@ export interface Selectors {
    * An example of registering selector engine that queries elements based on a tag name:
    *
    * ```js
-   * const { selectors, firefox } = require('playwright');  // Or 'chromium' or 'webkit'.
+   * const { selectors, firefox } = require('@playwright/test');  // Or 'chromium' or 'webkit'.
    *
    * (async () => {
    *   // Must be a function that evaluates to a selector engine instance.
@@ -19273,11 +19284,10 @@ export interface BrowserContextOptions {
    * Populates context with given storage state. This option can be used to initialize context with logged-in
    * information obtained via
    * [browserContext.storageState([options])](https://playwright.dev/docs/api/class-browsercontext#browser-context-storage-state).
-   * Either a path to the file with saved storage, or an object with the following fields:
    */
   storageState?: string|{
     /**
-     * cookies to set for context
+     * Cookies to set for context
      */
     cookies: Array<{
       name: string;
@@ -19285,12 +19295,13 @@ export interface BrowserContextOptions {
       value: string;
 
       /**
-       * domain and path are required
+       * Domain and path are required. For the cookie to apply to all subdomains as well, prefix domain with a dot, like
+       * this: ".example.com"
        */
       domain: string;
 
       /**
-       * domain and path are required
+       * Domain and path are required
        */
       path: string;
 
@@ -19779,7 +19790,7 @@ export interface PageScreenshotOptions {
   caret?: "hide"|"initial";
 
   /**
-   * An object which specifies clipping of the resulting image. Should have the following fields:
+   * An object which specifies clipping of the resulting image.
    */
   clip?: {
     /**

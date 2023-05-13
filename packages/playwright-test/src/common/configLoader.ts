@@ -18,12 +18,11 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { isRegExp } from 'playwright-core/lib/utils';
 import type { ConfigCLIOverrides, SerializedConfig } from './ipc';
-import { requireOrImport } from './transform';
+import { requireOrImport, setBabelPlugins } from './transform';
 import type { Config, Project } from '../../types/test';
 import { errorWithFile } from '../util';
 import { setCurrentConfig } from './globals';
 import { FullConfigInternal } from './config';
-import { setBabelPlugins } from './babelBundle';
 
 const kDefineConfigWasUsed = Symbol('defineConfigWasUsed');
 export const defineConfig = (config: any) => {
@@ -258,8 +257,6 @@ function validateProject(file: string, project: Project, title: string) {
   }
 }
 
-export const kDefaultConfigFiles = ['playwright.config.ts', 'playwright.config.js', 'playwright.config.mjs'];
-
 export function resolveConfigFile(configFileOrDirectory: string): string | null {
   const resolveConfig = (configFile: string) => {
     if (fs.existsSync(configFile))
@@ -267,8 +264,8 @@ export function resolveConfigFile(configFileOrDirectory: string): string | null 
   };
 
   const resolveConfigFileFromDirectory = (directory: string) => {
-    for (const configName of kDefaultConfigFiles) {
-      const configFile = resolveConfig(path.resolve(directory, configName));
+    for (const ext of ['.ts', '.js', '.mts', '.mjs', '.cts', '.cjs']) {
+      const configFile = resolveConfig(path.resolve(directory, 'playwright.config' + ext));
       if (configFile)
         return configFile;
     }

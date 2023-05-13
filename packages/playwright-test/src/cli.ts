@@ -24,7 +24,7 @@ import { stopProfiling, startProfiling } from 'playwright-core/lib/utils';
 import { experimentalLoaderOption, fileIsModule, serializeError } from './util';
 import { showHTMLReport } from './reporters/html';
 import { createMergedReport } from './reporters/merge';
-import { ConfigLoader, kDefaultConfigFiles, resolveConfigFile } from './common/configLoader';
+import { ConfigLoader, resolveConfigFile } from './common/configLoader';
 import type { ConfigCLIOverrides } from './common/ipc';
 import type { FullResult, TestError } from '../reporter';
 import type { TraceMode } from '../types/test';
@@ -61,7 +61,7 @@ Examples:
 function addListFilesCommand(program: Command) {
   const command = program.command('list-files [file-filter...]', { hidden: true });
   command.description('List files with Playwright Test tests');
-  command.option('-c, --config <file>', `Configuration file, or a test directory with optional ${kDefaultConfigFiles.map(file => `"${file}"`).join('/')}`);
+  command.option('-c, --config <file>', `Configuration file, or a test directory with optional "playwright.config.{m,c}?{js,ts}"`);
   command.option('--project <project-name...>', `Only run tests from the specified list of projects (default: list all projects)`);
   command.action(async (args, opts) => {
     try {
@@ -88,6 +88,8 @@ Examples:
   $ npx playwright show-report playwright-report`);
 }
 
+const kAttachmentModes: string[] = ['local', 'missing'];
+
 function addMergeReportsCommand(program: Command) {
   const command = program.command('merge-reports [dir]', { hidden: true });
   command.description('merge multiple blob reports (for sharded tests) into a single report');
@@ -101,6 +103,7 @@ function addMergeReportsCommand(program: Command) {
   });
   command.option('-c, --config <file>', `Configuration file. Can be used to specify additional configuration for the output report.`);
   command.option('--reporter <reporter>', `Reporter to use, comma-separated, can be ${builtInReporters.map(name => `"${name}"`).join(', ')} (default: "${defaultReporter}")`);
+  command.option('--attachments <mode>', `Whether the attachments are available locally. Supported values are  ${kAttachmentModes.map(name => `"${name}"`).join(', ')} (default: "local")`);
   command.addHelpText('afterAll', `
 Arguments [dir]:
   Directory containing blob reports.
@@ -197,7 +200,12 @@ async function mergeReports(reportDir: string | undefined, opts: { [key: string]
     reporterDescriptions = config.config.reporter;
   if (!reporterDescriptions)
     reporterDescriptions = [[defaultReporter]];
-  await createMergedReport(config, dir, reporterDescriptions!);
+  if (opts.attachments) {
+    if (!kAttachmentModes.includes(opts.attachments))
+      throw new Error(`Invalid --attachments value "${opts.attachments}", must be one of ${kAttachmentModes.map(name => `"${name}"`).join(', ')}.`);
+  }
+  const resolveAttachmentPaths = opts.attachments !== 'missing';
+  await createMergedReport(config, dir, reporterDescriptions!, resolveAttachmentPaths);
 }
 
 function overridesFromOptions(options: { [key: string]: any }): ConfigCLIOverrides {
@@ -297,7 +305,7 @@ const kTraceModes: TraceMode[] = ['on', 'off', 'on-first-retry', 'on-all-retries
 
 const testOptions: [string, string][] = [
   ['--browser <browser>', `Browser to use for tests, one of "all", "chromium", "firefox" or "webkit" (default: "chromium")`],
-  ['-c, --config <file>', `Configuration file, or a test directory with optional ${kDefaultConfigFiles.map(file => `"${file}"`).join('/')}`],
+  ['-c, --config <file>', `Configuration file, or a test directory with optional "playwright.config.{m,c}?{js,ts}"`],
   ['--debug', `Run tests with Playwright Inspector. Shortcut for "PWDEBUG=1" environment variable and "--timeout=0 --max-failures=1 --headed --workers=1" options`],
   ['--forbid-only', `Fail if test.only is called (default: false)`],
   ['--fully-parallel', `Run all tests in parallel (default: false)`],

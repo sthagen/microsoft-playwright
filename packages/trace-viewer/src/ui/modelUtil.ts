@@ -19,7 +19,6 @@ import type { ResourceSnapshot } from '@trace/snapshot';
 import type * as trace from '@trace/trace';
 import type { ActionTraceEvent, EventTraceEvent } from '@trace/trace';
 import type { ContextEntry, PageEntry } from '../entries';
-import type { SerializedError, StackFrame } from '@protocol/channels';
 
 const contextSymbol = Symbol('context');
 const nextInContextSymbol = Symbol('next');
@@ -27,8 +26,14 @@ const prevInListSymbol = Symbol('prev');
 const eventsSymbol = Symbol('events');
 const resourcesSymbol = Symbol('resources');
 
+export type SourceLocation = {
+  file: string;
+  line: number;
+  source: SourceModel;
+};
+
 export type SourceModel = {
-  errors: { error: SerializedError['error'], location: StackFrame }[];
+  errors: { line: number, message: string }[];
   content: string | undefined;
 };
 
@@ -84,7 +89,7 @@ function indexModel(context: ContextEntry) {
 }
 
 function mergeActions(contexts: ContextEntry[]) {
-  const map = new Map<number, ActionTraceEvent>();
+  const map = new Map<string, ActionTraceEvent>();
 
   // Protocol call aka isPrimary contexts have startTime/endTime as server-side times.
   // Step aka non-isPrimary contexts have startTime/endTime are client-side times.
@@ -95,7 +100,7 @@ function mergeActions(contexts: ContextEntry[]) {
 
   for (const context of primaryContexts) {
     for (const action of context.actions)
-      map.set(action.wallTime, action);
+      map.set(`${action.apiName}@${action.wallTime}`, action);
     if (!offset && context.actions.length)
       offset = context.actions[0].startTime - context.actions[0].wallTime;
   }
@@ -110,20 +115,30 @@ function mergeActions(contexts: ContextEntry[]) {
           action.endTime = action.startTime + duration;
       }
 
-      const existing = map.get(action.wallTime);
+      const key = `${action.apiName}@${action.wallTime}`;
+      const existing = map.get(key);
       if (existing && existing.apiName === action.apiName) {
         if (action.error)
           existing.error = action.error;
         if (action.attachments)
           existing.attachments = action.attachments;
+        if (action.parentId)
+          existing.parentId = action.parentId;
         continue;
       }
-      map.set(action.wallTime, action);
+      map.set(key, action);
     }
   }
 
   const result = [...map.values()];
-  result.sort((a1, a2) => a1.wallTime - a2.wallTime);
+  result.sort((a1, a2) => {
+    if (a2.parentId === a1.callId)
+      return -1;
+    if (a1.parentId === a2.callId)
+      return 1;
+    return a1.wallTime - a2.wallTime || a1.startTime - a2.startTime;
+  });
+
   for (let i = 1; i < result.length; ++i)
     (result[i] as any)[prevInListSymbol] = result[i - 1];
 
@@ -202,7 +217,7 @@ function collectSources(actions: trace.ActionTraceEvent[]): Map<string, SourceMo
       }
     }
     if (action.error && action.stack?.[0])
-      result.get(action.stack[0].file)!.errors.push({ error: action.error, location: action.stack?.[0] });
+      result.get(action.stack[0].file)!.errors.push({ line: action.stack?.[0].line || 0, message: action.error.message });
   }
   return result;
 }

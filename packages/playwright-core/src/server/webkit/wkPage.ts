@@ -550,6 +550,7 @@ export class WKPage implements PageDelegate {
         stack = '';
       }
 
+      this._lastConsoleMessage = null;
       const error = new Error(message);
       error.stack = stack;
       error.name = name;
@@ -680,6 +681,7 @@ export class WKPage implements PageDelegate {
   }
 
   async updateEmulatedViewportSize(): Promise<void> {
+    this._browserContext._validateEmulatedViewport(this._page.viewportSize());
     await this._updateViewport();
   }
 
@@ -991,6 +993,9 @@ export class WKPage implements PageDelegate {
   }
 
   async inputActionEpilogue(): Promise<void> {
+  }
+
+  async resetForReuse(): Promise<void> {
   }
 
   async getFrameElement(frame: frames.Frame): Promise<dom.ElementHandle> {
