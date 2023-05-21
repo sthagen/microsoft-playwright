@@ -21,6 +21,7 @@ import type { HttpServer } from '../../packages/playwright-core/src/utils';
 import { startHtmlReportServer } from '../../packages/playwright-test/lib/reporters/html';
 import { type CliRunResult, type RunOptions, stripAnsi } from './playwright-test-fixtures';
 import { cleanEnv, cliEntrypoint, expect, test as baseTest } from './playwright-test-fixtures';
+import type { PlaywrightTestConfig } from 'packages/playwright-test';
 
 const DOES_NOT_SUPPORT_UTF8_IN_TERMINAL = process.platform === 'win32' && process.env.TERM_PROGRAM !== 'vscode' && !process.env.WT_SESSION;
 const POSITIVE_STATUS_MARK = DOES_NOT_SUPPORT_UTF8_IN_TERMINAL ? 'ok' : '✓ ';
@@ -46,10 +47,11 @@ const test = baseTest.extend<{
             if (options.additionalArgs)
               command.push(...options.additionalArgs);
 
+            const cwd = options.cwd ? path.resolve(test.info().outputDir, options.cwd) : test.info().outputDir;
             const testProcess = childProcess({
               command,
               env: cleanEnv(env),
-              cwd: test.info().outputDir,
+              cwd,
             });
             const { exitCode } = await testProcess.exited;
             return { exitCode, output: testProcess.output.toString() };
@@ -408,14 +410,12 @@ test('preserve attachments', async ({ runInlineTest, mergeReports, showReport, p
 
   await showReport();
 
-  // Check file attachment.
   await page.getByText('first').click();
-  await expect(page.getByText('file-attachment')).toBeVisible();
-
-  // Check file attachment content.
   const popupPromise = page.waitForEvent('popup');
-  await page.getByText('file-attachment').click();
+  // Check file attachment.
+  await page.getByRole('link', { name: 'file-attachment' }).click();
   const popup = await popupPromise;
+  // Check file attachment content.
   await expect(popup.locator('body')).toHaveText('hello!');
   await popup.close();
   await page.goBack();
@@ -483,15 +483,14 @@ test('generate html with attachment urls', async ({ runInlineTest, mergeReports,
     return oldSeveFile.call(server, req, res, filePath);
   };
 
-  // Check file attachment.
   await page.goto(`${server.PREFIX}/index.html`);
   await page.getByText('first').click();
-  await expect(page.getByText('file-attachment')).toBeVisible();
 
-  // Check file attachment content.
   const popupPromise = page.waitForEvent('popup');
-  await page.getByText('file-attachment').click();
+  // Check file attachment.
+  await page.getByRole('link', { name: 'file-attachment' }).click();
   const popup = await popupPromise;
+  // Check file attachment content.
   await expect(popup.locator('body')).toHaveText('hello!');
   await popup.close();
   await page.goBack();
@@ -758,4 +757,145 @@ test('onError in the report', async ({ runInlineTest, mergeReports, showReport, 
   await expect(page.locator('.subnav-item:has-text("Failed") .counter')).toHaveText('0');
   await expect(page.locator('.subnav-item:has-text("Flaky") .counter')).toHaveText('0');
   await expect(page.locator('.subnav-item:has-text("Skipped") .counter')).toHaveText('1');
+});
+
+test('preserve config fields', async ({ runInlineTest, mergeReports }) => {
+  test.slow();
+  const reportDir = test.info().outputPath('blob-report');
+  const config: PlaywrightTestConfig = {
+    // Runner options:
+    globalTimeout: 202300,
+    maxFailures: 3,
+    metadata: {
+      'a': 'b',
+      'b': 100,
+    },
+    workers: 1,
+    retries: 1,
+    reporter: [['blob', { outputDir: `${reportDir.replace(/\\/g, '/')}` }]],
+    // Reporter options:
+    reportSlowTests: {
+      max: 7,
+      threshold: 15_000,
+    },
+    quiet: true
+  };
+  const files = {
+    'echo-reporter.js': `
+      import fs from 'fs';
+
+      class EchoReporter {
+        onBegin(config, suite) {
+          fs.writeFileSync('config.json', JSON.stringify(config));
+        }
+      }
+      module.exports = EchoReporter;
+    `,
+    'playwright.config.ts': `
+      module.exports = ${JSON.stringify(config, null, 2)};
+    `,
+    'a.test.js': `
+      import { test, expect } from '@playwright/test';
+      test('math 1', async ({}) => {
+        expect(1 + 1).toBe(2);
+      });
+    `,
+    'b.test.js': `
+      import { test, expect } from '@playwright/test';
+      test('math 2', async ({}) => {
+        expect(1 + 1).toBe(2);
+      });
+    `,
+    'c.test.js': `
+      import { test, expect } from '@playwright/test';
+      test('math 3', async ({}) => {
+        expect(1 + 1).toBe(2);
+      });
+    `
+  };
+
+  await runInlineTest(files, { shard: `1/3` });
+  await runInlineTest(files, { shard: `3/3` });
+
+  const mergeConfig = {
+    reportSlowTests: {
+      max: 2,
+      threshold: 1_000,
+    },
+    quiet: false
+  };
+  await fs.promises.writeFile(test.info().outputPath('merge.config.ts'), `module.exports = ${JSON.stringify(mergeConfig, null, 2)};`);
+
+  const reportFiles = await fs.promises.readdir(reportDir);
+  reportFiles.sort();
+  expect(reportFiles).toEqual([expect.stringMatching(/report-1-of-3.*.jsonl/), expect.stringMatching(/report-3-of-3.*.jsonl/), 'resources']);
+  const { exitCode } = await mergeReports(reportDir, {}, { additionalArgs: ['--reporter', test.info().outputPath('echo-reporter.js'), '-c', test.info().outputPath('merge.config.ts')] });
+  expect(exitCode).toBe(0);
+  const json = JSON.parse(fs.readFileSync(test.info().outputPath('config.json')).toString());
+  // Test shard parameters.
+  expect(json.rootDir).toBe(test.info().outputDir);
+  expect(json.globalTimeout).toBe(config.globalTimeout);
+  expect(json.maxFailures).toBe(config.maxFailures);
+  expect(json.metadata).toEqual(config.metadata);
+  expect(json.workers).toBe(2);
+  expect(json.version).toBeTruthy();
+  expect(json.version).not.toEqual(test.info().config.version);
+  // Reporter config parameters.
+  expect(json.reportSlowTests).toEqual(mergeConfig.reportSlowTests);
+  expect(json.configFile).toEqual(test.info().outputPath('merge.config.ts'));
+  expect(json.quiet).toEqual(mergeConfig.quiet);
+});
+
+test('preserve steps in html report', async ({ runInlineTest, mergeReports, showReport, page }) => {
+  test.slow();
+  const reportDir = test.info().outputPath('blob-report');
+  const files = {
+    'playwright.config.ts': `
+      module.exports = {
+        reporter: [['blob']]
+      };
+    `,
+    'tests/a.test.js': `
+      import { test, expect } from '@playwright/test';
+      test.beforeAll(() => {
+        expect(1).toBe(1);
+      })
+      test('test 1', async ({}) => {
+        await test.step('my step', async () => {
+          expect(2).toBe(2);
+        });
+      });
+    `,
+  };
+  await runInlineTest(files);
+  const reportFiles = await fs.promises.readdir(reportDir);
+  reportFiles.sort();
+  expect(reportFiles).toEqual([expect.stringMatching(/report-.*.jsonl/), 'resources']);
+  // Run merger in a different directory to make sure relative paths will not be resolved
+  // relative to the current directory.
+  const mergeCwd = test.info().outputPath('foo');
+  await fs.promises.mkdir(mergeCwd, { recursive: true });
+  const { exitCode, output } = await mergeReports(reportDir, { 'PW_TEST_HTML_REPORT_OPEN': 'never' }, { additionalArgs: ['--reporter', 'html'], cwd: mergeCwd });
+  expect(exitCode).toBe(0);
+
+  expect(output).toContain('To open last HTML report run:');
+
+  await showReport();
+
+  await expect(page.locator('.subnav-item:has-text("All") .counter')).toHaveText('1');
+  await expect(page.locator('.subnav-item:has-text("Passed") .counter')).toHaveText('1');
+
+  await page.getByRole('link', { name: 'test 1' }).click();
+
+  await page.getByText('Before Hooks').click();
+  await page.getByText('beforeAll hook').click();
+  await expect(page.getByText('expect.toBe')).toBeVisible();
+  // Collapse hooks.
+  await page.getByText('Before Hooks').click();
+  await expect(page.getByText('expect.toBe')).not.toBeVisible();
+
+  // Check that 'my step' location is relative.
+  await expect(page.getByText('— tests/a.test.js:7')).toBeVisible();
+  await page.getByText('my step').click();
+  await expect(page.getByText('expect.toBe')).toBeVisible();
 });

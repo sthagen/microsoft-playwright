@@ -85,7 +85,7 @@ export default defineConfig({
 | Option | Description |
 | :- | :- |
 | [`property: TestConfig.testIgnore`] | Glob patterns or regular expressions that should be ignored when looking for the test files. For example, `'*test-assets'` |
-| [`property: TestConfig.testMatch`] | Glob patterns or regular expressions that match test files. For example, `'*todo-tests/*.spec.ts'`. By default, Playwright runs `.*(test|spec)\.(js|ts|mjs)` files. |
+| [`property: TestConfig.testMatch`] | Glob patterns or regular expressions that match test files. For example, `'*todo-tests/*.spec.ts'`. By default, Playwright runs <code>.*(test&#124;spec)\.(js&#124;ts&#124;mjs)</code> files. |
 
 ## Advanced Configuration
 
@@ -134,7 +134,7 @@ export default defineConfig({
 
     toMatchSnapshot:  {
       // An acceptable ratio of pixels that are different to the total amount of pixels, between 0 and 1.
-      maxDiffPixelRatio: 10,
+      maxDiffPixelRatio: 0.1,
     },
   },
   

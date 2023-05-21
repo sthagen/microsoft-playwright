@@ -368,6 +368,7 @@ test.describe('cli codegen', () => {
   });
 
   test('should not clash pages', async ({ page, openRecorder, browserName }) => {
+    test.fixme(browserName === 'firefox', 'https://github.com/microsoft/playwright/issues/23117');
     const recorder = await openRecorder();
     const [popup1] = await Promise.all([
       page.context().waitForEvent('page'),
@@ -437,6 +438,17 @@ test.describe('cli codegen', () => {
       page.click('input')
     ]);
     expect(models.hovered).toBe('#checkbox');
+  });
+
+  test('should reset hover model on action when element detaches', async ({ page, openRecorder }) => {
+    const recorder = await openRecorder();
+
+    await recorder.setContentAndWait(`<input id="checkbox" onclick="document.getElementById('checkbox').remove()">`);
+    const [models] = await Promise.all([
+      recorder.waitForActionPerformed(),
+      page.click('input')
+    ]);
+    expect(models.hovered).toBe(null);
   });
 
   test('should update active model on action', async ({ page, openRecorder, browserName, headless }) => {

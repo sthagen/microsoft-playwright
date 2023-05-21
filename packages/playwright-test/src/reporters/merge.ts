@@ -19,7 +19,7 @@ import path from 'path';
 import type { ReporterDescription } from '../../types/test';
 import type { FullResult } from '../../types/testReporter';
 import type { FullConfigInternal } from '../common/config';
-import { TeleReporterReceiver, type JsonEvent, type JsonProject, type JsonSuite, type JsonTestResultEnd } from '../isomorphic/teleReceiver';
+import { TeleReporterReceiver, type JsonEvent, type JsonProject, type JsonSuite, type JsonTestResultEnd, type JsonConfig } from '../isomorphic/teleReceiver';
 import { createReporters } from '../runner/reporters';
 import { Multiplexer } from './multiplexer';
 
@@ -30,7 +30,8 @@ export async function createMergedReport(config: FullConfigInternal, dir: string
     patchAttachmentPaths(events, dir);
 
   const reporters = await createReporters(config, 'merge', reporterDescriptions);
-  const receiver = new TeleReporterReceiver(path.sep, new Multiplexer(reporters));
+  const receiver = new TeleReporterReceiver(path.sep, new Multiplexer(reporters), config.config);
+
   for (const event of events)
     await receiver.dispatch(event);
 }
@@ -75,9 +76,18 @@ function mergeBeginEvents(beginEvents: JsonEvent[]): JsonEvent {
   if (!beginEvents.length)
     throw new Error('No begin events found');
   const projects: JsonProject[] = [];
-  let totalWorkers = 0;
+  let config: JsonConfig = {
+    configFile: undefined,
+    globalTimeout: 0,
+    maxFailures: 0,
+    metadata: {},
+    rootDir: '',
+    version: '',
+    workers: 0,
+    listOnly: false
+  };
   for (const event of beginEvents) {
-    totalWorkers += event.params.config.workers;
+    config = mergeConfigs(config, event.params.config);
     const shardProjects: JsonProject[] = event.params.projects;
     for (const shardProject of shardProjects) {
       const mergedProject = projects.find(p => p.id === shardProject.id);
@@ -87,17 +97,24 @@ function mergeBeginEvents(beginEvents: JsonEvent[]): JsonEvent {
         mergeJsonSuites(shardProject.suites, mergedProject);
     }
   }
-  const config = {
-    ...beginEvents[0].params.config,
-    workers: totalWorkers,
-    shard: undefined
-  };
   return {
     method: 'onBegin',
     params: {
       config,
       projects,
     }
+  };
+}
+
+function mergeConfigs(to: JsonConfig, from: JsonConfig): JsonConfig {
+  return {
+    ...to,
+    ...from,
+    metadata: {
+      ...to.metadata,
+      ...from.metadata,
+    },
+    workers: to.workers + from.workers,
   };
 }
 
