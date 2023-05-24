@@ -18,12 +18,16 @@
     "./cli": "./cli.js",
     "./package.json": "./package.json",
     "./lib/cli": "./lib/cli.js",
-    "./lib/common/babelBundle": "./lib/common/babelBundle.js",
-    "./lib/common/compilationCache": "./lib/common/compilationCache.js",
+    "./lib/transform/babelBundle": "./lib/transform/babelBundle.js",
+    "./lib/transform/compilationCache": "./lib/transform/compilationCache.js",
     "./lib/internalsForTest": "./lib/internalsForTest.js",
     "./lib/experimentalLoader": "./lib/experimentalLoader.js",
     "./lib/plugins": "./lib/plugins/index.js",
-    "./jsx-runtime": "./jsx-runtime.js",
+    "./jsx-runtime": {
+      "import": "./jsx-runtime.mjs",
+      "require": "./jsx-runtime.js",
+      "default": "./jsx-runtime.js"
+    },
     "./lib/util": "./lib/util.js",
     "./lib/utilsBundle": "./lib/utilsBundle.js",
     "./reporter": "./reporter.js"

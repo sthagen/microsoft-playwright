@@ -14,9 +14,8 @@
  * limitations under the License.
  */
 
-export default function(
-  components: Record<string, any>,
-  options?: {
-    window?: Window
-  }
-): void;
+import jsxRuntime from './jsx-runtime.js';
+
+export const jsx = jsxRuntime.jsx;
+export const jsxs = jsxRuntime.jsxs;
+export const Fragment = jsxRuntime.Fragment;

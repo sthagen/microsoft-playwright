@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 /**
  * Copyright (c) Microsoft Corporation.
  *
@@ -13,10 +14,4 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
-export default function(
-  components: Record<string, any>,
-  options?: {
-    window?: Window
-  }
-): void;
+module.exports = require('playwright-core/lib/cli/cli');
