@@ -18,14 +18,14 @@ import path from 'path';
 import fs from 'fs';
 import { HttpServer } from '../../../utils/httpServer';
 import { findChromiumChannel } from '../../registry';
-import { isUnderTest } from '../../../utils';
+import { gracefullyCloseAll, isUnderTest } from '../../../utils';
 import { installAppIcon, syncLocalStorageWithSettings } from '../../chromium/crApp';
 import { serverSideCallMetadata } from '../../instrumentation';
 import { createPlaywright } from '../../playwright';
 import { ProgressController } from '../../progress';
 import type { Page } from '../../page';
 
-type Options = { app?: string, headless?: boolean, host?: string, port?: number };
+type Options = { app?: string, headless?: boolean, host?: string, port?: number, isServer?: boolean };
 
 export async function showTraceViewer(traceUrls: string[], browserName: string, options?: Options): Promise<Page> {
   const { headless = false, host, port, app } = options || {};
@@ -115,7 +115,44 @@ export async function showTraceViewer(traceUrls: string[], browserName: string, 
 
   const searchQuery = params.length ? '?' + params.join('&') : '';
   await page.mainFrame().goto(serverSideCallMetadata(), urlPrefix + `/trace/${app || 'index.html'}${searchQuery}`);
+
+  if (options?.isServer)
+    runServer(page);
+
   return page;
+}
+
+function runServer(page: Page) {
+  let liveTraceTimer: NodeJS.Timeout | undefined;
+  const loadTrace = (url: string) => {
+    clearTimeout(liveTraceTimer);
+    page.mainFrame().evaluateExpression(`window.setTraceURL(${JSON.stringify(url)})`, false, undefined).catch(() => {});
+  };
+
+  const pollLoadTrace = (url: string) => {
+    loadTrace(url);
+    liveTraceTimer = setTimeout(() => {
+      pollLoadTrace(url);
+    }, 500);
+  };
+
+  process.stdin.on('data', data => {
+    const url = data.toString().trim();
+    if (url.endsWith('.json'))
+      pollLoadTrace(url);
+    else
+      loadTrace(url);
+  });
+  process.stdin.on('close', () => selfDestruct());
+}
+
+function selfDestruct() {
+  // Force exit after 30 seconds.
+  setTimeout(() => process.exit(0), 30000);
+  // Meanwhile, try to gracefully close all browsers.
+  gracefullyCloseAll().then(() => {
+    process.exit(0);
+  });
 }
 
 function traceDescriptor(traceName: string) {
