@@ -5,13 +5,17 @@
   "repository": "github:Microsoft/playwright",
   "homepage": "https://playwright.dev",
   "engines": {
-    "node": ">=14"
+    "node": ">=16"
   },
   "author": {
     "name": "Microsoft Corporation"
   },
   "license": "Apache-2.0",
   "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "default": "./index.js"
+    },
     "./cli": "./cli.js",
     "./lib/mount": "./lib/mount.js",
     "./lib/vitePlugin": "./lib/vitePlugin.js"

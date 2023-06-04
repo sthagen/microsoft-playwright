@@ -248,7 +248,8 @@ export class WorkerMain extends ProcessRunner {
   private async _runTest(test: TestCase, retry: number, nextTest: TestCase | undefined) {
     const testInfo = new TestInfoImpl(this._config, this._project, this._params, test, retry,
         stepBeginPayload => this.dispatchEvent('stepBegin', stepBeginPayload),
-        stepEndPayload => this.dispatchEvent('stepEnd', stepEndPayload));
+        stepEndPayload => this.dispatchEvent('stepEnd', stepEndPayload),
+        attachment => this.dispatchEvent('attach', attachment));
 
     const processAnnotation = (annotation: Annotation) => {
       testInfo.annotations.push(annotation);
@@ -317,6 +318,8 @@ export class WorkerMain extends ProcessRunner {
         didFailBeforeAllForSuite = undefined;
         return;
       }
+
+      await removeFolderAsync(testInfo.outputDir).catch(() => {});
 
       let testFunctionParams: object | null = null;
       await testInfo._runAsStep({ category: 'hook', title: 'Before Hooks' }, async step => {
@@ -471,7 +474,7 @@ export class WorkerMain extends ProcessRunner {
     const preserveOutput = this._config.config.preserveOutput === 'always' ||
       (this._config.config.preserveOutput === 'failures-only' && testInfo._isFailure());
     if (!preserveOutput)
-      await removeFolderAsync(testInfo.outputDir).catch(e => {});
+      await removeFolderAsync(testInfo.outputDir).catch(() => {});
   }
 
   private async _runModifiersForSuite(suite: Suite, testInfo: TestInfoImpl, scope: 'worker' | 'test', timeSlot: TimeSlot | undefined, extraAnnotations?: Annotation[]) {
@@ -599,12 +602,6 @@ function buildTestEndPayload(testInfo: TestInfoImpl): TestEndPayload {
     expectedStatus: testInfo.expectedStatus,
     annotations: testInfo.annotations,
     timeout: testInfo.timeout,
-    attachments: testInfo.attachments.map(a => ({
-      name: a.name,
-      contentType: a.contentType,
-      path: a.path,
-      body: a.body?.toString('base64')
-    }))
   };
 }
 

@@ -31,9 +31,12 @@ test.beforeAll(async function recordTrace({ browser, browserName, browserType, s
   const context = await browser.newContext();
   await context.tracing.start({ name: 'test', screenshots: true, snapshots: true, sources: true });
   const page = await context.newPage();
-  await page.goto('data:text/html,<html>Hello world</html>');
+  await page.route('**/style.css', route => route.abort());
+  await page.goto(`data:text/html,<html>Hello world</html>`);
   await page.setContent('<button>Click</button>');
   await expect(page.locator('button')).toHaveText('Click');
+  await expect(page.getByTestId('amazing-btn')).toBeHidden();
+  await expect(page.getByTestId(/amazing-btn-regex/)).toBeHidden();
   await page.evaluate(({ a }) => {
     console.log('Info');
     console.warn('Warning');
@@ -99,9 +102,12 @@ test('should open simple trace viewer', async ({ showTraceViewer }) => {
   const traceViewer = await showTraceViewer([traceFile]);
   await expect(traceViewer.actionTitles).toHaveText([
     /browserContext.newPage/,
+    /page.route/,
     /page.gotodata:text\/html,<html>Hello world<\/html>/,
     /page.setContent/,
     /expect.toHaveTextlocator\('button'\)/,
+    /expect.toBeHiddengetByTestId\('amazing-btn'\)/,
+    /expect.toBeHiddengetByTestId\(\/amazing-btn-regex\/\)/,
     /page.evaluate/,
     /page.evaluate/,
     /locator.clickgetByText\('Click'\)/,
@@ -109,6 +115,7 @@ test('should open simple trace viewer', async ({ showTraceViewer }) => {
     /page.waitForResponse/,
     /page.waitForTimeout/,
     /page.gotohttp:\/\/localhost:\d+\/frames\/frame.html/,
+    /route.abort/,
     /page.setViewportSize/,
   ]);
 });
@@ -212,9 +219,9 @@ test('should have network requests', async ({ showTraceViewer }) => {
   const traceViewer = await showTraceViewer([traceFile]);
   await traceViewer.selectAction('http://localhost');
   await traceViewer.showNetworkTab();
-  await expect(traceViewer.networkRequests).toContainText(['200GETframe.htmltext/html']);
-  await expect(traceViewer.networkRequests).toContainText(['200GETstyle.csstext/css']);
-  await expect(traceViewer.networkRequests).toContainText(['200GETscript.jsapplication/javascript']);
+  await expect(traceViewer.networkRequests).toContainText([/200GETframe.htmltext\/html/]);
+  await expect(traceViewer.networkRequests).toContainText([/aborted.*style.cssx-unknown/]);
+  await expect(traceViewer.networkRequests).toContainText([/200GETscript.jsapplication\/javascript/]);
 });
 
 test('should show snapshot URL', async ({ page, runAndTrace, server }) => {
@@ -240,13 +247,13 @@ test('should popup snapshot', async ({ page, runAndTrace, server }) => {
 
 test('should capture iframe with sandbox attribute', async ({ page, server, runAndTrace }) => {
   await page.route('**/empty.html', route => {
-    route.fulfill({
+    void route.fulfill({
       body: '<iframe src="iframe.html" sandBOX="allow-scripts"></iframe>',
       contentType: 'text/html'
     }).catch(() => {});
   });
   await page.route('**/iframe.html', route => {
-    route.fulfill({
+    void route.fulfill({
       body: '<html><button>Hello iframe</button></html>',
       contentType: 'text/html'
     }).catch(() => {});
@@ -269,7 +276,7 @@ test('should capture iframe with sandbox attribute', async ({ page, server, runA
 
 test('should capture data-url svg iframe', async ({ page, server, runAndTrace }) => {
   await page.route('**/empty.html', route => {
-    route.fulfill({
+    void route.fulfill({
       body: `<iframe src="data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' height='24px' viewBox='0 0 24 24' width='24px' fill='%23000000'%3e%3cpath d='M0 0h24v24H0z' fill='none'/%3e%3cpath d='M16.5 3c-1.74 0-3.41.81-4.5 2.09C10.91 3.81 9.24 3 7.5 3 4.42 3 2 5.42 2 8.5c0 3.78 3.4 6.86 8.55 11.54L12 21.35l1.45-1.32C18.6 15.36 22 12.28 22 8.5 22 5.42 19.58 3 16.5 3zm-4.4 15.55l-.1.1-.1-.1C7.14 14.24 4 11.39 4 8.5 4 6.5 5.5 5 7.5 5c1.54 0 3.04.99 3.57 2.36h1.87C13.46 5.99 14.96 5 16.5 5c2 0 3.5 1.5 3.5 3.5 0 2.89-3.14 5.74-7.9 10.05z'/%3e%3c/svg%3e"></iframe>`,
       contentType: 'text/html'
     }).catch(() => {});
@@ -634,7 +641,7 @@ test('should open two trace files', async ({ context, page, request, server, sho
   await page.locator('button').click();
   {
     const response = await request.post(server.PREFIX + '/one-style.css');
-    expect(response).toBeOK();
+    await expect(response).toBeOK();
   }
   const apiTrace = testInfo.outputPath('api.zip');
   const contextTrace = testInfo.outputPath('context.zip');
@@ -672,7 +679,7 @@ test('should open two trace files', async ({ context, page, request, server, sho
 
 test('should include requestUrl in route.fulfill', async ({ page, runAndTrace, browserName }) => {
   await page.route('**/*', route => {
-    route.fulfill({
+    void route.fulfill({
       status: 200,
       headers: {
         'content-type': 'text/html'
@@ -707,7 +714,7 @@ test('should not crash with broken locator', async ({ page, runAndTrace, server 
 
 test('should include requestUrl in route.continue', async ({ page, runAndTrace, server }) => {
   await page.route('**/*', route => {
-    route.continue({ url: server.EMPTY_PAGE });
+    void route.continue({ url: server.EMPTY_PAGE });
   });
   const traceViewer = await runAndTrace(async () => {
     await page.goto('http://test.com');
@@ -723,7 +730,7 @@ test('should include requestUrl in route.continue', async ({ page, runAndTrace, 
 
 test('should include requestUrl in route.abort', async ({ page, runAndTrace, server }) => {
   await page.route('**/*', route => {
-    route.abort();
+    void route.abort();
   });
   const traceViewer = await runAndTrace(async () => {
     await page.goto('http://test.com').catch(() => {});
@@ -744,7 +751,7 @@ test('should serve overridden request', async ({ page, runAndTrace, server }) =>
     res.end(`body { background: red }`);
   });
   await page.route('**/one-style.css', route => {
-    route.continue({
+    void route.continue({
       url: server.PREFIX + '/custom.css'
     });
   });
@@ -770,7 +777,7 @@ test('should display waitForLoadState even if did not wait for it', async ({ run
 });
 
 test('should display language-specific locators', async ({ runAndTrace, server, page, toImpl }) => {
-  toImpl(page.context())._browser.options.sdkLanguage = 'python';
+  toImpl(page).attribution.playwright.options.sdkLanguage = 'python';
   const traceViewer = await runAndTrace(async () => {
     await page.setContent('<button>Submit</button>');
     await page.getByRole('button', { name: 'Submit' }).click();
@@ -779,6 +786,7 @@ test('should display language-specific locators', async ({ runAndTrace, server, 
     /page.setContent/,
     /locator.clickget_by_role\("button", name="Submit"\)/,
   ]);
+  toImpl(page).attribution.playwright.options.sdkLanguage = 'javascript';
 });
 
 test('should pick locator', async ({ page, runAndTrace, server }) => {

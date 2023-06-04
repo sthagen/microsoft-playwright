@@ -22,7 +22,7 @@ import { createGuid, debugMode, addInternalStackPrefix, mergeTraceFiles, saveTra
 import type { Fixtures, PlaywrightTestArgs, PlaywrightTestOptions, PlaywrightWorkerArgs, PlaywrightWorkerOptions, ScreenshotMode, TestInfo, TestType, TraceMode, VideoMode } from '../types/test';
 import type { TestInfoImpl } from './worker/testInfo';
 import { rootTestType } from './common/testType';
-import { type ContextReuseMode } from './common/config';
+import type { ContextReuseMode } from './common/config';
 import { artifactsFolderName } from './isomorphic/folders';
 import type { ClientInstrumentation, ClientInstrumentationListener } from '../../playwright-core/src/client/clientInstrumentation';
 import type { ParsedStackTrace } from '../../playwright-core/src/utils/stackTrace';
@@ -260,6 +260,7 @@ const playwrightFixtures: Fixtures<TestFixtures, WorkerFixtures> = ({
     }
     (playwright.request as any)._defaultContextOptions = { ..._combinedContextOptions };
     (playwright.request as any)._defaultContextOptions.tracesDir = path.join(_artifactsDir(), 'traces');
+    (playwright.request as any)._defaultContextOptions.timeout = actionTimeout || 0;
     await use();
     (playwright.request as any)._defaultContextOptions = undefined;
     for (const browserType of [playwright.chromium, playwright.firefox, playwright.webkit]) {
@@ -627,6 +628,15 @@ class ArtifactsRecorder {
       await this._stopTracing(tracing, true);
     })));
 
+    // Either remove or attach temporary screenshots for contexts closed before
+    // collecting the test trace.
+    await Promise.all(this._temporaryScreenshots.map(async file => {
+      if (captureScreenshots)
+        await fs.promises.rename(file, this._addScreenshotAttachment()).catch(() => {});
+      else
+        await fs.promises.unlink(file).catch(() => {});
+    }));
+
     // Collect test trace.
     if (this._preserveTrace()) {
       const events = this._testInfo._traceEvents;
@@ -643,8 +653,8 @@ class ArtifactsRecorder {
       }
     }
 
-    // Either remove or attach temporary traces and screenshots for contexts closed
-    // before the test has finished.
+    // Either remove or attach temporary traces for contexts closed before the
+    // test has finished.
     if (this._preserveTrace() && this._temporaryTraceFiles.length) {
       const tracePath = this._testInfo.outputPath(`trace.zip`);
       // This could be: beforeHooks, or beforeHooks + test, etc.
@@ -658,12 +668,6 @@ class ArtifactsRecorder {
       if (!beforeHooksHadTrace)
         this._testInfo.attachments.push({ name: 'trace', path: tracePath, contentType: 'application/zip' });
     }
-    await Promise.all(this._temporaryScreenshots.map(async file => {
-      if (captureScreenshots)
-        await fs.promises.rename(file, this._addScreenshotAttachment()).catch(() => {});
-      else
-        await fs.promises.unlink(file).catch(() => {});
-    }));
   }
 
   private _addScreenshotAttachment() {

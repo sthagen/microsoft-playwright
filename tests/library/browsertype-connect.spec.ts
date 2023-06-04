@@ -157,6 +157,18 @@ for (const kind of ['launchServer', 'run-server'] as const) {
       await browser.close();
     });
 
+    test('should ignore page.pause when headed', async ({ connect, startRemoteServer, browserType }) => {
+      const headless = (browserType as any)._defaultLaunchOptions.headless;
+      (browserType as any)._defaultLaunchOptions.headless = false;
+      const remoteServer = await startRemoteServer(kind);
+      const browser = await connect(remoteServer.wsEndpoint());
+      const browserContext = await browser.newContext();
+      const page = await browserContext.newPage();
+      await page.pause();
+      await browser.close();
+      (browserType as any)._defaultLaunchOptions.headless = headless;
+    });
+
     test('should be able to visit ipv6 through localhost', async ({ connect, startRemoteServer, ipV6ServerPort }) => {
       test.fail(!!process.env.INSIDE_DOCKER, 'docker does not support IPv6 by default');
       const remoteServer = await startRemoteServer(kind);
@@ -625,7 +637,7 @@ for (const kind of ['launchServer', 'run-server'] as const) {
       await page.route('**/*', async route => {
         const request = await playwright.request.newContext();
         const response = await request.get(server.PREFIX + '/simple.json');
-        route.fulfill({ response });
+        await route.fulfill({ response });
       });
       const response = await page.goto(server.EMPTY_PAGE);
       expect(response.status()).toBe(200);

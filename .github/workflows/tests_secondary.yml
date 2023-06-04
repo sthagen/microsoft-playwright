@@ -102,9 +102,9 @@ jobs:
       matrix:
         include:
         - os: ubuntu-latest
-          node_version: "^18.0.0"
+          node_version: 18
         - os: ubuntu-latest
-          node_version: "^16.0.0"
+          node_version: 20
     timeout-minutes: 30
     steps:
     - uses: actions/checkout@v3
@@ -208,58 +208,25 @@ jobs:
     - run: ./utils/upload_flakiness_dashboard.sh ./test-results/report.json
       if: always()
       shell: bash
-    - name: Upload artifacts to Azure Blob Storage
-      if: always() && github.event_name != 'pull_request'
-      run: az storage blob upload-batch -s test-results/blob-report -d '$web/run-${{ github.run_id }}-${{ github.sha }}-tracing_linux' --connection-string "${{ secrets.AZURE_CONNECTION_STRING_FOR_BLOB_REPORT }}"
-
-  merge_tracing_linux:
-    if: ${{ always() && github.event_name != 'pull_request' }}
-    permissions:
-      pull-requests: write
-    needs: [tracing_linux]
-    timeout-minutes: 10
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v3
-    - uses: actions/setup-node@v3
+    - name: Upload blob report to Azure
+      if: always() && github.event_name == 'push'
+      run: az storage blob upload-batch -s test-results/blob-report -d '$web/run-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.sha }}' --connection-string "${{ secrets.AZURE_CONNECTION_STRING_FOR_BLOB_REPORT }}"
+    - name: Upload blob report to GitHub
+      uses: actions/upload-artifact@v3
+      if: always() && github.event_name == 'pull_request'
       with:
-        node-version: 16
-    - run: npm ci
-      env:
-        DEBUG: pw:install
-        PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: 1
-    - run: npm run build
-    - name: Download Blob Reports from Azure Blob Storage
-      run: |
-        az storage blob download-batch -d . -s '$web'  --pattern 'run-${{ github.run_id }}-${{ github.sha }}-tracing_linux/*.jsonl' --connection-string "${{ secrets.AZURE_CONNECTION_STRING_FOR_BLOB_REPORT }}"
-    - name: Merge into HTML Report
-      run: |
-        npx playwright merge-reports --reporter html --attachments missing 'run-${{ github.run_id }}-${{ github.sha }}-tracing_linux'
-    - name: Upload HTML Report to Azure Blob Storage
-      run: |
-        az storage blob upload-batch -s playwright-report -d '$web/run-${{ github.run_id }}-${{ github.sha }}-tracing_linux' --connection-string "${{ secrets.AZURE_CONNECTION_STRING_FOR_BLOB_REPORT }}"
-        echo "Report url: https://mspwblobreport.z1.web.core.windows.net/run-${{ github.run_id }}-${{ github.sha }}-tracing_linux/index.html"
-    - name: Comment on PR
-      uses: actions/github-script@v6
+        name: blob-report-${{ github.run_attempt }}
+        path: test-results/blob-report
+        retention-days: 30
+    - name: Write the pull request number in an file
+      if: always() && github.event_name == 'pull_request'
+      run: echo '${{ github.event.number }}' > pull_request_number.txt;
+    - name: Upload artifact with pull request number
+      uses: actions/upload-artifact@v3
+      if: always() && github.event_name == 'pull_request'
       with:
-        github-token: ${{secrets.GITHUB_TOKEN}}
-        script: |
-          const { data: prs } = await github.rest.repos.listPullRequestsAssociatedWithCommit({
-            ...context.repo,
-            commit_sha: context.sha,
-          });
-          if (prs.length === 0) {
-            core.error('No pull request found for commit ' + context.sha);
-            return;
-          }
-          const reportUrl = `https://mspwblobreport.z1.web.core.windows.net/run-${context.runId}-${context.sha}-tracing_linux/index.html`;
-          core.notice('Report url: ' + reportUrl);
-          const { data: response } = await github.rest.issues.createComment({
-            ...context.repo,
-            issue_number: prs[0].number,
-            body: 'Tracing test results: ' + reportUrl,
-          });
-          core.info('Posted comment: ' + response.html_url);
+        name: pull-request
+        path: pull_request_number.txt
 
   chrome_stable_linux:
     name: "Chrome Stable (Linux)"
@@ -698,3 +665,24 @@ jobs:
     - run: npx playwright install-deps
     - run: utils/build/build-playwright-driver.sh
 
+  test_linux_chromium_headless_new:
+    name: Linux Chromium Headless New
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+    - uses: actions/setup-node@v3
+      with:
+        node-version: 16
+    - run: npm ci
+      env:
+        DEBUG: pw:install
+        PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: 1
+    - run: npm run build
+    - run: npx playwright install --with-deps chromium
+    - run: xvfb-run --auto-servernum --server-args="-screen 0 1280x960x24" -- npm run test -- --project=chromium
+      env:
+        PLAYWRIGHT_CHROMIUM_USE_HEADLESS_NEW: 1
+    - run: node tests/config/checkCoverage.js chromium
+    - run: ./utils/upload_flakiness_dashboard.sh ./test-results/report.json
+      if: always()
+      shell: bash

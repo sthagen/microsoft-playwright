@@ -58,10 +58,6 @@ export function createPlugin(
       configDir = configDirectory;
     },
 
-    babelPlugins: async () => [
-      [require.resolve('./tsxTransform')]
-    ],
-
     begin: async (suite: Suite) => {
       const use = config.projects[0].use as CtConfig;
       const port = use.ctPort || 3100;
@@ -109,6 +105,8 @@ export function createPlugin(
 
       viteConfig.root = rootDir;
       viteConfig.preview = { port, ...viteConfig.preview };
+      // Vite preview server will otherwise always return the index.html with 200.
+      viteConfig.appType = viteConfig.appType || 'custom';
 
       // React heuristic. If we see a component in a file with .js extension,
       // consider it a potential JSX-in-JS scenario and enable JSX loader for all

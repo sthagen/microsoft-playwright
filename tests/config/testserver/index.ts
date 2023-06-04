@@ -221,7 +221,13 @@ export class TestServer {
       this.serveFile(request, response);
   }
 
-  async serveFile(request: http.IncomingMessage, response: http.ServerResponse, filePath?: string) {
+  serveFile(request: http.IncomingMessage, response: http.ServerResponse, filePath?: string): void {
+    this._serveFile(request, response, filePath).catch(e => {
+      this.debugServer(`error: ${e}`);
+    });
+  }
+
+  private async _serveFile(request: http.IncomingMessage, response: http.ServerResponse, filePath?: string): Promise<void> {
     let pathName = url.parse(request.url!).path;
     if (!filePath) {
       if (pathName === '/')
@@ -256,7 +262,7 @@ export class TestServer {
     if (err) {
       response.statusCode = 404;
       response.setHeader('Content-Type', 'text/plain');
-      response.end(`File not found: ${filePath}`);
+      response.end(request.method !== 'HEAD' ? `File not found: ${filePath}` : null);
       return;
     }
     const extension = filePath.substring(filePath.lastIndexOf('.') + 1);
@@ -269,9 +275,9 @@ export class TestServer {
       const result = await gzipAsync(data);
       // The HTTP transaction might be already terminated after async hop here.
       if (!response.writableEnded)
-        response.end(result);
+        response.end(request.method !== 'HEAD' ? result : null);
     } else {
-      response.end(data);
+      response.end(request.method !== 'HEAD' ? data : null);
     }
   }
 
