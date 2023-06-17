@@ -3,21 +3,21 @@
   "browsers": [
     {
       "name": "chromium",
-      "revision": "1067",
+      "revision": "1068",
       "installByDefault": true,
-      "browserVersion": "115.0.5790.24"
+      "browserVersion": "115.0.5790.32"
     },
     {
       "name": "chromium-with-symbols",
-      "revision": "1067",
+      "revision": "1068",
       "installByDefault": false,
-      "browserVersion": "115.0.5790.24"
+      "browserVersion": "115.0.5790.32"
     },
     {
       "name": "chromium-tip-of-tree",
-      "revision": "1122",
+      "revision": "1124",
       "installByDefault": false,
-      "browserVersion": "116.0.5819.0"
+      "browserVersion": "116.0.5833.0"
     },
     {
       "name": "firefox",
@@ -33,7 +33,7 @@
     },
     {
       "name": "webkit",
-      "revision": "1861",
+      "revision": "1863",
       "installByDefault": true,
       "revisionOverrides": {
         "mac10.14": "1446",
