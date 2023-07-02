@@ -130,9 +130,9 @@ export default defineConfig({
   projects: [
     {
       name: 'Microsoft Edge',
-      use: { 
-        ...devices['Desktop Edge'], 
-        channel: 'msedge' 
+      use: {
+        ...devices['Desktop Edge'],
+        channel: 'msedge'
       },
     },
   ]
@@ -355,7 +355,7 @@ export default defineConfig({
   projects: [
     {
       name: 'chromium',
-      use: { 
+      use: {
         ...devices['Desktop Chrome'],
         launchOptions: {
           args: ['--start-maximized']

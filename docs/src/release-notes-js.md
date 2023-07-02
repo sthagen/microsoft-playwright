@@ -589,7 +589,11 @@ All the same methods are also available on [Locator], [FrameLocator] and [Frame]
 
 - New options `host` and `port` for the html reporter.
   ```js
-  reporters: [['html', { host: 'localhost', port: '9223' }]]
+  import { defineConfig } from '@playwright/test';
+
+  export default defineConfig({
+    reporter: [['html', { host: 'localhost', port: '9223' }]],
+  });
   ```
 
 - New field `FullConfig.configFile` is available to test reporters, specifying the path to the config file if any.
@@ -687,11 +691,11 @@ This version was also tested against the following stable channels:
 
     ```ts
     test('should work', async ({ page }) => {
-        const pageTitle = await test.step('get title', async () => {
-            await page.goto('https://playwright.dev');
-            return await page.title();
-        });
-        console.log(pageTitle);
+      const pageTitle = await test.step('get title', async () => {
+        await page.goto('https://playwright.dev');
+        return await page.title();
+      });
+      console.log(pageTitle);
     });
     ```
 
@@ -926,7 +930,7 @@ Read more about [component testing with Playwright](./test-components).
     use: {
       serviceWorkers: 'block',
     }
-  }
+  };
   ```
 * Using `.zip` path for `recordHar` context option automatically zips the resulting HAR:
   ```ts
@@ -1001,7 +1005,7 @@ WebServer is now considered "ready" if request to the specified url has any of t
 
   ```js
   // Click a button with accessible name "log in"
-  await page.locator('role=button[name="log in"]').click()
+  await page.locator('role=button[name="log in"]').click();
   ```
 
   Read more in [our documentation](./locators.md#locate-by-role).
@@ -1044,7 +1048,7 @@ WebServer is now considered "ready" if request to the specified url has any of t
 
   ```js
   // Click a button with accessible name "log in"
-  await page.locator('role=button[name="log in"]').click()
+  await page.locator('role=button[name="log in"]').click();
   ```
 
   Read more in [our documentation](./locators.md#locate-by-role).
