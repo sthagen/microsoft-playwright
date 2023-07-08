@@ -255,7 +255,8 @@ class ExpectMetaInfoProxyHandler implements ProxyHandler<any> {
         category: 'expect',
         title: trimLongString(customMessage || defaultTitle, 1024),
         params: args[0] ? { expected: args[0] } : undefined,
-        wallTime
+        wallTime,
+        infectParentStepsWithError: this._info.isSoft,
       }) : undefined;
 
       const reportStepError = (jestError: Error) => {
@@ -296,7 +297,7 @@ class ExpectMetaInfoProxyHandler implements ProxyHandler<any> {
       };
 
       // Process the async matchers separately to preserve the zones in the stacks.
-      if (this._info.isPoll || matcherName in customAsyncMatchers) {
+      if (this._info.isPoll || (matcherName in customAsyncMatchers && matcherName !== 'toPass')) {
         return (async () => {
           try {
             const expectZone: ExpectZone = { title: defaultTitle, wallTime };
