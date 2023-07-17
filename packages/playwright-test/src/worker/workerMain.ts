@@ -28,7 +28,7 @@ import { TestInfoImpl } from './testInfo';
 import { TimeoutManager, type TimeSlot } from './timeoutManager';
 import { ProcessRunner } from '../common/process';
 import { loadTestFile } from '../common/testLoader';
-import { buildFileSuiteForProject, filterTestsRemoveEmptySuites } from '../common/suiteUtils';
+import { applyRepeatEachIndex, bindFileSuiteToProject, filterTestsRemoveEmptySuites } from '../common/suiteUtils';
 import { PoolBuilder } from '../common/poolBuilder';
 import type { TestInfoError } from '../../types/test';
 
@@ -81,6 +81,7 @@ export class WorkerMain extends ProcessRunner {
         ...chunkToParams(chunk)
       };
       this.dispatchEvent('stdOut', outPayload);
+      this._currentTest?._appendStdioToTrace('stdout', chunk);
       return true;
     };
 
@@ -90,6 +91,7 @@ export class WorkerMain extends ProcessRunner {
           ...chunkToParams(chunk)
         };
         this.dispatchEvent('stdErr', outPayload);
+        this._currentTest?._appendStdioToTrace('stderr', chunk);
         return true;
       };
     }
@@ -200,7 +202,9 @@ export class WorkerMain extends ProcessRunner {
     try {
       await this._loadIfNeeded();
       const fileSuite = await loadTestFile(runPayload.file, this._config.config.rootDir);
-      const suite = buildFileSuiteForProject(this._project, fileSuite, this._params.repeatEachIndex);
+      const suite = bindFileSuiteToProject(this._project, fileSuite);
+      if (this._params.repeatEachIndex)
+        applyRepeatEachIndex(this._project, suite, this._params.repeatEachIndex);
       const hasEntries = filterTestsRemoveEmptySuites(suite, test => entries.has(test.id));
       if (hasEntries) {
         this._poolBuilder.buildPools(suite);
@@ -633,9 +637,9 @@ function formatTestTitle(test: TestCase, projectName: string) {
   return `${projectTitle}${location} › ${titles.join(' › ')}`;
 }
 
-function chunkToParams(chunk: Buffer | string):  { text?: string, buffer?: string } {
-  if (chunk instanceof Buffer)
-    return { buffer: chunk.toString('base64') };
+function chunkToParams(chunk: Uint8Array | string, encoding?: BufferEncoding):  { text?: string, buffer?: string } {
+  if (chunk instanceof Uint8Array)
+    return { buffer: Buffer.from(chunk).toString('base64') };
   if (typeof chunk !== 'string')
     return { text: util.inspect(chunk) };
   return { text: chunk };

@@ -18,7 +18,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import type { APIRequestContext, BrowserContext, Browser, BrowserContextOptions, LaunchOptions, Page, Tracing, Video } from 'playwright-core';
 import * as playwrightLibrary from 'playwright-core';
-import { createGuid, debugMode, addInternalStackPrefix, mergeTraceFiles, saveTraceFile, removeFolders, isString, asLocator } from 'playwright-core/lib/utils';
+import { createGuid, debugMode, addInternalStackPrefix, mergeTraceFiles, saveTraceFile, removeFolders, isString, asLocator, jsonStringifyForceASCII } from 'playwright-core/lib/utils';
 import type { Fixtures, PlaywrightTestArgs, PlaywrightTestOptions, PlaywrightWorkerArgs, PlaywrightWorkerOptions, ScreenshotMode, TestInfo, TestType, TraceMode, VideoMode } from '../types/test';
 import type { TestInfoImpl } from './worker/testInfo';
 import { rootTestType } from './common/testType';
@@ -56,7 +56,6 @@ type TestFixtures = PlaywrightTestArgs & PlaywrightTestOptions & {
 type WorkerFixtures = PlaywrightWorkerArgs & PlaywrightWorkerOptions & {
   _browserOptions: LaunchOptions;
   _artifactsDir: () => string;
-  _snapshotSuffix: string;
 };
 
 const playwrightFixtures: Fixtures<TestFixtures, WorkerFixtures> = ({
@@ -126,7 +125,8 @@ const playwrightFixtures: Fixtures<TestFixtures, WorkerFixtures> = ({
         ...connectOptions,
         headers: {
           'x-playwright-reuse-context': '1',
-          'x-playwright-launch-options': JSON.stringify(_browserOptions),
+          // HTTP headers are ASCII only (not UTF-8).
+          'x-playwright-launch-options': jsonStringifyForceASCII(_browserOptions),
           ...connectOptions.headers,
         },
       });
@@ -245,12 +245,10 @@ const playwrightFixtures: Fixtures<TestFixtures, WorkerFixtures> = ({
     });
   },
 
-  _snapshotSuffix: [process.platform, { scope: 'worker' }],
-
-  _setupContextOptions: [async ({ playwright, _snapshotSuffix, _combinedContextOptions, _artifactsDir, actionTimeout, navigationTimeout, testIdAttribute }, use, testInfo) => {
+  _setupContextOptions: [async ({ playwright, _combinedContextOptions, _artifactsDir, actionTimeout, navigationTimeout, testIdAttribute }, use, testInfo) => {
     if (testIdAttribute)
       playwrightLibrary.selectors.setTestIdAttribute(testIdAttribute);
-    testInfo.snapshotSuffix = _snapshotSuffix;
+    testInfo.snapshotSuffix = process.platform;
     if (debugMode())
       testInfo.setTimeout(0);
     for (const browserType of [playwright.chromium, playwright.firefox, playwright.webkit]) {
@@ -327,7 +325,7 @@ const playwrightFixtures: Fixtures<TestFixtures, WorkerFixtures> = ({
     const testInfoImpl = testInfo as TestInfoImpl;
     const videoMode = normalizeVideoMode(video);
     const captureVideo = shouldCaptureVideo(videoMode, testInfo) && !_reuseContext;
-    const contexts = new Map<BrowserContext, { pages: Page[] }>();
+    const contexts = new Map<BrowserContext, { pagesWithVideo: Page[] }>();
 
     await use(async options => {
       const hook = hookType(testInfoImpl);
@@ -345,9 +343,10 @@ const playwrightFixtures: Fixtures<TestFixtures, WorkerFixtures> = ({
         }
       } : {};
       const context = await browser.newContext({ ...videoOptions, ...options });
-      const contextData: { pages: Page[] } = { pages: [] };
+      const contextData: { pagesWithVideo: Page[] } = { pagesWithVideo: [] };
       contexts.set(context, contextData);
-      context.on('page', page => contextData.pages.push(page));
+      if (captureVideo)
+        context.on('page', page => contextData.pagesWithVideo.push(page));
       return context;
     });
 
@@ -363,8 +362,8 @@ const playwrightFixtures: Fixtures<TestFixtures, WorkerFixtures> = ({
       const testFailed = testInfo.status !== testInfo.expectedStatus;
       const preserveVideo = captureVideo && (videoMode === 'on' || (testFailed && videoMode === 'retain-on-failure') || (videoMode === 'on-first-retry' && testInfo.retry === 1));
       if (preserveVideo) {
-        const { pages } = contexts.get(context)!;
-        const videos = pages.map(p => p.video()).filter(Boolean) as Video[];
+        const { pagesWithVideo: pagesForVideo } = contexts.get(context)!;
+        const videos = pagesForVideo.map(p => p.video()).filter(Boolean) as Video[];
         await Promise.all(videos.map(async v => {
           try {
             const savedPath = testInfo.outputPath(`video${counter ? '-' + counter : ''}.webm`);
@@ -699,9 +698,9 @@ class ArtifactsRecorder {
   private async _startTraceChunkOnContextCreation(tracing: Tracing) {
     if (this._captureTrace) {
       const title = [path.relative(this._testInfo.project.testDir, this._testInfo.file) + ':' + this._testInfo.line, ...this._testInfo.titlePath.slice(1)].join(' › ');
-      const ordinalSuffix = this._traceOrdinal ? `-${this._traceOrdinal}` : '';
+      const ordinalSuffix = this._traceOrdinal ? `-context${this._traceOrdinal}` : '';
       ++this._traceOrdinal;
-      const retrySuffix = this._testInfo.retry ? `-${this._testInfo.retry}` : '';
+      const retrySuffix = this._testInfo.retry ? `-retry${this._testInfo.retry}` : '';
       const name = `${this._testInfo.testId}${retrySuffix}${ordinalSuffix}`;
       if (!(tracing as any)[kTracingStarted]) {
         await tracing.start({ ...this._traceOptions, title, name });

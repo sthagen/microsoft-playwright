@@ -22,7 +22,7 @@ import type { ImageComparatorOptions, Comparator } from 'playwright-core/lib/uti
 import { getComparator } from 'playwright-core/lib/utils';
 import type { PageScreenshotOptions } from 'playwright-core/types/types';
 import {
-  serializeError, sanitizeForFilePath,
+  addSuffixToFilePath, serializeError, sanitizeForFilePath,
   trimLongString, callLogText,
   expectTypes  } from '../util';
 import { colors } from 'playwright-core/lib/utilsBundle';
@@ -124,8 +124,8 @@ class SnapshotHelper<T extends ImageComparatorOptions> {
     const inputPathSegments = Array.isArray(name) ? name : [addSuffixToFilePath(name, '', undefined, true)];
     const outputPathSegments = Array.isArray(name) ? name : [addSuffixToFilePath(name, actualModifier, undefined, true)];
     this.snapshotPath = snapshotPathResolver(...inputPathSegments);
-    const inputFile = testInfo.outputPath(...inputPathSegments);
-    const outputFile = testInfo.outputPath(...outputPathSegments);
+    const inputFile = testInfo._getOutputPath(...inputPathSegments);
+    const outputFile = testInfo._getOutputPath(...outputPathSegments);
     this.expectedPath = addSuffixToFilePath(inputFile, '-expected');
     this.previousPath = addSuffixToFilePath(outputFile, '-previous');
     this.actualPath = addSuffixToFilePath(outputFile, '-actual');
@@ -439,15 +439,4 @@ function determineFileExtension(file: string | Buffer): string {
 
 function compareMagicBytes(file: Buffer, magicBytes: number[]): boolean {
   return Buffer.compare(Buffer.from(magicBytes), file.slice(0, magicBytes.length)) === 0;
-}
-
-function addSuffixToFilePath(filePath: string, suffix: string, customExtension?: string, sanitize = false): string {
-  const dirname = path.dirname(filePath);
-  const ext = path.extname(filePath);
-  const name = path.basename(filePath, ext);
-  const base = path.join(dirname, name);
-  const sanitizeForSnapshotFilePath = (s: string) => {
-    return s.replace(/[\x00-\x2C\x2E-\x2F\x3A-\x40\x5B-\x60\x7B-\x7F]+/g, '-');
-  };
-  return (sanitize ? sanitizeForSnapshotFilePath(base) : base) + suffix + (customExtension || ext);
 }

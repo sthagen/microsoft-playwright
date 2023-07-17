@@ -32,8 +32,8 @@ test.beforeAll(async function recordTrace({ browser, browserName, browserType, s
   const context = await browser.newContext();
   await context.tracing.start({ name: 'test', screenshots: true, snapshots: true, sources: true });
   const page = await context.newPage();
-  await page.goto(`data:text/html,<html>Hello world</html>`);
-  await page.setContent('<button>Click</button>');
+  await page.goto(`data:text/html,<!DOCTYPE html><html>Hello world</html>`);
+  await page.setContent('<!DOCTYPE html><button>Click</button>');
   await expect(page.locator('button')).toHaveText('Click');
   await expect(page.getByTestId('amazing-btn')).toBeHidden();
   await expect(page.getByTestId(/amazing-btn-regex/)).toBeHidden();
@@ -102,7 +102,7 @@ test('should open simple trace viewer', async ({ showTraceViewer }) => {
   const traceViewer = await showTraceViewer([traceFile]);
   await expect(traceViewer.actionTitles).toHaveText([
     /browserContext.newPage/,
-    /page.gotodata:text\/html,<html>Hello world<\/html>/,
+    /page.gotodata:text\/html,<!DOCTYPE html><html>Hello world<\/html>/,
     /page.setContent/,
     /expect.toHaveTextlocator\('button'\)/,
     /expect.toBeHiddengetByTestId\('amazing-btn'\)/,
@@ -135,12 +135,32 @@ test('should render events', async ({ showTraceViewer }) => {
 
 test('should render console', async ({ showTraceViewer, browserName }) => {
   const traceViewer = await showTraceViewer([traceFile]);
-  await traceViewer.selectAction('page.evaluate');
   await traceViewer.showConsoleTab();
 
-  await expect(traceViewer.consoleLineMessages).toHaveText(['Info', 'Warning', 'Error', 'Unhandled exception']);
-  await expect(traceViewer.consoleLines).toHaveClass(['console-line log', 'console-line warning', 'console-line error', 'console-line error']);
+  await expect(traceViewer.consoleLineMessages).toHaveText([
+    'Info',
+    'Warning',
+    'Error',
+    'Unhandled exception',
+    'Cheers!'
+  ]);
+  await expect(traceViewer.consoleLines.locator('.codicon')).toHaveClass([
+    'codicon codicon-blank',
+    'codicon codicon-warning',
+    'codicon codicon-error',
+    'codicon codicon-error',
+    'codicon codicon-blank',
+  ]);
   await expect(traceViewer.consoleStacks.first()).toContainText('Error: Unhandled exception');
+
+  await traceViewer.selectAction('page.evaluate');
+  await expect(traceViewer.page.locator('.console-tab').locator('.list-view-entry')).toHaveClass([
+    'list-view-entry highlighted',
+    'list-view-entry highlighted warning',
+    'list-view-entry highlighted error',
+    'list-view-entry highlighted error',
+    'list-view-entry',
+  ]);
 });
 
 test('should open console errors on click', async ({ showTraceViewer, browserName }) => {
@@ -851,7 +871,7 @@ test('should open trace-1.31', async ({ showTraceViewer }) => {
   await expect(snapshot.locator('[__playwright_target__]')).toHaveText(['Submit']);
 });
 
-test('should prefer later resource request', async ({ page, server, runAndTrace }) => {
+test('should prefer later resource request with the same method', async ({ page, server, runAndTrace }) => {
   const html = `
     <body>
       <script>
@@ -862,13 +882,22 @@ test('should prefer later resource request', async ({ page, server, runAndTrace 
 
         if (!window.location.href.includes('reloaded'))
           window.location.href = window.location.href + '?reloaded';
+        else
+          link.onload = () => fetch('style.css', { method: 'HEAD' });
       </script>
+      <div>Hello</div>
     </body>
   `;
 
   let reloadStartedCallback = () => {};
   const reloadStartedPromise = new Promise<void>(f => reloadStartedCallback = f);
   server.setRoute('/style.css', async (req, res) => {
+    if (req.method === 'HEAD') {
+      res.statusCode = 200;
+      res.end('');
+      return;
+    }
+
     // Make sure reload happens before style arrives.
     await reloadStartedPromise;
     res.end('body { background-color: rgb(123, 123, 123) }');
@@ -880,8 +909,13 @@ test('should prefer later resource request', async ({ page, server, runAndTrace 
   });
 
   const traceViewer = await runAndTrace(async () => {
+    const headRequest = page.waitForRequest(req => req.url() === server.PREFIX + '/style.css' && req.method() === 'HEAD');
     await page.goto(server.PREFIX + '/index.html');
+    await headRequest;
+    await page.locator('div').click();
   });
-  const frame = await traceViewer.snapshotFrame('page.goto');
-  await expect(frame.locator('body')).toHaveCSS('background-color', 'rgb(123, 123, 123)');
+  const frame1 = await traceViewer.snapshotFrame('page.goto');
+  await expect(frame1.locator('body')).toHaveCSS('background-color', 'rgb(123, 123, 123)');
+  const frame2 = await traceViewer.snapshotFrame('locator.click');
+  await expect(frame2.locator('body')).toHaveCSS('background-color', 'rgb(123, 123, 123)');
 });

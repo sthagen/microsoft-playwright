@@ -153,7 +153,7 @@ export const UIModeView: React.FC<{}> = ({
       setProgress({ total: testIds.size, passed: 0, failed: 0, skipped: 0 });
       setRunningState({ testIds });
 
-      await sendMessage('run', { testIds: [...testIds] });
+      await sendMessage('run', { testIds: [...testIds], projects: [...projectFilters].filter(([_, v]) => v).map(([p]) => p) });
       // Clear pending tests in case of interrupt.
       for (const test of testModel.rootSuite?.allTests() || []) {
         if (test.results[0]?.duration === -1)
@@ -162,7 +162,7 @@ export const UIModeView: React.FC<{}> = ({
       setTestModel({ ...testModel });
       setRunningState(undefined);
     });
-  }, [runningState, testModel]);
+  }, [projectFilters, runningState, testModel]);
 
   const isRunningTest = !!runningState;
 
@@ -171,7 +171,7 @@ export const UIModeView: React.FC<{}> = ({
       <div className='title'>UI Mode disconnected</div>
       <div><a href='#' onClick={() => window.location.reload()}>Reload the page</a> to reconnect</div>
     </div>}
-    <SplitView sidebarSize={250} orientation='horizontal' sidebarIsFirst={true}>
+    <SplitView sidebarSize={250} minSidebarSize={125} orientation='horizontal' sidebarIsFirst={true}>
       <div className='vbox'>
         <div className={'vbox' + (isShowingOutput ? '' : ' hidden')}>
           <Toolbar>
@@ -883,12 +883,13 @@ function createTree(rootSuite: Suite | undefined, loadErrors: TestError[], proje
       const fileItem = getFileItem(rootItem, fileSuite.location!.file.split(pathSeparator), true, fileMap);
       visitSuite(projectSuite.title, fileSuite, fileItem);
     }
-    for (const loadError of loadErrors) {
-      if (!loadError.location)
-        continue;
-      const fileItem = getFileItem(rootItem, loadError.location.file.split(pathSeparator), true, fileMap);
-      fileItem.hasLoadErrors = true;
-    }
+  }
+
+  for (const loadError of loadErrors) {
+    if (!loadError.location)
+      continue;
+    const fileItem = getFileItem(rootItem, loadError.location.file.split(pathSeparator), true, fileMap);
+    fileItem.hasLoadErrors = true;
   }
   return rootItem;
 }
