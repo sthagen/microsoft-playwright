@@ -173,3 +173,57 @@ test('should run setup and teardown projects (3)', async ({ runUITest }) => {
   await expect(page.getByTestId('output')).not.toContainText(`from-setup`);
   await expect(page.getByTestId('output')).not.toContainText(`from-teardown`);
 });
+
+test('should run part of the setup only', async ({ runUITest }) => {
+  const { page } = await runUITest(testsWithSetup);
+  await page.getByText('Status:').click();
+  await page.getByLabel('setup').setChecked(true);
+  await page.getByLabel('teardown').setChecked(true);
+  await page.getByLabel('test').setChecked(true);
+
+  await page.getByText('setup.ts').hover();
+  await page.getByRole('listitem').filter({ hasText: 'setup.ts' }).getByTitle('Run').click();
+
+  await expect.poll(dumpTestTree(page)).toBe(`
+    ▼ ✅ setup.ts <=
+        ✅ setup
+    ▼ ✅ teardown.ts
+        ✅ teardown
+    ▼ ◯ test.ts
+        ◯ test
+  `);
+});
+
+for (const useWeb of [true, false]) {
+  test.describe(`web-mode: ${useWeb}`, () => {
+    test('should run teardown with SIGINT', async ({ runUITest }) => {
+      test.skip(process.platform === 'win32', 'No sending SIGINT on Windows');
+      const { page, testProcess } = await runUITest({
+        'playwright.config.ts': `
+          import { defineConfig } from '@playwright/test';
+          export default defineConfig({
+            globalTeardown: './globalTeardown.ts',
+          });
+        `,
+        'globalTeardown.ts': `
+          export default async () => {
+            console.log('\\n%%from-global-teardown0000')
+            await new Promise(f => setTimeout(f, 3000));
+            console.log('\\n%%from-global-teardown3000')
+          };
+        `,
+        'a.test.js': `
+          import { test, expect } from '@playwright/test';
+          test('should work', async ({}) => {});
+        `
+      }, null, { useWeb });
+      await page.getByTitle('Run all').click();
+      await expect(page.getByTestId('status-line')).toHaveText('1/1 passed (100%)');
+      await testProcess.kill('SIGINT');
+      await expect.poll(() => testProcess.outputLines()).toEqual([
+        'from-global-teardown0000',
+        'from-global-teardown3000',
+      ]);
+    });
+  });
+}
