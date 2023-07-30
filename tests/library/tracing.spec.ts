@@ -183,7 +183,7 @@ test('should collect two traces', async ({ context, page, server }, testInfo) =>
 });
 
 test('should respect tracesDir and name', async ({ browserType, server, mode }, testInfo) => {
-  test.skip(mode === 'service', 'Service ignores tracesDir');
+  test.skip(mode.startsWith('service'), 'Service ignores tracesDir');
 
   const tracesDir = testInfo.outputPath('traces');
   const browser = await browserType.launch({ tracesDir });
@@ -236,7 +236,7 @@ test('should respect tracesDir and name', async ({ browserType, server, mode }, 
   }
 });
 
-test('should not include trace resources from the provious chunks', async ({ context, page, server, browserName }, testInfo) => {
+test('should not include trace resources from the previous chunks', async ({ context, page, server, browserName }, testInfo) => {
   test.skip(browserName !== 'chromium', 'The number of screenshots is flaky in non-Chromium');
   await context.tracing.start({ screenshots: true, snapshots: true, sources: true });
 
@@ -318,6 +318,45 @@ test('should record network failures', async ({ context, page, server }, testInf
   const { events } = await parseTraceRaw(testInfo.outputPath('trace1.zip'));
   const requestEvent = events.find(e => e.type === 'resource-snapshot' && !!e.snapshot.response._failureText);
   expect(requestEvent).toBeTruthy();
+});
+
+test('should not crash when browser closes mid-trace', async ({ browserType, server }, testInfo) => {
+  const browser = await browserType.launch();
+  const page = await browser.newPage();
+  await page.context().tracing.start({ snapshots: true, screenshots: true });
+  await page.goto(server.EMPTY_PAGE);
+  await browser.close();
+  await new Promise(f => setTimeout(f, 1000));  // Give it some time to throw errors
+});
+
+test('should survive browser.close with auto-created traces dir', async ({ browserType }, testInfo) => {
+  const oldTracesDir = (browserType as any)._defaultLaunchOptions.tracesDir;
+  (browserType as any)._defaultLaunchOptions.tracesDir = undefined;
+  const browser = await browserType.launch();
+  const page = await browser.newPage();
+  await page.context().tracing.start();
+
+  const done = { value: false };
+  async function go() {
+    while (!done.value) {
+      // Produce a lot of operations to make sure tracing operations are enqueued.
+      for (let i = 0; i < 100; i++)
+        page.evaluate('1 + 1').catch(() => {});
+      await new Promise(f => setTimeout(f, 250));
+    }
+  }
+
+  void go();
+  await new Promise(f => setTimeout(f, 1000));
+
+  // Close the browser and give it some time to fail.
+  await Promise.all([
+    browser.close(),
+    new Promise(f => setTimeout(f, 500)),
+  ]);
+
+  done.value = true;
+  (browserType as any)._defaultLaunchOptions.tracesDir = oldTracesDir;
 });
 
 test('should not stall on dialogs', async ({ page, context, server }) => {
@@ -638,7 +677,7 @@ test('should store postData for global request', async ({ request, server }, tes
 });
 
 test('should not flush console events', async ({ context, page, mode }, testInfo) => {
-  test.skip(mode === 'service', 'Uses artifactsFolderName');
+  test.skip(mode.startsWith('service'), 'Uses artifactsFolderName');
   const testId = test.info().testId;
   await context.tracing.start({ name: testId });
   const promise = new Promise<void>(f => {
@@ -704,7 +743,7 @@ test('should flush console events on tracing stop', async ({ context, page }, te
 });
 
 test('should not emit after w/o before', async ({ browserType, mode }, testInfo) => {
-  test.skip(mode === 'service', 'Service ignores tracesDir');
+  test.skip(mode.startsWith('service'), 'Service ignores tracesDir');
 
   const tracesDir = testInfo.outputPath('traces');
   const browser = await browserType.launch({ tracesDir });
@@ -712,7 +751,11 @@ test('should not emit after w/o before', async ({ browserType, mode }, testInfo)
   const page = await context.newPage();
 
   await context.tracing.start({ name: 'name1', snapshots: true });
-  const evaluatePromise = page.evaluate(() => new Promise(f => (window as any).callback = f)).catch(() => {});
+  const evaluatePromise = page.evaluate(() => {
+    console.log('started');
+    return new Promise(f => (window as any).callback = f);
+  }).catch(() => {});
+  await page.waitForEvent('console');
   await context.tracing.stopChunk({ path: testInfo.outputPath('trace1.zip') });
   expect(fs.existsSync(path.join(tracesDir, 'name1.trace'))).toBe(true);
 
@@ -738,21 +781,34 @@ test('should not emit after w/o before', async ({ browserType, mode }, testInfo)
   let call1: number;
   {
     const { events } = await parseTraceRaw(testInfo.outputPath('trace1.zip'));
-    expect(events.map(sanitize).filter(Boolean)).toEqual([
+    const sanitized = events.map(sanitize).filter(Boolean);
+    expect(sanitized).toEqual([
       {
         type: 'before',
         callId: expect.any(Number),
         apiName: 'page.evaluate'
-      }
+      },
+      {
+        type: 'before',
+        callId: expect.any(Number),
+        apiName: 'page.waitForEvent'
+      },
+      {
+        type: 'after',
+        callId: expect.any(Number),
+        apiName: undefined,
+      },
     ]);
-    call1 = events.map(sanitize).filter(Boolean)[0].callId;
+    call1 = sanitized[0].callId;
+    expect(sanitized[1].callId).toBe(sanitized[2].callId);
   }
 
   let call2before: number;
   let call2after: number;
   {
     const { events } = await parseTraceRaw(testInfo.outputPath('trace2.zip'));
-    expect(events.map(sanitize).filter(Boolean)).toEqual([
+    const sanitized = events.map(sanitize).filter(Boolean);
+    expect(sanitized).toEqual([
       {
         type: 'before',
         callId: expect.any(Number),
@@ -764,8 +820,8 @@ test('should not emit after w/o before', async ({ browserType, mode }, testInfo)
         apiName: undefined
       }
     ]);
-    call2before = events.map(sanitize).filter(Boolean)[0].callId;
-    call2after = events.map(sanitize).filter(Boolean)[1].callId;
+    call2before = sanitized[0].callId;
+    call2after = sanitized[1].callId;
   }
   expect(call2before).toBeGreaterThan(call1);
   expect(call2after).toBe(call2before);

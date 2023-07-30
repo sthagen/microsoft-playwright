@@ -70,6 +70,7 @@ const test = playwrightTest.extend<ExtraFixtures>({
 });
 
 test.slow(true, 'All connect tests are slow');
+test.skip(({ mode }) => mode.startsWith('service'));
 
 for (const kind of ['launchServer', 'run-server'] as const) {
   test.describe(kind, () => {
@@ -644,7 +645,8 @@ for (const kind of ['launchServer', 'run-server'] as const) {
       expect(await response.json()).toEqual({ 'foo': 'bar' });
     });
 
-    test('should upload large file', async ({ connect, startRemoteServer, server, browserName, isMac }, testInfo) => {
+    test('should upload large file', async ({ connect, startRemoteServer, server, browserName, isMac, mode }, testInfo) => {
+      test.skip(mode.startsWith('service'), 'Take it easy on service');
       test.skip(browserName === 'webkit' && isMac && parseInt(os.release(), 10) < 20, 'WebKit for macOS 10.15 is frozen and does not have corresponding protocol features.');
       test.slow();
       const remoteServer = await startRemoteServer(kind);
@@ -734,7 +736,7 @@ for (const kind of ['launchServer', 'run-server'] as const) {
           res.end('<html><body>original-target</body></html>');
         });
         const remoteServer = await startRemoteServer(kind);
-        const browser = await connect(remoteServer.wsEndpoint(), { _exposeNetwork: '*' } as any);
+        const browser = await connect(remoteServer.wsEndpoint(), { exposeNetwork: '*' });
         const page = await browser.newPage();
         await page.goto(server.PREFIX + '/foo.html');
         expect(await page.content()).toContain('original-target');
@@ -768,7 +770,7 @@ for (const kind of ['launchServer', 'run-server'] as const) {
         });
         const examplePort = 20_000 + testInfo.workerIndex * 3;
         const remoteServer = await startRemoteServer(kind);
-        const browser = await connect(remoteServer.wsEndpoint(), { _exposeNetwork: '*' } as any, ipV6ServerPort);
+        const browser = await connect(remoteServer.wsEndpoint(), { exposeNetwork: '*' }, ipV6ServerPort);
         const page = await browser.newPage();
         await page.goto(`http://[::1]:${examplePort}/foo.html`);
         expect(await page.content()).toContain('from-ipv6-server');
@@ -788,7 +790,7 @@ for (const kind of ['launchServer', 'run-server'] as const) {
         });
         const examplePort = 20_000 + workerInfo.workerIndex * 3;
         const remoteServer = await startRemoteServer(kind);
-        const browser = await connect(remoteServer.wsEndpoint(), { _exposeNetwork: '*' } as any, dummyServerPort);
+        const browser = await connect(remoteServer.wsEndpoint(), { exposeNetwork: '*' }, dummyServerPort);
         const page = await browser.newPage();
         const response = await page.request.get(`http://127.0.0.1:${examplePort}/foo.html`);
         expect(response.status()).toBe(200);
@@ -804,7 +806,7 @@ for (const kind of ['launchServer', 'run-server'] as const) {
         });
         const examplePort = 20_000 + workerInfo.workerIndex * 3;
         const remoteServer = await startRemoteServer(kind);
-        const browser = await connect(remoteServer.wsEndpoint(), { _exposeNetwork: '*' } as any, dummyServerPort);
+        const browser = await connect(remoteServer.wsEndpoint(), { exposeNetwork: '*' }, dummyServerPort);
         const page = await browser.newPage();
         await page.goto(`http://local.playwright:${examplePort}/foo.html`);
         expect(await page.content()).toContain('from-dummy-server');
@@ -814,7 +816,7 @@ for (const kind of ['launchServer', 'run-server'] as const) {
       test('should lead to the error page for forwarded requests when the connection is refused', async ({ connect, startRemoteServer, browserName }, workerInfo) => {
         const examplePort = 20_000 + workerInfo.workerIndex * 3;
         const remoteServer = await startRemoteServer(kind);
-        const browser = await connect(remoteServer.wsEndpoint(), { _exposeNetwork: '*' } as any);
+        const browser = await connect(remoteServer.wsEndpoint(), { exposeNetwork: '*' });
         const page = await browser.newPage();
         const error = await page.goto(`http://127.0.0.1:${examplePort}`).catch(e => e);
         if (browserName === 'chromium')
@@ -835,7 +837,7 @@ for (const kind of ['launchServer', 'run-server'] as const) {
         });
         const examplePort = 20_000 + workerInfo.workerIndex * 3;
         const remoteServer = await startRemoteServer(kind);
-        const browser = await connect(remoteServer.wsEndpoint(), { _exposeNetwork: 'localhost' } as any, dummyServerPort);
+        const browser = await connect(remoteServer.wsEndpoint(), { exposeNetwork: 'localhost' }, dummyServerPort);
         const page = await browser.newPage();
 
         // localhost should be proxied.
@@ -864,11 +866,11 @@ for (const kind of ['launchServer', 'run-server'] as const) {
         });
         const remoteServer = await startRemoteServer(kind);
         const browser = await connect(remoteServer.wsEndpoint(), {
-          _exposeNetwork: '127.0.0.1',
+          exposeNetwork: '127.0.0.1',
           headers: {
             'x-playwright-proxy': '*',
           },
-        } as any, dummyServerPort);
+        }, dummyServerPort);
         const page = await browser.newPage();
 
         // local.playwright should fail on the client side.

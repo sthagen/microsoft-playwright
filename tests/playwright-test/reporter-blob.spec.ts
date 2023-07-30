@@ -127,7 +127,7 @@ test('should call methods in right order', async ({ runInlineTest, mergeReports 
     `
   };
   await runInlineTest(files, { shard: `1/3` });
-  await runInlineTest(files, { shard: `3/3` });
+  await runInlineTest(files, { shard: `3/3` }, { PWTEST_BLOB_DO_NOT_REMOVE: '1' });
   const reportFiles = await fs.promises.readdir(reportDir);
   reportFiles.sort();
   expect(reportFiles).toEqual([expect.stringMatching(/report-.*.zip/), expect.stringMatching(/report-.*.zip/), 'resources']);
@@ -146,14 +146,24 @@ test('should call methods in right order', async ({ runInlineTest, mergeReports 
   expect(lines.filter(l => l === 'onExit').length).toBe(1);
 });
 
-test('should merge into html', async ({ runInlineTest, mergeReports, showReport, page }) => {
+test('should merge into html with dependencies', async ({ runInlineTest, mergeReports, showReport, page }) => {
   const reportDir = test.info().outputPath('blob-report');
   const files = {
     'playwright.config.ts': `
       module.exports = {
         retries: 1,
-        reporter: [['blob', { outputDir: '${reportDir.replace(/\\/g, '/')}' }]]
+        reporter: [['blob', { outputDir: '${reportDir.replace(/\\/g, '/')}' }]],
+        projects: [
+          { name: 'test', dependencies: ['setup'] },
+          { name: 'setup', testMatch: /.*setup.js/ },
+        ]
       };
+    `,
+    'setup.js': `
+      import { test as setup } from '@playwright/test';
+      setup('login once', async ({}) => {
+        await setup.step('login step', async () => {});
+      });
     `,
     'a.test.js': `
       import { test, expect } from '@playwright/test';
@@ -191,7 +201,7 @@ test('should merge into html', async ({ runInlineTest, mergeReports, showReport,
   };
   const totalShards = 3;
   for (let i = 0; i < totalShards; i++)
-    await runInlineTest(files, { shard: `${i + 1}/${totalShards}` });
+    await runInlineTest(files, { shard: `${i + 1}/${totalShards}` }, { PWTEST_BLOB_DO_NOT_REMOVE: '1' });
   const reportFiles = await fs.promises.readdir(reportDir);
   reportFiles.sort();
   expect(reportFiles).toEqual([expect.stringMatching(/report-.*.zip/), expect.stringMatching(/report-.*.zip/), expect.stringMatching(/report-.*.zip/), 'resources']);
@@ -202,14 +212,24 @@ test('should merge into html', async ({ runInlineTest, mergeReports, showReport,
 
   await showReport();
 
-  await expect(page.locator('.subnav-item:has-text("All") .counter')).toHaveText('10');
-  await expect(page.locator('.subnav-item:has-text("Passed") .counter')).toHaveText('3');
+  await expect(page.locator('.subnav-item:has-text("All") .counter')).toHaveText('13');
+  await expect(page.locator('.subnav-item:has-text("Passed") .counter')).toHaveText('6');
   await expect(page.locator('.subnav-item:has-text("Failed") .counter')).toHaveText('2');
   await expect(page.locator('.subnav-item:has-text("Flaky") .counter')).toHaveText('2');
   await expect(page.locator('.subnav-item:has-text("Skipped") .counter')).toHaveText('3');
 
-  await expect(page.locator('.test-file-test .test-file-title')).toHaveText(
-      ['failing 1', 'flaky 1', 'math 1', 'skipped 1', 'failing 2', 'math 2', 'skipped 2', 'flaky 2', 'math 3', 'skipped 3']);
+  await expect(page.locator('.test-file-test .test-file-title')).toHaveText([
+    'failing 1', 'flaky 1', 'math 1', 'skipped 1',
+    'failing 2', 'math 2', 'skipped 2',
+    'flaky 2', 'math 3', 'skipped 3',
+    'login once', 'login once', 'login once',
+  ]);
+
+  for (let i = 0; i < 3; i++) {
+    await page.getByText('login once').nth(i).click();
+    await expect(page.getByText('login step')).toBeVisible();
+    await page.goBack();
+  }
 });
 
 test('be able to merge incomplete shards', async ({ runInlineTest, mergeReports, showReport, page }) => {
@@ -250,7 +270,7 @@ test('be able to merge incomplete shards', async ({ runInlineTest, mergeReports,
     `
   };
   await runInlineTest(files, { shard: `1/3` });
-  await runInlineTest(files, { shard: `3/3` });
+  await runInlineTest(files, { shard: `3/3` }, { PWTEST_BLOB_DO_NOT_REMOVE: '1' });
 
   const reportFiles = await fs.promises.readdir(reportDir);
   reportFiles.sort();
@@ -292,7 +312,7 @@ test('total time is from test run not from merge', async ({ runInlineTest, merge
     `,
   };
   await runInlineTest(files, { shard: `1/2` });
-  await runInlineTest(files, { shard: `2/2` });
+  await runInlineTest(files, { shard: `2/2` }, { PWTEST_BLOB_DO_NOT_REMOVE: '1' });
 
   const { exitCode, output } = await mergeReports(reportDir, { 'PW_TEST_HTML_REPORT_OPEN': 'never' }, { additionalArgs: ['--reporter', 'html'] });
   expect(exitCode).toBe(0);
@@ -357,7 +377,7 @@ test('merge into list report by default', async ({ runInlineTest, mergeReports }
 
   const totalShards = 3;
   for (let i = 0; i < totalShards; i++)
-    await runInlineTest(files, { shard: `${i + 1}/${totalShards}` });
+    await runInlineTest(files, { shard: `${i + 1}/${totalShards}` }, { PWTEST_BLOB_DO_NOT_REMOVE: '1' });
   const reportFiles = await fs.promises.readdir(reportDir);
   reportFiles.sort();
   expect(reportFiles).toEqual([expect.stringMatching(/report-.*.zip/), expect.stringMatching(/report-.*.zip/), expect.stringMatching(/report-.*.zip/), 'resources']);
@@ -564,7 +584,7 @@ test('resource names should not clash between runs', async ({ runInlineTest, sho
     `
   };
   await runInlineTest(files, { shard: `1/2` });
-  await runInlineTest(files, { shard: `2/2` });
+  await runInlineTest(files, { shard: `2/2` }, { PWTEST_BLOB_DO_NOT_REMOVE: '1' });
 
   const reportFiles = await fs.promises.readdir(reportDir);
   reportFiles.sort();
@@ -700,7 +720,7 @@ test('multiple output reports based on config', async ({ runInlineTest, mergeRep
     `
   };
   await runInlineTest(files, { shard: `1/2` });
-  await runInlineTest(files, { shard: `2/2` });
+  await runInlineTest(files, { shard: `2/2` }, { PWTEST_BLOB_DO_NOT_REMOVE: '1' });
 
   const reportFiles = await fs.promises.readdir(reportDir);
   reportFiles.sort();
@@ -837,7 +857,7 @@ test('preserve config fields', async ({ runInlineTest, mergeReports }) => {
   };
 
   await runInlineTest(files, { shard: `1/3`, workers: 1 });
-  await runInlineTest(files, { shard: `3/3`, workers: 1 });
+  await runInlineTest(files, { shard: `3/3`, workers: 1 }, { PWTEST_BLOB_DO_NOT_REMOVE: '1' });
 
   const mergeConfig = {
     reportSlowTests: {
@@ -1102,7 +1122,7 @@ test('same project different suffixes', async ({ runInlineTest, mergeReports }) 
   };
 
   await runInlineTest(files, undefined, { PWTEST_BLOB_SUFFIX: '-first' });
-  await runInlineTest(files, undefined, { PWTEST_BLOB_SUFFIX: '-second' });
+  await runInlineTest(files, undefined, { PWTEST_BLOB_SUFFIX: '-second', PWTEST_BLOB_DO_NOT_REMOVE: '1' });
 
   const reportDir = test.info().outputPath('blob-report');
   const { exitCode, output } = await mergeReports(reportDir, {}, { additionalArgs: ['--reporter', test.info().outputPath('echo-reporter.js')] });
@@ -1116,4 +1136,26 @@ test('no reports error', async ({ runInlineTest, mergeReports }) => {
   const { exitCode, output } = await mergeReports(reportDir);
   expect(exitCode).toBe(1);
   expect(output).toContain(`No report files found in`);
+});
+
+test('blob-report should be next to package.json', async ({ runInlineTest }, testInfo) => {
+  const result = await runInlineTest({
+    'foo/package.json': `{ "name": "foo" }`,
+    // unused config along "search path"
+    'foo/bar/playwright.config.js': `
+      module.exports = { projects: [ {} ] };
+    `,
+    'foo/bar/baz/tests/a.spec.js': `
+      import { test, expect } from '@playwright/test';
+      const fs = require('fs');
+      test('pass', ({}, testInfo) => {
+      });
+    `,
+  }, { reporter: 'blob' }, {}, { cwd: 'foo/bar/baz/tests' });
+  expect(result.exitCode).toBe(0);
+  expect(result.passed).toBe(1);
+  expect(fs.existsSync(testInfo.outputPath('blob-report'))).toBe(false);
+  expect(fs.existsSync(testInfo.outputPath('foo', 'blob-report'))).toBe(true);
+  expect(fs.existsSync(testInfo.outputPath('foo', 'bar', 'blob-report'))).toBe(false);
+  expect(fs.existsSync(testInfo.outputPath('foo', 'bar', 'baz', 'tests', 'blob-report'))).toBe(false);
 });
