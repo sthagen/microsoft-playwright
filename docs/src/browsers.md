@@ -468,31 +468,17 @@ Sometimes companies maintain an internal proxy that blocks direct access to the 
 resources. In this case, Playwright can be configured to download browsers via a proxy server.
 
 ```bash tab=bash-bash lang=js
-# For Playwright Test
 HTTPS_PROXY=https://192.0.2.1 npx playwright install
-
-# For Playwright Library
-HTTPS_PROXY=https://192.0.2.1 npm install playwright
 ```
 
 ```batch tab=bash-batch lang=js
-# For Playwright Test
 set HTTPS_PROXY=https://192.0.2.1
 npx playwright install
-
-# For Playwright Library
-set HTTPS_PROXY=https://192.0.2.1
-npm install playwright
 ```
 
 ```powershell tab=bash-powershell lang=js
-# For Playwright Test
 $Env:HTTPS_PROXY="https://192.0.2.1"
 npx playwright install
-
-# For Playwright Library
-$Env:HTTPS_PROXY="https://192.0.2.1"
-npm install playwright
 ```
 
 ```bash tab=bash-bash lang=python
@@ -614,6 +600,7 @@ pwsh bin/Debug/netX/playwright.ps1 install
 $Env:PLAYWRIGHT_DOWNLOAD_CONNECTION_TIMEOUT="120000"
 pwsh bin/Debug/netX/playwright.ps1 install
 ```
+
 ## Download from artifact repository
 
 By default, Playwright downloads browsers from Microsoft's CDN.
@@ -623,31 +610,17 @@ binaries. In this case, Playwright can be configured to download from a custom
 location using the `PLAYWRIGHT_DOWNLOAD_HOST` env variable.
 
 ```bash tab=bash-bash lang=js
-# For Playwright Test
 PLAYWRIGHT_DOWNLOAD_HOST=192.0.2.1 npx playwright install
-
-# For Playwright Library
-PLAYWRIGHT_DOWNLOAD_HOST=192.0.2.1 npm install playwright
 ```
 
 ```batch tab=bash-batch lang=js
-# For Playwright Test
 set PLAYWRIGHT_DOWNLOAD_HOST=192.0.2.1
 npx playwright install
-
-# For Playwright Library
-set PLAYWRIGHT_DOWNLOAD_HOST=192.0.2.1
-npm install playwright
 ```
 
 ```powershell tab=bash-powershell lang=js
-# For Playwright Test
 $Env:PLAYWRIGHT_DOWNLOAD_HOST="192.0.2.1"
 npx playwright install
-
-# For Playwright Library
-$Env:PLAYWRIGHT_DOWNLOAD_HOST="192.0.2.1"
-npm install playwright
 ```
 
 ```bash tab=bash-bash lang=python
@@ -699,35 +672,19 @@ It is also possible to use a per-browser download hosts using `PLAYWRIGHT_CHROMI
 take precedence over `PLAYWRIGHT_DOWNLOAD_HOST`.
 
 ```bash tab=bash-bash lang=js
-# For Playwright Test
 PLAYWRIGHT_FIREFOX_DOWNLOAD_HOST=203.0.113.3 PLAYWRIGHT_DOWNLOAD_HOST=192.0.2.1 npx playwright install
-
-# For Playwright Library
-PLAYWRIGHT_FIREFOX_DOWNLOAD_HOST=203.0.113.3 PLAYWRIGHT_DOWNLOAD_HOST=192.0.2.1 npm install playwright
 ```
 
 ```batch tab=bash-batch lang=js
-# For Playwright Test
 set PLAYWRIGHT_FIREFOX_DOWNLOAD_HOST=203.0.113.3
 set PLAYWRIGHT_DOWNLOAD_HOST=192.0.2.1
 npx playwright install
-
-# For Playwright Library
-set PLAYWRIGHT_FIREFOX_DOWNLOAD_HOST=203.0.113.3
-set PLAYWRIGHT_DOWNLOAD_HOST=192.0.2.1
-npm install playwright
 ```
 
 ```powershell tab=bash-powershell lang=js
-# For Playwright Test
 $Env:PLAYWRIGHT_FIREFOX_DOWNLOAD_HOST="203.0.113.3"
 $Env:PLAYWRIGHT_DOWNLOAD_HOST="192.0.2.1"
 npx playwright install
-
-# For Playwright Library
-$Env:PLAYWRIGHT_FIREFOX_DOWNLOAD_HOST="203.0.113.3"
-$Env:PLAYWRIGHT_DOWNLOAD_HOST="192.0.2.1"
-npm install playwright
 ```
 
 ```bash tab=bash-bash lang=python
@@ -951,26 +908,12 @@ npx playwright install
 :::
 
 ### Skip browser downloads
-* langs: js, java
+* langs: java
 
 In certain cases, it is desired to avoid browser downloads altogether because
 browser binaries are managed separately.
 
 This can be done by setting `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD` variable before installation.
-
-```bash tab=bash-bash lang=js
-PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 npx playwright install
-```
-
-```batch tab=bash-batch lang=js
-set PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
-npx playwright install
-```
-
-```powershell tab=bash-powershell lang=js
-$Env:PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
-npx playwright install
-```
 
 ```bash tab=bash-bash lang=java
 PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 mvn test

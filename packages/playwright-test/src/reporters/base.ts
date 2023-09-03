@@ -18,7 +18,7 @@ import { colors, ms as milliseconds, parseStackTraceLine } from 'playwright-core
 import path from 'path';
 import type { FullConfig, TestCase, Suite, TestResult, TestError, FullResult, TestStep, Location } from '../../types/testReporter';
 import type { SuitePrivate } from '../../types/reporterPrivate';
-import { monotonicTime } from 'playwright-core/lib/utils';
+import { getPackageManagerExecCommand } from 'playwright-core/lib/utils';
 import type { ReporterV2 } from './reporterV2';
 export type TestResultOutput = { chunk: string | Buffer, type: 'stdout' | 'stderr' };
 export const kOutputSymbol = Symbol('output');
@@ -45,16 +45,15 @@ type TestSummary = {
 };
 
 export class BaseReporter implements ReporterV2 {
-  duration = 0;
   config!: FullConfig;
   suite!: Suite;
   totalTestCount = 0;
   result!: FullResult;
   private fileDurations = new Map<string, number>();
-  private monotonicStartTime: number = 0;
   private _omitFailures: boolean;
   private readonly _ttyWidthForTest: number;
   private _fatalErrors: TestError[] = [];
+  private _failureCount: number = 0;
 
   constructor(options: { omitFailures?: boolean } = {}) {
     this._omitFailures = options.omitFailures || false;
@@ -70,7 +69,6 @@ export class BaseReporter implements ReporterV2 {
   }
 
   onBegin(suite: Suite) {
-    this.monotonicStartTime = monotonicTime();
     this.suite = suite;
     this.totalTestCount = suite.allTests().length;
   }
@@ -94,6 +92,8 @@ export class BaseReporter implements ReporterV2 {
   }
 
   onTestEnd(test: TestCase, result: TestResult) {
+    if (result.status !== 'skipped' && result.status !== test.expectedStatus)
+      ++this._failureCount;
     // Ignore any tests that are run in parallel.
     for (let suite: Suite | undefined = test.parent; suite; suite = suite.parent) {
       if ((suite as SuitePrivate)._parallelMode === 'parallel')
@@ -111,7 +111,6 @@ export class BaseReporter implements ReporterV2 {
   }
 
   async onEnd(result: FullResult) {
-    this.duration = monotonicTime() - this.monotonicStartTime;
     this.result = result;
   }
 
@@ -179,7 +178,7 @@ export class BaseReporter implements ReporterV2 {
     if (skipped)
       tokens.push(colors.yellow(`  ${skipped} skipped`));
     if (expected)
-      tokens.push(colors.green(`  ${expected} passed`) + colors.dim(` (${milliseconds(this.duration)})`));
+      tokens.push(colors.green(`  ${expected} passed`) + colors.dim(` (${milliseconds(this.result.duration)})`));
     if (this.result.status === 'timedout')
       tokens.push(colors.red(`  Timed out waiting ${this.config.globalTimeout / 1000}s for the entire test run`));
     if (fatalErrors.length && expected + unexpected.length + interrupted.length + flaky.length > 0)
@@ -232,6 +231,7 @@ export class BaseReporter implements ReporterV2 {
     if (full && summary.failuresToPrint.length && !this._omitFailures)
       this._printFailures(summary.failuresToPrint);
     this._printSlowTests();
+    this._printMaxFailuresReached();
     this._printSummary(summaryMessage);
   }
 
@@ -251,6 +251,14 @@ export class BaseReporter implements ReporterV2 {
     });
     if (slowTests.length)
       console.log(colors.yellow('  Consider splitting slow test files to speed up parallel execution'));
+  }
+
+  private _printMaxFailuresReached() {
+    if (!this.config.maxFailures)
+      return;
+    if (this._failureCount < this.config.maxFailures)
+      return;
+    console.log(colors.yellow(`Testing stopped early after ${this.config.maxFailures} maximum allowed failures.`));
   }
 
   private _printSummary(summary: string) {
@@ -298,9 +306,10 @@ export function formatFailure(config: FullConfig, test: TestCase, options: {inde
           resultLines.push(colors.cyan(`    ${relativePath}`));
           // Make this extensible
           if (attachment.name === 'trace') {
+            const packageManagerCommand = getPackageManagerExecCommand();
             resultLines.push(colors.cyan(`    Usage:`));
             resultLines.push('');
-            resultLines.push(colors.cyan(`        npx playwright show-trace ${relativePath}`));
+            resultLines.push(colors.cyan(`        ${packageManagerCommand} playwright show-trace ${relativePath}`));
             resultLines.push('');
           }
         } else {

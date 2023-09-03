@@ -17,7 +17,7 @@
 import './codeMirrorWrapper.css';
 import * as React from 'react';
 import type { CodeMirror } from './codeMirrorModule';
-import { ansi2htmlMarkup } from './errorMessage';
+import { ansi2html } from '../ansi2html';
 import { useMeasure } from '../uiUtils';
 
 export type SourceHighlight = {
@@ -26,16 +26,17 @@ export type SourceHighlight = {
   message?: string;
 };
 
-export type Language = 'javascript' | 'python' | 'java' | 'csharp' | 'jsonl';
+export type Language = 'javascript' | 'python' | 'java' | 'csharp' | 'jsonl' | 'html' | 'css';
 
 export interface SourceProps {
   text: string;
-  language: Language;
+  language?: Language;
   readOnly?: boolean;
   // 1-based
   highlight?: SourceHighlight[];
   revealLine?: number;
   lineNumbers?: boolean;
+  isFocused?: boolean;
   focusOnChange?: boolean;
   wrapLines?: boolean;
   onChange?: (text: string) => void;
@@ -48,6 +49,7 @@ export const CodeMirrorWrapper: React.FC<SourceProps> = ({
   highlight,
   revealLine,
   lineNumbers,
+  isFocused,
   focusOnChange,
   wrapLines,
   onChange,
@@ -66,13 +68,19 @@ export const CodeMirrorWrapper: React.FC<SourceProps> = ({
       if (!element)
         return;
 
-      let mode = 'javascript';
+      let mode = '';
+      if (language === 'javascript')
+        mode = 'javascript';
       if (language === 'python')
         mode = 'python';
       if (language === 'java')
         mode = 'text/x-java';
       if (language === 'csharp')
         mode = 'text/x-csharp';
+      if (language === 'html')
+        mode = 'htmlmixed';
+      if (language === 'css')
+        mode = 'css';
 
       if (codemirrorRef.current
         && mode === codemirrorRef.current.cm.getOption('mode')
@@ -94,10 +102,12 @@ export const CodeMirrorWrapper: React.FC<SourceProps> = ({
         lineWrapping: wrapLines,
       });
       codemirrorRef.current = { cm };
+      if (isFocused)
+        cm.focus();
       setCodemirror(cm);
       return cm;
     })();
-  }, [modulePromise, codemirror, codemirrorElement, language, lineNumbers, wrapLines, readOnly]);
+  }, [modulePromise, codemirror, codemirrorElement, language, lineNumbers, wrapLines, readOnly, isFocused]);
 
   React.useEffect(() => {
     if (codemirrorRef.current)
@@ -142,7 +152,7 @@ export const CodeMirrorWrapper: React.FC<SourceProps> = ({
         }
 
         const errorWidgetElement = document.createElement('div');
-        errorWidgetElement.innerHTML = ansi2htmlMarkup(h.message || '');
+        errorWidgetElement.innerHTML = ansi2html(h.message || '');
         errorWidgetElement.className = 'source-line-error-widget';
         widgets.push(codemirror.addLineWidget(h.line, errorWidgetElement, { above: true, coverGutter: false }));
       }

@@ -25,6 +25,7 @@ import { WorkerHost } from './workerHost';
 import type { TestGroup } from './testGroups';
 import type { FullConfigInternal } from '../common/config';
 import type { ReporterV2 } from '../reporters/reporterV2';
+import type { FailureTracker } from './failureTracker';
 
 type TestResultData = {
   result: TestResult;
@@ -47,15 +48,15 @@ export class Dispatcher {
   private _testById = new Map<string, TestData>();
   private _config: FullConfigInternal;
   private _reporter: ReporterV2;
-  private _hasWorkerErrors = false;
-  private _failureCount = 0;
+  private _failureTracker: FailureTracker;
 
   private _extraEnvByProjectId: EnvByProjectId = new Map();
   private _producedEnvByProjectId: EnvByProjectId = new Map();
 
-  constructor(config: FullConfigInternal, reporter: ReporterV2) {
+  constructor(config: FullConfigInternal, reporter: ReporterV2, failureTracker: FailureTracker) {
     this._config = config;
     this._reporter = reporter;
+    this._failureTracker = failureTracker;
   }
 
   private _processFullySkippedJobs() {
@@ -76,7 +77,6 @@ export class Dispatcher {
         const result = test._appendTestResult();
         result.status = 'skipped';
         this._reporter.onTestBegin(test, result);
-        test.annotations = [...test._staticAnnotations];
         this._reportTestEnd(test, result);
       }
       this._queue.shift();
@@ -137,7 +137,21 @@ export class Dispatcher {
     }
 
     // 3. Run the job.
-    await this._runJob(worker, job);
+    const result = await this._runJob(worker, job);
+    this._updateCounterForWorkerHash(job.workerHash, -1);
+
+    // 4. When worker encounters error, we stop it and create a new one.
+    //    We also do not keep the worker alive if it cannot serve any more jobs.
+    if (result.didFail)
+      void worker.stop(true /* didFail */);
+    else if (this._isWorkerRedundant(worker))
+      void worker.stop();
+
+    // 5. Possibly schedule a new job with leftover tests and/or retries.
+    if (!this._isStopped && result.newJob) {
+      this._queue.unshift(result.newJob);
+      this._updateCounterForWorkerHash(job.workerHash, +1);
+    }
   }
 
   private _checkFinished() {
@@ -169,16 +183,23 @@ export class Dispatcher {
     return workersWithSameHash > this._queuedOrRunningHashCount.get(worker.hash())!;
   }
 
+  private _updateCounterForWorkerHash(hash: string, delta: number) {
+    this._queuedOrRunningHashCount.set(hash, delta + (this._queuedOrRunningHashCount.get(hash) || 0));
+  }
+
   async run(testGroups: TestGroup[], extraEnvByProjectId: EnvByProjectId) {
     this._extraEnvByProjectId = extraEnvByProjectId;
     this._queue = testGroups;
     for (const group of testGroups) {
-      this._queuedOrRunningHashCount.set(group.workerHash, 1 + (this._queuedOrRunningHashCount.get(group.workerHash) || 0));
+      this._updateCounterForWorkerHash(group.workerHash, +1);
       for (const test of group.tests)
         this._testById.set(test.id, { test, resultByWorkerIndex: new Map() });
     }
     this._isStopped = false;
     this._workerSlots = [];
+    // 0. Stop right away if we have reached max failures.
+    if (this._failureTracker.hasReachedMaxFailures())
+      void this.stop();
     // 1. Allocate workers.
     for (let i = 0; i < this._config.config.workers; i++)
       this._workerSlots.push({ busy: false });
@@ -186,12 +207,12 @@ export class Dispatcher {
     for (let i = 0; i < this._workerSlots.length; i++)
       void this._scheduleJob();
     this._checkFinished();
-    // 3. More jobs are scheduled when the worker becomes free, or a new job is added.
+    // 3. More jobs are scheduled when the worker becomes free.
     // 4. Wait for all jobs to finish.
     await this._finished;
   }
 
-  async _runJob(worker: WorkerHost, testGroup: TestGroup) {
+  async _runJob(worker: WorkerHost, testGroup: TestGroup): Promise<{ newJob?: TestGroup, didFail: boolean }> {
     const runPayload: RunPayload = {
       file: testGroup.requireFile,
       entries: testGroup.tests.map(test => {
@@ -200,8 +221,7 @@ export class Dispatcher {
     };
     worker.runTestGroup(runPayload);
 
-    let doneCallback = () => {};
-    const result = new Promise<void>(f => doneCallback = f);
+    const result = new ManualPromise<{ newJob?: TestGroup, didFail: boolean }>();
     const doneWithJob = () => {
       worker.removeListener('testBegin', onTestBegin);
       worker.removeListener('testEnd', onTestEnd);
@@ -210,7 +230,6 @@ export class Dispatcher {
       worker.removeListener('attach', onAttach);
       worker.removeListener('done', onDone);
       worker.removeListener('exit', onExit);
-      doneCallback();
     };
 
     const remainingByTestId = new Map(testGroup.tests.map(e => [e.id, e]));
@@ -233,7 +252,7 @@ export class Dispatcher {
     const onTestEnd = (params: TestEndPayload) => {
       runningTest = false;
       remainingByTestId.delete(params.testId);
-      if (this._hasReachedMaxFailures()) {
+      if (this._failureTracker.hasReachedMaxFailures()) {
         // Do not show more than one error to avoid confusion, but report
         // as interrupted to indicate that we did actually start the test.
         params.status = 'interrupted';
@@ -321,7 +340,6 @@ export class Dispatcher {
     worker.on('attach', onAttach);
 
     const onDone = (params: DonePayload & { unexpectedExitError?: TestError }) => {
-      this._queuedOrRunningHashCount.set(worker.hash(), this._queuedOrRunningHashCount.get(worker.hash())! - 1);
       let remaining = [...remainingByTestId.values()];
 
       // We won't file remaining if:
@@ -329,20 +347,16 @@ export class Dispatcher {
       // - we are here not because something failed
       // - no unrecoverable worker error
       if (!remaining.length && !failedTestIds.size && !params.fatalErrors.length && !params.skipTestsDueToSetupFailure.length && !params.fatalUnknownTestIds && !params.unexpectedExitError) {
-        if (this._isWorkerRedundant(worker))
-          void worker.stop();
         doneWithJob();
+        result.resolve({ didFail: false });
         return;
       }
-
-      // When worker encounters error, we will stop it and create a new one.
-      void worker.stop(true /* didFail */);
 
       const massSkipTestsFromRemaining = (testIds: Set<string>, errors: TestError[], onlyStartedTests?: boolean) => {
         remaining = remaining.filter(test => {
           if (!testIds.has(test.id))
             return true;
-          if (!this._hasReachedMaxFailures()) {
+          if (!this._failureTracker.hasReachedMaxFailures()) {
             const data = this._testById.get(test.id)!;
             const runData = data.resultByWorkerIndex.get(worker.workerIndex);
             // There might be a single test that has started but has not finished yet.
@@ -367,8 +381,8 @@ export class Dispatcher {
         if (errors.length) {
           // We had fatal errors after all tests have passed - most likely in some teardown.
           // Let's just fail the test run.
-          this._hasWorkerErrors = true;
-          for (const error of params.fatalErrors)
+          this._failureTracker.onWorkerError();
+          for (const error of errors)
             this._reporter.onError(error);
         }
       };
@@ -436,19 +450,14 @@ export class Dispatcher {
 
       for (const testId of retryCandidates) {
         const pair = this._testById.get(testId)!;
-        if (!this._isStopped && pair.test.results.length < pair.test.retries + 1)
+        if (pair.test.results.length < pair.test.retries + 1)
           remaining.push(pair.test);
       }
 
-      if (remaining.length) {
-        this._queue.unshift({ ...testGroup, tests: remaining });
-        this._queuedOrRunningHashCount.set(testGroup.workerHash, this._queuedOrRunningHashCount.get(testGroup.workerHash)! + 1);
-        // Perhaps we can immediately start the new job if there is a worker available?
-        void this._scheduleJob();
-      }
-
-      // This job is over, we just scheduled another one.
+      // This job is over, we will schedule another one.
       doneWithJob();
+      const newJob = remaining.length ? { ...testGroup, tests: remaining } : undefined;
+      result.resolve({ didFail: true, newJob });
     };
     worker.on('done', onDone);
 
@@ -464,7 +473,9 @@ export class Dispatcher {
   }
 
   _createWorker(testGroup: TestGroup, parallelIndex: number, loaderData: SerializedConfig) {
-    const worker = new WorkerHost(testGroup, parallelIndex, loaderData, this._extraEnvByProjectId.get(testGroup.projectId) || {});
+    const projectConfig = this._config.projects.find(p => p.id === testGroup.projectId)!;
+    const outputDir = projectConfig.project.outputDir;
+    const worker = new WorkerHost(testGroup, parallelIndex, loaderData, this._extraEnvByProjectId.get(testGroup.projectId) || {}, outputDir);
     const handleOutput = (params: TestOutputPayload) => {
       const chunk = chunkFromParams(params);
       if (worker.didFail()) {
@@ -489,7 +500,7 @@ export class Dispatcher {
       this._reporter.onStdErr(chunk, test, result);
     });
     worker.on('teardownErrors', (params: TeardownErrorsPayload) => {
-      this._hasWorkerErrors = true;
+      this._failureTracker.onWorkerError();
       for (const error of params.fatalErrors)
         this._reporter.onError(error);
     });
@@ -512,22 +523,11 @@ export class Dispatcher {
     this._checkFinished();
   }
 
-  private _hasReachedMaxFailures() {
-    const maxFailures = this._config.config.maxFailures;
-    return maxFailures > 0 && this._failureCount >= maxFailures;
-  }
-
   private _reportTestEnd(test: TestCase, result: TestResult) {
-    if (result.status !== 'skipped' && result.status !== test.expectedStatus)
-      ++this._failureCount;
     this._reporter.onTestEnd(test, result);
-    const maxFailures = this._config.config.maxFailures;
-    if (maxFailures && this._failureCount === maxFailures)
+    this._failureTracker.onTestEnd(test, result);
+    if (this._failureTracker.hasReachedMaxFailures())
       this.stop().catch(e => {});
-  }
-
-  hasWorkerErrors(): boolean {
-    return this._hasWorkerErrors;
   }
 }
 

@@ -19,12 +19,14 @@ import './attachmentsTab.css';
 import { ImageDiffView } from '@web/components/imageDiffView';
 import type { TestAttachment } from '@web/components/imageDiffView';
 import type { ActionTraceEventInContext, MultiTraceModel } from './modelUtil';
+import { PlaceholderPanel } from './placeholderPanel';
 
 export const AttachmentsTab: React.FunctionComponent<{
   model: MultiTraceModel | undefined,
 }> = ({ model }) => {
-  if (!model)
-    return null;
+  const attachments = model?.actions.map(a => a.attachments || []).flat() || [];
+  if (!model || !attachments.length)
+    return <PlaceholderPanel text='No attachments' />;
   return <div className='attachments-tab'>
     { model.actions.map((action, index) => <AttachmentsSection key={index} action={action} />) }
   </div>;
@@ -54,15 +56,16 @@ export const AttachmentsSection: React.FunctionComponent<{
     }} />}
     {screenshots.size ? <div className='attachments-section'>Screenshots</div> : undefined}
     {[...screenshots].map((a, i) => {
+      const url = attachmentURL(traceUrl, a);
       return <div className='attachment-item' key={`screenshot-${i}`}>
-        <div><img draggable='false' src={attachmentURL(traceUrl, a)} /></div>
-        <div><a target='_blank' href={attachmentURL(traceUrl, a)}>{a.name}</a></div>
+        <div><img draggable='false' src={url} /></div>
+        <div><a target='_blank' href={url}>{a.name}</a></div>
       </div>;
     })}
     {otherAttachments.size ? <div className='attachments-section'>Attachments</div> : undefined}
     {[...otherAttachments].map((a, i) => {
       return <div className='attachment-item' key={`attachment-${i}`}>
-        <a target='_blank' href={attachmentURL(traceUrl, a)}>{a.name}</a>
+        <a href={attachmentURL(traceUrl, a) + '&download'}>{a.name}</a>
       </div>;
     })}
   </>;

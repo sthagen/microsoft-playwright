@@ -15,14 +15,14 @@
  */
 
 import { colors, open } from 'playwright-core/lib/utilsBundle';
-import { MultiMap } from 'playwright-core/lib/utils';
+import { MultiMap, getPackageManagerExecCommand } from 'playwright-core/lib/utils';
 import fs from 'fs';
 import path from 'path';
 import type { TransformCallback } from 'stream';
 import { Transform } from 'stream';
 import { toPosixPath } from './json';
 import { codeFrameColumns } from '../transform/babelBundle';
-import type { FullConfig, Location, Suite, TestCase as TestCasePublic, TestResult as TestResultPublic, TestStep as TestStepPublic } from '../../types/testReporter';
+import type { FullResult, FullConfig, Location, Suite, TestCase as TestCasePublic, TestResult as TestResultPublic, TestStep as TestStepPublic } from '../../types/testReporter';
 import type { SuitePrivate } from '../../types/reporterPrivate';
 import { HttpServer, assert, calculateSha1, copyFileAndMakeWritable, gracefullyProcessExitDoNotHang, removeFolders, sanitizeForFilePath } from 'playwright-core/lib/utils';
 import { formatResultFailure, stripAnsiEscapes } from './base';
@@ -40,7 +40,13 @@ type TestEntry = {
   testCaseSummary: TestCaseSummary
 };
 
-type HtmlReportOpenOption = 'always' | 'never' | 'on-failure';
+const htmlReportOptions = ['always', 'never', 'on-failure'];
+type HtmlReportOpenOption = (typeof htmlReportOptions)[number];
+
+const isHtmlReportOption = (type: string): type is HtmlReportOpenOption => {
+  return htmlReportOptions.includes(type);
+};
+
 type HtmlReporterOptions = {
   configDir: string,
   outputFolder?: string,
@@ -100,16 +106,16 @@ class HtmlReporter extends EmptyReporter {
     const outputFolder = reportFolderFromEnv() ?? resolveReporterOutputPath('playwright-report', this._options.configDir, this._options.outputFolder);
     return {
       outputFolder,
-      open: process.env.PW_TEST_HTML_REPORT_OPEN as any || this._options.open || 'on-failure',
+      open: getHtmlReportOptionProcessEnv() || this._options.open || 'on-failure',
       attachmentsBaseURL: this._options.attachmentsBaseURL || 'data/'
     };
   }
 
-  override async onEnd() {
+  override async onEnd(result: FullResult) {
     const projectSuites = this.suite.suites;
     await removeFolders([this._outputFolder]);
     const builder = new HtmlBuilder(this.config, this._outputFolder, this._attachmentsBaseURL);
-    this._buildResult = await builder.build(this.config.metadata, projectSuites);
+    this._buildResult = await builder.build(this.config.metadata, projectSuites, result);
   }
 
   override async onExit() {
@@ -121,11 +127,12 @@ class HtmlReporter extends EmptyReporter {
     if (shouldOpen) {
       await showHTMLReport(this._outputFolder, this._options.host, this._options.port, singleTestId);
     } else if (!FullConfigInternal.from(this.config)?.cliListOnly) {
+      const packageManagerCommand = getPackageManagerExecCommand();
       const relativeReportPath = this._outputFolder === standaloneDefaultFolder() ? '' : ' ' + path.relative(process.cwd(), this._outputFolder);
       console.log('');
       console.log('To open last HTML report run:');
       console.log(colors.cyan(`
-  npx playwright show-report${relativeReportPath}
+  ${packageManagerCommand} playwright show-report${relativeReportPath}
 `));
     }
   }
@@ -135,6 +142,18 @@ function reportFolderFromEnv(): string | undefined {
   if (process.env[`PLAYWRIGHT_HTML_REPORT`])
     return path.resolve(process.cwd(), process.env[`PLAYWRIGHT_HTML_REPORT`]);
   return undefined;
+}
+
+function getHtmlReportOptionProcessEnv(): HtmlReportOpenOption | undefined {
+  const processKey = 'PW_TEST_HTML_REPORT_OPEN';
+  const htmlOpenEnv = process.env[processKey];
+  if (!htmlOpenEnv)
+    return undefined;
+  if (!isHtmlReportOption(htmlOpenEnv)) {
+    console.log(colors.red(`Configuration Error: HTML reporter Invalid value for ${processKey}: ${htmlOpenEnv}. Valid values are: ${htmlReportOptions.join(', ')}`));
+    return undefined;
+  }
+  return htmlOpenEnv;
 }
 
 function standaloneDefaultFolder(): string {
@@ -198,7 +217,7 @@ class HtmlBuilder {
     this._attachmentsBaseURL = attachmentsBaseURL;
   }
 
-  async build(metadata: Metadata, projectSuites: Suite[]): Promise<{ ok: boolean, singleTestId: string | undefined }> {
+  async build(metadata: Metadata, projectSuites: Suite[], result: FullResult): Promise<{ ok: boolean, singleTestId: string | undefined }> {
 
     const data = new Map<string, { testFile: TestFile, testFileSummary: TestFileSummary }>();
     for (const projectSuite of projectSuites) {
@@ -237,7 +256,6 @@ class HtmlBuilder {
         if (test.outcome === 'flaky')
           ++stats.flaky;
         ++stats.total;
-        stats.duration += test.duration;
       }
       stats.ok = stats.unexpected + stats.flaky === 0;
       if (!stats.ok)
@@ -254,9 +272,11 @@ class HtmlBuilder {
     }
     const htmlReport: HTMLReport = {
       metadata,
+      startTime: result.startTime.getTime(),
+      duration: result.duration,
       files: [...data.values()].map(e => e.testFileSummary),
       projectNames: projectSuites.map(r => r.project()!.name),
-      stats: { ...[...data.values()].reduce((a, e) => addStats(a, e.testFileSummary.stats), emptyStats()), duration: metadata.totalTime }
+      stats: { ...[...data.values()].reduce((a, e) => addStats(a, e.testFileSummary.stats), emptyStats()) }
     };
     htmlReport.files.sort((f1, f2) => {
       const w1 = f1.stats.unexpected * 1000 + f1.stats.flaky;
@@ -267,12 +287,12 @@ class HtmlBuilder {
     this._addDataFile('report.json', htmlReport);
 
     // Copy app.
-    const appFolder = path.join(require.resolve('playwright-core'), '..', 'lib', 'webpack', 'htmlReport');
+    const appFolder = path.join(require.resolve('playwright-core'), '..', 'lib', 'vite', 'htmlReport');
     await copyFileAndMakeWritable(path.join(appFolder, 'index.html'), path.join(this._reportFolder, 'index.html'));
 
     // Copy trace viewer.
     if (this._hasTraces) {
-      const traceViewerFolder = path.join(require.resolve('playwright-core'), '..', 'lib', 'webpack', 'traceViewer');
+      const traceViewerFolder = path.join(require.resolve('playwright-core'), '..', 'lib', 'vite', 'traceViewer');
       const traceViewerTargetFolder = path.join(this._reportFolder, 'trace');
       const traceViewerAssetsTargetFolder = path.join(traceViewerTargetFolder, 'assets');
       fs.mkdirSync(traceViewerAssetsTargetFolder, { recursive: true });
@@ -481,7 +501,6 @@ const emptyStats = (): Stats => {
     flaky: 0,
     skipped: 0,
     ok: true,
-    duration: 0,
   };
 };
 
@@ -492,7 +511,6 @@ const addStats = (stats: Stats, delta: Stats): Stats => {
   stats.unexpected += delta.unexpected;
   stats.flaky += delta.flaky;
   stats.ok = stats.ok && delta.ok;
-  stats.duration += delta.duration;
   return stats;
 };
 

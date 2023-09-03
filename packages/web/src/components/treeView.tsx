@@ -32,6 +32,7 @@ export type TreeViewProps<T> = {
   render: (item: T) => React.ReactNode,
   icon?: (item: T) => string | undefined,
   isError?: (item: T) => boolean,
+  isVisible?: (item: T) => boolean,
   selectedItem?: T,
   onAccepted?: (item: T) => void,
   onSelected?: (item: T) => void,
@@ -50,6 +51,7 @@ export function TreeView<T extends TreeItem>({
   render,
   icon,
   isError,
+  isVisible,
   selectedItem,
   onAccepted,
   onSelected,
@@ -61,13 +63,40 @@ export function TreeView<T extends TreeItem>({
   autoExpandDepth,
 }: TreeViewProps<T>) {
   const treeItems = React.useMemo(() => {
-    for (let item: TreeItem | undefined = selectedItem?.parent; item; item = item.parent)
-      treeState.expandedItems.set(item.id, true);
-    return flattenTree<T>(rootItem, treeState.expandedItems, autoExpandDepth || 0);
+    return flattenTree<T>(rootItem, selectedItem, treeState.expandedItems, autoExpandDepth || 0);
   }, [rootItem, selectedItem, treeState, autoExpandDepth]);
 
+  // Filter visible items.
+  const visibleItems = React.useMemo(() => {
+    if (!isVisible)
+      return [...treeItems.keys()];
+    const cachedVisible = new Map<TreeItem, boolean>();
+    const visit = (item: TreeItem): boolean => {
+      const cachedResult = cachedVisible.get(item);
+      if (cachedResult !== undefined)
+        return cachedResult;
+
+      let hasVisibleChildren = item.children.some(child => visit(child));
+      for (const child of item.children) {
+        const result = visit(child);
+        hasVisibleChildren = hasVisibleChildren || result;
+      }
+      const result = isVisible(item as T) || hasVisibleChildren;
+      cachedVisible.set(item, result);
+      return result;
+    };
+    for (const item of treeItems.keys())
+      visit(item);
+    const result: T[] = [];
+    for (const item of treeItems.keys()) {
+      if (isVisible(item))
+        result.push(item);
+    }
+    return result;
+  }, [treeItems, isVisible]);
+
   return <TreeListView
-    items={[...treeItems.keys()]}
+    items={visibleItems}
     id={item => item.id}
     dataTestId={dataTestId}
     render={item => {
@@ -128,13 +157,17 @@ type TreeItemData = {
   parent: TreeItem | null,
 };
 
-function flattenTree<T extends TreeItem>(rootItem: T, expandedItems: Map<string, boolean | undefined>, autoExpandDepth: number): Map<T, TreeItemData> {
+function flattenTree<T extends TreeItem>(rootItem: T, selectedItem: T | undefined, expandedItems: Map<string, boolean | undefined>, autoExpandDepth: number): Map<T, TreeItemData> {
   const result = new Map<T, TreeItemData>();
+  const temporaryExpanded = new Set<string>();
+  for (let item: TreeItem | undefined = selectedItem?.parent; item; item = item.parent)
+    temporaryExpanded.add(item.id);
+
   const appendChildren = (parent: T, depth: number) => {
     for (const item of parent.children as T[]) {
-      const expandState = expandedItems.get(item.id);
+      const expandState = temporaryExpanded.has(item.id) || expandedItems.get(item.id);
       const autoExpandMatches = autoExpandDepth > depth && result.size < 25 && expandState !== false;
-      const expanded = item.children.length ? expandState || autoExpandMatches : undefined;
+      const expanded = item.children.length ? expandState ?? autoExpandMatches : undefined;
       result.set(item, { depth, expanded, parent: rootItem === parent ? null : parent });
       if (expanded)
         appendChildren(item, depth + 1);

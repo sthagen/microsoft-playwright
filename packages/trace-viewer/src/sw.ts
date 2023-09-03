@@ -14,7 +14,6 @@
  * limitations under the License.
  */
 
-import { MultiMap } from './multimap';
 import { splitProgress } from './progress';
 import { unwrapPopoutUrl } from './snapshotRenderer';
 import { SnapshotServer } from './snapshotServer';
@@ -36,10 +35,17 @@ const scopePath = new URL(self.registration.scope).pathname;
 
 const loadedTraces = new Map<string, { traceModel: TraceModel, snapshotServer: SnapshotServer }>();
 
-const clientIdToTraceUrls = new MultiMap<string, string>();
+const clientIdToTraceUrls = new Map<string, Set<string>>();
 
 async function loadTrace(traceUrl: string, traceFileName: string | null, clientId: string, progress: (done: number, total: number) => void): Promise<TraceModel> {
-  clientIdToTraceUrls.set(clientId, traceUrl);
+  await gc();
+  let set = clientIdToTraceUrls.get(clientId);
+  if (!set) {
+    set = new Set();
+    clientIdToTraceUrls.set(clientId, set);
+  }
+  set.add(traceUrl);
+
   const traceModel = new TraceModel();
   try {
     // Allow 10% to hop from sw to page.
@@ -80,12 +86,11 @@ async function doFetch(event: FetchEvent): Promise<Response> {
       return new Response(null, { status: 200 });
     }
 
-    const traceUrl = url.searchParams.get('trace')!;
-    const { snapshotServer } = loadedTraces.get(traceUrl) || {};
+    const traceUrl = url.searchParams.get('trace');
 
     if (relativePath === '/contexts') {
       try {
-        const traceModel = await loadTrace(traceUrl, url.searchParams.get('traceFileName'), event.clientId, (done: number, total: number) => {
+        const traceModel = await loadTrace(traceUrl!, url.searchParams.get('traceFileName'), event.clientId, (done: number, total: number) => {
           client.postMessage({ method: 'progress', params: { done, total } });
         });
         return new Response(JSON.stringify(traceModel!.contextEntries), {
@@ -101,12 +106,14 @@ async function doFetch(event: FetchEvent): Promise<Response> {
     }
 
     if (relativePath.startsWith('/snapshotInfo/')) {
+      const { snapshotServer } = loadedTraces.get(traceUrl!) || {};
       if (!snapshotServer)
         return new Response(null, { status: 404 });
       return snapshotServer.serveSnapshotInfo(relativePath, url.searchParams);
     }
 
     if (relativePath.startsWith('/snapshot/')) {
+      const { snapshotServer } = loadedTraces.get(traceUrl!) || {};
       if (!snapshotServer)
         return new Response(null, { status: 404 });
       const response = snapshotServer.serveSnapshot(relativePath, url.searchParams, url.href);
@@ -116,15 +123,13 @@ async function doFetch(event: FetchEvent): Promise<Response> {
     }
 
     if (relativePath.startsWith('/sha1/')) {
+      const download = url.searchParams.has('download');
       // Sha1 for sources is based on the file path, can't load it of a random model.
-      const traceUrls = clientIdToTraceUrls.get(event.clientId);
-      for (const [trace, { traceModel }] of loadedTraces) {
-        // We will accept explicit ?trace= value as well as the clientId associated with the trace.
-        if (traceUrl !== trace && !traceUrls.includes(trace))
-          continue;
-        const blob = await traceModel!.resourceForSha1(relativePath.slice('/sha1/'.length));
+      const sha1 = relativePath.slice('/sha1/'.length);
+      for (const trace of loadedTraces.values()) {
+        const blob = await trace.traceModel.resourceForSha1(sha1);
         if (blob)
-          return new Response(blob, { status: 200 });
+          return new Response(blob, { status: 200, headers: download ? downloadHeadersForAttachment(trace.traceModel, sha1) : undefined });
       }
       return new Response(null, { status: 404 });
     }
@@ -145,6 +150,17 @@ async function doFetch(event: FetchEvent): Promise<Response> {
   return snapshotServer.serveResource(lookupUrls, request.method, snapshotUrl);
 }
 
+function downloadHeadersForAttachment(traceModel: TraceModel, sha1: string): Headers | undefined {
+  const attachment = traceModel.attachmentForSha1(sha1);
+  if (!attachment)
+    return;
+  const headers = new Headers();
+  headers.set('Content-Disposition', `attachment; filename="${attachment.name}"`);
+  if (attachment.contentType)
+    headers.set('Content-Type', attachment.contentType);
+  return headers;
+}
+
 async function gc() {
   const clients = await self.clients.matchAll();
   const usedTraces = new Set<string>();
@@ -152,7 +168,7 @@ async function gc() {
   for (const [clientId, traceUrls] of clientIdToTraceUrls) {
     // @ts-ignore
     if (!clients.find(c => c.id === clientId))
-      clientIdToTraceUrls.deleteAll(clientId);
+      clientIdToTraceUrls.delete(clientId);
     else
       traceUrls.forEach(url => usedTraces.add(url));
   }

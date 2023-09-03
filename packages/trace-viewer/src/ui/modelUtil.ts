@@ -24,7 +24,6 @@ const contextSymbol = Symbol('context');
 const nextInContextSymbol = Symbol('next');
 const prevInListSymbol = Symbol('prev');
 const eventsSymbol = Symbol('events');
-const resourcesSymbol = Symbol('resources');
 
 export type SourceLocation = {
   file: string;
@@ -69,13 +68,14 @@ export class MultiTraceModel {
 
   constructor(contexts: ContextEntry[]) {
     contexts.forEach(contextEntry => indexModel(contextEntry));
+    const primaryContext = contexts.find(context => context.isPrimary);
 
-    this.browserName = contexts[0]?.browserName || '';
-    this.sdkLanguage = contexts[0]?.sdkLanguage;
-    this.testIdAttributeName = contexts[0]?.testIdAttributeName;
-    this.platform = contexts[0]?.platform || '';
-    this.title = contexts[0]?.title || '';
-    this.options = contexts[0]?.options || {};
+    this.browserName = primaryContext?.browserName || '';
+    this.sdkLanguage = primaryContext?.sdkLanguage;
+    this.testIdAttributeName = primaryContext?.testIdAttributeName;
+    this.platform = primaryContext?.platform || '';
+    this.title = primaryContext?.title || '';
+    this.options = primaryContext?.options || {};
     this.wallTime = contexts.map(c => c.wallTime).reduce((prev, cur) => Math.min(prev || Number.MAX_VALUE, cur!), Number.MAX_VALUE);
     this.startTime = contexts.map(c => c.startTime).reduce((prev, cur) => Math.min(prev, cur), Number.MAX_VALUE);
     this.endTime = contexts.map(c => c.endTime).reduce((prev, cur) => Math.max(prev, cur), Number.MIN_VALUE);
@@ -87,7 +87,13 @@ export class MultiTraceModel {
     this.resources = [...contexts.map(c => c.resources)].flat();
 
     this.events.sort((a1, a2) => a1.time - a2.time);
+    this.resources.sort((a1, a2) => a1._monotonicTime! - a2._monotonicTime!);
     this.sources = collectSources(this.actions);
+  }
+
+  failedAction() {
+    // This find innermost action for nested ones.
+    return this.actions.findLast(a => a.error);
   }
 }
 
@@ -236,19 +242,6 @@ export function eventsForAction(action: ActionTraceEvent): EventTraceEvent[] {
     return event.time >= action.startTime && (!nextAction || event.time < nextAction.startTime);
   });
   (action as any)[eventsSymbol] = result;
-  return result;
-}
-
-export function resourcesForAction(action: ActionTraceEvent): ResourceSnapshot[] {
-  let result: ResourceSnapshot[] = (action as any)[resourcesSymbol];
-  if (result)
-    return result;
-
-  const nextAction = nextInContext(action);
-  result = context(action).resources.filter(resource => {
-    return typeof resource._monotonicTime === 'number' && resource._monotonicTime > action.startTime && (!nextAction || resource._monotonicTime < nextAction.startTime);
-  });
-  (action as any)[resourcesSymbol] = result;
   return result;
 }
 

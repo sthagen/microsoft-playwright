@@ -446,7 +446,7 @@ test('merge into list report by default', async ({ runInlineTest, mergeReports }
 
   const text = stripAnsi(output);
   expect(text).toContain('Running 10 tests using 3 workers');
-  const lines = text.split('\n').filter(l => l.match(/^\d :/)).map(l => l.replace(/\d+ms/, 'Xms'));
+  const lines = text.split('\n').filter(l => l.match(/^\d :/)).map(l => l.replace(/[.\d]+m?s/, 'Xms'));
   expect(lines).toEqual([
     `0 :      1 a.test.js:3:11 › math 1`,
     `0 :   ${POSITIVE_STATUS_MARK} 1 a.test.js:3:11 › math 1 (Xms)`,
@@ -577,13 +577,13 @@ test('preserve attachments', async ({ runInlineTest, mergeReports, showReport, p
   await showReport();
 
   await page.getByText('first').click();
-  const popupPromise = page.waitForEvent('popup');
+  const downloadPromise = page.waitForEvent('download');
   // Check file attachment.
   await page.getByRole('link', { name: 'file-attachment' }).click();
-  const popup = await popupPromise;
+  const download = await downloadPromise;
   // Check file attachment content.
-  await expect(popup.locator('body')).toHaveText('hello!');
-  await popup.close();
+  expect(await readAllFromStreamAsString(await download.createReadStream())).toEqual('hello!');
+
   await page.goBack();
 
   await page.getByText('failing 1').click();
@@ -651,13 +651,13 @@ test('generate html with attachment urls', async ({ runInlineTest, mergeReports,
   await page.goto(`${server.PREFIX}/index.html`);
   await page.getByText('first').click();
 
-  const popupPromise = page.waitForEvent('popup');
+  const downloadPromise = page.waitForEvent('download');
   // Check file attachment.
   await page.getByRole('link', { name: 'file-attachment' }).click();
-  const popup = await popupPromise;
+  const download = await downloadPromise;
   // Check file attachment content.
-  await expect(popup.locator('body')).toHaveText('hello!');
-  await popup.close();
+  expect(await readAllFromStreamAsString(await download.createReadStream())).toEqual('hello!');
+
   await page.goBack();
 
   // Check inline attachment.
@@ -720,11 +720,10 @@ test('resource names should not clash between runs', async ({ runInlineTest, sho
     await page.getByText('first').click();
     await expect(fileAttachment).toBeVisible();
 
-    const popupPromise = page.waitForEvent('popup');
+    const downloadPromise = page.waitForEvent('download');
     await fileAttachment.click();
-    const popup = await popupPromise;
-    await expect(popup.locator('body')).toHaveText('hello!');
-    await popup.close();
+    const download = await downloadPromise;
+    expect(await readAllFromStreamAsString(await download.createReadStream())).toEqual('hello!');
     await page.goBack();
   }
 
@@ -733,11 +732,10 @@ test('resource names should not clash between runs', async ({ runInlineTest, sho
     await page.getByText('failing 2').click();
     await expect(fileAttachment).toBeVisible();
 
-    const popupPromise = page.waitForEvent('popup');
+    const downloadPromise = page.waitForEvent('download');
     await fileAttachment.click();
-    const popup = await popupPromise;
-    await expect(popup.locator('body')).toHaveText('bye!');
-    await popup.close();
+    const download = await downloadPromise;
+    expect(await readAllFromStreamAsString(await download.createReadStream())).toEqual('bye!');
     await page.goBack();
   }
 });
@@ -998,7 +996,6 @@ test('preserve config fields', async ({ runInlineTest, mergeReports }) => {
   expect(json.globalTimeout).toBe(config.globalTimeout);
   expect(json.maxFailures).toBe(config.maxFailures);
   expect(json.metadata).toEqual(expect.objectContaining(config.metadata));
-  expect(json.metadata.totalTime).toBeTruthy();
   expect(json.workers).toBe(2);
   expect(json.version).toBeTruthy();
   expect(json.version).not.toEqual(test.info().config.version);
@@ -1372,3 +1369,11 @@ test('should merge blob reports with same name', async ({ runInlineTest, mergeRe
   await expect(page.locator('.subnav-item:has-text("Flaky") .counter')).toHaveText('2');
   await expect(page.locator('.subnav-item:has-text("Skipped") .counter')).toHaveText('4');
 });
+
+function readAllFromStreamAsString(stream: NodeJS.ReadableStream): Promise<string> {
+  return new Promise(resolve => {
+    const chunks: Buffer[] = [];
+    stream.on('data', chunk => chunks.push(chunk));
+    stream.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
+  });
+}

@@ -82,6 +82,10 @@ SerializedValue:
     u: string?
     # String representation of BigInt.
     bi: string?
+    # JS representation of Map: [[key1, value1], [key2, value2], ...].
+    m: SerializedValue?
+    # JS representation of Set: [item1, item2, ...].
+    se: SerializedValue?
     # Regular expression pattern and flags.
     r:
       type: object?
@@ -474,7 +478,12 @@ ContextOptions:
       - active
       - none
       - no-override
-    acceptDownloads: boolean?
+    acceptDownloads:
+      type: enum?
+      literals:
+      - accept
+      - deny
+      - internal-browser-default
     baseURL: string?
     recordVideo:
       type: object?
@@ -1183,6 +1192,11 @@ BrowserContext:
       parameters:
         page: Page
 
+    pageError:
+      parameters:
+        error: SerializedError
+        page: Page
+
     route:
       parameters:
         route: Route
@@ -1629,10 +1643,6 @@ Page:
     frameDetached:
       parameters:
         frame: Frame
-
-    pageError:
-      parameters:
-        error: SerializedError
 
     route:
       parameters:
@@ -3008,7 +3018,7 @@ Tracing:
         name: string?
         snapshots: boolean?
         screenshots: boolean?
-        sources: boolean?
+        live: boolean?
 
     tracingStartChunk:
       parameters:
@@ -3136,7 +3146,12 @@ Electron:
           type: array?
           items: NameValue
         timeout: number?
-        acceptDownloads: boolean?
+        acceptDownloads:
+          type: enum?
+          literals:
+          - accept
+          - deny
+          - internal-browser-default
         bypassCSP: boolean?
         colorScheme:
           type: enum?

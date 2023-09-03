@@ -180,6 +180,8 @@ export type SerializedValue = {
   d?: string,
   u?: string,
   bi?: string,
+  m?: SerializedValue,
+  se?: SerializedValue,
   r?: {
     p: string,
     f: string,
@@ -965,7 +967,7 @@ export type BrowserTypeLaunchPersistentContextParams = {
   colorScheme?: 'dark' | 'light' | 'no-preference' | 'no-override',
   reducedMotion?: 'reduce' | 'no-preference' | 'no-override',
   forcedColors?: 'active' | 'none' | 'no-override',
-  acceptDownloads?: boolean,
+  acceptDownloads?: 'accept' | 'deny' | 'internal-browser-default',
   baseURL?: string,
   recordVideo?: {
     dir: string,
@@ -1036,7 +1038,7 @@ export type BrowserTypeLaunchPersistentContextOptions = {
   colorScheme?: 'dark' | 'light' | 'no-preference' | 'no-override',
   reducedMotion?: 'reduce' | 'no-preference' | 'no-override',
   forcedColors?: 'active' | 'none' | 'no-override',
-  acceptDownloads?: boolean,
+  acceptDownloads?: 'accept' | 'deny' | 'internal-browser-default',
   baseURL?: string,
   recordVideo?: {
     dir: string,
@@ -1138,7 +1140,7 @@ export type BrowserNewContextParams = {
   colorScheme?: 'dark' | 'light' | 'no-preference' | 'no-override',
   reducedMotion?: 'reduce' | 'no-preference' | 'no-override',
   forcedColors?: 'active' | 'none' | 'no-override',
-  acceptDownloads?: boolean,
+  acceptDownloads?: 'accept' | 'deny' | 'internal-browser-default',
   baseURL?: string,
   recordVideo?: {
     dir: string,
@@ -1196,7 +1198,7 @@ export type BrowserNewContextOptions = {
   colorScheme?: 'dark' | 'light' | 'no-preference' | 'no-override',
   reducedMotion?: 'reduce' | 'no-preference' | 'no-override',
   forcedColors?: 'active' | 'none' | 'no-override',
-  acceptDownloads?: boolean,
+  acceptDownloads?: 'accept' | 'deny' | 'internal-browser-default',
   baseURL?: string,
   recordVideo?: {
     dir: string,
@@ -1257,7 +1259,7 @@ export type BrowserNewContextForReuseParams = {
   colorScheme?: 'dark' | 'light' | 'no-preference' | 'no-override',
   reducedMotion?: 'reduce' | 'no-preference' | 'no-override',
   forcedColors?: 'active' | 'none' | 'no-override',
-  acceptDownloads?: boolean,
+  acceptDownloads?: 'accept' | 'deny' | 'internal-browser-default',
   baseURL?: string,
   recordVideo?: {
     dir: string,
@@ -1315,7 +1317,7 @@ export type BrowserNewContextForReuseOptions = {
   colorScheme?: 'dark' | 'light' | 'no-preference' | 'no-override',
   reducedMotion?: 'reduce' | 'no-preference' | 'no-override',
   forcedColors?: 'active' | 'none' | 'no-override',
-  acceptDownloads?: boolean,
+  acceptDownloads?: 'accept' | 'deny' | 'internal-browser-default',
   baseURL?: string,
   recordVideo?: {
     dir: string,
@@ -1404,6 +1406,7 @@ export interface BrowserContextEventTarget {
   on(event: 'close', callback: (params: BrowserContextCloseEvent) => void): this;
   on(event: 'dialog', callback: (params: BrowserContextDialogEvent) => void): this;
   on(event: 'page', callback: (params: BrowserContextPageEvent) => void): this;
+  on(event: 'pageError', callback: (params: BrowserContextPageErrorEvent) => void): this;
   on(event: 'route', callback: (params: BrowserContextRouteEvent) => void): this;
   on(event: 'video', callback: (params: BrowserContextVideoEvent) => void): this;
   on(event: 'backgroundPage', callback: (params: BrowserContextBackgroundPageEvent) => void): this;
@@ -1451,6 +1454,10 @@ export type BrowserContextDialogEvent = {
   dialog: DialogChannel,
 };
 export type BrowserContextPageEvent = {
+  page: PageChannel,
+};
+export type BrowserContextPageErrorEvent = {
+  error: SerializedError,
   page: PageChannel,
 };
 export type BrowserContextRouteEvent = {
@@ -1697,6 +1704,7 @@ export interface BrowserContextEvents {
   'close': BrowserContextCloseEvent;
   'dialog': BrowserContextDialogEvent;
   'page': BrowserContextPageEvent;
+  'pageError': BrowserContextPageErrorEvent;
   'route': BrowserContextRouteEvent;
   'video': BrowserContextVideoEvent;
   'backgroundPage': BrowserContextBackgroundPageEvent;
@@ -1725,7 +1733,6 @@ export interface PageEventTarget {
   on(event: 'fileChooser', callback: (params: PageFileChooserEvent) => void): this;
   on(event: 'frameAttached', callback: (params: PageFrameAttachedEvent) => void): this;
   on(event: 'frameDetached', callback: (params: PageFrameDetachedEvent) => void): this;
-  on(event: 'pageError', callback: (params: PagePageErrorEvent) => void): this;
   on(event: 'route', callback: (params: PageRouteEvent) => void): this;
   on(event: 'video', callback: (params: PageVideoEvent) => void): this;
   on(event: 'webSocket', callback: (params: PageWebSocketEvent) => void): this;
@@ -1786,9 +1793,6 @@ export type PageFrameAttachedEvent = {
 };
 export type PageFrameDetachedEvent = {
   frame: FrameChannel,
-};
-export type PagePageErrorEvent = {
-  error: SerializedError,
 };
 export type PageRouteEvent = {
   route: RouteChannel,
@@ -2220,7 +2224,6 @@ export interface PageEvents {
   'fileChooser': PageFileChooserEvent;
   'frameAttached': PageFrameAttachedEvent;
   'frameDetached': PageFrameDetachedEvent;
-  'pageError': PagePageErrorEvent;
   'route': PageRouteEvent;
   'video': PageVideoEvent;
   'webSocket': PageWebSocketEvent;
@@ -3802,13 +3805,13 @@ export type TracingTracingStartParams = {
   name?: string,
   snapshots?: boolean,
   screenshots?: boolean,
-  sources?: boolean,
+  live?: boolean,
 };
 export type TracingTracingStartOptions = {
   name?: string,
   snapshots?: boolean,
   screenshots?: boolean,
-  sources?: boolean,
+  live?: boolean,
 };
 export type TracingTracingStartResult = void;
 export type TracingTracingStartChunkParams = {
@@ -3986,7 +3989,7 @@ export type ElectronLaunchParams = {
   cwd?: string,
   env?: NameValue[],
   timeout?: number,
-  acceptDownloads?: boolean,
+  acceptDownloads?: 'accept' | 'deny' | 'internal-browser-default',
   bypassCSP?: boolean,
   colorScheme?: 'dark' | 'light' | 'no-preference' | 'no-override',
   extraHTTPHeaders?: NameValue[],
@@ -4021,7 +4024,7 @@ export type ElectronLaunchOptions = {
   cwd?: string,
   env?: NameValue[],
   timeout?: number,
-  acceptDownloads?: boolean,
+  acceptDownloads?: 'accept' | 'deny' | 'internal-browser-default',
   bypassCSP?: boolean,
   colorScheme?: 'dark' | 'light' | 'no-preference' | 'no-override',
   extraHTTPHeaders?: NameValue[],
@@ -4412,7 +4415,7 @@ export type AndroidDeviceLaunchBrowserParams = {
   colorScheme?: 'dark' | 'light' | 'no-preference' | 'no-override',
   reducedMotion?: 'reduce' | 'no-preference' | 'no-override',
   forcedColors?: 'active' | 'none' | 'no-override',
-  acceptDownloads?: boolean,
+  acceptDownloads?: 'accept' | 'deny' | 'internal-browser-default',
   baseURL?: string,
   recordVideo?: {
     dir: string,
@@ -4468,7 +4471,7 @@ export type AndroidDeviceLaunchBrowserOptions = {
   colorScheme?: 'dark' | 'light' | 'no-preference' | 'no-override',
   reducedMotion?: 'reduce' | 'no-preference' | 'no-override',
   forcedColors?: 'active' | 'none' | 'no-override',
-  acceptDownloads?: boolean,
+  acceptDownloads?: 'accept' | 'deny' | 'internal-browser-default',
   baseURL?: string,
   recordVideo?: {
     dir: string,

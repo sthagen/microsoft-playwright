@@ -49,6 +49,7 @@ export type TracerOptions = {
   name?: string;
   snapshots?: boolean;
   screenshots?: boolean;
+  live?: boolean;
 };
 
 type RecordingState = {
@@ -81,6 +82,7 @@ export class Tracing extends SdkObject implements InstrumentationListener, Snaps
   private _tracesTmpDir: string | undefined;
   private _allResources = new Set<string>();
   private _contextCreatedEvent: trace.ContextCreatedTraceEvent;
+  private _pendingHarEntries = new Set<har.Entry>();
 
   constructor(context: BrowserContext | APIRequestContext, tracesDir: string | undefined) {
     super(context, 'tracing');
@@ -91,7 +93,6 @@ export class Tracing extends SdkObject implements InstrumentationListener, Snaps
       includeTraceInfo: true,
       recordRequestOverrides: false,
       waitForContentOnStop: false,
-      skipScripts: true,
     });
     const testIdAttributeName = ('selectors' in context) ? context.selectors().testIdAttributeName() : undefined;
     this._contextCreatedEvent = {
@@ -150,8 +151,9 @@ export class Tracing extends SdkObject implements InstrumentationListener, Snaps
     };
     this._fs.mkdir(this._state.resourcesDir);
     this._fs.writeFile(this._state.networkFile, '');
+    // Tracing is 10x bigger if we include scripts in every trace.
     if (options.snapshots)
-      this._harTracer.start();
+      this._harTracer.start({ omitScripts: !options.live });
   }
 
   async startChunk(options: { name?: string, title?: string } = {}): Promise<{ traceName: string }> {
@@ -229,6 +231,7 @@ export class Tracing extends SdkObject implements InstrumentationListener, Snaps
     if (this._state.recording)
       throw new Error(`Must stop trace file before stopping tracing`);
     this._harTracer.stop();
+    this.flushHarEntries();
     await this._fs.syncAndGetError();
     this._state = undefined;
   }
@@ -270,6 +273,8 @@ export class Tracing extends SdkObject implements InstrumentationListener, Snaps
 
     if (this._state.options.snapshots)
       await this._snapshotter?.stop();
+
+    this.flushHarEntries();
 
     // Network file survives across chunks, make a snapshot before returning the resulting entries.
     // We should pick a name starting with "traceName" and ending with .network.
@@ -386,12 +391,26 @@ export class Tracing extends SdkObject implements InstrumentationListener, Snaps
   }
 
   onEntryStarted(entry: har.Entry) {
+    this._pendingHarEntries.add(entry);
   }
 
   onEntryFinished(entry: har.Entry) {
+    this._pendingHarEntries.delete(entry);
     const event: trace.ResourceSnapshotTraceEvent = { type: 'resource-snapshot', snapshot: entry };
     const visited = visitTraceEvent(event, this._state!.networkSha1s);
     this._fs.appendFile(this._state!.networkFile, JSON.stringify(visited) + '\n', true /* flush */);
+  }
+
+  flushHarEntries() {
+    const harLines: string[] = [];
+    for (const entry of this._pendingHarEntries) {
+      const event: trace.ResourceSnapshotTraceEvent = { type: 'resource-snapshot', snapshot: entry };
+      const visited = visitTraceEvent(event, this._state!.networkSha1s);
+      harLines.push(JSON.stringify(visited));
+    }
+    this._pendingHarEntries.clear();
+    if (harLines.length)
+      this._fs.appendFile(this._state!.networkFile, harLines.join('\n') + '\n', true /* flush */);
   }
 
   onContentBlob(sha1: string, buffer: Buffer) {
@@ -407,13 +426,14 @@ export class Tracing extends SdkObject implements InstrumentationListener, Snaps
   }
 
   private _onConsoleMessage(message: ConsoleMessage) {
-    const object: trace.ObjectTraceEvent = {
+    const object: trace.ConsoleMessageTraceEvent = {
       type: 'object',
       class: 'ConsoleMessage',
       guid: message.guid,
       initializer: {
         type: message.type(),
         text: message.text(),
+        args: message.args().map(a => ({ preview: a.toString(), value: a.rawValue() })),
         location: message.location(),
       },
     };
@@ -454,8 +474,8 @@ export class Tracing extends SdkObject implements InstrumentationListener, Snaps
 
   private _appendTraceEvent(event: trace.TraceEvent) {
     const visited = visitTraceEvent(event, this._state!.traceSha1s);
-    // Do not flush events, they are too noisy.
-    const flush = event.type !== 'event' && event.type !== 'object';
+    // Do not flush (console) events, they are too noisy, unless we are in ui mode (live).
+    const flush = this._state!.options.live || (event.type !== 'event' && event.type !== 'object');
     this._fs.appendFile(this._state!.traceFile, JSON.stringify(visited) + '\n', flush);
   }
 
@@ -473,6 +493,8 @@ function visitTraceEvent(object: any, sha1s: Set<string>): any {
     return object.map(o => visitTraceEvent(o, sha1s));
   if (object instanceof Buffer)
     return undefined;
+  if (object instanceof Date)
+    return object;
   if (typeof object === 'object') {
     const result: any = {};
     for (const key in object) {

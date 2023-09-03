@@ -20,7 +20,9 @@ import * as React from 'react';
 
 export interface TabbedPaneTabModel {
   id: string;
-  title: string | JSX.Element;
+  title: string;
+  count?: number;
+  errorCount?: number;
   component?: React.ReactElement;
   render?: () => React.ReactElement;
 }
@@ -30,22 +32,31 @@ export const TabbedPane: React.FunctionComponent<{
   leftToolbar?: React.ReactElement[],
   rightToolbar?: React.ReactElement[],
   selectedTab: string,
-  setSelectedTab: (tab: string) => void
-}> = ({ tabs, selectedTab, setSelectedTab, leftToolbar, rightToolbar }) => {
-  return <div className='tabbed-pane'>
+  setSelectedTab: (tab: string) => void,
+  dataTestId?: string,
+}> = ({ tabs, selectedTab, setSelectedTab, leftToolbar, rightToolbar, dataTestId }) => {
+  return <div className='tabbed-pane' data-testid={dataTestId}>
     <div className='vbox'>
-      <Toolbar>{[
-        ...leftToolbar || [],
-        ...tabs.map(tab => (
-          <TabbedPaneTab
-            id={tab.id}
-            title={tab.title}
-            selected={selectedTab === tab.id}
-            onSelect={setSelectedTab}
-          ></TabbedPaneTab>)),
-        <div className='spacer'></div>,
-        ...rightToolbar || [],
-      ]}</Toolbar>
+      <Toolbar>
+        { leftToolbar && <div style={{ flex: 'none', display: 'flex', margin: '0 4px', alignItems: 'center' }}>
+          {...leftToolbar}
+        </div>}
+        <div style={{ flex: 'auto', display: 'flex', height: '100%', overflow: 'hidden' }}>
+          {[...tabs.map(tab => (
+            <TabbedPaneTab
+              id={tab.id}
+              title={tab.title}
+              count={tab.count}
+              errorCount={tab.errorCount}
+              selected={selectedTab === tab.id}
+              onSelect={setSelectedTab}
+            ></TabbedPaneTab>)),
+          ]}
+        </div>
+        {rightToolbar && <div style={{ flex: 'none', display: 'flex', alignItems: 'center' }}>
+          {...rightToolbar}
+        </div>}
+      </Toolbar>
       {
         tabs.map(tab => {
           if (tab.component)
@@ -60,13 +71,18 @@ export const TabbedPane: React.FunctionComponent<{
 
 export const TabbedPaneTab: React.FunctionComponent<{
   id: string,
-  title: string | JSX.Element,
+  title: string,
+  count?: number,
+  errorCount?: number,
   selected?: boolean,
   onSelect: (id: string) => void
-}> = ({ id, title, selected, onSelect }) => {
+}> = ({ id, title, count, errorCount, selected, onSelect }) => {
   return <div className={'tabbed-pane-tab ' + (selected ? 'selected' : '')}
     onClick={() => onSelect(id)}
+    title={title}
     key={id}>
     <div className='tabbed-pane-tab-label'>{title}</div>
+    {!!count && <div className='tabbed-pane-tab-counter'>{count}</div>}
+    {!!errorCount && <div className='tabbed-pane-tab-counter error'>{errorCount}</div>}
   </div>;
 };

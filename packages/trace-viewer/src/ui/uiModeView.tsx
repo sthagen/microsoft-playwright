@@ -84,6 +84,7 @@ export const UIModeView: React.FC<{}> = ({
   const runTestBacklog = React.useRef<Set<string>>(new Set());
   const [collapseAllCount, setCollapseAllCount] = React.useState(0);
   const [isDisconnected, setIsDisconnected] = React.useState(false);
+  const [hasBrowsers, setHasBrowsers] = React.useState(true);
 
   const inputRef = React.useRef<HTMLInputElement>(null);
 
@@ -91,8 +92,10 @@ export const UIModeView: React.FC<{}> = ({
     setIsLoading(true);
     setWatchedTreeIds({ value: new Set() });
     updateRootSuite(baseFullConfig, new TeleSuite('', 'root'), [], undefined);
-    refreshRootSuite(true).then(() => {
+    refreshRootSuite(true).then(async () => {
       setIsLoading(false);
+      const { hasBrowsers } = await sendMessage('checkBrowsers');
+      setHasBrowsers(hasBrowsers);
     });
   }, []);
 
@@ -188,11 +191,19 @@ export const UIModeView: React.FC<{}> = ({
       </div>
       <div className='vbox ui-mode-sidebar'>
         <Toolbar noShadow={true} noMinHeight={true}>
-          <img src='icon-32x32.png' />
+          <img src='playwright-logo.svg' />
           <div className='section-title'>Playwright</div>
           <ToolbarButton icon='color-mode' title='Toggle color mode' onClick={() => toggleTheme()} />
           <ToolbarButton icon='refresh' title='Reload' onClick={() => reloadTests()} disabled={isRunningTest || isLoading}></ToolbarButton>
           <ToolbarButton icon='terminal' title='Toggle output' toggled={isShowingOutput} onClick={() => { setIsShowingOutput(!isShowingOutput); }} />
+          {!hasBrowsers && <ToolbarButton icon='lightbulb-autofix' style={{ color: 'var(--vscode-errorForeground)' }}title='Install browsers' toggled={isShowingOutput} onClick={() => {
+            setIsShowingOutput(true);
+            sendMessage('installBrowsers').then(async () => {
+              setIsShowingOutput(false);
+              const { hasBrowsers } = await sendMessage('checkBrowsers');
+              setHasBrowsers(hasBrowsers);
+            });
+          }} />}
         </Toolbar>
         <FiltersView
           filterText={filterText}
@@ -564,15 +575,13 @@ const TraceView: React.FC<{
   return <Workbench
     key='workbench'
     model={model?.model}
-    hideTimelineBars={true}
     hideStackFrames={true}
     showSourcesFirst={true}
     rootDir={rootDir}
     initialSelection={initialSelection}
     onSelectionChanged={onSelectionChanged}
     fallbackLocation={item.testFile}
-    isLive={model?.isLive}
-    drawer='bottom' />;
+    isLive={model?.isLive} />;
 };
 
 let receiver: TeleReporterReceiver | undefined;

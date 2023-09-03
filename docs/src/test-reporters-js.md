@@ -157,7 +157,7 @@ npx playwright test --reporter=html
 ```
 
 By default, HTML report is opened automatically if some of the tests failed. You can control this behavior via the
-`open` property in the Playwright config. The possible values for that property are `always`, `never` and `on-failure`
+`open` property in the Playwright config or the `PW_TEST_HTML_REPORT_OPEN` environmental variable. The possible values for that property are `always`, `never` and `on-failure`
 (default).
 
 You can also configure `host` and `port` that are used to serve the HTML report.
@@ -205,8 +205,23 @@ Or if there is a custom folder name:
 npx playwright show-report my-report
 ```
 
-> The `html` reporter currently does not support merging reports generated across multiple [`--shards`](./test-parallel.md#shard-tests-between-multiple-machines) into a single report. See [this](https://github.com/microsoft/playwright/issues/10437) issue for available third party solutions.
+### Blob reporter
 
+Blob reports contain all the details about the test run and can be used later to produce any other report. Their primary function is to facilitate the merging of reports from [sharded tests](./test-sharding.md).
+
+```bash
+npx playwright test --reporter=blob
+```
+
+By default, the report is written into the `blob-report` directory in the package.json directory or current working directory (if no package.json is found). The output directory can be overridden in the configuration file:
+
+```js title="playwright.config.ts"
+import { defineConfig } from '@playwright/test';
+
+export default defineConfig({
+  reporter: [['blob', { outputDir: 'my-report' }]],
+});
+```
 
 ### JSON reporter
 
@@ -326,8 +341,9 @@ export default defineConfig({
 ## Third party reporter showcase
 
 * [Allure](https://www.npmjs.com/package/allure-playwright)
-* [Monocart](https://github.com/cenfun/monocart-reporter)
-* [Tesults](https://www.tesults.com/docs/playwright)
-* [ReportPortal](https://github.com/reportportal/agent-js-playwright)
 * [Currents](https://www.npmjs.com/package/@currents/playwright)
+* [Monocart](https://github.com/cenfun/monocart-reporter)
+* [ReportPortal](https://github.com/reportportal/agent-js-playwright)
 * [Serenity/JS](https://serenity-js.org/handbook/test-runners/playwright-test)
+* [Testmo](https://github.com/jonasclaes/playwright-testmo-reporter)
+* [Tesults](https://www.tesults.com/docs/playwright)

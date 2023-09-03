@@ -21,6 +21,7 @@ import { wrapFunctionWithLocation } from '../transform/transform';
 import type { FixturesWithLocation } from './config';
 import type { Fixtures, TestType } from '../../types/test';
 import type { Location } from '../../types/testReporter';
+import { getPackageManagerExecCommand } from 'playwright-core/lib/utils';
 
 const testTypeSymbol = Symbol('testType');
 
@@ -133,11 +134,16 @@ export class TestTypeImpl {
     setCurrentlyLoadingFileSuite(suite);
   }
 
-  private _hook(name: 'beforeEach' | 'afterEach' | 'beforeAll' | 'afterAll', location: Location, fn: Function) {
+  private _hook(name: 'beforeEach' | 'afterEach' | 'beforeAll' | 'afterAll', location: Location, title: string | Function, fn?: Function) {
     const suite = this._currentSuite(location, `test.${name}()`);
     if (!suite)
       return;
-    suite._hooks.push({ type: name, fn, location });
+    if (typeof title === 'function') {
+      fn = title;
+      title = `${name} hook`;
+    }
+
+    suite._hooks.push({ type: name, fn: fn!, title, location });
   }
 
   private _configure(location: Location, options: { mode?: 'default' | 'parallel' | 'serial', retries?: number, timeout?: number }) {
@@ -242,8 +248,9 @@ export class TestTypeImpl {
 
 function throwIfRunningInsideJest() {
   if (process.env.JEST_WORKER_ID) {
+    const packageManagerCommand = getPackageManagerExecCommand();
     throw new Error(
-        `Playwright Test needs to be invoked via 'npx playwright test' and excluded from Jest test runs.\n` +
+        `Playwright Test needs to be invoked via '${packageManagerCommand} playwright test' and excluded from Jest test runs.\n` +
         `Creating one directory for Playwright tests and one for Jest is the recommended way of doing it.\n` +
         `See https://playwright.dev/docs/intro for more information about Playwright Test.`,
     );

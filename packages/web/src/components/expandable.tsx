@@ -19,15 +19,16 @@ import './expandable.css';
 
 export const Expandable: React.FunctionComponent<React.PropsWithChildren<{
   title: JSX.Element | string,
-  setExpanded: Function,
+  setExpanded: (expanded: boolean) => void,
   expanded: boolean,
-}>> = ({ title, children, setExpanded, expanded }) => {
+  expandOnTitleClick?: boolean,
+}>> = ({ title, children, setExpanded, expanded, expandOnTitleClick }) => {
   return <div className={'expandable' + (expanded ? ' expanded' : '')}>
-    <div className='expandable-title'>
+    <div className='expandable-title' onClick={() => expandOnTitleClick && setExpanded(!expanded)}>
       <div
         className={'codicon codicon-' + (expanded ? 'chevron-down' : 'chevron-right')}
         style={{ cursor: 'pointer', color: 'var(--vscode-foreground)', marginLeft: '5px' }}
-        onClick={() => setExpanded(!expanded)} />
+        onClick={() => !expandOnTitleClick && setExpanded(!expanded)} />
       {title}
     </div>
     { expanded && <div style={{ marginLeft: 25 }}>{children}</div> }

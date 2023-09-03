@@ -104,9 +104,7 @@ export class SnapshotRenderer {
     const prefix = snapshot.doctype ? `<!DOCTYPE ${snapshot.doctype}>` : '';
     html = prefix + [
       '<style>*,*::before,*::after { visibility: hidden }</style>',
-      `<style>*[__playwright_target__="${this.snapshotName}"] { outline: 2px solid #006ab1 !important; background-color: #6fa8dc7f !important; }</style>`,
-      `<style>*[__playwright_target__="${this._callId}"] { outline: 2px solid #006ab1 !important; background-color: #6fa8dc7f !important; }</style>`,
-      `<script>${snapshotScript()}</script>`
+      `<script>${snapshotScript(this._callId, this.snapshotName)}</script>`
     ].join('') + html;
 
     return { html, pageId: snapshot.pageId, frameId: snapshot.frameId, index: this._index };
@@ -195,10 +193,11 @@ function snapshotNodes(snapshot: FrameSnapshot): NodeSnapshot[] {
   return (snapshot as any)._nodes;
 }
 
-function snapshotScript() {
-  function applyPlaywrightAttributes(unwrapPopoutUrl: (url: string) => string) {
+function snapshotScript(...targetIds: (string | undefined)[]) {
+  function applyPlaywrightAttributes(unwrapPopoutUrl: (url: string) => string, ...targetIds: (string | undefined)[]) {
     const scrollTops: Element[] = [];
     const scrollLefts: Element[] = [];
+    const targetElements: Element[] = [];
 
     const visit = (root: Document | ShadowRoot) => {
       // Collect all scrolled elements for later use.
@@ -220,15 +219,22 @@ function snapshotScript() {
         element.removeAttribute('__playwright_selected_');
       }
 
+      for (const targetId of targetIds) {
+        for (const target of root.querySelectorAll(`[__playwright_target__="${targetId}"]`)) {
+          const style = (target as HTMLElement).style;
+          style.outline = '2px solid #006ab1';
+          style.backgroundColor = '#6fa8dc7f';
+          targetElements.push(target);
+        }
+      }
+
       for (const iframe of root.querySelectorAll('iframe, frame')) {
         const src = iframe.getAttribute('__playwright_src__');
         if (!src) {
           iframe.setAttribute('src', 'data:text/html,<body style="background: #ddd"></body>');
         } else {
-          // Append query parameters to inherit ?name= or ?time= values from parent.
+          // Retain query parameters to inherit name=, time=, showPoint= and other values from parent.
           const url = new URL(unwrapPopoutUrl(window.location.href));
-          url.searchParams.delete('pointX');
-          url.searchParams.delete('pointY');
           // We can be loading iframe from within iframe, reset base to be absolute.
           const index = url.pathname.lastIndexOf('/snapshot/');
           if (index !== -1)
@@ -278,23 +284,25 @@ function snapshotScript() {
         element.removeAttribute('__playwright_scroll_left_');
       }
 
-      const search = new URL(window.location.href).searchParams;
-      const pointX = search.get('pointX');
-      const pointY = search.get('pointY');
-      if (pointX) {
-        const pointElement = document.createElement('x-pw-pointer');
-        pointElement.style.position = 'fixed';
-        pointElement.style.backgroundColor = '#f44336';
-        pointElement.style.width = '20px';
-        pointElement.style.height = '20px';
-        pointElement.style.borderRadius = '10px';
-        pointElement.style.margin = '-10px 0 0 -10px';
-        pointElement.style.zIndex = '2147483647';
-        pointElement.style.left = pointX + 'px';
-        pointElement.style.top = pointY + 'px';
-        document.documentElement.appendChild(pointElement);
-      }
       document.styleSheets[0].disabled = true;
+
+      const search = new URL(window.location.href).searchParams;
+      if (search.get('showPoint')) {
+        for (const target of targetElements) {
+          const pointElement = document.createElement('x-pw-pointer');
+          pointElement.style.position = 'fixed';
+          pointElement.style.backgroundColor = '#f44336';
+          pointElement.style.width = '20px';
+          pointElement.style.height = '20px';
+          pointElement.style.borderRadius = '10px';
+          pointElement.style.margin = '-10px 0 0 -10px';
+          pointElement.style.zIndex = '2147483647';
+          const box = target.getBoundingClientRect();
+          pointElement.style.left = (box.left + box.width / 2) + 'px';
+          pointElement.style.top = (box.top + box.height / 2) + 'px';
+          document.documentElement.appendChild(pointElement);
+        }
+      }
     };
 
     const onDOMContentLoaded = () => visit(document);
@@ -303,7 +311,7 @@ function snapshotScript() {
     window.addEventListener('DOMContentLoaded', onDOMContentLoaded);
   }
 
-  return `\n(${applyPlaywrightAttributes.toString()})(${unwrapPopoutUrl.toString()})`;
+  return `\n(${applyPlaywrightAttributes.toString()})(${unwrapPopoutUrl.toString()}${targetIds.map(id => `, "${id}"`).join('')})`;
 }
 
 

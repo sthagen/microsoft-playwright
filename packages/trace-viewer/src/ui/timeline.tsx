@@ -1,159 +1,226 @@
-/*
- * Copyright 2017 Google Inc. All rights reserved.
- * Modifications copyright (c) Microsoft Corporation.
+/**
+ * Copyright (c) Microsoft Corporation.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 
-  Licensed under the Apache License, Version 2.0 (the "License");
-  you may not use this file except in compliance with the License.
-  You may obtain a copy of the License at
-
-      http://www.apache.org/licenses/LICENSE-2.0
-
-  Unless required by applicable law or agreed to in writing, software
-  distributed under the License is distributed on an "AS IS" BASIS,
-  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-  See the License for the specific language governing permissions and
-  limitations under the License.
-*/
-
-import type { EventTraceEvent } from '@trace/trace';
 import { msToString, useMeasure } from '@web/uiUtils';
+import { GlassPane } from '@web/components/glassPane';
 import * as React from 'react';
 import type { Boundaries } from '../geometry';
 import { FilmStrip } from './filmStrip';
+import type { FilmStripPreviewPoint } from './filmStrip';
 import type { ActionTraceEventInContext, MultiTraceModel } from './modelUtil';
 import './timeline.css';
-import { asLocator } from '@isomorphic/locatorGenerators';
 import type { Language } from '@isomorphic/locatorGenerators';
+import type { Entry } from '@trace/har';
 
 type TimelineBar = {
   action?: ActionTraceEventInContext;
-  event?: EventTraceEvent;
+  resource?: Entry;
   leftPosition: number;
   rightPosition: number;
   leftTime: number;
   rightTime: number;
-  type: string;
-  label: string;
-  title: string | undefined;
-  className: string;
+  active: boolean;
+  error: boolean;
 };
 
 export const Timeline: React.FunctionComponent<{
   model: MultiTraceModel | undefined,
-  selectedAction: ActionTraceEventInContext | undefined,
+  boundaries: Boundaries,
+  highlightedAction: ActionTraceEventInContext | undefined,
+  highlightedEntry: Entry | undefined,
   onSelected: (action: ActionTraceEventInContext) => void,
-  hideTimelineBars?: boolean,
+  selectedTime: Boundaries | undefined,
+  setSelectedTime: (time: Boundaries | undefined) => void,
   sdkLanguage: Language,
-}> = ({ model, selectedAction, onSelected, hideTimelineBars, sdkLanguage }) => {
+}> = ({ model, boundaries, onSelected, highlightedAction, highlightedEntry, selectedTime, setSelectedTime, sdkLanguage }) => {
   const [measure, ref] = useMeasure<HTMLDivElement>();
-  const barsRef = React.useRef<HTMLDivElement | null>(null);
+  const [dragWindow, setDragWindow] = React.useState<{ startX: number, endX: number, pivot?: number, type: 'resize' | 'move' } | undefined>();
+  const [previewPoint, setPreviewPoint] = React.useState<FilmStripPreviewPoint | undefined>();
 
-  const [previewPoint, setPreviewPoint] = React.useState<{ x: number, clientY: number } | undefined>();
-  const [hoveredBarIndex, setHoveredBarIndex] = React.useState<number | undefined>();
-
-  const { boundaries, offsets } = React.useMemo(() => {
-    const boundaries = { minimum: model?.startTime || 0, maximum: model?.endTime || 30000 };
-    if (boundaries.minimum > boundaries.maximum) {
-      boundaries.minimum = 0;
-      boundaries.maximum = 30000;
+  const { offsets, curtainLeft, curtainRight } = React.useMemo(() => {
+    let activeWindow = selectedTime || boundaries;
+    if (dragWindow && dragWindow.startX !== dragWindow.endX) {
+      const time1 = positionToTime(measure.width, boundaries, dragWindow.startX);
+      const time2 = positionToTime(measure.width, boundaries, dragWindow.endX);
+      activeWindow = { minimum: Math.min(time1, time2), maximum: Math.max(time1, time2) };
     }
-    // Leave some nice free space on the right hand side.
-    boundaries.maximum += (boundaries.maximum - boundaries.minimum) / 20;
-    return { boundaries, offsets: calculateDividerOffsets(measure.width, boundaries) };
-  }, [measure.width, model]);
+    const curtainLeft = timeToPosition(measure.width, boundaries, activeWindow.minimum);
+    const maxRight = timeToPosition(measure.width, boundaries, boundaries.maximum);
+    const curtainRight = maxRight - timeToPosition(measure.width, boundaries, activeWindow.maximum);
+    return { offsets: calculateDividerOffsets(measure.width, boundaries), curtainLeft, curtainRight };
+  }, [selectedTime, boundaries, dragWindow, measure]);
 
   const bars = React.useMemo(() => {
     const bars: TimelineBar[] = [];
     for (const entry of model?.actions || []) {
-      const locator = asLocator(sdkLanguage || 'javascript', entry.params.selector, false /* isFrameLocator */, true /* playSafe */);
-      let detail = trimRight(locator || '', 50);
-      if (entry.method === 'goto')
-        detail = trimRight(entry.params.url || '', 50);
+      if (entry.class === 'Test')
+        continue;
       bars.push({
         action: entry,
         leftTime: entry.startTime,
-        rightTime: entry.endTime,
+        rightTime: entry.endTime || boundaries.maximum,
         leftPosition: timeToPosition(measure.width, boundaries, entry.startTime),
-        rightPosition: timeToPosition(measure.width, boundaries, entry.endTime),
-        label: entry.apiName + ' ' + detail,
-        title: entry.endTime ? msToString(entry.endTime - entry.startTime) : 'Timed Out',
-        type: entry.type + '.' + entry.method,
-        className: `${entry.type}_${entry.method}`.toLowerCase()
+        rightPosition: timeToPosition(measure.width, boundaries, entry.endTime || boundaries.maximum),
+        active: false,
+        error: !!entry.error,
       });
     }
 
-    for (const event of model?.events || []) {
-      const startTime = event.time;
+    for (const resource of model?.resources || []) {
+      const startTime = resource._monotonicTime!;
+      const endTime = resource._monotonicTime! + resource.time;
       bars.push({
-        event,
+        resource,
         leftTime: startTime,
-        rightTime: startTime,
+        rightTime: endTime,
         leftPosition: timeToPosition(measure.width, boundaries, startTime),
-        rightPosition: timeToPosition(measure.width, boundaries, startTime),
-        label: event.method,
-        title: undefined,
-        type: event.class + '.' + event.method,
-        className: `${event.class}_${event.method}`.toLowerCase()
+        rightPosition: timeToPosition(measure.width, boundaries, endTime),
+        active: false,
+        error: false,
       });
     }
     return bars;
-  }, [model, boundaries, measure.width, sdkLanguage]);
+  }, [model, boundaries, measure]);
 
-  const hoveredBar = hoveredBarIndex !== undefined ? bars[hoveredBarIndex] : undefined;
-  let targetBar: TimelineBar | undefined = bars.find(bar => bar.action === selectedAction);
-  targetBar = hoveredBar || targetBar;
+  React.useMemo(() => {
+    for (const bar of bars)
+      bar.active = (!!highlightedAction && bar.action === highlightedAction) || (!!highlightedEntry && bar.resource === highlightedEntry);
+  }, [bars, highlightedAction, highlightedEntry]);
 
-  const findHoveredBarIndex = (x: number) => {
+  const onMouseDown = React.useCallback((event: React.MouseEvent) => {
+    setPreviewPoint(undefined);
+    if (!ref.current)
+      return;
+    const x = event.clientX - ref.current.getBoundingClientRect().left;
     const time = positionToTime(measure.width, boundaries, x);
-    const time1 = positionToTime(measure.width, boundaries, x - 5);
-    const time2 = positionToTime(measure.width, boundaries, x + 5);
-    let index: number | undefined;
-    let xDistance: number | undefined;
-    for (let i = 0; i < bars.length; i++) {
-      const bar = bars[i];
-      const left = Math.max(bar.leftTime, time1);
-      const right = Math.min(bar.rightTime, time2);
-      const xMiddle = (bar.leftTime + bar.rightTime) / 2;
-      const xd = Math.abs(time - xMiddle);
-      if (left > right)
-        continue;
-      if (index === undefined || xd < xDistance!) {
-        index = i;
-        xDistance = xd;
+    const leftX = selectedTime ? timeToPosition(measure.width, boundaries, selectedTime.minimum) : 0;
+    const rightX = selectedTime ? timeToPosition(measure.width, boundaries, selectedTime.maximum) : 0;
+
+    if (selectedTime && Math.abs(x - leftX) < 10) {
+      // Resize left.
+      setDragWindow({ startX: rightX, endX: x, type: 'resize' });
+    } else if (selectedTime && Math.abs(x - rightX) < 10) {
+      // Resize right.
+      setDragWindow({ startX: leftX, endX: x, type: 'resize' });
+    } else if (selectedTime && time > selectedTime.minimum && time < selectedTime.maximum && event.clientY - ref.current.getBoundingClientRect().top < 20) {
+      // Move window.
+      setDragWindow({ startX: leftX, endX: rightX, pivot: x, type: 'move' });
+    } else {
+      // Create new.
+      setDragWindow({ startX: x, endX: x, type: 'resize' });
+    }
+  }, [boundaries, measure, ref, selectedTime]);
+
+  const onGlassPaneMouseMove = React.useCallback((event: MouseEvent) => {
+    if (!ref.current)
+      return;
+    const x = event.clientX - ref.current.getBoundingClientRect().left;
+    const time = positionToTime(measure.width, boundaries, x);
+    const action = model?.actions.findLast(action => action.startTime <= time);
+
+    if (!event.buttons) {
+      setDragWindow(undefined);
+      return;
+    }
+
+    // When moving window reveal action under cursor.
+    if (action)
+      onSelected(action);
+
+    // Should not happen, but for type safety.
+    if (!dragWindow)
+      return;
+
+    let newDragWindow = dragWindow;
+    if (dragWindow.type === 'resize') {
+      newDragWindow = { ...dragWindow, endX: x };
+    } else {
+      const delta = x - dragWindow.pivot!;
+      let startX = dragWindow.startX + delta;
+      let endX = dragWindow.endX + delta;
+      if (startX < 0) {
+        startX = 0;
+        endX = startX + (dragWindow.endX - dragWindow.startX);
+      }
+      if (endX > measure.width) {
+        endX = measure.width;
+        startX = endX - (dragWindow.endX - dragWindow.startX);
+      }
+      newDragWindow = { ...dragWindow, startX, endX, pivot: x };
+    }
+
+    setDragWindow(newDragWindow);
+    const time1 = positionToTime(measure.width, boundaries, newDragWindow.startX);
+    const time2 = positionToTime(measure.width, boundaries, newDragWindow.endX);
+    if (time1 !== time2)
+      setSelectedTime({ minimum: Math.min(time1, time2), maximum: Math.max(time1, time2) });
+  }, [boundaries, dragWindow, measure, model, onSelected, ref, setSelectedTime]);
+
+  const onGlassPaneMouseUp = React.useCallback(() => {
+    setPreviewPoint(undefined);
+    if (!dragWindow)
+      return;
+    if (dragWindow.startX !== dragWindow.endX) {
+      const time1 = positionToTime(measure.width, boundaries, dragWindow.startX);
+      const time2 = positionToTime(measure.width, boundaries, dragWindow.endX);
+      setSelectedTime({ minimum: Math.min(time1, time2), maximum: Math.max(time1, time2) });
+    } else {
+      const time = positionToTime(measure.width, boundaries, dragWindow.startX);
+      const action = model?.actions.findLast(action => action.startTime <= time);
+      if (action)
+        onSelected(action);
+      // Include both, last action as well as the click position.
+      if (selectedTime && (time < selectedTime.minimum || time > selectedTime.maximum)) {
+        const minimum = action ? Math.max(Math.min(action.startTime, time), boundaries.minimum) : boundaries.minimum;
+        const maximum = action ? Math.min(Math.max(action.endTime, time), boundaries.maximum) : boundaries.maximum;
+        setSelectedTime({ minimum, maximum });
       }
     }
-    return index;
-  };
+    setDragWindow(undefined);
+  }, [boundaries, dragWindow, measure, model, selectedTime, setSelectedTime, onSelected]);
 
-  const onMouseMove = (event: React.MouseEvent) => {
+  const onMouseMove = React.useCallback((event: React.MouseEvent) => {
     if (!ref.current)
       return;
     const x = event.clientX - ref.current.getBoundingClientRect().left;
-    const index = findHoveredBarIndex(x);
-    setPreviewPoint({ x, clientY: event.clientY });
-    setHoveredBarIndex(index);
-  };
+    const time = positionToTime(measure.width, boundaries, x);
+    const action = model?.actions.findLast(action => action.startTime <= time);
+    setPreviewPoint({ x, clientY: event.clientY, action, sdkLanguage });
+  }, [boundaries, measure, model, ref, sdkLanguage]);
 
-  const onMouseLeave = () => {
+  const onMouseLeave = React.useCallback(() => {
     setPreviewPoint(undefined);
-    setHoveredBarIndex(undefined);
-  };
+  }, []);
 
-  const onClick = (event: React.MouseEvent) => {
-    setPreviewPoint(undefined);
-    if (!ref.current)
-      return;
-    const x = event.clientX - ref.current.getBoundingClientRect().left;
-    const index = findHoveredBarIndex(x);
-    if (index === undefined)
-      return;
-    const entry = bars[index].action;
-    if (entry)
-      onSelected(entry);
-  };
+  const onPaneDoubleClick = React.useCallback(() => {
+    setSelectedTime(undefined);
+  }, [setSelectedTime]);
 
   return <div style={{ flex: 'none', borderBottom: '1px solid var(--vscode-panel-border)' }}>
-    <div ref={ref} className='timeline-view' onMouseMove={onMouseMove} onMouseOver={onMouseMove} onMouseLeave={onMouseLeave} onClick={onClick}>
+    <GlassPane
+      enabled={!!dragWindow}
+      cursor={dragWindow?.type === 'resize' ? 'ew-resize' : 'grab'}
+      onPaneMouseUp={onGlassPaneMouseUp}
+      onPaneMouseMove={onGlassPaneMouseMove}
+      onPaneDoubleClick={onPaneDoubleClick} />
+    <div ref={ref}
+      className='timeline-view'
+      onMouseDown={onMouseDown}
+      onMouseMove={onMouseMove}
+      onMouseLeave={onMouseLeave}>
       <div className='timeline-grid'>{
         offsets.map((offset, index) => {
           return <div key={index} className='timeline-divider' style={{ left: offset.position + 'px' }}>
@@ -161,37 +228,37 @@ export const Timeline: React.FunctionComponent<{
           </div>;
         })
       }</div>
-      {!hideTimelineBars && <div className='timeline-lane timeline-labels'>{
+      <div style={{ height: 8 }}></div>
+      <FilmStrip model={model} boundaries={boundaries} previewPoint={previewPoint} />
+      <div className='timeline-bars'>{
         bars.map((bar, index) => {
           return <div key={index}
-            className={'timeline-label ' + bar.className + (targetBar === bar ? ' selected' : '')}
+            className={'timeline-bar' + (bar.action ? ' action' : '')
+                                      + (bar.resource ? ' network' : '')
+                                      + (bar.active ? ' active' : '')
+                                      + (bar.error ? ' error' : '')}
             style={{
               left: bar.leftPosition,
-              maxWidth: 100,
+              width: Math.max(1, bar.rightPosition - bar.leftPosition),
+              top: barTop(bar),
+              bottom: 0,
             }}
-          >
-            {bar.label}
-          </div>;
-        })
-      }</div>}
-      {!hideTimelineBars && <div className='timeline-lane timeline-bars' ref={barsRef}>{
-        bars.map((bar, index) => {
-          return <div key={index}
-            className={'timeline-bar ' + (bar.action ? 'action ' : '') + (bar.event ? 'event ' : '') + bar.className + (targetBar === bar ? ' selected' : '')}
-            style={{
-              left: bar.leftPosition + 'px',
-              width: Math.max(1, bar.rightPosition - bar.leftPosition) + 'px',
-              top: barTop(bar) + 'px',
-            }}
-            title={bar.title}
           ></div>;
         })
-      }</div>}
-      <FilmStrip model={model} boundaries={boundaries} previewPoint={previewPoint} />
-      <div className='timeline-marker timeline-marker-hover' style={{
+      }</div>
+      <div className='timeline-marker' style={{
         display: (previewPoint !== undefined) ? 'block' : 'none',
         left: (previewPoint?.x || 0) + 'px',
-      }}></div>
+      }} />
+      {selectedTime && <div className='timeline-window'>
+        <div className='timeline-window-curtain left' style={{ width: curtainLeft }}></div>
+        <div className='timeline-window-resizer' style={{ left: -5 }}></div>
+        <div className='timeline-window-center'>
+          <div className='timeline-window-drag'></div>
+        </div>
+        <div className='timeline-window-resizer' style={{ left: 5 }}></div>
+        <div className='timeline-window-curtain right' style={{ width: curtainRight }}></div>
+      </div>}
     </div>
   </div>;
 };
@@ -234,10 +301,6 @@ function positionToTime(clientWidth: number, boundaries: Boundaries, x: number):
   return x / clientWidth * (boundaries.maximum - boundaries.minimum) + boundaries.minimum;
 }
 
-function trimRight(s: string, maxLength: number): string {
-  return s.length <= maxLength ? s : s.substring(0, maxLength - 1) + '\u2026';
-}
-
 function barTop(bar: TimelineBar): number {
-  return bar.event ? 22 : (bar.action?.method === 'waitForEventInfo' ? 0 : 11);
+  return bar.resource ? 25 : 20;
 }

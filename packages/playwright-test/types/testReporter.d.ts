@@ -305,6 +305,16 @@ export interface FullResult {
    *   - 'interrupted' - interrupted by the user.
    */
   status: 'passed' | 'failed' | 'timedout' | 'interrupted';
+
+  /**
+   * Test start wall time.
+   */
+  startTime: Date;
+
+  /**
+   * Test duration in milliseconds.
+   */
+  duration: number;
 }
 
 /**
@@ -399,7 +409,7 @@ export interface Reporter {
    */
   onBegin?(config: FullConfig, suite: Suite): void;
   /**
-   * Called after all tests has been run, or testing has been interrupted. Note that this method may return a [Promise]
+   * Called after all tests have been run, or testing has been interrupted. Note that this method may return a [Promise]
    * and Playwright Test will await it.
    * @param result Result of the full test run.
    * - `'passed'` - Everything went as expected.

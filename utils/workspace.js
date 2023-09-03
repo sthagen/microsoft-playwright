@@ -179,6 +179,21 @@ const workspace = new Workspace(ROOT_PATH, [
     files: LICENCE_FILES,
   }),
   new PWPackage({
+    name: '@playwright/browser-webkit',
+    path: path.join(ROOT_PATH, 'packages', 'playwright-browser-webkit'),
+    files: LICENCE_FILES,
+  }),
+  new PWPackage({
+    name: '@playwright/browser-firefox',
+    path: path.join(ROOT_PATH, 'packages', 'playwright-browser-firefox'),
+    files: LICENCE_FILES,
+  }),
+  new PWPackage({
+    name: '@playwright/browser-chromium',
+    path: path.join(ROOT_PATH, 'packages', 'playwright-browser-chromium'),
+    files: LICENCE_FILES,
+  }),
+  new PWPackage({
     name: '@playwright/experimental-ct-core',
     path: path.join(ROOT_PATH, 'packages', 'playwright-ct-core'),
     files: ['LICENSE'],
@@ -212,12 +227,6 @@ const workspace = new Workspace(ROOT_PATH, [
     name: '@playwright/experimental-ct-vue2',
     path: path.join(ROOT_PATH, 'packages', 'playwright-ct-vue2'),
     files: ['LICENSE'],
-  }),
-  new PWPackage({
-    name: '@playwright/experimental-grid',
-    path: path.join(ROOT_PATH, 'packages', 'playwright-grid'),
-    files: ['LICENSE'],
-    noConsistent: true,
   }),
 ]);
 

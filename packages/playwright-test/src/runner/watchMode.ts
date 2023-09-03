@@ -15,7 +15,7 @@
  */
 
 import readline from 'readline';
-import { createGuid, ManualPromise } from 'playwright-core/lib/utils';
+import { createGuid, getPackageManagerExecCommand, ManualPromise } from 'playwright-core/lib/utils';
 import type { FullConfigInternal, FullProjectInternal } from '../common/config';
 import { InternalReporter } from '../reporters/internalReporter';
 import { createFileMatcher, createFileMatcherFromArguments } from '../util';
@@ -298,7 +298,7 @@ async function runTests(config: FullConfigInternal, failedTestIdCollector: Set<s
     }
   }
 
-  if (testRun.phases.find(p => p.dispatcher.hasWorkerErrors()) || hasFailedTests)
+  if (testRun.failureTracker.hasWorkerErrors() || hasFailedTests)
     status = 'failed';
   if (status === 'passed' && taskStatus !== 'passed')
     status = taskStatus;
@@ -371,7 +371,7 @@ Change settings
   };
 
   process.stdin.on('keypress', handler);
-  result.finally(() => {
+  void result.finally(() => {
     process.stdin.off('keypress', handler);
     rl.close();
     if (process.stdin.isTTY)
@@ -384,8 +384,9 @@ let showBrowserServer: PlaywrightServer | undefined;
 let seq = 0;
 
 function printConfiguration(config: FullConfigInternal, title?: string) {
+  const packageManagerCommand = getPackageManagerExecCommand();
   const tokens: string[] = [];
-  tokens.push('npx playwright test');
+  tokens.push(`${packageManagerCommand} playwright test`);
   tokens.push(...(config.cliProjectFilter || [])?.map(p => colors.blue(`--project ${p}`)));
   if (config.cliGrep)
     tokens.push(colors.red(`--grep ${config.cliGrep}`));

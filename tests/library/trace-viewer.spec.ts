@@ -122,16 +122,18 @@ test('should open simple trace viewer', async ({ showTraceViewer }) => {
 test('should contain action info', async ({ showTraceViewer }) => {
   const traceViewer = await showTraceViewer([traceFile]);
   await traceViewer.selectAction('locator.click');
-  const logLines = await traceViewer.callLines.allTextContents();
+  await traceViewer.page.getByText('Log', { exact: true }).click();
+  const logLines = await traceViewer.logLines.allTextContents();
   expect(logLines.length).toBeGreaterThan(10);
   expect(logLines).toContain('attempting click action');
   expect(logLines).toContain('  click action done');
 });
 
-test('should render events', async ({ showTraceViewer }) => {
-  const traceViewer = await showTraceViewer([traceFile]);
-  const events = await traceViewer.eventBars();
-  expect(events).toContain('browsercontext_console');
+test('should render network bars', async ({ page, runAndTrace, server }) => {
+  const traceViewer = await runAndTrace(async () => {
+    await page.goto(server.EMPTY_PAGE);
+  });
+  await expect(traceViewer.page.locator('.timeline-bar.network')).toHaveCount(1);
 });
 
 test('should render console', async ({ showTraceViewer, browserName }) => {
@@ -146,21 +148,21 @@ test('should render console', async ({ showTraceViewer, browserName }) => {
   await expect(traceViewer.consoleLineMessages.last()).toHaveText('Cheers!');
 
   const icons = traceViewer.consoleLines.locator('.codicon');
-  await expect(icons.nth(0)).toHaveClass('codicon codicon-blank');
-  await expect(icons.nth(1)).toHaveClass('codicon codicon-warning');
-  await expect(icons.nth(2)).toHaveClass('codicon codicon-error');
-  await expect(icons.nth(3)).toHaveClass('codicon codicon-error');
+  await expect.soft(icons.nth(0)).toHaveClass('codicon codicon-browser status-none');
+  await expect.soft(icons.nth(1)).toHaveClass('codicon codicon-browser status-warning');
+  await expect.soft(icons.nth(2)).toHaveClass('codicon codicon-browser status-error');
+  await expect.soft(icons.nth(3)).toHaveClass('codicon codicon-browser status-error');
   // Firefox can insert layout error here.
-  await expect(icons.last()).toHaveClass('codicon codicon-blank');
+  await expect.soft(icons.last()).toHaveClass('codicon codicon-browser status-none');
   await expect(traceViewer.consoleStacks.first()).toContainText('Error: Unhandled exception');
 
   await traceViewer.selectAction('page.evaluate');
 
   const listViews = traceViewer.page.locator('.console-tab').locator('.list-view-entry');
-  await expect(listViews.nth(0)).toHaveClass('list-view-entry highlighted');
-  await expect(listViews.nth(1)).toHaveClass('list-view-entry highlighted warning');
-  await expect(listViews.nth(2)).toHaveClass('list-view-entry highlighted error');
-  await expect(listViews.nth(3)).toHaveClass('list-view-entry highlighted error');
+  await expect(listViews.nth(0)).toHaveClass('list-view-entry');
+  await expect(listViews.nth(1)).toHaveClass('list-view-entry warning');
+  await expect(listViews.nth(2)).toHaveClass('list-view-entry error');
+  await expect(listViews.nth(3)).toHaveClass('list-view-entry error');
   // Firefox can insert layout error here.
   await expect(listViews.last()).toHaveClass('list-view-entry');
 });
@@ -252,7 +254,7 @@ test('should have network request overrides', async ({ page, server, runAndTrace
   await traceViewer.selectAction('http://localhost');
   await traceViewer.showNetworkTab();
   await expect(traceViewer.networkRequests).toContainText([/200GET\/frame.htmltext\/html/]);
-  await expect(traceViewer.networkRequests).toContainText([/aborted.*style.cssx-unknown/]);
+  await expect(traceViewer.networkRequests).toContainText([/GET\/style.cssx-unknown.*aborted/]);
   await expect(traceViewer.networkRequests).not.toContainText([/continued/]);
 });
 
@@ -263,8 +265,8 @@ test('should have network request overrides 2', async ({ page, server, runAndTra
   });
   await traceViewer.selectAction('http://localhost');
   await traceViewer.showNetworkTab();
-  await expect(traceViewer.networkRequests).toContainText([/200GET\/frame.htmltext\/html/]);
-  await expect(traceViewer.networkRequests).toContainText([/continued.*script.jsapplication\/javascript/]);
+  await expect.soft(traceViewer.networkRequests).toContainText([/200GET\/frame.htmltext\/html.*/]);
+  await expect.soft(traceViewer.networkRequests).toContainText([/200GET\/script.jsapplication\/javascript.*continued/]);
 });
 
 test('should show snapshot URL', async ({ page, runAndTrace, server }) => {
@@ -273,7 +275,7 @@ test('should show snapshot URL', async ({ page, runAndTrace, server }) => {
     await page.evaluate('2+2');
   });
   await traceViewer.snapshotFrame('page.evaluate');
-  await expect(traceViewer.page.locator('.window-address-bar')).toHaveText(server.EMPTY_PAGE);
+  await expect(traceViewer.page.locator('.browser-frame-address-bar')).toHaveText(server.EMPTY_PAGE);
 });
 
 test('should popup snapshot', async ({ page, runAndTrace, server }) => {
@@ -629,6 +631,20 @@ test('should highlight target elements', async ({ page, runAndTrace, browserName
   await expect.poll(() => highlightedDivs(frameExpect2)).toEqual(['multi', 'multi']);
 });
 
+test('should highlight target element in shadow dom', async ({ page, server, runAndTrace }) => {
+  const traceViewer = await runAndTrace(async () => {
+    await page.goto(server.PREFIX + '/shadow.html');
+    await page.locator('button').click();
+    await expect(page.locator('h1')).toHaveText('Hellow Shadow DOM v1');
+  });
+
+  const framePageClick = await traceViewer.snapshotFrame('locator.click');
+  await expect(framePageClick.locator('button')).toHaveCSS('background-color', 'rgba(111, 168, 220, 0.498)');
+
+  const frameExpect = await traceViewer.snapshotFrame('expect.toHaveText');
+  await expect(frameExpect.locator('h1')).toHaveCSS('background-color', 'rgba(111, 168, 220, 0.498)');
+});
+
 test('should show action source', async ({ showTraceViewer }) => {
   const traceViewer = await showTraceViewer([traceFile]);
   await traceViewer.selectAction('locator.click');
@@ -861,7 +877,7 @@ test('should update highlight when typing', async ({ page, runAndTrace, server }
     await page.setContent('<button>Submit</button>');
   });
   const snapshot = await traceViewer.snapshotFrame('page.setContent');
-  await traceViewer.page.getByTitle('Pick locator').click();
+  await traceViewer.page.getByText('Locator').click();
   await traceViewer.page.locator('.CodeMirror').click();
   await traceViewer.page.keyboard.type('button');
   await expect(snapshot.locator('x-pw-glass')).toBeVisible();

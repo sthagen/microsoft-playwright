@@ -45,7 +45,7 @@ export class Suite extends Base implements SuitePrivate {
   parent?: Suite;
   _use: FixturesWithLocation[] = [];
   _entries: (Suite | TestCase)[] = [];
-  _hooks: { type: 'beforeEach' | 'afterEach' | 'beforeAll' | 'afterAll', fn: Function, location: Location }[] = [];
+  _hooks: { type: 'beforeEach' | 'afterEach' | 'beforeAll' | 'afterAll', fn: Function, title: string, location: Location }[] = [];
   _timeout: number | undefined;
   _retries: number | undefined;
   _staticAnnotations: Annotation[] = [];
@@ -187,7 +187,7 @@ export class Suite extends Base implements SuitePrivate {
       staticAnnotations: this._staticAnnotations.slice(),
       modifiers: this._modifiers.slice(),
       parallelMode: this._parallelMode,
-      hooks: this._hooks.map(h => ({ type: h.type, location: h.location })),
+      hooks: this._hooks.map(h => ({ type: h.type, location: h.location, title: h.title })),
       fileId: this._fileId,
     };
   }
@@ -202,7 +202,7 @@ export class Suite extends Base implements SuitePrivate {
     suite._staticAnnotations = data.staticAnnotations;
     suite._modifiers = data.modifiers;
     suite._parallelMode = data.parallelMode;
-    suite._hooks = data.hooks.map((h: any) => ({ type: h.type, location: h.location, fn: () => { } }));
+    suite._hooks = data.hooks.map((h: any) => ({ type: h.type, location: h.location, title: h.title, fn: () => { } }));
     suite._fileId = data.fileId;
     return suite;
   }
@@ -292,6 +292,7 @@ export class TestCase extends Base implements reporterTypes.TestCase {
       poolDigest: this._poolDigest,
       workerHash: this._workerHash,
       staticAnnotations: this._staticAnnotations.slice(),
+      annotations: this.annotations.slice(),
       projectId: this._projectId,
     };
   }
@@ -307,6 +308,7 @@ export class TestCase extends Base implements reporterTypes.TestCase {
     test._poolDigest = data.poolDigest;
     test._workerHash = data.workerHash;
     test._staticAnnotations = data.staticAnnotations;
+    test.annotations = data.annotations;
     test._projectId = data.projectId;
     return test;
   }
