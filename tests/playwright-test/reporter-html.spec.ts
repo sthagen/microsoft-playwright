@@ -19,7 +19,7 @@ import path from 'path';
 import url from 'url';
 import { test as baseTest, expect as baseExpect, createImage } from './playwright-test-fixtures';
 import type { HttpServer } from '../../packages/playwright-core/src/utils';
-import { startHtmlReportServer } from '../../packages/playwright-test/lib/reporters/html';
+import { startHtmlReportServer } from '../../packages/playwright/lib/reporters/html';
 const { spawnAsync } = require('../../packages/playwright-core/lib/utils');
 
 const test = baseTest.extend<{ showReport: (reportFolder?: string) => Promise<void> }>({
@@ -454,10 +454,10 @@ for (const useIntermediateMergeReport of [false] as const) {
       ]);
       await expect(page.locator('.source-line-running')).toContainText('page.evaluate');
 
-      await expect(page.getByTestId('stack-trace')).toContainText([
+      await expect(page.getByTestId('stack-trace-list')).toContainText([
         /a.test.js:[\d]+/,
       ]);
-      await expect(page.getByTestId('stack-trace').locator('.list-view-entry.selected')).toContainText('a.test.js');
+      await expect(page.getByTestId('stack-trace-list').locator('.list-view-entry.selected')).toContainText('a.test.js');
     });
 
     test('should show trace title', async ({ runInlineTest, page, showReport }) => {
@@ -873,7 +873,7 @@ for (const useIntermediateMergeReport of [false] as const) {
         const files = {
           'uncommitted.txt': `uncommitted file`,
           'playwright.config.ts': `
-            import { gitCommitInfo } from '@playwright/test/lib/plugins';
+            import { gitCommitInfo } from 'playwright/lib/plugins';
             import { test, expect } from '@playwright/test';
             export default { _plugins: [gitCommitInfo()] };
           `,
@@ -926,7 +926,7 @@ for (const useIntermediateMergeReport of [false] as const) {
         const result = await runInlineTest({
           'uncommitted.txt': `uncommitted file`,
           'playwright.config.ts': `
-            import { gitCommitInfo } from '@playwright/test/lib/plugins';
+            import { gitCommitInfo } from 'playwright/lib/plugins';
             import { test, expect } from '@playwright/test';
             const plugin = gitCommitInfo({
               info: {
@@ -940,7 +940,7 @@ for (const useIntermediateMergeReport of [false] as const) {
             export default { _plugins: [plugin] };
           `,
           'example.spec.ts': `
-            import { gitCommitInfo } from '@playwright/test/lib/plugins';
+            import { gitCommitInfo } from 'playwright/lib/plugins';
             import { test, expect } from '@playwright/test';
             test('sample', async ({}) => { expect(2).toBe(2); });
           `,

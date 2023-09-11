@@ -22,7 +22,7 @@ import { TreeView } from '@web/components/treeView';
 import type { TreeState } from '@web/components/treeView';
 import { baseFullConfig, TeleReporterReceiver, TeleSuite } from '@testIsomorphic/teleReceiver';
 import type { TeleTestCase } from '@testIsomorphic/teleReceiver';
-import type { FullConfig, Suite, TestCase, Location, TestError } from '@playwright/test/types/testReporter';
+import type { FullConfig, Suite, TestCase, Location, TestError } from 'playwright/types/testReporter';
 import { SplitView } from '@web/components/splitView';
 import { idForAction, MultiTraceModel } from './modelUtil';
 import type { SourceLocation } from './modelUtil';
@@ -168,6 +168,26 @@ export const UIModeView: React.FC<{}> = ({
   }, [projectFilters, runningState, testModel]);
 
   const isRunningTest = !!runningState;
+  const dialogRef = React.useRef<HTMLDialogElement>(null);
+  const openInstallDialog = React.useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dialogRef.current?.showModal();
+  }, []);
+  const closeInstallDialog = React.useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dialogRef.current?.close();
+  }, []);
+  const installBrowsers = React.useCallback((e: React.MouseEvent) => {
+    closeInstallDialog(e);
+    setIsShowingOutput(true);
+    sendMessage('installBrowsers').then(async () => {
+      setIsShowingOutput(false);
+      const { hasBrowsers } = await sendMessage('checkBrowsers');
+      setHasBrowsers(hasBrowsers);
+    });
+  }, [closeInstallDialog]);
 
   return <div className='vbox ui-mode'>
     {isDisconnected && <div className='drop-target'>
@@ -196,14 +216,19 @@ export const UIModeView: React.FC<{}> = ({
           <ToolbarButton icon='color-mode' title='Toggle color mode' onClick={() => toggleTheme()} />
           <ToolbarButton icon='refresh' title='Reload' onClick={() => reloadTests()} disabled={isRunningTest || isLoading}></ToolbarButton>
           <ToolbarButton icon='terminal' title='Toggle output' toggled={isShowingOutput} onClick={() => { setIsShowingOutput(!isShowingOutput); }} />
-          {!hasBrowsers && <ToolbarButton icon='lightbulb-autofix' style={{ color: 'var(--vscode-errorForeground)' }}title='Install browsers' toggled={isShowingOutput} onClick={() => {
-            setIsShowingOutput(true);
-            sendMessage('installBrowsers').then(async () => {
-              setIsShowingOutput(false);
-              const { hasBrowsers } = await sendMessage('checkBrowsers');
-              setHasBrowsers(hasBrowsers);
-            });
-          }} />}
+          {!hasBrowsers && <ToolbarButton icon='lightbulb-autofix' style={{ color: 'var(--vscode-list-warningForeground)' }} title='Playwright browsers are missing' toggled={isShowingOutput} onClick={openInstallDialog}>
+            <dialog ref={dialogRef}>
+              <div className='title'><span className='codicon codicon-lightbulb'></span>Install browsers</div>
+              <div className='body'>
+                Playwright did not find installed browsers.
+                <br></br>
+                Would you like to run `playwright install`?
+                <br></br>
+                <button className='button' onClick={installBrowsers}>Yes</button>
+                <button className='button secondary' onClick={closeInstallDialog}>No</button>
+              </div>
+            </dialog>
+          </ToolbarButton>}
         </Toolbar>
         <FiltersView
           filterText={filterText}
@@ -467,6 +492,7 @@ const TestList: React.FC<{
   };
 
   return <TestTreeView
+    name='tests'
     treeState={treeState}
     setTreeState={setTreeState}
     rootItem={rootItem}

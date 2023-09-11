@@ -16,6 +16,7 @@
  */
 
 import { browserTest as it, expect } from '../config/browserTest';
+import os from 'os';
 
 it.describe('mobile viewport', () => {
   it.skip(({ browserName }) => browserName === 'firefox');
@@ -187,6 +188,60 @@ it.describe('mobile viewport', () => {
       expect(error.message).toContain('Mouse wheel is not supported in mobile WebKit');
     else
       await page.waitForFunction('window.scrollY === 100');
+    await context.close();
+  });
+
+  it('view scale should reset after navigation', async ({ browser, browserName, isLinux, isWindows, isMac, headless }) => {
+    it.info().annotations.push({ type: 'issue', description: 'https://github.com/microsoft/playwright/issues/26876' });
+    const context = await browser.newContext({
+      viewport: { width: 390, height: 664 },
+      isMobile: true,
+    });
+    const page = await context.newPage();
+    await page.goto(`data:text/html,<meta name='viewport' content='device-width, initial-scale=1'><button>Mobile Viewport</button>`);
+    await page.route('**/button.html', route => {
+      void route.fulfill({
+        body: `<body>
+          <button>Click me</button>
+          <script>
+            window.clicks = [];
+            document.addEventListener('click', e => {
+              const dot = document.createElement('div');
+              dot.style.position = 'absolute';
+              dot.style.width = '10px';
+              dot.style.height = '10px';
+              dot.style.borderRadius = '5px';
+              dot.style.backgroundColor = 'red';
+              dot.style.left = e.pageX + 'px';
+              dot.style.top = e.pageY + 'px';
+              dot.textContent = 'x: ' + e.pageX + ' y: ' + e.pageY;
+              document.body.appendChild(dot);
+              window.clicks.push({ x: e.pageX, y: e.pageY });
+            });
+          </script>
+        </body>`,
+        contentType: 'text/html',
+      });
+    });
+    await page.goto('http://localhost/button.html');
+    await page.getByText('Click me').click({ force: true });
+    let expected = [{ x: 41, y: 18 }];
+    if (browserName === 'webkit') {
+      if (isLinux) {
+        if (headless)
+          expected = [{ x: 50, y: 20 }];
+        else
+          expected = [{ x: 45, y: 20 }];
+      } else if (isWindows) {
+        expected = [{ x: 40, y: 20 }];
+      } else if (isMac) {
+        if (parseInt(os.release(), 10) === 21)
+          expected = [{ x: 40, y: 17 }];
+        else
+          expected = [{ x: 37, y: 15 }];
+      }
+    }
+    expect(await page.evaluate(() => (window as any).clicks)).toEqual(expected);
     await context.close();
   });
 });
