@@ -109,6 +109,7 @@ export class Tracing extends SdkObject implements InstrumentationListener, Snaps
       this._snapshotter = new Snapshotter(context, this);
       assert(tracesDir, 'tracesDir must be specified for BrowserContext');
       this._contextCreatedEvent.browserName = context._browser.options.name;
+      this._contextCreatedEvent.channel = context._browser.options.channel;
       this._contextCreatedEvent.options = context._options;
     }
   }
@@ -383,7 +384,9 @@ export class Tracing extends SdkObject implements InstrumentationListener, Snaps
   onEvent(sdkObject: SdkObject, event: trace.EventTraceEvent) {
     if (!sdkObject.attribution.context)
       return;
-    if (event.method === 'console' || (event.method === '__create__' && event.class === 'ConsoleMessage')) {
+    if (event.method === 'console' ||
+        (event.method === '__create__' && event.class === 'ConsoleMessage') ||
+        (event.method === '__create__' && event.class === 'JSHandle')) {
       // Console messages are handled separately.
       return;
     }
