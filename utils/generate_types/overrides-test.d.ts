@@ -18,9 +18,10 @@ import type { APIRequestContext, Browser, BrowserContext, BrowserContextOptions,
 export * from 'playwright-core';
 
 export type ReporterDescription =
+  ['blob'] | ['blob', { outputDir?: string }] |
   ['dot'] |
   ['line'] |
-  ['list'] |
+  ['list'] | ['list', { printSteps?: boolean }] |
   ['github'] |
   ['junit'] | ['junit', { outputFile?: string, stripANSIControlSequences?: boolean }] |
   ['json'] | ['json', { outputFile?: string }] |
@@ -157,7 +158,7 @@ export interface TestType<TestArgs extends KeyValue, WorkerArgs extends KeyValue
   afterAll(inner: (args: TestArgs & WorkerArgs, testInfo: TestInfo) => Promise<any> | any): void;
   afterAll(title: string, inner: (args: TestArgs & WorkerArgs, testInfo: TestInfo) => Promise<any> | any): void;
   use(fixtures: Fixtures<{}, {}, TestArgs, WorkerArgs>): void;
-  step<T>(title: string, body: () => T | Promise<T>): Promise<T>;
+  step<T>(title: string, body: () => T | Promise<T>, options?: { box?: boolean }): Promise<T>;
   expect: Expect<{}>;
   extend<T extends KeyValue, W extends KeyValue = {}>(fixtures: Fixtures<T, W, TestArgs, WorkerArgs>): TestType<TestArgs & T, WorkerArgs & W>;
   info(): TestInfo;
