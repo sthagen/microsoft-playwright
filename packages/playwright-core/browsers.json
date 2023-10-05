@@ -15,21 +15,21 @@
     },
     {
       "name": "chromium-tip-of-tree",
-      "revision": "1152",
+      "revision": "1156",
       "installByDefault": false,
-      "browserVersion": "119.0.6017.0"
+      "browserVersion": "119.0.6045.0"
     },
     {
       "name": "firefox",
-      "revision": "1424",
+      "revision": "1425",
       "installByDefault": true,
-      "browserVersion": "117.0"
+      "browserVersion": "118.0.1"
     },
     {
       "name": "firefox-asan",
-      "revision": "1424",
+      "revision": "1425",
       "installByDefault": false,
-      "browserVersion": "117.0"
+      "browserVersion": "118.0.1"
     },
     {
       "name": "firefox-beta",

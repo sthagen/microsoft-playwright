@@ -5207,6 +5207,14 @@ type MergedTestType<List> = TestType<MergedT<List>, MergedW<List>>;
  */
 export function composedTest<List extends any[]>(...tests: List): MergedTestType<List>;
 
+type MergedExpectMatchers<List> = List extends [Expect<infer M>, ...(infer Rest)] ? M & MergedExpectMatchers<Rest> : {};
+type MergedExpect<List> = Expect<MergedExpectMatchers<List>>;
+
+/**
+ * Merges expects
+ */
+export function composedExpect<List extends any[]>(...expects: List): MergedExpect<List>;
+
 // This is required to not export everything by default. See https://github.com/Microsoft/TypeScript/issues/19545#issuecomment-340490459
 export {};
 
@@ -5577,6 +5585,26 @@ interface LocatorAssertions {
    * @param options
    */
   toHaveAttribute(name: string, value: string|RegExp, options?: {
+    /**
+     * Time to retry the assertion for in milliseconds. Defaults to `timeout` in `TestConfig.expect`.
+     */
+    timeout?: number;
+  }): Promise<void>;
+
+  /**
+   * Ensures the {@link Locator} points to an element with given attribute. The method will assert attribute presence.
+   *
+   * ```js
+   * const locator = page.locator('input');
+   * // Assert attribute existence.
+   * await expect(locator).toHaveAttribute('disabled');
+   * await expect(locator).not.toHaveAttribute('open');
+   * ```
+   *
+   * @param name Attribute name.
+   * @param options
+   */
+  toHaveAttribute(name: string, options?: {
     /**
      * Time to retry the assertion for in milliseconds. Defaults to `timeout` in `TestConfig.expect`.
      */
