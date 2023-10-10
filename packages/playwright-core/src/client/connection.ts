@@ -35,7 +35,7 @@ import { WritableStream } from './writableStream';
 import { debugLogger } from '../common/debugLogger';
 import { SelectorsOwner } from './selectors';
 import { Android, AndroidSocket, AndroidDevice } from './android';
-import { captureLibraryStackTrace, type ParsedStackTrace } from '../utils/stackTrace';
+import { captureLibraryStackText } from '../utils/stackTrace';
 import { Artifact } from './artifact';
 import { EventEmitter } from 'events';
 import { JsonPipe } from './jsonPipe';
@@ -65,7 +65,7 @@ export class Connection extends EventEmitter {
   readonly _objects = new Map<string, ChannelOwner>();
   onmessage = (message: object): void => {};
   private _lastId = 0;
-  private _callbacks = new Map<number, { resolve: (a: any) => void, reject: (a: Error) => void, stackTrace: ParsedStackTrace | null, type: string, method: string }>();
+  private _callbacks = new Map<number, { resolve: (a: any) => void, reject: (a: Error) => void, apiName: string | undefined, type: string, method: string }>();
   private _rootObject: Root;
   private _closedErrorMessage: string | undefined;
   private _isRemote = false;
@@ -98,10 +98,6 @@ export class Connection extends EventEmitter {
     return await this._rootObject.initialize();
   }
 
-  pendingProtocolCalls(): ParsedStackTrace[] {
-    return Array.from(this._callbacks.values()).map(callback => callback.stackTrace).filter(Boolean) as ParsedStackTrace[];
-  }
-
   getObjectWithKnownName(guid: string): any {
     return this._objects.get(guid)!;
   }
@@ -113,27 +109,26 @@ export class Connection extends EventEmitter {
       this._tracingCount--;
   }
 
-  async sendMessageToServer(object: ChannelOwner, method: string, params: any, stackTrace: ParsedStackTrace | null, wallTime: number | undefined): Promise<any> {
+  async sendMessageToServer(object: ChannelOwner, method: string, params: any, apiName: string | undefined, frames: channels.StackFrame[], wallTime: number | undefined): Promise<any> {
     if (this._closedErrorMessage)
       throw new Error(this._closedErrorMessage);
     if (object._wasCollected)
       throw new Error('The object has been collected to prevent unbounded heap growth.');
 
-    const { apiName, frames } = stackTrace || { apiName: '', frames: [] };
     const guid = object._guid;
     const type = object._type;
     const id = ++this._lastId;
     const message = { id, guid, method, params };
-    if (debugLogger.isEnabled('channel:command')) {
+    if (debugLogger.isEnabled('channel')) {
       // Do not include metadata in debug logs to avoid noise.
-      debugLogger.log('channel:command', JSON.stringify(message));
+      debugLogger.log('channel', 'SEND> ' + JSON.stringify(message));
     }
     const location = frames[0] ? { file: frames[0].file, line: frames[0].line, column: frames[0].column } : undefined;
     const metadata: channels.Metadata = { wallTime, apiName, location, internal: !apiName };
     if (this._tracingCount && frames && type !== 'LocalUtils')
       this._localUtils?._channel.addStackToTracingNoReply({ callData: { stack: frames, id } }).catch(() => {});
     this.onmessage({ ...message, metadata });
-    return await new Promise((resolve, reject) => this._callbacks.set(id, { resolve, reject, stackTrace, type, method }));
+    return await new Promise((resolve, reject) => this._callbacks.set(id, { resolve, reject, apiName, type, method }));
   }
 
   dispatch(message: object) {
@@ -142,8 +137,8 @@ export class Connection extends EventEmitter {
 
     const { id, guid, method, params, result, error } = message as any;
     if (id) {
-      if (debugLogger.isEnabled('channel:response'))
-        debugLogger.log('channel:response', JSON.stringify(message));
+      if (debugLogger.isEnabled('channel'))
+        debugLogger.log('channel', '<RECV ' + JSON.stringify(message));
       const callback = this._callbacks.get(id);
       if (!callback)
         throw new Error(`Cannot find command to respond: ${id}`);
@@ -157,8 +152,8 @@ export class Connection extends EventEmitter {
       return;
     }
 
-    if (debugLogger.isEnabled('channel:event'))
-      debugLogger.log('channel:event', JSON.stringify(message));
+    if (debugLogger.isEnabled('channel'))
+      debugLogger.log('channel', '<EVENT ' + JSON.stringify(message));
     if (method === '__create__') {
       this._createRemoteObject(guid, params.type, params.guid, params.initializer);
       return;
@@ -186,7 +181,7 @@ export class Connection extends EventEmitter {
   }
 
   close(errorMessage: string = 'Connection closed') {
-    const stack = captureLibraryStackTrace().frameTexts.join('\n');
+    const stack = captureLibraryStackText();
     if (stack)
       errorMessage += '\n    ==== Closed by ====\n' + stack + '\n';
     this._closedErrorMessage = errorMessage;
