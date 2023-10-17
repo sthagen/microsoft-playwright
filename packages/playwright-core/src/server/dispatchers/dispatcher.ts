@@ -18,14 +18,15 @@ import { EventEmitter } from 'events';
 import type * as channels from '@protocol/channels';
 import { serializeError } from '../../protocol/serializers';
 import { findValidator, ValidationError, createMetadataValidator, type ValidatorContext } from '../../protocol/validator';
-import { assert, isUnderTest, monotonicTime } from '../../utils';
-import { TargetClosedError } from '../../common/errors';
+import { assert, isUnderTest, monotonicTime, rewriteErrorMessage } from '../../utils';
+import { TargetClosedError, isTargetClosedError, kTargetClosedErrorMessage, kTargetCrashedErrorMessage } from '../../common/errors';
 import type { CallMetadata } from '../instrumentation';
 import { SdkObject } from '../instrumentation';
 import type { PlaywrightDispatcher } from './playwrightDispatcher';
 import { eventsHelper } from '../..//utils/eventsHelper';
 import type { RegisteredListener } from '../..//utils/eventsHelper';
 import type * as trace from '@trace/trace';
+import { isProtocolError } from '../protocolError';
 
 export const dispatcherSymbol = Symbol('dispatcher');
 const metadataValidator = createMetadataValidator();
@@ -329,6 +330,16 @@ export class DispatcherConnection {
       const validator = findValidator(dispatcher._type, method, 'Result');
       callMetadata.result = validator(result, '', { tChannelImpl: this._tChannelImplToWire.bind(this), binary: this._isLocal ? 'buffer' : 'toBase64' });
     } catch (e) {
+      if (isTargetClosedError(e) && sdkObject)
+        rewriteErrorMessage(e, closeReason(sdkObject));
+      if (isProtocolError(e)) {
+        if (e.type === 'closed') {
+          const closedReason = sdkObject ? closeReason(sdkObject) : kTargetClosedErrorMessage;
+          rewriteErrorMessage(e, closedReason + e.browserLogMessage());
+        }
+        if (e.type === 'crashed')
+          rewriteErrorMessage(e, kTargetCrashedErrorMessage + e.browserLogMessage());
+      }
       callMetadata.error = serializeError(e);
     } finally {
       callMetadata.endTime = monotonicTime();
@@ -344,4 +355,10 @@ export class DispatcherConnection {
     }
     this.onmessage(response);
   }
+}
+
+function closeReason(sdkObject: SdkObject) {
+  return sdkObject.attribution.page?._closeReason ||
+    sdkObject.attribution.context?._closeReason ||
+    sdkObject.attribution.browser?._closeReason || kTargetClosedErrorMessage;
 }
