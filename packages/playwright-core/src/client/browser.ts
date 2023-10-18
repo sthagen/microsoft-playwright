@@ -21,7 +21,7 @@ import type { Page } from './page';
 import { ChannelOwner } from './channelOwner';
 import { Events } from './events';
 import type { LaunchOptions, BrowserContextOptions, HeadersArray } from './types';
-import { isTargetClosedError } from '../common/errors';
+import { isTargetClosedError } from './errors';
 import type * as api from '../../types/types';
 import { CDPSession } from './cdpSession';
 import type { BrowserType } from './browserType';
@@ -40,6 +40,7 @@ export class Browser extends ChannelOwner<channels.BrowserChannel> implements ap
 
   // Used from @playwright/test fixtures.
   _connectHeaders?: HeadersArray;
+  _closeReason: string | undefined;
 
   static from(browser: channels.BrowserChannel): Browser {
     return (browser as any)._object;
@@ -131,6 +132,7 @@ export class Browser extends ChannelOwner<channels.BrowserChannel> implements ap
   }
 
   async close(options: { reason?: string } = {}): Promise<void> {
+    this._closeReason = options.reason;
     try {
       if (this._shouldCloseConnectionOnClose)
         this._connection.close();
