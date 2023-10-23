@@ -16,7 +16,7 @@
 
 import fs from 'fs';
 import path from 'path';
-import { test, expect, parseTestRunnerOutput } from './playwright-test-fixtures';
+import { test, expect, parseTestRunnerOutput, countTimes } from './playwright-test-fixtures';
 
 test('it should not allow multiple tests with the same name per suite', async ({ runInlineTest }) => {
   const result = await runInlineTest({
@@ -377,8 +377,6 @@ test('should teardown workers that are redundant', async ({ runInlineTest }) => 
 });
 
 test('should not hang if test suites in worker are inconsistent with runner', async ({ runInlineTest }) => {
-  const oldValue = process.env.TEST_WORKER_INDEX;
-  delete process.env.TEST_WORKER_INDEX;
   const result = await runInlineTest({
     'playwright.config.ts': `
       module.exports = { name: 'project-name' };
@@ -400,13 +398,13 @@ test('should not hang if test suites in worker are inconsistent with runner', as
         });
       }
     `,
-  }, { 'workers': 1 });
-  process.env.TEST_WORKER_INDEX = oldValue;
+  }, { 'workers': 1 }, { TEST_WORKER_INDEX: undefined });
   expect(result.exitCode).toBe(1);
   expect(result.passed).toBe(1);
-  expect(result.failed).toBe(1);
-  expect(result.skipped).toBe(1);
-  expect(result.report.suites[0].specs[1].tests[0].results[0].error!.message).toBe('Test(s) not found in the worker process. Make sure test titles do not change:\nproject-name > a.spec.js > Test 1 - bar\nproject-name > a.spec.js > Test 2 - baz');
+  expect(result.failed).toBe(2);
+  expect(result.skipped).toBe(0);
+  const expectedError = 'Test not found in the worker process. Make sure test title does not change.';
+  expect(countTimes(result.output, expectedError)).toBe(2);  // Once per each test that was missing.
 });
 
 test('sigint should stop global setup', async ({ interactWithTestRunner }) => {
@@ -750,4 +748,29 @@ test('slow double SIGINT should be respected in reporter.onExit', async ({ inter
   const result = parseTestRunnerOutput(testProcess.output);
   expect(result.output).toContain('MyReporter.onExit started');
   expect(result.output).not.toContain('MyReporter.onExit finished');
+});
+
+test('unhandled exception in test.fail should restart worker and continue', async ({ runInlineTest }) => {
+  const result = await runInlineTest({
+    'a.spec.ts': `
+      import { test, expect } from '@playwright/test';
+
+      test('bad', async () => {
+        test.fail();
+        console.log('\\n%%bad running worker=' + test.info().workerIndex);
+        setTimeout(() => {
+          throw new Error('oh my!');
+        }, 0);
+        await new Promise(f => setTimeout(f, 1000));
+      });
+
+      test('good', () => {
+        console.log('\\n%%good running worker=' + test.info().workerIndex);
+      });
+    `
+  }, { retries: 1, reporter: 'list' });
+  expect(result.exitCode).toBe(0);
+  expect(result.passed).toBe(2);
+  expect(result.failed).toBe(0);
+  expect(result.outputLines).toEqual(['bad running worker=0', 'good running worker=1']);
 });
