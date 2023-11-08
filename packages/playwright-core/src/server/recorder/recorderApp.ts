@@ -34,6 +34,7 @@ declare global {
     playwrightSetMode: (mode: Mode) => void;
     playwrightSetPaused: (paused: boolean) => void;
     playwrightSetSources: (sources: Source[]) => void;
+    playwrightSetOverlayVisible: (visible: boolean) => void;
     playwrightSetSelector: (selector: string, focus?: boolean) => void;
     playwrightUpdateLogs: (callLogs: CallLog[]) => void;
     dispatch(data: EventData): Promise<void>;
