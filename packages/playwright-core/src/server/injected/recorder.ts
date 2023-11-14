@@ -22,6 +22,7 @@ import type { Mode, OverlayState, UIState } from '@recorder/recorderTypes';
 import { Highlight, type HighlightOptions } from '../injected/highlight';
 import { isInsideScope } from './domUtils';
 import { elementText } from './selectorUtils';
+import type { ElementText } from './selectorUtils';
 import { asLocator } from '../../utils/isomorphic/locatorGenerators';
 import type { Language } from '../../utils/isomorphic/locatorGenerators';
 import { locatorOrSelectorAsSelector } from '@isomorphic/locatorParser';
@@ -467,6 +468,7 @@ class TextAssertionTool implements RecorderTool {
   private _acceptButton: HTMLElement;
   private _cancelButton: HTMLElement;
   private _keyboardListener: ((event: KeyboardEvent) => void) | undefined;
+  private _textCache = new Map<Element | ShadowRoot, ElementText>();
 
   constructor(private _recorder: Recorder) {
     this._acceptButton = this._recorder.document.createElement('x-pw-tool-item');
@@ -514,6 +516,7 @@ class TextAssertionTool implements RecorderTool {
   }
 
   private _generateAction(): actions.AssertAction | null {
+    this._textCache.clear();
     const target = this._hoverHighlight?.elements[0];
     if (!target)
       return null;
@@ -536,12 +539,15 @@ class TextAssertionTool implements RecorderTool {
         };
       }
     } else {
-      const { selector } = generateSelector(this._recorder.injectedScript, target, { testIdAttributeName: this._recorder.state.testIdAttributeName, forTextExpect: true });
+      this._hoverHighlight = generateSelector(this._recorder.injectedScript, target, { testIdAttributeName: this._recorder.state.testIdAttributeName, forTextExpect: true });
+      // forTextExpect can update the target, re-highlight it.
+      this._recorder.updateHighlight(this._hoverHighlight, true, { color: '#8acae480' });
+
       return {
         name: 'assertText',
-        selector,
+        selector: this._hoverHighlight.selector,
         signals: [],
-        text: target.textContent!,
+        text: normalizeWhiteSpace(elementText(this._textCache, target).full),
         substring: true,
       };
     }
@@ -566,8 +572,7 @@ class TextAssertionTool implements RecorderTool {
   }
 
   private _showDialog() {
-    const target = this._hoverHighlight?.elements[0];
-    if (!target)
+    if (!this._hoverHighlight?.elements[0])
       return;
     this._action = this._generateAction();
     if (!this._action)
@@ -585,6 +590,7 @@ class TextAssertionTool implements RecorderTool {
         return;
       }
     };
+
     this._recorder.document.addEventListener('keydown', this._keyboardListener, true);
     const toolbarElement = this._recorder.document.createElement('x-pw-tools-list');
     toolbarElement.appendChild(this._createLabel(this._action));
@@ -609,42 +615,74 @@ class TextAssertionTool implements RecorderTool {
     cm.on('change', () => {
       if (this._action) {
         const selector = locatorOrSelectorAsSelector(this._recorder.state.language, cm.getValue(), this._recorder.state.testIdAttributeName);
-        const model: HighlightModel = {
+        const elements = this._recorder.injectedScript.querySelectorAll(parseSelector(selector), this._recorder.document);
+        cmElement.classList.toggle('does-not-match', !elements.length);
+        this._hoverHighlight = elements.length ? {
           selector,
-          elements: this._recorder.injectedScript.querySelectorAll(parseSelector(selector), this._recorder.document),
-        };
+          elements,
+        } : null;
         this._action.selector = selector;
-        this._recorder.updateHighlight(model, true);
+        this._recorder.updateHighlight(this._hoverHighlight, true);
       }
     });
 
     let elementToFocus: HTMLElement | null = null;
-    if (this._action.name !== 'assertChecked') {
+    const action = this._action;
+    if (action.name === 'assertText') {
+      const textElement = this._recorder.document.createElement('textarea');
+      textElement.setAttribute('spellcheck', 'false');
+      textElement.value = this._renderValue(this._action);
+      textElement.classList.add('text-editor');
+
+      const updateAndValidate = () => {
+        const newValue = normalizeWhiteSpace(textElement.value);
+        const target = this._hoverHighlight?.elements[0];
+        if (!target)
+          return;
+        action.text = newValue;
+        const targetText = normalizeWhiteSpace(elementText(this._textCache, target).full);
+        const matches = action.substring ? newValue && targetText.includes(newValue) : targetText === newValue;
+        textElement.classList.toggle('does-not-match', !matches);
+      };
+      textElement.addEventListener('input', updateAndValidate);
+      bodyElement.appendChild(textElement);
+
+      // Add a toolbar substring checkbox.
+      const substringElement = this._recorder.document.createElement('label');
+      substringElement.style.cursor = 'pointer';
+      const checkboxElement = this._recorder.document.createElement('input');
+      substringElement.appendChild(checkboxElement);
+      substringElement.appendChild(this._recorder.document.createTextNode('Substring'));
+      checkboxElement.type = 'checkbox';
+      checkboxElement.style.cursor = 'pointer';
+      checkboxElement.checked = action.substring;
+      checkboxElement.addEventListener('change', () => {
+        action.substring = checkboxElement.checked;
+        updateAndValidate();
+      });
+      toolbarElement.insertBefore(substringElement, this._acceptButton);
+
+      elementToFocus = textElement;
+    } else if (action.name === 'assertValue') {
       const textElement = this._recorder.document.createElement('textarea');
       textElement.setAttribute('spellcheck', 'false');
       textElement.value = this._renderValue(this._action);
       textElement.classList.add('text-editor');
 
       textElement.addEventListener('input', () => {
-        if (this._action?.name === 'assertText')
-          this._action.text = normalizeWhiteSpace(elementText(new Map(), textElement).full);
-        if (this._action?.name === 'assertChecked')
-          this._action.checked = textElement.value === 'true';
-        if (this._action?.name === 'assertValue')
-          this._action.value = textElement.value;
+        action.value = textElement.value;
       });
       bodyElement.appendChild(textElement);
       elementToFocus = textElement;
-    } else {
+    } else if (action.name === 'assertChecked') {
       const labelElement = this._recorder.document.createElement('label');
       labelElement.textContent = 'Value:';
       const checkboxElement = this._recorder.document.createElement('input');
       labelElement.appendChild(checkboxElement);
       checkboxElement.type = 'checkbox';
-      checkboxElement.checked = this._action.checked;
+      checkboxElement.checked = action.checked;
       checkboxElement.addEventListener('change', () => {
-        if (this._action?.name === 'assertChecked')
-          this._action.checked = checkboxElement.checked;
+        action.checked = checkboxElement.checked;
       });
       bodyElement.appendChild(labelElement);
       elementToFocus = labelElement;
@@ -660,7 +698,7 @@ class TextAssertionTool implements RecorderTool {
   }
 
   private _createLabel(action: actions.AssertAction) {
-    const labelElement = this._recorder.document.createElement('x-pw-tool-label');
+    const labelElement = this._recorder.document.createElement('label');
     labelElement.textContent = action.name === 'assertText' ? 'Assert text' : action.name === 'assertValue' ? 'Assert value' : 'Assert checked';
     return labelElement;
   }
@@ -835,9 +873,6 @@ export class Recorder {
   }
 
   installListeners() {
-    // Ensure we are attached to the current document, and we are on top (last element);
-    if (this.highlight.isInstalled())
-      return;
     removeEventListeners(this._listeners);
     this._listeners = [
       addEventListener(this.document, 'click', event => this._onClick(event as MouseEvent), true),
