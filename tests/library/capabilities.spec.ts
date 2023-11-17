@@ -17,6 +17,7 @@
 import os from 'os';
 import url from 'url';
 import { contextTest as it, expect } from '../config/browserTest';
+import { hostPlatform } from '../../packages/playwright-core/src/utils/hostPlatform';
 
 it('SharedArrayBuffer should work @smoke', async function({ contextFactory, httpsServer, browserName }) {
   it.fail(browserName === 'webkit', 'no shared array buffer on webkit');
@@ -31,9 +32,7 @@ it('SharedArrayBuffer should work @smoke', async function({ contextFactory, http
   expect(await page.evaluate(() => typeof SharedArrayBuffer)).toBe('function');
 });
 
-it('Web Assembly should work @smoke', async function({ page, server, browserName, platform }) {
-  it.fail(browserName === 'webkit' && platform === 'win32');
-
+it('Web Assembly should work @smoke', async function({ page, server }) {
   await page.goto(server.PREFIX + '/wasm/table2.html');
   expect(await page.evaluate('loadTable()')).toBe('42, 83');
 });
@@ -284,8 +283,9 @@ it('should send no Content-Length header for GET requests with a Content-Type', 
   expect(request.headers['content-length']).toBe(undefined);
 });
 
-it('Intl.ListFormat should work', async ({ page, server }) => {
+it('Intl.ListFormat should work', async ({ page, server, browserName }) => {
   it.info().annotations.push({ type: 'issue', description: 'https://github.com/microsoft/playwright/issues/23978' });
+  it.skip(browserName === 'webkit' && hostPlatform.startsWith('ubuntu20.04'), 'libicu is too old and WebKit disables Intl.ListFormat by default then');
   await page.goto(server.EMPTY_PAGE);
   const formatted = await page.evaluate(() => {
     const data = ['first', 'second', 'third'];
