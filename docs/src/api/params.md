@@ -734,6 +734,14 @@ Whether to allow sites to register Service workers. Defaults to `'allow'`.
 * `'allow'`: [Service Workers](https://developer.mozilla.org/en-US/docs/Web/API/Service_Worker_API) can be registered.
 * `'block'`: Playwright will block all registration of Service Workers.
 
+## unroute-all-options-behavior
+* since: v1.41
+- `behavior` <[UnrouteAllBehavior]<"wait"|"ignoreErrors"|"default">>
+
+Specifies wether to wait for already running handlers and what to do if they throw errors:
+* `'default'` - do not wait for current handler calls (if any) to finish, if unrouted handler throws, it may result in unhandled error
+* `'wait'` - wait for current handler calls (if any) to finish
+* `'ignoreErrors'` - do not wait for current handler calls (if any) to finish, all errors thrown by the handlers after unrouting are silently caught
 
 ## select-options-values
 * langs: java, js, csharp
@@ -903,8 +911,12 @@ between the same pixel in compared images, between zero (strict) and one (lax), 
 ## browser-option-args
 - `args` <[Array]<[string]>>
 
+:::warning
+Use custom browser args at your own risk, as some of them may break Playwright functionality.
+:::
+
 Additional arguments to pass to the browser instance. The list of Chromium flags can be found
-[here](http://peter.sh/experiments/chromium-command-line-switches/).
+[here](https://peter.sh/experiments/chromium-command-line-switches/).
 
 ## browser-option-channel
 - `channel` <[string]>
@@ -1137,9 +1149,14 @@ When set to `"hide"`, screenshot will hide text caret. When set to `"initial"`, 
 ## screenshot-option-style
 - `style` <string>
 
-Stylesheet to apply while making the screenshot. This is where you can hide dynamic elements, make elements invisible
+Text of the stylesheet to apply while making the screenshot. This is where you can hide dynamic elements, make elements invisible
 or change their properties to help you creating repeatable screenshots. This stylesheet pierces the Shadow DOM and applies
 to the inner frames.
+
+## screenshot-option-style-path
+- `stylePath` <[string]|[Array]<[string]>>
+
+File name containing the stylesheet to apply while making the screenshot. This is where you can hide dynamic elements, make elements invisible or change their properties to help you creating repeatable screenshots. This stylesheet pierces the Shadow DOM and applies to the inner frames.
 
 ## screenshot-options-common-list-v1.8
 - %%-screenshot-option-animations-%%

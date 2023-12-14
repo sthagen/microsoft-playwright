@@ -685,7 +685,7 @@ interface TestConfig {
       /**
        * See `style` in [page.screenshot([options])](https://playwright.dev/docs/api/class-page#page-screenshot).
        */
-      style?: string;
+      stylePath?: string|Array<string>;
     };
 
     /**
@@ -3809,6 +3809,8 @@ export interface PlaywrightWorkerOptions {
    * [testOptions.channel](https://playwright.dev/docs/api/class-testoptions#test-options-channel) take priority over
    * this.
    *
+   * **NOTE** Use custom browser args at your own risk, as some of them may break Playwright functionality.
+   *
    * **Usage**
    *
    * ```js
@@ -5993,11 +5995,11 @@ interface LocatorAssertions {
     scale?: "css"|"device";
 
     /**
-     * Stylesheet to apply while making the screenshot. This is where you can hide dynamic elements, make elements
-     * invisible or change their properties to help you creating repeatable screenshots. This stylesheet pierces the
-     * Shadow DOM and applies to the inner frames.
+     * File name containing the stylesheet to apply while making the screenshot. This is where you can hide dynamic
+     * elements, make elements invisible or change their properties to help you creating repeatable screenshots. This
+     * stylesheet pierces the Shadow DOM and applies to the inner frames.
      */
-    style?: string;
+    stylePath?: string|Array<string>;
 
     /**
      * An acceptable perceived color difference in the [YIQ color space](https://en.wikipedia.org/wiki/YIQ) between the
@@ -6083,11 +6085,11 @@ interface LocatorAssertions {
     scale?: "css"|"device";
 
     /**
-     * Stylesheet to apply while making the screenshot. This is where you can hide dynamic elements, make elements
-     * invisible or change their properties to help you creating repeatable screenshots. This stylesheet pierces the
-     * Shadow DOM and applies to the inner frames.
+     * File name containing the stylesheet to apply while making the screenshot. This is where you can hide dynamic
+     * elements, make elements invisible or change their properties to help you creating repeatable screenshots. This
+     * stylesheet pierces the Shadow DOM and applies to the inner frames.
      */
-    style?: string;
+    stylePath?: string|Array<string>;
 
     /**
      * An acceptable perceived color difference in the [YIQ color space](https://en.wikipedia.org/wiki/YIQ) between the
@@ -6354,11 +6356,11 @@ interface PageAssertions {
     scale?: "css"|"device";
 
     /**
-     * Stylesheet to apply while making the screenshot. This is where you can hide dynamic elements, make elements
-     * invisible or change their properties to help you creating repeatable screenshots. This stylesheet pierces the
-     * Shadow DOM and applies to the inner frames.
+     * File name containing the stylesheet to apply while making the screenshot. This is where you can hide dynamic
+     * elements, make elements invisible or change their properties to help you creating repeatable screenshots. This
+     * stylesheet pierces the Shadow DOM and applies to the inner frames.
      */
-    style?: string;
+    stylePath?: string|Array<string>;
 
     /**
      * An acceptable perceived color difference in the [YIQ color space](https://en.wikipedia.org/wiki/YIQ) between the
@@ -6474,11 +6476,11 @@ interface PageAssertions {
     scale?: "css"|"device";
 
     /**
-     * Stylesheet to apply while making the screenshot. This is where you can hide dynamic elements, make elements
-     * invisible or change their properties to help you creating repeatable screenshots. This stylesheet pierces the
-     * Shadow DOM and applies to the inner frames.
+     * File name containing the stylesheet to apply while making the screenshot. This is where you can hide dynamic
+     * elements, make elements invisible or change their properties to help you creating repeatable screenshots. This
+     * stylesheet pierces the Shadow DOM and applies to the inner frames.
      */
-    style?: string;
+    stylePath?: string|Array<string>;
 
     /**
      * An acceptable perceived color difference in the [YIQ color space](https://en.wikipedia.org/wiki/YIQ) between the
@@ -6830,6 +6832,11 @@ interface TestProject {
        * to `"css"`.
        */
       scale?: "css"|"device";
+
+      /**
+       * See `style` in [page.screenshot([options])](https://playwright.dev/docs/api/class-page#page-screenshot).
+       */
+      stylePath?: string|Array<string>;
     };
 
     /**
