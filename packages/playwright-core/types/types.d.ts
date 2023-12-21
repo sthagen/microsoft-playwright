@@ -18824,14 +18824,14 @@ export interface Route {
    * **Usage**
    *
    * ```js
-   * await page.route('**\/*', (route, request) => {
+   * await page.route('**\/*', async (route, request) => {
    *   // Override headers
    *   const headers = {
    *     ...request.headers(),
    *     foo: 'foo-value', // set "foo" header
    *     bar: undefined, // remove "bar" header
    *   };
-   *   route.continue({ headers });
+   *   await route.continue({ headers });
    * });
    * ```
    *
@@ -18875,17 +18875,17 @@ export interface Route {
    * **Usage**
    *
    * ```js
-   * await page.route('**\/*', route => {
+   * await page.route('**\/*', async route => {
    *   // Runs last.
-   *   route.abort();
+   *   await route.abort();
    * });
-   * await page.route('**\/*', route => {
+   * await page.route('**\/*', async route => {
    *   // Runs second.
-   *   route.fallback();
+   *   await route.fallback();
    * });
-   * await page.route('**\/*', route => {
+   * await page.route('**\/*', async route => {
    *   // Runs first.
-   *   route.fallback();
+   *   await route.fallback();
    * });
    * ```
    *
@@ -18894,9 +18894,9 @@ export interface Route {
    *
    * ```js
    * // Handle GET requests.
-   * await page.route('**\/*', route => {
+   * await page.route('**\/*', async route => {
    *   if (route.request().method() !== 'GET') {
-   *     route.fallback();
+   *     await route.fallback();
    *     return;
    *   }
    *   // Handling GET only.
@@ -18904,9 +18904,9 @@ export interface Route {
    * });
    *
    * // Handle POST requests.
-   * await page.route('**\/*', route => {
+   * await page.route('**\/*', async route => {
    *   if (route.request().method() !== 'POST') {
-   *     route.fallback();
+   *     await route.fallback();
    *     return;
    *   }
    *   // Handling POST only.
@@ -18918,14 +18918,14 @@ export interface Route {
    * modify url, method, headers and postData of the request.
    *
    * ```js
-   * await page.route('**\/*', (route, request) => {
+   * await page.route('**\/*', async (route, request) => {
    *   // Override headers
    *   const headers = {
    *     ...request.headers(),
    *     foo: 'foo-value', // set "foo" header
    *     bar: undefined, // remove "bar" header
    *   };
-   *   route.fallback({ headers });
+   *   await route.fallback({ headers });
    * });
    * ```
    *
@@ -19019,8 +19019,8 @@ export interface Route {
    * An example of fulfilling all requests with 404 responses:
    *
    * ```js
-   * await page.route('**\/*', route => {
-   *   route.fulfill({
+   * await page.route('**\/*', async route => {
+   *   await route.fulfill({
    *     status: 404,
    *     contentType: 'text/plain',
    *     body: 'Not Found!'
@@ -19211,9 +19211,11 @@ export interface Tracing {
    */
   start(options?: {
     /**
-     * If specified, the trace is going to be saved into the file with the given name inside the `tracesDir` folder
-     * specified in
-     * [browserType.launch([options])](https://playwright.dev/docs/api/class-browsertype#browser-type-launch).
+     * If specified, intermediate trace files are going to be saved into the files with the given name prefix inside the
+     * `tracesDir` folder specified in
+     * [browserType.launch([options])](https://playwright.dev/docs/api/class-browsertype#browser-type-launch). To specify
+     * the final trace zip file name, you need to pass `path` option to
+     * [tracing.stop([options])](https://playwright.dev/docs/api/class-tracing#tracing-stop) instead.
      */
     name?: string;
 
@@ -19269,9 +19271,11 @@ export interface Tracing {
    */
   startChunk(options?: {
     /**
-     * If specified, the trace is going to be saved into the file with the given name inside the `tracesDir` folder
-     * specified in
-     * [browserType.launch([options])](https://playwright.dev/docs/api/class-browsertype#browser-type-launch).
+     * If specified, intermediate trace files are going to be saved into the files with the given name prefix inside the
+     * `tracesDir` folder specified in
+     * [browserType.launch([options])](https://playwright.dev/docs/api/class-browsertype#browser-type-launch). To specify
+     * the final trace zip file name, you need to pass `path` option to
+     * [tracing.stopChunk([options])](https://playwright.dev/docs/api/class-tracing#tracing-stop-chunk) instead.
      */
     name?: string;
 
