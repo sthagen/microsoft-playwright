@@ -14,26 +14,20 @@
  * limitations under the License.
  */
 
-function jsx(type, props) {
-  return {
-    __pw_type: 'jsx',
-    type,
-    props,
-  };
+import url from 'url';
+
+const kExperimentalLoaderOptions = [
+  '--no-warnings',
+  `--experimental-loader=${url.pathToFileURL(require.resolve('playwright/lib/transform/esmLoader')).toString()}`,
+];
+
+export function execArgvWithExperimentalLoaderOptions() {
+  return [
+    ...process.execArgv,
+    ...kExperimentalLoaderOptions,
+  ];
 }
 
-function jsxs(type, props) {
-  return {
-    __pw_type: 'jsx',
-    type,
-    props,
-  };
+export function execArgvWithoutExperimentalLoaderOptions() {
+  return process.execArgv.filter(arg => !kExperimentalLoaderOptions.includes(arg));
 }
-
-const Fragment = {};
-
-module.exports = {
-  Fragment,
-  jsx,
-  jsxs,
-};
