@@ -19,9 +19,9 @@
       "types": "./index.d.ts",
       "default": "./index.js"
     },
-    "./cli": "./cli.js",
     "./lib/mount": "./lib/mount.js",
-    "./lib/vitePlugin": "./lib/vitePlugin.js",
+    "./lib/program": "./lib/program.js",
+    "./plugin": "./plugin.js",
     "./types/component": {
       "types": "./types/component.d.ts"
     }
