@@ -38,18 +38,28 @@ export type ComponentDirs = {
   templateDir: string;
 };
 
-export function resolveDirs(configDir: string, config: FullConfig): ComponentDirs {
+export async function resolveDirs(configDir: string, config: FullConfig): Promise<ComponentDirs> {
   const use = config.projects[0].use as CtConfig;
   // FIXME: use build plugin to determine html location to resolve this.
   // TemplateDir must be relative, otherwise we can't move the final index.html into its target location post-build.
   // This regressed in https://github.com/microsoft/playwright/pull/26526
   const relativeTemplateDir = use.ctTemplateDir || 'playwright';
-  const templateDir = path.join(configDir, relativeTemplateDir);
+  const templateDir = await fs.promises.realpath(path.normalize(path.join(configDir, relativeTemplateDir)));
   const outDir = use.ctCacheDir ? path.resolve(configDir, use.ctCacheDir) : path.resolve(templateDir, '.cache');
   return {
     configDir,
     outDir,
     templateDir
+  };
+}
+
+export function resolveEndpoint(config: FullConfig) {
+  const use = config.projects[0].use as CtConfig;
+  const baseURL = new URL(use.baseURL || 'http://localhost');
+  return {
+    https: baseURL.protocol.startsWith('https:') ? {} : undefined,
+    host: baseURL.hostname,
+    port: use.ctPort || Number(baseURL.port) || 3100
   };
 }
 
@@ -59,8 +69,8 @@ export async function createConfig(dirs: ComponentDirs, config: FullConfig, fram
   // - the user config (userConfig)
   // - frameworks overrides (frameworkOverrides);
 
+  const endpoint = resolveEndpoint(config);
   const use = config.projects[0].use as CtConfig;
-  const baseURL = new URL(use.baseURL || 'http://localhost');
 
   // Compose base config from the playwright config only.
   const baseConfig: InlineConfig = {
@@ -76,16 +86,8 @@ export async function createConfig(dirs: ComponentDirs, config: FullConfig, fram
     build: {
       outDir: dirs.outDir
     },
-    preview: {
-      https: baseURL.protocol.startsWith('https:') ? {} : undefined,
-      host: baseURL.hostname,
-      port: use.ctPort || Number(baseURL.port) || 3100
-    },
-    server: {
-      https: baseURL.protocol.startsWith('https:') ? {} : undefined,
-      host: baseURL.hostname,
-      port: use.ctPort || Number(baseURL.port) || 3100
-    },
+    preview: endpoint,
+    server: endpoint,
     // Vite preview server will otherwise always return the index.html with 200.
     appType: 'mpa',
   };
