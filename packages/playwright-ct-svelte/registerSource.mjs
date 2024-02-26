@@ -42,8 +42,8 @@ function __pwCreateSlots(slots) {
 
   for (const slotName in slots) {
     const template = document
-      .createRange()
-      .createContextualFragment(slots[slotName]);
+        .createRange()
+        .createContextualFragment(slots[slotName]);
     svelteSlots[slotName] = [createSlotFn(template)];
   }
 
@@ -108,6 +108,7 @@ window.playwrightUnmount = async rootElement => {
   if (!svelteComponent)
     throw new Error('Component was not mounted');
   svelteComponent.$destroy();
+  delete rootElement[__pwSvelteComponentKey];
 };
 
 window.playwrightUpdate = async (rootElement, component) => {
