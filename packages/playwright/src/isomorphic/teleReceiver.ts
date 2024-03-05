@@ -18,8 +18,8 @@ import type { Annotation } from '../common/config';
 import type { FullProject, Metadata } from '../../types/test';
 import type * as reporterTypes from '../../types/testReporter';
 import type { ReporterV2 } from '../reporters/reporterV2';
-import { StringInternPool } from './stringInternPool';
 
+export type StringIntern = (s: string) => string;
 export type JsonLocation = reporterTypes.Location;
 export type JsonError = string;
 export type JsonStackFrame = { file: string, line: number, column: number };
@@ -27,8 +27,6 @@ export type JsonStackFrame = { file: string, line: number, column: number };
 export type JsonStdIOType = 'stdout' | 'stderr';
 
 export type JsonConfig = Pick<reporterTypes.FullConfig, 'configFile' | 'globalTimeout' | 'maxFailures' | 'metadata' | 'rootDir' | 'version' | 'workers'>;
-
-export type MergeReporterConfig = Pick<reporterTypes.FullConfig, 'configFile' | 'quiet' | 'reportSlowTests' | 'rootDir' | 'reporter' >;
 
 export type JsonPattern = {
   s?: string;
@@ -123,27 +121,27 @@ export type JsonEvent = {
   params: any
 };
 
+type TeleReporterReceiverOptions = {
+  mergeProjects: boolean;
+  mergeTestCases: boolean;
+  resolvePath: (rootDir: string, relativePath: string) => string;
+  configOverrides?: Pick<reporterTypes.FullConfig, 'configFile' | 'quiet' | 'reportSlowTests' | 'reporter'>;
+};
+
 export class TeleReporterReceiver {
   private _rootSuite: TeleSuite;
-  private _pathSeparator: string;
+  private _options: TeleReporterReceiverOptions;
   private _reporter: Partial<ReporterV2>;
   private _tests = new Map<string, TeleTestCase>();
   private _rootDir!: string;
   private _listOnly = false;
   private _clearPreviousResultsWhenTestBegins: boolean = false;
-  private _mergeTestCases: boolean;
-  private _mergeProjects: boolean;
-  private _reportConfig: MergeReporterConfig | undefined;
   private _config!: reporterTypes.FullConfig;
-  private _stringPool = new StringInternPool();
 
-  constructor(pathSeparator: string, reporter: Partial<ReporterV2>, mergeProjects: boolean, mergeTestCases: boolean, reportConfig?: MergeReporterConfig) {
+  constructor(reporter: Partial<ReporterV2>, options: TeleReporterReceiverOptions) {
     this._rootSuite = new TeleSuite('', 'root');
-    this._pathSeparator = pathSeparator;
+    this._options = options;
     this._reporter = reporter;
-    this._mergeProjects = mergeProjects;
-    this._mergeTestCases = mergeTestCases;
-    this._reportConfig = reportConfig;
   }
 
   dispatch(mode: 'list' | 'test', message: JsonEvent): Promise<void> | void {
@@ -202,7 +200,7 @@ export class TeleReporterReceiver {
   }
 
   private _onProject(project: JsonProject) {
-    let projectSuite = this._mergeProjects ? this._rootSuite.suites.find(suite => suite.project()!.name === project.name) : undefined;
+    let projectSuite = this._options.mergeProjects ? this._rootSuite.suites.find(suite => suite.project()!.name === project.name) : undefined;
     if (!projectSuite) {
       projectSuite = new TeleSuite(project.name, 'project');
       this._rootSuite.suites.push(projectSuite);
@@ -243,7 +241,6 @@ export class TeleReporterReceiver {
     testResult.workerIndex = payload.workerIndex;
     testResult.parallelIndex = payload.parallelIndex;
     testResult.setStartTimeNumber(payload.startTime);
-    testResult.statusEx = 'running';
     this._reporter.onTestBegin?.(test, testResult);
   }
 
@@ -252,22 +249,21 @@ export class TeleReporterReceiver {
     test.timeout = testEndPayload.timeout;
     test.expectedStatus = testEndPayload.expectedStatus;
     test.annotations = testEndPayload.annotations;
-    const result = test.resultsMap.get(payload.id)!;
+    const result = test._resultsMap.get(payload.id)!;
     result.duration = payload.duration;
     result.status = payload.status;
-    result.statusEx = payload.status;
     result.errors = payload.errors;
     result.error = result.errors?.[0];
     result.attachments = this._parseAttachments(payload.attachments);
     this._reporter.onTestEnd?.(test, result);
     // Free up the memory as won't see these step ids.
-    result.stepMap = new Map();
+    result._stepMap = new Map();
   }
 
   private _onStepBegin(testId: string, resultId: string, payload: JsonTestStepStart) {
     const test = this._tests.get(testId)!;
-    const result = test.resultsMap.get(resultId)!;
-    const parentStep = payload.parentStepId ? result.stepMap.get(payload.parentStepId) : undefined;
+    const result = test._resultsMap.get(resultId)!;
+    const parentStep = payload.parentStepId ? result._stepMap.get(payload.parentStepId) : undefined;
 
     const location = this._absoluteLocation(payload.location);
     const step = new TeleTestStep(payload, parentStep, location);
@@ -275,14 +271,14 @@ export class TeleReporterReceiver {
       parentStep.steps.push(step);
     else
       result.steps.push(step);
-    result.stepMap.set(payload.id, step);
+    result._stepMap.set(payload.id, step);
     this._reporter.onStepBegin?.(test, result, step);
   }
 
   private _onStepEnd(testId: string, resultId: string, payload: JsonTestStepEnd) {
     const test = this._tests.get(testId)!;
-    const result = test.resultsMap.get(resultId)!;
-    const step = result.stepMap.get(payload.id)!;
+    const result = test._resultsMap.get(resultId)!;
+    const step = result._stepMap.get(payload.id)!;
     step.duration = payload.duration;
     step.error = payload.error;
     this._reporter.onStepEnd?.(test, result, step);
@@ -295,7 +291,7 @@ export class TeleReporterReceiver {
   private _onStdIO(type: JsonStdIOType, testId: string | undefined, resultId: string | undefined, data: string, isBase64: boolean) {
     const chunk = isBase64 ? ((globalThis as any).Buffer ? Buffer.from(data, 'base64') : atob(data)) : data;
     const test = testId ? this._tests.get(testId) : undefined;
-    const result = test && resultId ? test.resultsMap.get(resultId) : undefined;
+    const result = test && resultId ? test._resultsMap.get(resultId) : undefined;
     if (type === 'stdout') {
       result?.stdout.push(chunk);
       this._reporter.onStdOut?.(chunk, test, result);
@@ -314,18 +310,16 @@ export class TeleReporterReceiver {
   }
 
   private _onExit(): Promise<void> | void {
-    // Free up the memory from the string pool.
-    this._stringPool = new StringInternPool();
     return this._reporter.onExit?.();
   }
 
   private _parseConfig(config: JsonConfig): reporterTypes.FullConfig {
     const result = { ...baseFullConfig, ...config };
-    if (this._reportConfig) {
-      result.configFile = this._reportConfig.configFile;
-      result.reportSlowTests = this._reportConfig.reportSlowTests;
-      result.quiet = this._reportConfig.quiet;
-      result.reporter = [...this._reportConfig.reporter];
+    if (this._options.configOverrides) {
+      result.configFile = this._options.configOverrides.configFile;
+      result.reportSlowTests = this._options.configOverrides.reportSlowTests;
+      result.quiet = this._options.configOverrides.quiet;
+      result.reporter = [...this._options.configOverrides.reporter];
     }
     return result;
   }
@@ -375,7 +369,7 @@ export class TeleReporterReceiver {
 
   private _mergeTestsInto(jsonTests: JsonTestCase[], parent: TeleSuite) {
     for (const jsonTest of jsonTests) {
-      let targetTest = this._mergeTestCases ? parent.tests.find(s => s.title === jsonTest.title && s.repeatEachIndex === jsonTest.repeatEachIndex) : undefined;
+      let targetTest = this._options.mergeTestCases ? parent.tests.find(s => s.title === jsonTest.title && s.repeatEachIndex === jsonTest.repeatEachIndex) : undefined;
       if (!targetTest) {
         targetTest = new TeleTestCase(jsonTest.testId, jsonTest.title, this._absoluteLocation(jsonTest.location), jsonTest.repeatEachIndex);
         targetTest.parent = parent;
@@ -410,12 +404,11 @@ export class TeleReporterReceiver {
   private _absolutePath(relativePath?: string): string | undefined {
     if (relativePath === undefined)
       return;
-    return this._stringPool.internString(this._rootDir + this._pathSeparator + relativePath);
+    return this._options.resolvePath(this._rootDir, relativePath);
   }
-
 }
 
-export class TeleSuite {
+export class TeleSuite implements reporterTypes.Suite {
   title: string;
   location?: reporterTypes.Location;
   parent?: TeleSuite;
@@ -475,7 +468,7 @@ export class TeleTestCase implements reporterTypes.TestCase {
   repeatEachIndex = 0;
   id: string;
 
-  resultsMap = new Map<string, TeleTestResult>();
+  _resultsMap = new Map<string, TeleTestResult>();
 
   constructor(id: string, title: string, location: reporterTypes.Location, repeatEachIndex: number) {
     this.id = id;
@@ -515,13 +508,13 @@ export class TeleTestCase implements reporterTypes.TestCase {
 
   _clearResults() {
     this.results = [];
-    this.resultsMap.clear();
+    this._resultsMap.clear();
   }
 
   _createTestResult(id: string): TeleTestResult {
     const result = new TeleTestResult(this.results.length);
     this.results.push(result);
-    this.resultsMap.set(id, result);
+    this._resultsMap.set(id, result);
     return result;
   }
 }
@@ -571,8 +564,7 @@ class TeleTestResult implements reporterTypes.TestResult {
   errors: reporterTypes.TestResult['errors'] = [];
   error: reporterTypes.TestResult['error'];
 
-  stepMap: Map<string, reporterTypes.TestStep> = new Map();
-  statusEx: reporterTypes.TestResult['status'] | 'scheduled' | 'running' = 'scheduled';
+  _stepMap: Map<string, reporterTypes.TestStep> = new Map();
 
   private _startTime: number = 0;
 
