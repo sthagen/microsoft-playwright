@@ -914,6 +914,12 @@ export class Frame extends SdkObject {
     return this._url;
   }
 
+  origin(): string | undefined {
+    if (!this._url.startsWith('http'))
+      return;
+    return network.parsedURL(this._url)?.origin;
+  }
+
   parentFrame(): Frame | null {
     return this._parentFrame;
   }
@@ -942,7 +948,7 @@ export class Frame extends SdkObject {
       const result = (await context.evaluateHandle(addScriptContent, { content: content!, type })).asElement()!;
       // Another round trip to the browser to ensure that we receive CSP error messages
       // (if any) logged asynchronously in a separate task on the content main thread.
-      if (this._page._delegate.cspErrorsAsynchronousForInlineScipts)
+      if (this._page._delegate.cspErrorsAsynchronousForInlineScripts)
         await context.evaluate(() => true);
       return result;
     });
