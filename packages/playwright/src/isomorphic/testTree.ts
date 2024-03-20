@@ -41,6 +41,7 @@ export type TestCaseItem = TreeItemBase & {
   children: TestItem[];
   test: reporterTypes.TestCase | undefined;
   project: reporterTypes.FullProject | undefined;
+  tags: Array<string>;
 };
 
 export type TestItem = TreeItemBase & {
@@ -112,6 +113,7 @@ export class TestTree {
             status: 'none',
             project: undefined,
             test: undefined,
+            tags: test.tags,
           };
           this._addChild(parentGroup, testCaseItem);
         }
@@ -307,12 +309,6 @@ export class TestTree {
     };
     visit(treeItem);
     return testIds;
-  }
-
-  locationToOpen(treeItem?: TreeItem) {
-    if (!treeItem)
-      return;
-    return treeItem.location.file + ':' + treeItem.location.line;
   }
 }
 
