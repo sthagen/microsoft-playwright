@@ -15,324 +15,216 @@
  * limitations under the License.
  */
 
-import type { FullConfig, FullProject, TestStatus, Metadata } from './test';
-export type { FullConfig, TestStatus, FullProject } from './test';
+import type { TestStatus, Metadata, PlaywrightTestOptions, PlaywrightWorkerOptions, ReporterDescription, ConfigInWorker } from './test';
+export type { TestStatus } from './test';
+
+type UseOptions<TestArgs, WorkerArgs> = Partial<WorkerArgs> & Partial<TestArgs>;
 
 /**
- * `Suite` is a group of tests. All tests in Playwright Test form the following hierarchy:
- * - Root suite has a child suite for each {@link TestProject}.
- *   - Project suite #1. Has a child suite for each test file in the project.
- *     - File suite #1
- *       - {@link TestCase} #1
- *       - {@link TestCase} #2
- *       - Suite corresponding to a
- *         [test.describe([title, details, callback])](https://playwright.dev/docs/api/class-test#test-describe)
- *         group
- *         - {@link TestCase} #1 in a group
- *         - {@link TestCase} #2 in a group
- *       - < more test cases ... >
- *     - File suite #2
- *     - < more file suites ... >
- *   - Project suite #2
- *   - < more project suites ... >
- *
- * Reporter is given a root suite in the
- * [reporter.onBegin(config, suite)](https://playwright.dev/docs/api/class-reporter#reporter-on-begin) method.
+ * Resolved configuration passed to
+ * [reporter.onBegin(config, suite)](https://playwright.dev/docs/api/class-reporter#reporter-on-begin).
  */
-export interface Suite {
+export interface FullConfig<TestArgs = {}, WorkerArgs = {}> {
   /**
-   * Returns the type of the suite. The Suites form the following hierarchy: `root` -> `project` -> `file` -> `describe`
-   * -> ...`describe` -> `test`.
+   * List of resolved projects.
    */
-  type: 'root' | 'project' | 'file' | 'describe';
+  projects: FullProject<TestArgs, WorkerArgs>[];
   /**
-   * Configuration of the project this suite belongs to, or [void] for the root suite.
+   * See [testConfig.reporter](https://playwright.dev/docs/api/class-testconfig#test-config-reporter).
    */
-  project(): FullProject | undefined;
+  reporter: ReporterDescription[];
   /**
-   * Returns the list of all test cases in this suite and its descendants, as opposite to
-   * [suite.tests](https://playwright.dev/docs/api/class-suite#suite-tests).
+   * See [testConfig.webServer](https://playwright.dev/docs/api/class-testconfig#test-config-web-server).
    */
-  allTests(): Array<TestCase>;
+  webServer: ConfigInWorker['webServer'];
+  /**
+   * Path to the configuration file (if any) used to run the tests.
+   */
+  configFile?: string;
 
   /**
-   * Test cases and suites defined directly in this suite. The elements are returned in their declaration order. You can
-   * discriminate between different entry types using
-   * [testCase.type](https://playwright.dev/docs/api/class-testcase#test-case-type) and
-   * [suite.type](https://playwright.dev/docs/api/class-suite#suite-type).
+   * See [testConfig.forbidOnly](https://playwright.dev/docs/api/class-testconfig#test-config-forbid-only).
    */
-  entries(): Array<TestCase|Suite>;
+  forbidOnly: boolean;
 
   /**
-   * Returns a list of titles from the root down to this suite.
+   * See [testConfig.fullyParallel](https://playwright.dev/docs/api/class-testconfig#test-config-fully-parallel).
    */
-  titlePath(): Array<string>;
+  fullyParallel: boolean;
 
   /**
-   * Location in the source where the suite is defined. Missing for root and project suites.
+   * See [testConfig.globalSetup](https://playwright.dev/docs/api/class-testconfig#test-config-global-setup).
    */
-  location?: Location;
+  globalSetup: null|string;
 
   /**
-   * Parent suite, missing for the root suite.
+   * See [testConfig.globalTeardown](https://playwright.dev/docs/api/class-testconfig#test-config-global-teardown).
    */
-  parent?: Suite;
+  globalTeardown: null|string;
 
   /**
-   * Child suites. See {@link Suite} for the hierarchy of suites.
+   * See [testConfig.globalTimeout](https://playwright.dev/docs/api/class-testconfig#test-config-global-timeout).
    */
-  suites: Array<Suite>;
+  globalTimeout: number;
 
   /**
-   * Test cases in the suite. Note that only test cases defined directly in this suite are in the list. Any test cases
-   * defined in nested
-   * [test.describe([title, details, callback])](https://playwright.dev/docs/api/class-test#test-describe) groups are
-   * listed in the child [suite.suites](https://playwright.dev/docs/api/class-suite#suite-suites).
+   * See [testConfig.grep](https://playwright.dev/docs/api/class-testconfig#test-config-grep).
    */
-  tests: Array<TestCase>;
+  grep: RegExp|Array<RegExp>;
 
   /**
-   * Suite title.
-   * - Empty for root suite.
-   * - Project name for project suite.
-   * - File path for file suite.
-   * - Title passed to
-   *   [test.describe([title, details, callback])](https://playwright.dev/docs/api/class-test#test-describe) for a
-   *   group suite.
+   * See [testConfig.grepInvert](https://playwright.dev/docs/api/class-testconfig#test-config-grep-invert).
    */
-  title: string;
+  grepInvert: null|RegExp|Array<RegExp>;
+
+  /**
+   * See [testConfig.maxFailures](https://playwright.dev/docs/api/class-testconfig#test-config-max-failures).
+   */
+  maxFailures: number;
+
+  /**
+   * See [testConfig.metadata](https://playwright.dev/docs/api/class-testconfig#test-config-metadata).
+   */
+  metadata: Metadata;
+
+  /**
+   * See [testConfig.preserveOutput](https://playwright.dev/docs/api/class-testconfig#test-config-preserve-output).
+   */
+  preserveOutput: "always"|"never"|"failures-only";
+
+  /**
+   * See [testConfig.quiet](https://playwright.dev/docs/api/class-testconfig#test-config-quiet).
+   */
+  quiet: boolean;
+
+  /**
+   * See [testConfig.reportSlowTests](https://playwright.dev/docs/api/class-testconfig#test-config-report-slow-tests).
+   */
+  reportSlowTests: null|{
+    /**
+     * The maximum number of slow test files to report. Defaults to `5`.
+     */
+    max: number;
+
+    /**
+     * Test duration in milliseconds that is considered slow. Defaults to 15 seconds.
+     */
+    threshold: number;
+  };
+
+  rootDir: string;
+
+  /**
+   * See [testConfig.shard](https://playwright.dev/docs/api/class-testconfig#test-config-shard).
+   */
+  shard: null|{
+    /**
+     * The total number of shards.
+     */
+    total: number;
+
+    /**
+     * The index of the shard to execute, one-based.
+     */
+    current: number;
+  };
+
+  /**
+   * See [testConfig.updateSnapshots](https://playwright.dev/docs/api/class-testconfig#test-config-update-snapshots).
+   */
+  updateSnapshots: "all"|"none"|"missing";
+
+  /**
+   * Playwright version.
+   */
+  version: string;
+
+  /**
+   * See [testConfig.workers](https://playwright.dev/docs/api/class-testconfig#test-config-workers).
+   */
+  workers: number;
 }
 
 /**
- * `TestCase` corresponds to every
- * [test.(call)(title[, details, body])](https://playwright.dev/docs/api/class-test#test-call) call in a test file.
- * When a single [test.(call)(title[, details, body])](https://playwright.dev/docs/api/class-test#test-call) is
- * running in multiple projects or repeated multiple times, it will have multiple `TestCase` objects in corresponding
- * projects' suites.
+ * Runtime representation of the test project configuration that is passed to {@link Reporter}. It exposes some of the
+ * resolved fields declared in {@link TestProject}. You can get {@link FullProject} instance from
+ * [fullConfig.projects](https://playwright.dev/docs/api/class-fullconfig#full-config-projects) or
+ * [suite.project()](https://playwright.dev/docs/api/class-suite#suite-project).
  */
-export interface TestCase {
+export interface FullProject<TestArgs = {}, WorkerArgs = {}> {
   /**
-   * Returns type of the test.
+   * See [testProject.use](https://playwright.dev/docs/api/class-testproject#test-project-use).
    */
-  type: 'test';
+  use: UseOptions<PlaywrightTestOptions & TestArgs, PlaywrightWorkerOptions & WorkerArgs>;
   /**
-   * Expected test status.
-   * - Tests marked as
-   *   [test.skip([title, details, body, condition, callback, description])](https://playwright.dev/docs/api/class-test#test-skip)
-   *   or
-   *   [test.fixme([title, details, body, condition, callback, description])](https://playwright.dev/docs/api/class-test#test-fixme)
-   *   are expected to be `'skipped'`.
-   * - Tests marked as
-   *   [test.fail([title, details, body, condition, callback, description])](https://playwright.dev/docs/api/class-test#test-fail)
-   *   are expected to be `'failed'`.
-   * - Other tests are expected to be `'passed'`.
-   *
-   * See also [testResult.status](https://playwright.dev/docs/api/class-testresult#test-result-status) for the actual
-   * status.
+   * See [testProject.dependencies](https://playwright.dev/docs/api/class-testproject#test-project-dependencies).
    */
-  expectedStatus: TestStatus;
-  /**
-   * Whether the test is considered running fine. Non-ok tests fail the test run with non-zero exit code.
-   */
-  ok(): boolean;
+  dependencies: Array<string>;
 
   /**
-   * Testing outcome for this test. Note that outcome is not the same as
-   * [testResult.status](https://playwright.dev/docs/api/class-testresult#test-result-status):
-   * - Test that is expected to fail and actually fails is `'expected'`.
-   * - Test that passes on a second retry is `'flaky'`.
+   * See [testProject.grep](https://playwright.dev/docs/api/class-testproject#test-project-grep).
    */
-  outcome(): "skipped"|"expected"|"unexpected"|"flaky";
+  grep: RegExp|Array<RegExp>;
 
   /**
-   * Returns a list of titles from the root down to this test.
+   * See [testProject.grepInvert](https://playwright.dev/docs/api/class-testproject#test-project-grep-invert).
    */
-  titlePath(): Array<string>;
+  grepInvert: null|RegExp|Array<RegExp>;
 
   /**
-   * The list of annotations applicable to the current test. Includes:
-   * - annotations defined on the test or suite via
-   *   [test.(call)(title[, details, body])](https://playwright.dev/docs/api/class-test#test-call) and
-   *   [test.describe([title, details, callback])](https://playwright.dev/docs/api/class-test#test-describe);
-   * - annotations implicitly added by methods
-   *   [test.skip([title, details, body, condition, callback, description])](https://playwright.dev/docs/api/class-test#test-skip),
-   *   [test.fixme([title, details, body, condition, callback, description])](https://playwright.dev/docs/api/class-test#test-fixme)
-   *   and
-   *   [test.fail([title, details, body, condition, callback, description])](https://playwright.dev/docs/api/class-test#test-fail);
-   * - annotations appended to
-   *   [testInfo.annotations](https://playwright.dev/docs/api/class-testinfo#test-info-annotations) during the test
-   *   execution.
-   *
-   * Annotations are available during test execution through
-   * [testInfo.annotations](https://playwright.dev/docs/api/class-testinfo#test-info-annotations).
-   *
-   * Learn more about [test annotations](https://playwright.dev/docs/test-annotations).
+   * See [testProject.metadata](https://playwright.dev/docs/api/class-testproject#test-project-metadata).
    */
-  annotations: Array<{
-    /**
-     * Annotation type, for example `'skip'` or `'fail'`.
-     */
-    type: string;
-
-    /**
-     * Optional description.
-     */
-    description?: string;
-  }>;
+  metadata: Metadata;
 
   /**
-   * Unique test ID that is computed based on the test file name, test title and project name. Test ID can be used as a
-   * history ID.
+   * See [testProject.name](https://playwright.dev/docs/api/class-testproject#test-project-name).
    */
-  id: string;
+  name: string;
 
   /**
-   * Location in the source where the test is defined.
+   * See [testProject.outputDir](https://playwright.dev/docs/api/class-testproject#test-project-output-dir).
    */
-  location: Location;
+  outputDir: string;
 
   /**
-   * Suite this test case belongs to.
+   * See [testProject.repeatEach](https://playwright.dev/docs/api/class-testproject#test-project-repeat-each).
    */
-  parent: Suite;
+  repeatEach: number;
 
   /**
-   * Contains the repeat index when running in "repeat each" mode. This mode is enabled by passing `--repeat-each` to
-   * the [command line](https://playwright.dev/docs/test-cli).
-   */
-  repeatEachIndex: number;
-
-  /**
-   * Results for each run of this test.
-   */
-  results: Array<TestResult>;
-
-  /**
-   * The maximum number of retries given to this test in the configuration.
-   *
-   * Learn more about [test retries](https://playwright.dev/docs/test-retries#retries).
+   * See [testProject.retries](https://playwright.dev/docs/api/class-testproject#test-project-retries).
    */
   retries: number;
 
   /**
-   * The list of tags defined on the test or suite via
-   * [test.(call)(title[, details, body])](https://playwright.dev/docs/api/class-test#test-call) or
-   * [test.describe([title, details, callback])](https://playwright.dev/docs/api/class-test#test-describe), as well as
-   * `@`-tokens extracted from test and suite titles.
-   *
-   * Learn more about [test tags](https://playwright.dev/docs/test-annotations#tag-tests).
+   * See [testProject.snapshotDir](https://playwright.dev/docs/api/class-testproject#test-project-snapshot-dir).
    */
-  tags: Array<string>;
+  snapshotDir: string;
 
   /**
-   * The timeout given to the test. Affected by
-   * [testConfig.timeout](https://playwright.dev/docs/api/class-testconfig#test-config-timeout),
-   * [testProject.timeout](https://playwright.dev/docs/api/class-testproject#test-project-timeout),
-   * [test.setTimeout(timeout)](https://playwright.dev/docs/api/class-test#test-set-timeout),
-   * [test.slow([condition, callback, description])](https://playwright.dev/docs/api/class-test#test-slow) and
-   * [testInfo.setTimeout(timeout)](https://playwright.dev/docs/api/class-testinfo#test-info-set-timeout).
+   * See [testProject.teardown](https://playwright.dev/docs/api/class-testproject#test-project-teardown).
+   */
+  teardown?: string;
+
+  /**
+   * See [testProject.testDir](https://playwright.dev/docs/api/class-testproject#test-project-test-dir).
+   */
+  testDir: string;
+
+  /**
+   * See [testProject.testIgnore](https://playwright.dev/docs/api/class-testproject#test-project-test-ignore).
+   */
+  testIgnore: string|RegExp|Array<string|RegExp>;
+
+  /**
+   * See [testProject.testMatch](https://playwright.dev/docs/api/class-testproject#test-project-test-match).
+   */
+  testMatch: string|RegExp|Array<string|RegExp>;
+
+  /**
+   * See [testProject.timeout](https://playwright.dev/docs/api/class-testproject#test-project-timeout).
    */
   timeout: number;
-
-  /**
-   * Test title as passed to the
-   * [test.(call)(title[, details, body])](https://playwright.dev/docs/api/class-test#test-call) call.
-   */
-  title: string;
-}
-
-/**
- * A result of a single {@link TestCase} run.
- */
-export interface TestResult {
-  /**
-   * The status of this test result. See also
-   * [testCase.expectedStatus](https://playwright.dev/docs/api/class-testcase#test-case-expected-status).
-   */
-  status: TestStatus;
-  /**
-   * The list of files or buffers attached during the test execution through
-   * [testInfo.attachments](https://playwright.dev/docs/api/class-testinfo#test-info-attachments).
-   */
-  attachments: Array<{
-    /**
-     * Attachment name.
-     */
-    name: string;
-
-    /**
-     * Content type of this attachment to properly present in the report, for example `'application/json'` or
-     * `'image/png'`.
-     */
-    contentType: string;
-
-    /**
-     * Optional path on the filesystem to the attached file.
-     */
-    path?: string;
-
-    /**
-     * Optional attachment body used instead of a file.
-     */
-    body?: Buffer;
-  }>;
-
-  /**
-   * Running time in milliseconds.
-   */
-  duration: number;
-
-  /**
-   * First error thrown during test execution, if any. This is equal to the first element in
-   * [testResult.errors](https://playwright.dev/docs/api/class-testresult#test-result-errors).
-   */
-  error?: TestError;
-
-  /**
-   * Errors thrown during the test execution.
-   */
-  errors: Array<TestError>;
-
-  /**
-   * The index of the worker between `0` and `workers - 1`. It is guaranteed that workers running at the same time have
-   * a different `parallelIndex`.
-   */
-  parallelIndex: number;
-
-  /**
-   * When test is retries multiple times, each retry attempt is given a sequential number.
-   *
-   * Learn more about [test retries](https://playwright.dev/docs/test-retries#retries).
-   */
-  retry: number;
-
-  /**
-   * Start time of this particular test run.
-   */
-  startTime: Date;
-
-  /**
-   * Anything written to the standard error during the test run.
-   */
-  stderr: Array<string|Buffer>;
-
-  /**
-   * Anything written to the standard output during the test run.
-   */
-  stdout: Array<string|Buffer>;
-
-  /**
-   * List of steps inside this test run.
-   */
-  steps: Array<TestStep>;
-
-  /**
-   * Index of the worker where the test was run. If the test was not run a single time, for example when the user
-   * interrupted testing, the only result will have a `workerIndex` equal to `-1`.
-   *
-   * Learn more about [parallelism and sharding](https://playwright.dev/docs/test-parallel) with Playwright Test.
-   */
-  workerIndex: number;
 }
 
 /**
@@ -441,15 +333,19 @@ export interface FullResult {
  * [reporter.printsToStdio()](https://playwright.dev/docs/api/class-reporter#reporter-prints-to-stdio) and return
  * `false`. This way, Playwright will use one of the standard terminal reporters in addition to your custom reporter
  * to enhance user experience.
+ *
+ * **Merged report API notes**
+ *
+ * When merging mutliple [`blob`](https://playwright.dev/docs/api/test-reporters#blob-reporter) reports via
+ * [`merge-reports`](https://playwright.dev/docs/api/test-sharding#merge-reports-cli) CLI command, the same {@link Reporter} API is called to
+ * produce final reports and all existing reporters should work without any changes. There some subtle differences
+ * though which might affect some custom reporters.
+ * - Projects from different shards are always kept as separate {@link TestProject} objects. E.g. if project
+ *   'Desktop Chrome' was sharded across 5 machines then there will be 5 instances of projects with the same name in
+ *   the config passed to
+ *   [reporter.onBegin(config, suite)](https://playwright.dev/docs/api/class-reporter#reporter-on-begin).
  */
 export interface Reporter {
-  /**
-   * Called once before running tests. All tests have been already discovered and put into a hierarchy of {@link
-   * Suite}s.
-   * @param config Resolved configuration.
-   * @param suite The root suite that contains all projects, files and test cases.
-   */
-  onBegin?(config: FullConfig, suite: Suite): void;
   /**
    * Called after all tests have been run, or testing has been interrupted. Note that this method may return a [Promise]
    * and Playwright Test will await it. Reporter is allowed to override the status and hence affect the exit code of the
@@ -463,6 +359,14 @@ export interface Reporter {
    * - `'interrupted'` - Interrupted by the user.
    */
   onEnd?(result: FullResult): Promise<{ status?: FullResult['status'] } | undefined | void> | void;
+  /**
+   * Called once before running tests. All tests have been already discovered and put into a hierarchy of {@link
+   * Suite}s.
+   * @param config Resolved configuration.
+   * @param suite The root suite that contains all projects, files and test cases.
+   */
+  onBegin?(config: FullConfig, suite: Suite): void;
+
   /**
    * Called on some global error, for example unhandled exception in the worker process.
    * @param error The error.
@@ -645,6 +549,233 @@ export interface Location {
 }
 
 /**
+ * `Suite` is a group of tests. All tests in Playwright Test form the following hierarchy:
+ * - Root suite has a child suite for each {@link FullProject}.
+ *   - Project suite #1. Has a child suite for each test file in the project.
+ *     - File suite #1
+ *       - {@link TestCase} #1
+ *       - {@link TestCase} #2
+ *       - Suite corresponding to a
+ *         [test.describe([title, details, callback])](https://playwright.dev/docs/api/class-test#test-describe)
+ *         group
+ *         - {@link TestCase} #1 in a group
+ *         - {@link TestCase} #2 in a group
+ *       - < more test cases ... >
+ *     - File suite #2
+ *     - < more file suites ... >
+ *   - Project suite #2
+ *   - < more project suites ... >
+ *
+ * Reporter is given a root suite in the
+ * [reporter.onBegin(config, suite)](https://playwright.dev/docs/api/class-reporter#reporter-on-begin) method.
+ */
+export interface Suite {
+  /**
+   * Returns the list of all test cases in this suite and its descendants, as opposite to
+   * [suite.tests](https://playwright.dev/docs/api/class-suite#suite-tests).
+   */
+  allTests(): Array<TestCase>;
+
+  /**
+   * Test cases and suites defined directly in this suite. The elements are returned in their declaration order. You can
+   * discriminate between different entry types using
+   * [testCase.type](https://playwright.dev/docs/api/class-testcase#test-case-type) and
+   * [suite.type](https://playwright.dev/docs/api/class-suite#suite-type).
+   */
+  entries(): Array<TestCase|Suite>;
+
+  /**
+   * Configuration of the project this suite belongs to, or [void] for the root suite.
+   */
+  project(): FullProject|undefined;
+
+  /**
+   * Returns a list of titles from the root down to this suite.
+   */
+  titlePath(): Array<string>;
+
+  /**
+   * Location in the source where the suite is defined. Missing for root and project suites.
+   */
+  location?: Location;
+
+  /**
+   * Parent suite, missing for the root suite.
+   */
+  parent?: Suite;
+
+  /**
+   * Child suites. See {@link Suite} for the hierarchy of suites.
+   */
+  suites: Array<Suite>;
+
+  /**
+   * Test cases in the suite. Note that only test cases defined directly in this suite are in the list. Any test cases
+   * defined in nested
+   * [test.describe([title, details, callback])](https://playwright.dev/docs/api/class-test#test-describe) groups are
+   * listed in the child [suite.suites](https://playwright.dev/docs/api/class-suite#suite-suites).
+   */
+  tests: Array<TestCase>;
+
+  /**
+   * Suite title.
+   * - Empty for root suite.
+   * - Project name for project suite.
+   * - File path for file suite.
+   * - Title passed to
+   *   [test.describe([title, details, callback])](https://playwright.dev/docs/api/class-test#test-describe) for a
+   *   group suite.
+   */
+  title: string;
+
+  /**
+   * Returns the type of the suite. The Suites form the following hierarchy: `root` -> `project` -> `file` -> `describe`
+   * -> ...`describe` -> `test`.
+   */
+  type: "root"|"project"|"file"|"describe";
+}
+
+/**
+ * `TestCase` corresponds to every
+ * [test.(call)(title[, details, body])](https://playwright.dev/docs/api/class-test#test-call) call in a test file.
+ * When a single [test.(call)(title[, details, body])](https://playwright.dev/docs/api/class-test#test-call) is
+ * running in multiple projects or repeated multiple times, it will have multiple `TestCase` objects in corresponding
+ * projects' suites.
+ */
+export interface TestCase {
+  /**
+   * Whether the test is considered running fine. Non-ok tests fail the test run with non-zero exit code.
+   */
+  ok(): boolean;
+
+  /**
+   * Testing outcome for this test. Note that outcome is not the same as
+   * [testResult.status](https://playwright.dev/docs/api/class-testresult#test-result-status):
+   * - Test that is expected to fail and actually fails is `'expected'`.
+   * - Test that passes on a second retry is `'flaky'`.
+   */
+  outcome(): "skipped"|"expected"|"unexpected"|"flaky";
+
+  /**
+   * Returns a list of titles from the root down to this test.
+   */
+  titlePath(): Array<string>;
+
+  /**
+   * The list of annotations applicable to the current test. Includes:
+   * - annotations defined on the test or suite via
+   *   [test.(call)(title[, details, body])](https://playwright.dev/docs/api/class-test#test-call) and
+   *   [test.describe([title, details, callback])](https://playwright.dev/docs/api/class-test#test-describe);
+   * - annotations implicitly added by methods
+   *   [test.skip([title, details, body, condition, callback, description])](https://playwright.dev/docs/api/class-test#test-skip),
+   *   [test.fixme([title, details, body, condition, callback, description])](https://playwright.dev/docs/api/class-test#test-fixme)
+   *   and
+   *   [test.fail([title, details, body, condition, callback, description])](https://playwright.dev/docs/api/class-test#test-fail);
+   * - annotations appended to
+   *   [testInfo.annotations](https://playwright.dev/docs/api/class-testinfo#test-info-annotations) during the test
+   *   execution.
+   *
+   * Annotations are available during test execution through
+   * [testInfo.annotations](https://playwright.dev/docs/api/class-testinfo#test-info-annotations).
+   *
+   * Learn more about [test annotations](https://playwright.dev/docs/test-annotations).
+   */
+  annotations: Array<{
+    /**
+     * Annotation type, for example `'skip'` or `'fail'`.
+     */
+    type: string;
+
+    /**
+     * Optional description.
+     */
+    description?: string;
+  }>;
+
+  /**
+   * Expected test status.
+   * - Tests marked as
+   *   [test.skip([title, details, body, condition, callback, description])](https://playwright.dev/docs/api/class-test#test-skip)
+   *   or
+   *   [test.fixme([title, details, body, condition, callback, description])](https://playwright.dev/docs/api/class-test#test-fixme)
+   *   are expected to be `'skipped'`.
+   * - Tests marked as
+   *   [test.fail([title, details, body, condition, callback, description])](https://playwright.dev/docs/api/class-test#test-fail)
+   *   are expected to be `'failed'`.
+   * - Other tests are expected to be `'passed'`.
+   *
+   * See also [testResult.status](https://playwright.dev/docs/api/class-testresult#test-result-status) for the actual
+   * status.
+   */
+  expectedStatus: "passed"|"failed"|"timedOut"|"skipped"|"interrupted";
+
+  /**
+   * Unique test ID that is computed based on the test file name, test title and project name. Test ID can be used as a
+   * history ID.
+   */
+  id: string;
+
+  /**
+   * Location in the source where the test is defined.
+   */
+  location: Location;
+
+  /**
+   * Suite this test case belongs to.
+   */
+  parent: Suite;
+
+  /**
+   * Contains the repeat index when running in "repeat each" mode. This mode is enabled by passing `--repeat-each` to
+   * the [command line](https://playwright.dev/docs/test-cli).
+   */
+  repeatEachIndex: number;
+
+  /**
+   * Results for each run of this test.
+   */
+  results: Array<TestResult>;
+
+  /**
+   * The maximum number of retries given to this test in the configuration.
+   *
+   * Learn more about [test retries](https://playwright.dev/docs/test-retries#retries).
+   */
+  retries: number;
+
+  /**
+   * The list of tags defined on the test or suite via
+   * [test.(call)(title[, details, body])](https://playwright.dev/docs/api/class-test#test-call) or
+   * [test.describe([title, details, callback])](https://playwright.dev/docs/api/class-test#test-describe), as well as
+   * `@`-tokens extracted from test and suite titles.
+   *
+   * Learn more about [test tags](https://playwright.dev/docs/test-annotations#tag-tests).
+   */
+  tags: Array<string>;
+
+  /**
+   * The timeout given to the test. Affected by
+   * [testConfig.timeout](https://playwright.dev/docs/api/class-testconfig#test-config-timeout),
+   * [testProject.timeout](https://playwright.dev/docs/api/class-testproject#test-project-timeout),
+   * [test.setTimeout(timeout)](https://playwright.dev/docs/api/class-test#test-set-timeout),
+   * [test.slow([condition, callback, description])](https://playwright.dev/docs/api/class-test#test-slow) and
+   * [testInfo.setTimeout(timeout)](https://playwright.dev/docs/api/class-testinfo#test-info-set-timeout).
+   */
+  timeout: number;
+
+  /**
+   * Test title as passed to the
+   * [test.(call)(title[, details, body])](https://playwright.dev/docs/api/class-test#test-call) call.
+   */
+  title: string;
+
+  /**
+   * Returns type of the test.
+   */
+  type: "test";
+}
+
+/**
  * Information about an error thrown during test execution.
  */
 export interface TestError {
@@ -672,6 +803,101 @@ export interface TestError {
    * The value that was thrown. Set when anything except the [Error] (or its subclass) has been thrown.
    */
   value?: string;
+}
+
+/**
+ * A result of a single {@link TestCase} run.
+ */
+export interface TestResult {
+  /**
+   * The list of files or buffers attached during the test execution through
+   * [testInfo.attachments](https://playwright.dev/docs/api/class-testinfo#test-info-attachments).
+   */
+  attachments: Array<{
+    /**
+     * Attachment name.
+     */
+    name: string;
+
+    /**
+     * Content type of this attachment to properly present in the report, for example `'application/json'` or
+     * `'image/png'`.
+     */
+    contentType: string;
+
+    /**
+     * Optional path on the filesystem to the attached file.
+     */
+    path?: string;
+
+    /**
+     * Optional attachment body used instead of a file.
+     */
+    body?: Buffer;
+  }>;
+
+  /**
+   * Running time in milliseconds.
+   */
+  duration: number;
+
+  /**
+   * First error thrown during test execution, if any. This is equal to the first element in
+   * [testResult.errors](https://playwright.dev/docs/api/class-testresult#test-result-errors).
+   */
+  error?: TestError;
+
+  /**
+   * Errors thrown during the test execution.
+   */
+  errors: Array<TestError>;
+
+  /**
+   * The index of the worker between `0` and `workers - 1`. It is guaranteed that workers running at the same time have
+   * a different `parallelIndex`.
+   */
+  parallelIndex: number;
+
+  /**
+   * When test is retries multiple times, each retry attempt is given a sequential number.
+   *
+   * Learn more about [test retries](https://playwright.dev/docs/test-retries#retries).
+   */
+  retry: number;
+
+  /**
+   * Start time of this particular test run.
+   */
+  startTime: Date;
+
+  /**
+   * The status of this test result. See also
+   * [testCase.expectedStatus](https://playwright.dev/docs/api/class-testcase#test-case-expected-status).
+   */
+  status: "passed"|"failed"|"timedOut"|"skipped"|"interrupted";
+
+  /**
+   * Anything written to the standard error during the test run.
+   */
+  stderr: Array<string|Buffer>;
+
+  /**
+   * Anything written to the standard output during the test run.
+   */
+  stdout: Array<string|Buffer>;
+
+  /**
+   * List of steps inside this test run.
+   */
+  steps: Array<TestStep>;
+
+  /**
+   * Index of the worker where the test was run. If the test was not run a single time, for example when the user
+   * interrupted testing, the only result will have a `workerIndex` equal to `-1`.
+   *
+   * Learn more about [parallelism and sharding](https://playwright.dev/docs/test-parallel) with Playwright Test.
+   */
+  workerIndex: number;
 }
 
 /**
