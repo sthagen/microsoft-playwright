@@ -33,8 +33,8 @@ import { program } from 'playwright-core/lib/cli/program';
 export { program } from 'playwright-core/lib/cli/program';
 import type { ReporterDescription } from '../types/test';
 import { prepareErrorStack } from './reporters/base';
-import { cacheDir } from './transform/compilationCache';
 import * as testServer from './runner/testServer';
+import { clearCacheAndLogToConsole } from './runner/testServer';
 
 function addTestCommand(program: Command) {
   const command = program.command('test [test-filter...]');
@@ -76,24 +76,8 @@ function addClearCacheCommand(program: Command) {
     const configInternal = await loadConfigFromFileRestartIfNeeded(opts.config);
     if (!configInternal)
       return;
-    const { config, configDir } = configInternal;
-    const override = (config as any)['@playwright/test']?.['cli']?.['clear-cache'];
-    if (override) {
-      await override(config, configDir);
-      return;
-    }
-    await removeFolder(cacheDir);
+    await clearCacheAndLogToConsole(configInternal);
   });
-}
-
-export async function removeFolder(folder: string) {
-  try {
-    if (!fs.existsSync(folder))
-      return;
-    console.log(`Removing ${await fs.promises.realpath(folder)}`);
-    await fs.promises.rm(folder, { recursive: true, force: true });
-  } catch {
-  }
 }
 
 function addFindRelatedTestFilesCommand(program: Command) {
@@ -102,6 +86,25 @@ function addFindRelatedTestFilesCommand(program: Command) {
   command.option('-c, --config <file>', `Configuration file, or a test directory with optional "playwright.config.{m,c}?{js,ts}"`);
   command.action(async (files, options) => {
     await withRunnerAndMutedWrite(options.config, runner => runner.findRelatedTestFiles('in-process', files));
+  });
+}
+
+function addDevServerCommand(program: Command) {
+  const command = program.command('dev-server', { hidden: true });
+  command.description('start dev server');
+  command.option('-c, --config <file>', `Configuration file, or a test directory with optional "playwright.config.{m,c}?{js,ts}"`);
+  command.action(async options => {
+    const configInternal = await loadConfigFromFileRestartIfNeeded(options.config);
+    if (!configInternal)
+      return;
+    const { config } = configInternal;
+    const implementation = (config as any)['@playwright/test']?.['cli']?.['dev-server'];
+    if (implementation) {
+      await implementation(configInternal);
+    } else {
+      console.log(`DevServer is not available in the package you are using. Did you mean to use component testing?`);
+      gracefullyProcessExitDoNotHang(1);
+    }
   });
 }
 
@@ -362,4 +365,5 @@ addListFilesCommand(program);
 addMergeReportsCommand(program);
 addClearCacheCommand(program);
 addFindRelatedTestFilesCommand(program);
+addDevServerCommand(program);
 addTestServerCommand(program);
