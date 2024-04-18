@@ -389,9 +389,9 @@ export function getElementAccessibleName(element: Element, includeHidden: boolea
       accessibleName = normalizeAccessbileName(getElementAccessibleNameInternal(element, {
         includeHidden,
         visitedElements: new Set(),
-        embeddedInLabelledBy: 'none',
-        embeddedInLabel: 'none',
-        embeddedInTextAlternativeElement: false,
+        embeddedInLabelledBy: undefined,
+        embeddedInLabel: undefined,
+        embeddedInNativeTextAlternative: undefined,
         embeddedInTargetElement: 'self',
       }));
     }
@@ -404,9 +404,9 @@ export function getElementAccessibleName(element: Element, includeHidden: boolea
 type AccessibleNameOptions = {
   includeHidden: boolean,
   visitedElements: Set<Element>,
-  embeddedInLabelledBy: 'none' | 'self' | 'descendant',
-  embeddedInLabel: 'none' | 'self' | 'descendant',
-  embeddedInTextAlternativeElement: boolean,
+  embeddedInLabelledBy: { element: Element, hidden: boolean } | undefined,
+  embeddedInLabel: { element: Element, hidden: boolean } | undefined,
+  embeddedInNativeTextAlternative: { element: Element, hidden: boolean } | undefined,
   embeddedInTargetElement: 'none' | 'self' | 'descendant',
 };
 
@@ -416,27 +416,34 @@ function getElementAccessibleNameInternal(element: Element, options: AccessibleN
 
   const childOptions: AccessibleNameOptions = {
     ...options,
-    embeddedInLabel: options.embeddedInLabel === 'self' ? 'descendant' : options.embeddedInLabel,
-    embeddedInLabelledBy: options.embeddedInLabelledBy === 'self' ? 'descendant' : options.embeddedInLabelledBy,
     embeddedInTargetElement: options.embeddedInTargetElement === 'self' ? 'descendant' : options.embeddedInTargetElement,
   };
 
-  // step 2a.
-  if (!options.includeHidden && options.embeddedInLabelledBy !== 'self' && isElementHiddenForAria(element)) {
+  // step 2a. Hidden Not Referenced: If the current node is hidden and is:
+  // Not part of an aria-labelledby or aria-describedby traversal, where the node directly referenced by that relation was hidden.
+  // Nor part of a native host language text alternative element (e.g. label in HTML) or attribute traversal, where the root of that traversal was hidden.
+  if (!options.includeHidden &&
+      !options.embeddedInLabelledBy?.hidden &&
+      !options?.embeddedInNativeTextAlternative?.hidden &&
+      !options?.embeddedInLabel?.hidden &&
+      isElementHiddenForAria(element)) {
     options.visitedElements.add(element);
     return '';
   }
 
   const labelledBy = getAriaLabelledByElements(element);
 
-  // step 2b.
-  if (options.embeddedInLabelledBy === 'none') {
+  // step 2b. LabelledBy:
+  // Otherwise, if the current node has an aria-labelledby attribute that contains
+  // at least one valid IDREF, and the current node is not already part of an ongoing
+  // aria-labelledby or aria-describedby traversal, process its IDREFs in the order they occur...
+  if (!options.embeddedInLabelledBy) {
     const accessibleName = (labelledBy || []).map(ref => getElementAccessibleNameInternal(ref, {
       ...options,
-      embeddedInLabelledBy: 'self',
+      embeddedInLabelledBy: { element: ref, hidden: isElementHiddenForAria(ref) },
       embeddedInTargetElement: 'none',
-      embeddedInLabel: 'none',
-      embeddedInTextAlternativeElement: false,
+      embeddedInLabel: undefined,
+      embeddedInNativeTextAlternative: undefined,
     })).join(' ');
     if (accessibleName)
       return accessibleName;
@@ -444,8 +451,15 @@ function getElementAccessibleNameInternal(element: Element, options: AccessibleN
 
   const role = getAriaRole(element) || '';
 
-  // step 2c.
-  if (options.embeddedInLabel !== 'none' || options.embeddedInLabelledBy !== 'none') {
+  // step 2c:
+  //   if the current node is a control embedded within the label (e.g. any element directly referenced by aria-labelledby) for another widget...
+  //
+  // also step 2d "skip to rule Embedded Control" section:
+  //   If traversal of the current node is due to recursion and the current node is an embedded control...
+  // Note this is not strictly by the spec, because spec only applies this logic when "aria-label" is present.
+  // However, browsers and and wpt test name_heading-combobox-focusable-alternative-manual.html follow this behavior,
+  // and there is an issue filed for this: https://github.com/w3c/accname/issues/64
+  if (!!options.embeddedInLabel || !!options.embeddedInLabelledBy || options.embeddedInTargetElement === 'descendant') {
     const isOwnLabel = [...(element as (HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement)).labels || []].includes(element as any);
     const isOwnLabelledBy = (labelledBy || []).includes(element);
     if (!isOwnLabel && !isOwnLabelledBy) {
@@ -465,6 +479,12 @@ function getElementAccessibleNameInternal(element: Element, options: AccessibleN
         } else {
           const listbox = role === 'combobox' ? queryInAriaOwned(element, '*').find(e => getAriaRole(e) === 'listbox') : element;
           selectedOptions = listbox ? queryInAriaOwned(listbox, '[aria-selected="true"]').filter(e => getAriaRole(e) === 'option') : [];
+        }
+        if (!selectedOptions.length && element.tagName === 'INPUT') {
+          // SPEC DIFFERENCE:
+          // This fallback is not explicitly mentioned in the spec, but all browsers and
+          // wpt test name_heading-combobox-focusable-alternative-manual.html do this.
+          return (element as HTMLInputElement).value;
         }
         return selectedOptions.map(option => getElementAccessibleNameInternal(option, childOptions)).join(' ');
       }
@@ -519,7 +539,7 @@ function getElementAccessibleNameInternal(element: Element, options: AccessibleN
     if (element.tagName === 'INPUT' && (element as HTMLInputElement).type === 'image') {
       options.visitedElements.add(element);
       const labels = (element as HTMLInputElement).labels || [];
-      if (labels.length && options.embeddedInLabelledBy === 'none')
+      if (labels.length && !options.embeddedInLabelledBy)
         return getAccessibleNameFromAssociatedLabels(labels, options);
       const alt = element.getAttribute('alt') || '';
       if (alt.trim())
@@ -576,7 +596,7 @@ function getElementAccessibleNameInternal(element: Element, options: AccessibleN
         if (child.tagName === 'LEGEND') {
           return getElementAccessibleNameInternal(child, {
             ...childOptions,
-            embeddedInTextAlternativeElement: true,
+            embeddedInNativeTextAlternative: { element: child, hidden: isElementHiddenForAria(child) },
           });
         }
       }
@@ -591,7 +611,7 @@ function getElementAccessibleNameInternal(element: Element, options: AccessibleN
         if (child.tagName === 'FIGCAPTION') {
           return getElementAccessibleNameInternal(child, {
             ...childOptions,
-            embeddedInTextAlternativeElement: true,
+            embeddedInNativeTextAlternative: { element: child, hidden: isElementHiddenForAria(child) },
           });
         }
       }
@@ -619,7 +639,7 @@ function getElementAccessibleNameInternal(element: Element, options: AccessibleN
         if (child.tagName === 'CAPTION') {
           return getElementAccessibleNameInternal(child, {
             ...childOptions,
-            embeddedInTextAlternativeElement: true,
+            embeddedInNativeTextAlternative: { element: child, hidden: isElementHiddenForAria(child) },
           });
         }
       }
@@ -650,7 +670,7 @@ function getElementAccessibleNameInternal(element: Element, options: AccessibleN
         if (child.tagName.toUpperCase() === 'TITLE' && (child as SVGElement).ownerSVGElement) {
           return getElementAccessibleNameInternal(child, {
             ...childOptions,
-            embeddedInLabelledBy: 'self',
+            embeddedInLabelledBy: { element: child, hidden: isElementHiddenForAria(child) },
           });
         }
       }
@@ -666,8 +686,8 @@ function getElementAccessibleNameInternal(element: Element, options: AccessibleN
 
   // step 2f + step 2h.
   if (allowsNameFromContent(role, options.embeddedInTargetElement === 'descendant') ||
-      options.embeddedInLabelledBy !== 'none' || options.embeddedInLabel !== 'none' ||
-      options.embeddedInTextAlternativeElement) {
+      !!options.embeddedInLabelledBy || !!options.embeddedInLabel ||
+      !!options.embeddedInNativeTextAlternative) {
     options.visitedElements.add(element);
     const tokens: string[] = [];
     const visit = (node: Node, skipSlotted: boolean) => {
@@ -838,9 +858,9 @@ function hasExplicitAriaDisabled(element: Element | undefined): boolean {
 function getAccessibleNameFromAssociatedLabels(labels: Iterable<HTMLLabelElement>, options: AccessibleNameOptions) {
   return [...labels].map(label => getElementAccessibleNameInternal(label, {
     ...options,
-    embeddedInLabel: 'self',
-    embeddedInTextAlternativeElement: false,
-    embeddedInLabelledBy: 'none',
+    embeddedInLabel: { element: label, hidden: isElementHiddenForAria(label) },
+    embeddedInNativeTextAlternative: undefined,
+    embeddedInLabelledBy: undefined,
     embeddedInTargetElement: 'none',
   })).filter(accessibleName => !!accessibleName).join(' ');
 }
