@@ -281,6 +281,41 @@ interface TestProject<TestArgs = {}, WorkerArgs = {}> {
   grepInvert?: RegExp|Array<RegExp>;
 
   /**
+   * Whether to skip snapshot expectations, such as `expect(value).toMatchSnapshot()` and `await
+   * expect(page).toHaveScreenshot()`.
+   *
+   * **Usage**
+   *
+   * The following example will only perform screenshot assertions on Chromium.
+   *
+   * ```js
+   * // playwright.config.ts
+   * import { defineConfig } from '@playwright/test';
+   *
+   * export default defineConfig({
+   *   projects: [
+   *     {
+   *       name: 'chromium',
+   *       use: devices['Desktop Chrome'],
+   *     },
+   *     {
+   *       name: 'firefox',
+   *       use: devices['Desktop Firefox'],
+   *       ignoreSnapshots: true,
+   *     },
+   *     {
+   *       name: 'webkit',
+   *       use: devices['Desktop Safari'],
+   *       ignoreSnapshots: true,
+   *     },
+   *   ],
+   * });
+   * ```
+   *
+   */
+  ignoreSnapshots?: boolean;
+
+  /**
    * Metadata that will be put directly to the test report serialized as JSON.
    */
   metadata?: Metadata;
@@ -6880,6 +6915,33 @@ interface LocatorAssertions {
      * Whether to use `element.innerText` instead of `element.textContent` when retrieving DOM node text.
      */
     useInnerText?: boolean;
+  }): Promise<void>;
+
+  /**
+   * Ensures the {@link Locator} points to an element with a given
+   * [accessible description](https://w3c.github.io/accname/#dfn-accessible-description).
+   *
+   * **Usage**
+   *
+   * ```js
+   * const locator = page.getByTestId('save-button');
+   * await expect(locator).toHaveAccessibleDescription('Save results to disk');
+   * ```
+   *
+   * @param description Expected accessible description.
+   * @param options
+   */
+  toHaveAccessibleDescription(description: string|RegExp, options?: {
+    /**
+     * Whether to perform case-insensitive match. `ignoreCase` option takes precedence over the corresponding regular
+     * expression flag if specified.
+     */
+    ignoreCase?: boolean;
+
+    /**
+     * Time to retry the assertion for in milliseconds. Defaults to `timeout` in `TestConfig.expect`.
+     */
+    timeout?: number;
   }): Promise<void>;
 
   /**
