@@ -1101,8 +1101,7 @@ interface TestConfig<TestArgs = {}, WorkerArgs = {}> {
 
   /**
    * Maximum time in milliseconds the whole test suite can run. Zero timeout (default) disables this behavior. Useful on
-   * CI to prevent broken setup from running too long and wasting resources. Note that even if global timeout is
-   * reached, Playwright will still allow up to 30 extra seconds for teardown hooks to finish. Learn more about
+   * CI to prevent broken setup from running too long and wasting resources. Learn more about
    * [various timeouts](https://playwright.dev/docs/test-timeouts).
    *
    * **Usage**
@@ -7136,6 +7135,30 @@ interface LocatorAssertions {
    * @param options
    */
   toHaveJSProperty(name: string, value: any, options?: {
+    /**
+     * Time to retry the assertion for in milliseconds. Defaults to `timeout` in `TestConfig.expect`.
+     */
+    timeout?: number;
+  }): Promise<void>;
+
+  /**
+   * Ensures the {@link Locator} points to an element with a given
+   * [ARIA role](https://www.w3.org/TR/wai-aria-1.2/#roles).
+   *
+   * Note that role is matched as a string, disregarding the ARIA role hierarchy. For example, asserting  a superclass
+   * role `"checkbox"` on an element with a subclass role `"switch"` will fail.
+   *
+   * **Usage**
+   *
+   * ```js
+   * const locator = page.getByTestId('save-button');
+   * await expect(locator).toHaveRole('button');
+   * ```
+   *
+   * @param role Required aria role.
+   * @param options
+   */
+  toHaveRole(role: "alert"|"alertdialog"|"application"|"article"|"banner"|"blockquote"|"button"|"caption"|"cell"|"checkbox"|"code"|"columnheader"|"combobox"|"complementary"|"contentinfo"|"definition"|"deletion"|"dialog"|"directory"|"document"|"emphasis"|"feed"|"figure"|"form"|"generic"|"grid"|"gridcell"|"group"|"heading"|"img"|"insertion"|"link"|"list"|"listbox"|"listitem"|"log"|"main"|"marquee"|"math"|"meter"|"menu"|"menubar"|"menuitem"|"menuitemcheckbox"|"menuitemradio"|"navigation"|"none"|"note"|"option"|"paragraph"|"presentation"|"progressbar"|"radio"|"radiogroup"|"region"|"row"|"rowgroup"|"rowheader"|"scrollbar"|"search"|"searchbox"|"separator"|"slider"|"spinbutton"|"status"|"strong"|"subscript"|"superscript"|"switch"|"tab"|"table"|"tablist"|"tabpanel"|"term"|"textbox"|"time"|"timer"|"toolbar"|"tooltip"|"tree"|"treegrid"|"treeitem", options?: {
     /**
      * Time to retry the assertion for in milliseconds. Defaults to `timeout` in `TestConfig.expect`.
      */
