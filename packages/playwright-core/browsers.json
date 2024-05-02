@@ -20,12 +20,6 @@
       "browserVersion": "125.0.1"
     },
     {
-      "name": "firefox-asan",
-      "revision": "1449",
-      "installByDefault": false,
-      "browserVersion": "125.0.1"
-    },
-    {
       "name": "firefox-beta",
       "revision": "1449",
       "installByDefault": false,
@@ -33,7 +27,7 @@
     },
     {
       "name": "webkit",
-      "revision": "2003",
+      "revision": "2004",
       "installByDefault": true,
       "revisionOverrides": {
         "mac10.14": "1446",
