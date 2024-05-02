@@ -87,7 +87,7 @@ class HtmlReporter extends EmptyReporter {
     this._attachmentsBaseURL = attachmentsBaseURL;
     const reportedWarnings = new Set<string>();
     for (const project of this.config.projects) {
-      if (outputFolder.startsWith(project.outputDir) || project.outputDir.startsWith(outputFolder)) {
+      if (this._isSubdirectory(outputFolder, project.outputDir) || this._isSubdirectory(project.outputDir, outputFolder)) {
         const key = outputFolder + '|' + project.outputDir;
         if (reportedWarnings.has(key))
           continue;
@@ -111,6 +111,11 @@ class HtmlReporter extends EmptyReporter {
       open: getHtmlReportOptionProcessEnv() || this._options.open || 'on-failure',
       attachmentsBaseURL: this._options.attachmentsBaseURL || 'data/'
     };
+  }
+
+  _isSubdirectory(parentDir: string, dir: string): boolean {
+    const relativePath = path.relative(parentDir, dir);
+    return !!relativePath && !relativePath.startsWith('..') && !path.isAbsolute(relativePath);
   }
 
   override onError(error: TestError): void {
@@ -359,7 +364,7 @@ class HtmlBuilder {
   private _createTestEntry(test: TestCasePublic, projectName: string, path: string[]): TestEntry {
     const duration = test.results.reduce((a, r) => a + r.duration, 0);
     const location = this._relativeLocation(test.location)!;
-    path = path.slice(1);
+    path = path.slice(1).filter(path => path.length > 0);
     const results = test.results.map(r => this._createTestResult(test, r));
 
     return {
