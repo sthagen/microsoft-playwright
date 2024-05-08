@@ -232,9 +232,9 @@ The opposite of [`method: LocatorAssertions.toHaveAccessibleDescription`].
 
 ### param: LocatorAssertions.NotToHaveAccessibleDescription.name
 * since: v1.44
-- `name` <[string]|[RegExp]>
+- `description` <[string]|[RegExp]>
 
-Expected accessible name.
+Expected accessible description.
 
 ### option: LocatorAssertions.NotToHaveAccessibleDescription.ignoreCase = %%-assertions-ignore-case-%%
 * since: v1.44
@@ -380,11 +380,11 @@ Property value.
 
 The opposite of [`method: LocatorAssertions.toHaveRole`].
 
-### param: LocatorAssertions.NotToHaveRole.name
+### param: LocatorAssertions.NotToHaveRole.role = %%-get-by-role-to-have-role-role-%%
 * since: v1.44
-- `name` <[string]|[RegExp]>
 
-Expected accessible name.
+### option: LocatorAssertions.NotToHaveRole.timeout = %%-js-assertions-timeout-%%
+* since: v1.44
 
 ### option: LocatorAssertions.NotToHaveRole.timeout = %%-csharp-java-python-assertions-timeout-%%
 * since: v1.44
@@ -910,10 +910,10 @@ await expect(
 assertThat(page.getByText("Welcome")).isVisible();
 
 // At least one item in the list is visible.
-asserThat(page.getByTestId("todo-item").first()).isVisible();
+assertThat(page.getByTestId("todo-item").first()).isVisible();
 
 // At least one of the two elements is visible, possibly both.
-asserThat(
+assertThat(
   page.getByRole(AriaRole.BUTTON, new Page.GetByRoleOptions().setName("Sign in"))
     .or(page.getByRole(AriaRole.BUTTON, new Page.GetByRoleOptions().setName("Sign up")))
     .first()
