@@ -15,19 +15,19 @@
     },
     {
       "name": "firefox",
-      "revision": "1451",
+      "revision": "1452",
       "installByDefault": true,
       "browserVersion": "126.0"
     },
     {
       "name": "firefox-beta",
-      "revision": "1451",
+      "revision": "1452",
       "installByDefault": false,
       "browserVersion": "127.0b3"
     },
     {
       "name": "webkit",
-      "revision": "2013",
+      "revision": "2014",
       "installByDefault": true,
       "revisionOverrides": {
         "mac10.14": "1446",
