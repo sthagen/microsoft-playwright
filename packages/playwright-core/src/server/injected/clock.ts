@@ -10,7 +10,7 @@
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-type ClockMethods = {
+export type ClockMethods = {
   Date: DateConstructor;
   setTimeout: Window['setTimeout'];
   clearTimeout: Window['clearTimeout'];
@@ -24,12 +24,12 @@ type ClockMethods = {
   performance?: Window['performance'];
 };
 
-type ClockConfig = {
+export type ClockConfig = {
   now?: number | Date;
   loopLimit?: number;
 };
 
-type InstallConfig = ClockConfig & {
+export type InstallConfig = ClockConfig & {
   toFake?: (keyof ClockMethods)[];
 };
 
@@ -44,7 +44,7 @@ enum TimerType {
 type Timer = {
   type: TimerType;
   func: TimerHandler;
-  args: any[];
+  args: () => any[];
   delay: number;
   callAt: number;
   createdAt: number;
@@ -57,15 +57,13 @@ interface Embedder {
   postTaskPeriodically(task: () => void, delay: number): () => void;
 }
 
-class Clock {
+export class ClockController {
   readonly start: number;
   private _now: number;
   private _loopLimit: number;
-  private _jobs: Timer[] = [];
   private _adjustedSystemTime = 0;
   private _duringTick = false;
   private _timers = new Map<number, Timer>();
-  private _isNearInfiniteLimit = false;
   private _uniqueTimerId = idCounterStart;
   private _embedder: Embedder;
   readonly disposables: (() => void)[] = [];
@@ -88,295 +86,110 @@ class Clock {
   }
 
   performanceNow(): DOMHighResTimeStamp {
-    const millisSinceStart = this._now - this._adjustedSystemTime - this.start;
-    const secsSinceStart = Math.floor(millisSinceStart / 1000);
-    const millis = secsSinceStart * 1000;
-    return millis;
+    return this._now - this._adjustedSystemTime - this.start;
   }
 
-  private _doTick(tickValue: number | string, isAsync: boolean, resolve?: (time: number) => void, reject?: (error: Error) => void): number | undefined {
-    const msFloat =
-      typeof tickValue === 'number'
-        ? tickValue
-        : parseTime(tickValue);
-    const ms = Math.floor(msFloat);
-    let tickTo = this._now + ms;
-
+  private async _doTick(msFloat: number): Promise<number> {
     if (msFloat < 0)
       throw new TypeError('Negative ticks are not supported');
 
+    const ms = Math.floor(msFloat);
+    let tickTo = this._now + ms;
     let tickFrom = this._now;
     let previous = this._now;
-    // ESLint fails to detect this correctly
-    /* eslint-disable prefer-const */
-    let timer;
-    let firstException: Error;
-    let oldNow: number;
-    let nextPromiseTick: (() => void) | null;
-    let compensationCheck: () => void;
-    let postTimerCall: () => void;
-
-    /* eslint-enable prefer-const */
-
+    let firstException: Error | undefined;
     this._duringTick = true;
 
-    // perform microtasks
-    oldNow = this._now;
-    this._runJobs();
-    if (oldNow !== this._now) {
-      // compensate for any setSystemTime() call during microtask callback
-      tickFrom += this._now - oldNow;
-      tickTo += this._now - oldNow;
-    }
-
-    const doTickInner = (): number | undefined => {
-      // perform each timer in the requested range
-      timer = this._firstTimerInRange(tickFrom, tickTo);
-      while (timer && tickFrom <= tickTo) {
-        if (this._timers.has(timer.id)) {
-          tickFrom = timer.callAt;
-          this._now = timer.callAt;
-          oldNow = this._now;
-          try {
-            this._runJobs();
-            this._callTimer(timer);
-          } catch (e) {
-            firstException = firstException || e;
-          }
-
-          if (isAsync) {
-            // finish up after native setImmediate callback to allow
-            // all native es6 promises to process their callbacks after
-            // each timer fires.
-            this._embedder.postTask(nextPromiseTick!);
-            return;
-          }
-          compensationCheck();
-        }
-        postTimerCall();
+    // perform each timer in the requested range
+    let timer = this._firstTimerInRange(tickFrom, tickTo);
+    while (timer && tickFrom <= tickTo) {
+      tickFrom = timer.callAt;
+      this._now = timer.callAt;
+      const oldNow = this._now;
+      try {
+        this._callTimer(timer);
+        await new Promise<void>(f => this._embedder.postTask(f));
+      } catch (e) {
+        firstException = firstException || e;
       }
 
-      // perform process.nextTick()s again
-      oldNow = this._now;
-      this._runJobs();
-      if (oldNow !== this._now) {
-        // compensate for any setSystemTime() call during process.nextTick() callback
-        tickFrom += this._now - oldNow;
-        tickTo += this._now - oldNow;
-      }
-      this._duringTick = false;
-
-      // corner case: during runJobs new timers were scheduled which could be in the range [clock.now, tickTo]
-      timer = this._firstTimerInRange(tickFrom, tickTo);
-      if (timer) {
-        try {
-          this.tick(tickTo - this._now); // do it all again - for the remainder of the requested range
-        } catch (e) {
-          firstException = firstException || e;
-        }
-      } else {
-        // no timers remaining in the requested range: move the clock all the way to the end
-        this._now = tickTo;
-      }
-      if (firstException)
-        throw firstException;
-
-      if (isAsync)
-        resolve!(this._now);
-      else
-        return this._now;
-    };
-
-    nextPromiseTick =
-      isAsync ?
-        () => {
-          try {
-            compensationCheck();
-            postTimerCall();
-            doTickInner();
-          } catch (e) {
-            reject!(e);
-          }
-        } : null;
-
-    compensationCheck = () => {
       // compensate for any setSystemTime() call during timer callback
       if (oldNow !== this._now) {
         tickFrom += this._now - oldNow;
         tickTo += this._now - oldNow;
         previous += this._now - oldNow;
       }
-    };
 
-    postTimerCall = () => {
       timer = this._firstTimerInRange(previous, tickTo);
       previous = tickFrom;
-    };
+    }
 
-    return doTickInner();
+    this._duringTick = false;
+    this._now = tickTo;
+    if (firstException)
+      throw firstException;
+
+    return this._now;
   }
 
-  tick(tickValue: string | number): number {
-    return this._doTick(tickValue, false)!;
+  async recordTick(tickValue: string | number) {
+    const msFloat = parseTime(tickValue);
+    this._now += msFloat;
   }
 
-  tickAsync(tickValue: string | number): Promise<number> {
-    return new Promise<number>((resolve, reject) => {
-      this._embedder.postTask(() => {
-        try {
-          this._doTick(tickValue, true, resolve, reject);
-        } catch (e) {
-          reject(e);
-        }
-      });
-    });
+  async tick(tickValue: string | number): Promise<number> {
+    return await this._doTick(parseTime(tickValue));
   }
 
-  next() {
-    this._runJobs();
+  async next() {
     const timer = this._firstTimer();
     if (!timer)
       return this._now;
 
+    let err: Error | undefined;
     this._duringTick = true;
+    this._now = timer.callAt;
     try {
-      this._now = timer.callAt;
       this._callTimer(timer);
-      this._runJobs();
-      return this._now;
-    } finally {
-      this._duringTick = false;
+      await new Promise<void>(f => this._embedder.postTask(f));
+    } catch (e) {
+      err = e;
     }
+    this._duringTick = false;
+
+    if (err)
+      throw err;
+    return this._now;
   }
 
-  nextAsync() {
-    return new Promise<number>((resolve, reject) => {
-      this._embedder.postTask(() => {
-        try {
-          const timer = this._firstTimer();
-          if (!timer) {
-            resolve(this._now);
-            return;
-          }
-
-          let err: Error;
-          this._duringTick = true;
-          this._now = timer.callAt;
-          try {
-            this._callTimer(timer);
-          } catch (e) {
-            err = e;
-          }
-          this._duringTick = false;
-
-          this._embedder.postTask(() => {
-            if (err)
-              reject(err);
-            else
-              resolve(this._now);
-          });
-        } catch (e) {
-          reject(e);
-        }
-      });
-    });
-  }
-
-  runAll() {
-    this._runJobs();
-    for (let i = 0; i < this._loopLimit; i++) {
-      const numTimers = this._timers.size;
-      if (numTimers === 0) {
-        this._resetIsNearInfiniteLimit();
-        return this._now;
-      }
-
-      this.next();
-      this._checkIsNearInfiniteLimit(i);
-    }
-
-    const excessJob = this._firstTimer();
-    throw this._getInfiniteLoopError(excessJob!);
-  }
-
-  runToFrame() {
+  async runToFrame() {
     return this.tick(this.getTimeToNextFrame());
   }
 
-  runAllAsync() {
-    return new Promise<number>((resolve, reject) => {
-      let i = 0;
-      /**
-       *
-       */
-      const doRun = () => {
-        this._embedder.postTask(() => {
-          try {
-            this._runJobs();
+  async runAll() {
+    for (let i = 0; i < this._loopLimit; i++) {
+      const numTimers = this._timers.size;
+      if (numTimers === 0)
+        return this._now;
 
-            let numTimers;
-            if (i < this._loopLimit) {
-              if (!this._timers) {
-                this._resetIsNearInfiniteLimit();
-                resolve(this._now);
-                return;
-              }
-
-              numTimers = this._timers.size;
-              if (numTimers === 0) {
-                this._resetIsNearInfiniteLimit();
-                resolve(this._now);
-                return;
-              }
-
-              this.next();
-              i++;
-              doRun();
-              this._checkIsNearInfiniteLimit(i);
-              return;
-            }
-
-            const excessJob = this._firstTimer();
-            reject(this._getInfiniteLoopError(excessJob!));
-          } catch (e) {
-            reject(e);
-          }
-        });
-      };
-      doRun();
-    });
-  }
-
-  runToLast() {
-    const timer = this._lastTimer();
-    if (!timer) {
-      this._runJobs();
-      return this._now;
+      await this.next();
     }
-    return this.tick(timer.callAt - this._now);
+
+    const excessJob = this._firstTimer();
+    if (!excessJob)
+      return;
+    throw this._getInfiniteLoopError(excessJob);
   }
 
-  runToLastAsync() {
-    return new Promise<number>((resolve, reject) => {
-      this._embedder.postTask(() => {
-        try {
-          const timer = this._lastTimer();
-          if (!timer) {
-            this._runJobs();
-            resolve(this._now);
-            return;
-          }
-          this.tickAsync(timer.callAt - this._now).then(resolve);
-        } catch (e) {
-          reject(e);
-        }
-      });
-    });
+  async runToLast() {
+    const timer = this._lastTimer();
+    if (!timer)
+      return this._now;
+    return await this.tick(timer.callAt - this._now);
   }
 
   reset() {
     this._timers.clear();
-    this._jobs = [];
     this._now = this.start;
   }
 
@@ -396,48 +209,18 @@ class Clock {
     }
   }
 
-  jump(tickValue: string | number): number {
-    const msFloat =
-      typeof tickValue === 'number'
-        ? tickValue
-        : parseTime(tickValue);
+  async jump(tickValue: string | number): Promise<number> {
+    const msFloat = parseTime(tickValue);
     const ms = Math.floor(msFloat);
 
     for (const timer of this._timers.values()) {
       if (this._now + ms > timer.callAt)
         timer.callAt = this._now + ms;
     }
-    return this.tick(ms);
+    return await this.tick(ms);
   }
 
-  private _checkIsNearInfiniteLimit(i: number): void {
-    if (this._loopLimit && i === this._loopLimit - 1)
-      this._isNearInfiniteLimit = true;
-
-  }
-
-  private _resetIsNearInfiniteLimit() {
-    this._isNearInfiniteLimit = false;
-  }
-
-  private _runJobs() {
-    // runs all microtick-deferred tasks - ecma262/#sec-runjobs
-    if (!this._jobs)
-      return;
-    for (let i = 0; i < this._jobs.length; i++) {
-      const job = this._jobs[i];
-      callFunction(job.func, job.args);
-
-      this._checkIsNearInfiniteLimit(i);
-      if (this._loopLimit && i > this._loopLimit)
-        throw this._getInfiniteLoopError(job);
-
-    }
-    this._resetIsNearInfiniteLimit();
-    this._jobs = [];
-  }
-
-  addTimer(options: { func: TimerHandler, type: TimerType, delay?: number | string, args?: any[] }): number {
+  addTimer(options: { func: TimerHandler, type: TimerType, delay?: number | string, args?: () => any[] }): number {
     if (options.func === undefined)
       throw new Error('Callback must be provided to timer calls');
 
@@ -450,12 +233,12 @@ class Clock {
     const timer: Timer = {
       type: options.type,
       func: options.func,
-      args: options.args || [],
+      args: options.args || (() => []),
       delay,
       callAt: this._now + (delay || (this._duringTick ? 1 : 0)),
       createdAt: this._now,
       id: this._uniqueTimerId++,
-      error: this._isNearInfiniteLimit ? new Error() : undefined,
+      error: new Error(),
     };
     this._timers.set(timer.id, timer);
     return timer.id;
@@ -472,7 +255,7 @@ class Clock {
   }
 
   countTimers() {
-    return this._timers.size + this._jobs.length;
+    return this._timers.size;
   }
 
   private _firstTimer(): Timer | null {
@@ -500,7 +283,7 @@ class Clock {
       this._timers.get(timer.id)!.callAt += timer.delay;
     else
       this._timers.delete(timer.id);
-    callFunction(timer.func, timer.args);
+    callFunction(timer.func, timer.args());
   }
 
   private _getInfiniteLoopError(job: Timer) {
@@ -548,14 +331,7 @@ class Clock {
         .slice(matchedLineIndex + 1)
         .join('\n')}`;
 
-    try {
-      Object.defineProperty(infiniteLoopError, 'stack', {
-        value: stack,
-      });
-    } catch (e) {
-      // noop
-    }
-
+    infiniteLoopError.stack = stack;
     return infiniteLoopError;
   }
 
@@ -622,9 +398,12 @@ function inRange(from: number, to: number, timer: Timer): boolean {
  * number of milliseconds. This is used to support human-readable strings passed
  * to clock.tick()
  */
-function parseTime(str: string): number {
-  if (!str)
+function parseTime(value: number | string): number {
+  if (typeof value === 'number')
+    return value;
+  if (!value)
     return 0;
+  const str = value;
 
   const strings = str.split(':');
   const l = strings.length;
@@ -661,7 +440,7 @@ function mirrorDateProperties(target: any, source: typeof Date): DateConstructor
   return target;
 }
 
-function createDate(clock: Clock, NativeDate: typeof Date): DateConstructor & Date {
+function createDate(clock: ClockController, NativeDate: typeof Date): DateConstructor & Date {
   function ClockDate(this: typeof ClockDate, year: number, month: number, date: number, hour: number, minute: number, second: number, ms: number): Date | string {
     // the Date constructor called as a function, ref Ecma-262 Edition 5.1, section 15.9.2.
     // This remains so in the 10th edition of 2019 as well.
@@ -717,7 +496,7 @@ function createDate(clock: Clock, NativeDate: typeof Date): DateConstructor & Da
  * but we need to take control of those that have a
  * dependency on the current clock.
  */
-function createIntl(clock: Clock, NativeIntl: typeof Intl): typeof Intl {
+function createIntl(clock: ClockController, NativeIntl: typeof Intl): typeof Intl {
   const ClockIntl: any = {};
   /*
     * All properties of Intl are non-enumerable, so we need
@@ -726,7 +505,7 @@ function createIntl(clock: Clock, NativeIntl: typeof Intl): typeof Intl {
   for (const key of Object.keys(NativeIntl) as (keyof typeof Intl)[])
     ClockIntl[key] = NativeIntl[key];
 
-  ClockIntl.DateTimeFormat = (...args: any[]) => {
+  ClockIntl.DateTimeFormat = function(...args: any[]) {
     const realFormatter = new NativeIntl.DateTimeFormat(...args);
     const formatter: Intl.DateTimeFormat = {
       formatRange: realFormatter.formatRange.bind(realFormatter),
@@ -787,20 +566,26 @@ function callFunction(func: TimerHandler, args: any[]) {
 const maxTimeout = Math.pow(2, 31) - 1;  // see https://heycam.github.io/webidl/#abstract-opdef-converttoint
 const idCounterStart = 1e12; // arbitrarily large number to avoid collisions with native timer IDs
 
-function platformOriginals(globalObject: WindowOrWorkerGlobalScope): ClockMethods {
-  return {
-    setTimeout: globalObject.setTimeout.bind(globalObject),
-    clearTimeout: globalObject.clearTimeout.bind(globalObject),
-    setInterval: globalObject.setInterval.bind(globalObject),
-    clearInterval: globalObject.clearInterval.bind(globalObject),
-    requestAnimationFrame: (globalObject as any).requestAnimationFrame ? (globalObject as any).requestAnimationFrame.bind(globalObject) : undefined,
-    cancelAnimationFrame: (globalObject as any).cancelAnimationFrame ? (globalObject as any).cancelAnimationFrame.bind(globalObject) : undefined,
-    requestIdleCallback: (globalObject as any).requestIdleCallback ? (globalObject as any).requestIdleCallback.bind(globalObject) : undefined,
-    cancelIdleCallback: (globalObject as any).cancelIdleCallback ? (globalObject as any).cancelIdleCallback.bind(globalObject) : undefined,
+function platformOriginals(globalObject: WindowOrWorkerGlobalScope): { raw: ClockMethods, bound: ClockMethods } {
+  const raw: ClockMethods = {
+    setTimeout: globalObject.setTimeout,
+    clearTimeout: globalObject.clearTimeout,
+    setInterval: globalObject.setInterval,
+    clearInterval: globalObject.clearInterval,
+    requestAnimationFrame: (globalObject as any).requestAnimationFrame ? (globalObject as any).requestAnimationFrame : undefined,
+    cancelAnimationFrame: (globalObject as any).cancelAnimationFrame ? (globalObject as any).cancelAnimationFrame : undefined,
+    requestIdleCallback: (globalObject as any).requestIdleCallback ? (globalObject as any).requestIdleCallback : undefined,
+    cancelIdleCallback: (globalObject as any).cancelIdleCallback ? (globalObject as any).cancelIdleCallback : undefined,
     Date: (globalObject as any).Date,
     performance: globalObject.performance,
     Intl: (globalObject as any).Intl,
   };
+  const bound = { ...raw };
+  for (const key of Object.keys(bound) as (keyof ClockMethods)[]) {
+    if (key !== 'Date' && typeof bound[key] === 'function')
+      bound[key] = (bound[key] as any).bind(globalObject);
+  }
+  return { raw, bound };
 }
 
 /**
@@ -813,14 +598,14 @@ function getScheduleHandler(type: TimerType) {
   return `set${type}`;
 }
 
-function createApi(clock: Clock, originals: ClockMethods): ClockMethods {
+function createApi(clock: ClockController, originals: ClockMethods): ClockMethods {
   return {
     setTimeout: (func: TimerHandler, timeout?: number | undefined, ...args: any[]) => {
       const delay = timeout ? +timeout : timeout;
       return clock.addTimer({
         type: TimerType.Timeout,
         func,
-        args,
+        args: () => args,
         delay
       });
     },
@@ -833,7 +618,7 @@ function createApi(clock: Clock, originals: ClockMethods): ClockMethods {
       return clock.addTimer({
         type: TimerType.Interval,
         func,
-        args,
+        args: () => args,
         delay,
       });
     },
@@ -846,9 +631,7 @@ function createApi(clock: Clock, originals: ClockMethods): ClockMethods {
         type: TimerType.AnimationFrame,
         func: callback,
         delay: clock.getTimeToNextFrame(),
-        get args() {
-          return [clock.performanceNow()];
-        },
+        args: () => [clock.performanceNow()],
       });
     },
     cancelAnimationFrame: (timerId: number): void => {
@@ -863,7 +646,7 @@ function createApi(clock: Clock, originals: ClockMethods): ClockMethods {
       return clock.addTimer({
         type: TimerType.IdleCallback,
         func: callback,
-        args: [],
+        args: () => [],
         delay: options?.timeout ? Math.min(options?.timeout, timeToNextIdlePeriod) : timeToNextIdlePeriod,
       });
     },
@@ -884,33 +667,41 @@ function getClearHandler(type: TimerType) {
   return `clear${type}`;
 }
 
-function fakePerformance(clock: Clock, performance: Performance): Performance {
+function fakePerformance(clock: ClockController, performance: Performance): Performance {
   const result: any = {
     now: () => clock.performanceNow(),
     timeOrigin: clock.start,
-    __proto__: performance,
   };
+  // eslint-disable-next-line no-proto
+  for (const key of Object.keys((performance as any).__proto__)) {
+    if (key === 'now' || key === 'timeOrigin')
+      continue;
+    if (key === 'getEntries' || key === 'getEntriesByName' || key === 'getEntriesByType')
+      result[key] = () => [];
+    else
+      result[key] = () => {};
+  }
   return result;
 }
 
-export function createClock(globalObject: WindowOrWorkerGlobalScope, config: ClockConfig = {}): { clock: Clock, api: Partial<ClockMethods>, originals: Partial<ClockMethods> } {
+export function createClock(globalObject: WindowOrWorkerGlobalScope, config: ClockConfig = {}): { clock: ClockController, api: ClockMethods, originals: ClockMethods } {
   const originals = platformOriginals(globalObject);
   const embedder = {
     postTask: (task: () => void) => {
-      originals.setTimeout!(task, 0);
+      originals.bound.setTimeout(task, 0);
     },
     postTaskPeriodically: (task: () => void, delay: number) => {
       const intervalId = globalObject.setInterval(task, delay);
-      return () => originals.clearInterval!(intervalId);
+      return () => originals.bound.clearInterval(intervalId);
     },
   };
 
-  const clock = new Clock(embedder, config.now, config.loopLimit);
-  const api = createApi(clock, originals);
-  return { clock, api, originals };
+  const clock = new ClockController(embedder, config.now, config.loopLimit);
+  const api = createApi(clock, originals.bound);
+  return { clock, api, originals: originals.raw };
 }
 
-export function install(globalObject: WindowOrWorkerGlobalScope, config: InstallConfig = {}): { clock: Clock, api: Partial<ClockMethods>, originals: Partial<ClockMethods> } {
+export function install(globalObject: WindowOrWorkerGlobalScope, config: InstallConfig = {}): { clock: ClockController, api: ClockMethods, originals: ClockMethods } {
   if ((globalObject as any).Date?.isFake) {
     // Timers are already faked; this is a problem.
     // Make the user reset timers before continuing.
@@ -946,6 +737,6 @@ export function inject(globalObject: WindowOrWorkerGlobalScope) {
       const { clock } = install(globalObject, config);
       return clock;
     },
-    builtin: platformOriginals(globalObject),
+    builtin: platformOriginals(globalObject).bound,
   };
 }
