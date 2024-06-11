@@ -24,44 +24,46 @@ export class Clock implements api.Clock {
     this._browserContext = browserContext;
   }
 
-  async installFakeTimers(time: number | Date, options: { loopLimit?: number } = {}) {
-    const timeMs = time instanceof Date ? time.getTime() : time;
-    await this._browserContext._channel.clockInstallFakeTimers({ time: timeMs, loopLimit: options.loopLimit });
+  async install(options: { time?: number | string | Date } = { }) {
+    await this._browserContext._channel.clockInstall(options.time !== undefined ? parseTime(options.time) : {});
   }
 
-  async runAllTimers(): Promise<number> {
-    const result = await this._browserContext._channel.clockRunAllTimers();
-    return result.fakeTime;
+  async fastForward(ticks: number | string) {
+    await this._browserContext._channel.clockFastForward(parseTicks(ticks));
   }
 
-  async runFor(time: number | string): Promise<number> {
-    const result = await this._browserContext._channel.clockRunFor({
-      timeNumber: typeof time === 'number' ? time : undefined,
-      timeString: typeof time === 'string' ? time : undefined
-    });
-    return result.fakeTime;
+  async pauseAt(time: number | string | Date) {
+    await this._browserContext._channel.clockPauseAt(parseTime(time));
   }
 
-  async runToLastTimer(): Promise<number> {
-    const result = await this._browserContext._channel.clockRunToLastTimer();
-    return result.fakeTime;
+  async resume() {
+    await this._browserContext._channel.clockResume({});
   }
 
-  async runToNextTimer(): Promise<number> {
-    const result = await this._browserContext._channel.clockRunToNextTimer();
-    return result.fakeTime;
+  async runFor(ticks: number | string) {
+    await this._browserContext._channel.clockRunFor(parseTicks(ticks));
   }
 
-  async setTime(time: number | Date) {
-    const timeMs = time instanceof Date ? time.getTime() : time;
-    await this._browserContext._channel.clockSetTime({ time: timeMs });
+  async setFixedTime(time: string | number | Date) {
+    await this._browserContext._channel.clockSetFixedTime(parseTime(time));
   }
 
-  async skipTime(time: number | string) {
-    const result = await this._browserContext._channel.clockSkipTime({
-      timeNumber: typeof time === 'number' ? time : undefined,
-      timeString: typeof time === 'string' ? time : undefined
-    });
-    return result.fakeTime;
+  async setSystemTime(time: string | number | Date) {
+    await this._browserContext._channel.clockSetSystemTime(parseTime(time));
   }
+}
+
+function parseTime(time: string | number | Date): { timeNumber?: number, timeString?: string } {
+  if (typeof time === 'number')
+    return { timeNumber: time };
+  if (typeof time === 'string')
+    return { timeString: time };
+  return { timeNumber: time.getTime() };
+}
+
+function parseTicks(ticks: string | number): { ticksNumber?: number, ticksString?: string } {
+  return {
+    ticksNumber: typeof ticks === 'number' ? ticks : undefined,
+    ticksString: typeof ticks === 'string' ? ticks : undefined
+  };
 }
