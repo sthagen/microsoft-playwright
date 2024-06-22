@@ -3,9 +3,9 @@
   "browsers": [
     {
       "name": "chromium",
-      "revision": "1123",
+      "revision": "1124",
       "installByDefault": true,
-      "browserVersion": "127.0.6533.5"
+      "browserVersion": "127.0.6533.17"
     },
     {
       "name": "chromium-tip-of-tree",
@@ -27,7 +27,7 @@
     },
     {
       "name": "webkit",
-      "revision": "2035",
+      "revision": "2037",
       "installByDefault": true,
       "revisionOverrides": {
         "mac10.14": "1446",
