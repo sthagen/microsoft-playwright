@@ -40,6 +40,10 @@ export const TestCaseView: React.FC<{
     return test.tags;
   }, [test]);
 
+  const visibleAnnotations = React.useMemo(() => {
+    return test?.annotations?.filter(annotation => !annotation.type.startsWith('_')) || [];
+  }, [test?.annotations]);
+
   return <div className='test-case-column vbox'>
     {test && <div className='test-case-path'>{test.path.join(' › ')}</div>}
     {test && <div className='test-case-title'>{test?.title}</div>}
@@ -52,8 +56,8 @@ export const TestCaseView: React.FC<{
       {test && !!test.projectName && <ProjectLink projectNames={projectNames} projectName={test.projectName}></ProjectLink>}
       {labels && <LabelsLinkView labels={labels} />}
     </div>}
-    {test && !!test.annotations.length && <AutoChip header='Annotations'>
-      {test?.annotations.map(annotation => <TestCaseAnnotationView annotation={annotation} />)}
+    {!!visibleAnnotations.length && <AutoChip header='Annotations'>
+      {visibleAnnotations.map(annotation => <TestCaseAnnotationView annotation={annotation} />)}
     </AutoChip>}
     {test && <TabbedPane tabs={
       test.results.map((result, index) => ({
@@ -65,11 +69,35 @@ export const TestCaseView: React.FC<{
 };
 
 function renderAnnotationDescription(description: string) {
-  try {
-    if (['http:', 'https:'].includes(new URL(description).protocol))
-      return <a href={description} target='_blank' rel='noopener noreferrer'>{description}</a>;
-  } catch {}
-  return description;
+  const CONTROL_CODES = '\\u0000-\\u0020\\u007f-\\u009f';
+  const WEB_LINK_REGEX = new RegExp('(?:[a-zA-Z][a-zA-Z0-9+.-]{2,}:\\/\\/|www\\.)[^\\s' + CONTROL_CODES + '"]{2,}[^\\s' + CONTROL_CODES + '"\')}\\],:;.!?]', 'ug');
+
+  const result = [];
+  let currentIndex = 0;
+  let match;
+
+  while ((match = WEB_LINK_REGEX.exec(description)) !== null) {
+    const stringBeforeMatch = description.substring(currentIndex, match.index);
+    if (stringBeforeMatch)
+      result.push(stringBeforeMatch);
+
+    const value = match[0];
+    result.push(renderLink(value));
+    currentIndex = match.index + value.length;
+  }
+  const stringAfterMatches = description.substring(currentIndex);
+  if (stringAfterMatches)
+    result.push(stringAfterMatches);
+
+  return result;
+}
+
+function renderLink(text: string) {
+  let link = text;
+  if (link.startsWith('www.'))
+    link = 'https://' + link;
+
+  return <a href={link} target='_blank' rel='noopener noreferrer'>{text}</a>;
 }
 
 function TestCaseAnnotationView({ annotation: { type, description } }: { annotation: TestCaseAnnotation }) {
