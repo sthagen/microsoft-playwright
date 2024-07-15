@@ -82,6 +82,13 @@ SerializedValue:
     u: string?
     # String representation of BigInt.
     bi: string?
+    # Serialized Error object.
+    e:
+      type: object?
+      properties:
+        m: string
+        n: string
+        s: string
     # Regular expression pattern and flags.
     r:
       type: object?
@@ -934,8 +941,6 @@ Browser:
 
   commands:
 
-    beforeCloseFinished:
-
     close:
       parameters:
         reason: string?
@@ -1012,8 +1017,6 @@ Browser:
 
 
   events:
-
-    beforeClose:
 
     close:
 

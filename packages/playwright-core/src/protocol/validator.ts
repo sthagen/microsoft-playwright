@@ -58,6 +58,11 @@ scheme.SerializedValue = tObject({
   d: tOptional(tString),
   u: tOptional(tString),
   bi: tOptional(tString),
+  e: tOptional(tObject({
+    m: tString,
+    n: tString,
+    s: tString,
+  })),
   r: tOptional(tObject({
     p: tString,
     f: tString,
@@ -607,10 +612,7 @@ scheme.BrowserInitializer = tObject({
   version: tString,
   name: tString,
 });
-scheme.BrowserBeforeCloseEvent = tOptional(tObject({}));
 scheme.BrowserCloseEvent = tOptional(tObject({}));
-scheme.BrowserBeforeCloseFinishedParams = tOptional(tObject({}));
-scheme.BrowserBeforeCloseFinishedResult = tOptional(tObject({}));
 scheme.BrowserCloseParams = tObject({
   reason: tOptional(tString),
 });
