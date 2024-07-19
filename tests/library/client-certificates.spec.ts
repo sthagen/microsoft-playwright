@@ -31,7 +31,10 @@ const test = base.extend<{ serverURL: string, serverURLRewrittenToLocalhost: str
       requestCert: true,
       rejectUnauthorized: false,
     }, (req, res) => {
-      const cert = (req.socket as import('tls').TLSSocket).getPeerCertificate();
+      const tlsSocket = req.socket as import('tls').TLSSocket;
+      // @ts-expect-error
+      expect(['localhost', 'local.playwright'].includes((tlsSocket).servername)).toBe(true);
+      const cert = tlsSocket.getPeerCertificate();
       if ((req as any).client.authorized) {
         res.writeHead(200, { 'Content-Type': 'text/html' });
         res.end(`Hello ${cert.subject.CN}, your certificate was issued by ${cert.issuer.CN}!`);
@@ -249,7 +252,7 @@ test.describe('browser', () => {
     await page.close();
   });
 
-  test('should have ignoreHTTPSErrors=false by default', async ({ browser, httpsServer, asset }) => {
+  test('should have ignoreHTTPSErrors=false by default', async ({ browser, httpsServer, asset, browserName, platform }) => {
     const page = await browser.newPage({
       clientCertificates: [{
         url: 'https://just-there-that-the-client-certificates-proxy-server-is-getting-launched.com',
@@ -259,7 +262,7 @@ test.describe('browser', () => {
         }],
       }],
     });
-    await page.goto(httpsServer.EMPTY_PAGE);
+    await page.goto(browserName === 'webkit' && platform === 'darwin' ? httpsServer.EMPTY_PAGE.replace('localhost', 'local.playwright') : httpsServer.EMPTY_PAGE);
     await expect(page.getByText('Playwright client-certificate error')).toBeVisible();
     await page.close();
   });
