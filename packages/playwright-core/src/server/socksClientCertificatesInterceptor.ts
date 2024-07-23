@@ -26,17 +26,6 @@ import type { SocksSocketClosedPayload, SocksSocketDataPayload, SocksSocketReque
 import { SocksProxy } from '../common/socksProxy';
 import type * as channels from '@protocol/channels';
 
-class SocksConnectionDuplex extends stream.Duplex {
-  constructor(private readonly writeCallback: (data: Buffer) => void) {
-    super();
-  }
-  override _read(): void { }
-  override _write(chunk: Buffer, encoding: BufferEncoding, callback: (error?: Error | null | undefined) => void): void {
-    this.writeCallback(chunk);
-    callback();
-  }
-}
-
 class SocksProxyConnection {
   private readonly socksProxy: ClientCertificatesProxy;
   private readonly uid: string;
@@ -46,7 +35,6 @@ class SocksProxyConnection {
   target!: net.Socket;
   // In case of http, we just pipe data to the target socket and they are |undefined|.
   internal: stream.Duplex | undefined;
-  internalTLS: tls.TLSSocket | undefined;
 
   constructor(socksProxy: ClientCertificatesProxy, uid: string, host: string, port: number) {
     this.socksProxy = socksProxy;
@@ -89,51 +77,58 @@ class SocksProxyConnection {
   }
 
   private _attachTLSListeners() {
-    this.internal = new SocksConnectionDuplex(data => this.socksProxy._socksProxy.sendSocketData({ uid: this.uid, data }));
-    const internalTLS = new tls.TLSSocket(this.internal, {
-      isServer: true,
+    this.internal = new stream.Duplex({
+      read: () => {},
+      write: (data, encoding, callback) => {
+        this.socksProxy._socksProxy.sendSocketData({ uid: this.uid, data });
+        callback();
+      }
+    });
+    const dummyServer = tls.createServer({
       key: fs.readFileSync(path.join(__dirname, '../../bin/socks-certs/key.pem')),
       cert: fs.readFileSync(path.join(__dirname, '../../bin/socks-certs/cert.pem')),
     });
-    this.internalTLS = internalTLS;
-    internalTLS.on('close', () => this.socksProxy._socksProxy.sendSocketEnd({ uid: this.uid }));
+    dummyServer.emit('connection', this.internal);
+    dummyServer.on('secureConnection', internalTLS => {
+      internalTLS.on('close', () => this.socksProxy._socksProxy.sendSocketEnd({ uid: this.uid }));
 
-    const tlsOptions: tls.ConnectionOptions = {
-      socket: this.target,
-      host: this.host,
-      port: this.port,
-      rejectUnauthorized: !this.socksProxy.ignoreHTTPSErrors,
-      ...clientCertificatesToTLSOptions(this.socksProxy.clientCertificates, `https://${this.host}:${this.port}/`),
-    };
-    if (!net.isIP(this.host))
-      tlsOptions.servername = this.host;
-    if (process.env.PWTEST_UNSUPPORTED_CUSTOM_CA && isUnderTest())
-      tlsOptions.ca = [fs.readFileSync(process.env.PWTEST_UNSUPPORTED_CUSTOM_CA)];
-    const targetTLS = tls.connect(tlsOptions);
+      const tlsOptions: tls.ConnectionOptions = {
+        socket: this.target,
+        host: this.host,
+        port: this.port,
+        rejectUnauthorized: !this.socksProxy.ignoreHTTPSErrors,
+        ...clientCertificatesToTLSOptions(this.socksProxy.clientCertificates, `https://${this.host}:${this.port}`),
+      };
+      if (!net.isIP(this.host))
+        tlsOptions.servername = this.host;
+      if (process.env.PWTEST_UNSUPPORTED_CUSTOM_CA && isUnderTest())
+        tlsOptions.ca = [fs.readFileSync(process.env.PWTEST_UNSUPPORTED_CUSTOM_CA)];
+      const targetTLS = tls.connect(tlsOptions);
 
-    internalTLS.pipe(targetTLS);
-    targetTLS.pipe(internalTLS);
+      internalTLS.pipe(targetTLS);
+      targetTLS.pipe(internalTLS);
 
-    // Handle close and errors
-    const closeBothSockets = () => {
-      internalTLS.end();
-      targetTLS.end();
-    };
+      // Handle close and errors
+      const closeBothSockets = () => {
+        internalTLS.end();
+        targetTLS.end();
+      };
 
-    internalTLS.on('end', () => closeBothSockets());
-    targetTLS.on('end', () => closeBothSockets());
+      internalTLS.on('end', () => closeBothSockets());
+      targetTLS.on('end', () => closeBothSockets());
 
-    internalTLS.on('error', () => closeBothSockets());
-    targetTLS.on('error', error => {
-      const responseBody = 'Playwright client-certificate error: ' + error.message;
-      internalTLS.end([
-        'HTTP/1.1 503 Internal Server Error',
-        'Content-Type: text/html; charset=utf-8',
-        'Content-Length: ' + Buffer.byteLength(responseBody),
-        '\r\n',
-        responseBody,
-      ].join('\r\n'));
-      closeBothSockets();
+      internalTLS.on('error', () => closeBothSockets());
+      targetTLS.on('error', error => {
+        const responseBody = 'Playwright client-certificate error: ' + error.message;
+        internalTLS.end([
+          'HTTP/1.1 503 Internal Server Error',
+          'Content-Type: text/html; charset=utf-8',
+          'Content-Length: ' + Buffer.byteLength(responseBody),
+          '\r\n',
+          responseBody,
+        ].join('\r\n'));
+        closeBothSockets();
+      });
     });
   }
 }
@@ -188,7 +183,7 @@ export function clientCertificatesToTLSOptions(
   const matchingCerts = clientCertificates?.filter(c => {
     let regex: RegExp | undefined = (c as any)[kClientCertificatesGlobRegex];
     if (!regex) {
-      regex = globToRegex(c.url);
+      regex = globToRegex(c.origin);
       (c as any)[kClientCertificatesGlobRegex] = regex;
     }
     regex.lastIndex = 0;
@@ -201,15 +196,13 @@ export function clientCertificatesToTLSOptions(
     key: [] as { pem: Buffer, passphrase?: string }[],
     cert: [] as Buffer[],
   };
-  for (const { certs } of matchingCerts) {
-    for (const cert of certs) {
-      if (cert.cert)
-        tlsOptions.cert.push(cert.cert);
-      if (cert.key)
-        tlsOptions.key.push({ pem: cert.key, passphrase: cert.passphrase });
-      if (cert.pfx)
-        tlsOptions.pfx.push({ buf: cert.pfx, passphrase: cert.passphrase });
-    }
+  for (const cert of matchingCerts) {
+    if (cert.cert)
+      tlsOptions.cert.push(cert.cert);
+    if (cert.key)
+      tlsOptions.key.push({ pem: cert.key, passphrase: cert.passphrase });
+    if (cert.pfx)
+      tlsOptions.pfx.push({ buf: cert.pfx, passphrase: cert.passphrase });
   }
   return tlsOptions;
 }
