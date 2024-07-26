@@ -20,12 +20,22 @@ import type https from 'https';
 import fs from 'fs';
 import tls from 'tls';
 import stream from 'stream';
-import { createSocket } from '../utils/happy-eyeballs';
+import { createSocket, createTLSSocket } from '../utils/happy-eyeballs';
 import { isUnderTest, ManualPromise } from '../utils';
 import type { SocksSocketClosedPayload, SocksSocketDataPayload, SocksSocketRequestedPayload } from '../common/socksProxy';
 import { SocksProxy } from '../common/socksProxy';
 import type * as channels from '@protocol/channels';
 import { debugLogger } from '../utils/debugLogger';
+
+let dummyServerTlsOptions: tls.TlsOptions | undefined = undefined;
+function loadDummyServerCertsIfNeeded() {
+  if (dummyServerTlsOptions)
+    return;
+  dummyServerTlsOptions = {
+    key: fs.readFileSync(path.join(__dirname, '../../bin/socks-certs/key.pem')),
+    cert: fs.readFileSync(path.join(__dirname, '../../bin/socks-certs/cert.pem')),
+  };
+}
 
 class ALPNCache {
   private _cache = new Map<string, ManualPromise<string>>();
@@ -42,22 +52,21 @@ class ALPNCache {
     const result = new ManualPromise<string>();
     this._cache.set(cacheKey, result);
     result.then(success);
-    const socket = tls.connect({
+    createTLSSocket({
       host,
       port,
       servername: net.isIP(host) ? undefined : host,
       ALPNProtocols: ['h2', 'http/1.1'],
       rejectUnauthorized: false,
-    });
-    socket.on('secureConnect', () => {
-      // The server may not respond with ALPN, in which case we default to http/1.1.
-      result.resolve(socket.alpnProtocol || 'http/1.1');
-      socket.end();
-    });
-    socket.on('error', error => {
+    }).then(socket => {
+      socket.on('secureConnect', () => {
+        // The server may not respond with ALPN, in which case we default to http/1.1.
+        result.resolve(socket.alpnProtocol || 'http/1.1');
+        socket.end();
+      });
+    }).catch(error => {
       debugLogger.log('client-certificates', `ALPN error: ${error.message}`);
       result.resolve('http/1.1');
-      socket.end();
     });
   }
 }
@@ -123,8 +132,7 @@ class SocksProxyConnection {
     this.socksProxy.alpnCache.get(rewriteToLocalhostIfNeeded(this.host), this.port, alpnProtocolChosenByServer => {
       debugLogger.log('client-certificates', `Proxy->Target ${this.host}:${this.port} chooses ALPN ${alpnProtocolChosenByServer}`);
       const dummyServer = tls.createServer({
-        key: fs.readFileSync(path.join(__dirname, '../../bin/socks-certs/key.pem')),
-        cert: fs.readFileSync(path.join(__dirname, '../../bin/socks-certs/cert.pem')),
+        ...dummyServerTlsOptions,
         ALPNProtocols: alpnProtocolChosenByServer === 'h2' ? ['h2', 'http/1.1'] : ['http/1.1'],
       });
       this.internal?.on('close', () => dummyServer.close());
@@ -212,6 +220,7 @@ export class ClientCertificatesProxy {
       this._connections.get(payload.uid)?.onClose();
       this._connections.delete(payload.uid);
     });
+    loadDummyServerCertsIfNeeded();
   }
 
   public async listen(): Promise<string> {
