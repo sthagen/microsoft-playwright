@@ -14,17 +14,15 @@
   limitations under the License.
 */
 
-// @ts-ignore
-import codemirror from 'codemirror-shadow-1';
-import type codemirrorType from 'codemirror';
-import 'codemirror-shadow-1/lib/codemirror.css';
-import 'codemirror-shadow-1/mode/css/css';
-import 'codemirror-shadow-1/mode/htmlmixed/htmlmixed';
-import 'codemirror-shadow-1/mode/javascript/javascript';
-import 'codemirror-shadow-1/mode/python/python';
-import 'codemirror-shadow-1/mode/clike/clike';
-import 'codemirror-shadow-1/mode/markdown/markdown';
-import 'codemirror-shadow-1/addon/mode/simple';
+.annotations-tab {
+  flex: auto;
+  line-height: 24px;
+  white-space: pre;
+  overflow: auto;
+  user-select: text;
+}
 
-export type CodeMirror = typeof codemirrorType;
-export default codemirror;
+.annotation-item {
+  margin: 4px 8px;
+  text-wrap: wrap;
+}
