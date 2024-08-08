@@ -3,15 +3,15 @@
   "browsers": [
     {
       "name": "chromium",
-      "revision": "1129",
+      "revision": "1130",
       "installByDefault": true,
-      "browserVersion": "128.0.6613.18"
+      "browserVersion": "128.0.6613.27"
     },
     {
       "name": "chromium-tip-of-tree",
-      "revision": "1246",
+      "revision": "1248",
       "installByDefault": false,
-      "browserVersion": "129.0.6630.0"
+      "browserVersion": "129.0.6644.0"
     },
     {
       "name": "firefox",
@@ -21,9 +21,9 @@
     },
     {
       "name": "firefox-beta",
-      "revision": "1458",
+      "revision": "1461",
       "installByDefault": false,
-      "browserVersion": "129.0b2"
+      "browserVersion": "130.0b2"
     },
     {
       "name": "webkit",
