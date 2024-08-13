@@ -19,7 +19,7 @@ import type zip from '@zip.js/zip.js';
 // @ts-ignore
 import * as zipImport from '@zip.js/zip.js/lib/zip-no-worker-inflate.js';
 import * as React from 'react';
-import * as ReactDOM from 'react-dom';
+import * as ReactDOM from 'react-dom/client';
 import './colors.css';
 import type { LoadedReport } from './loadedReport';
 import { ReportView } from './reportView';
@@ -44,7 +44,7 @@ const ReportLoader: React.FC = () => {
 };
 
 window.onload = () => {
-  ReactDOM.render(<ReportLoader />, document.querySelector('#root'));
+  ReactDOM.createRoot(document.querySelector('#root')!).render(<ReportLoader />);
 };
 
 class ZipReport implements LoadedReport {
@@ -52,7 +52,7 @@ class ZipReport implements LoadedReport {
   private _json!: HTMLReport;
 
   async load() {
-    const zipReader = new zipjs.ZipReader(new zipjs.Data64URIReader((window as any).playwrightReportBase64), { useWebWorkers: false });
+    const zipReader = new zipjs.ZipReader(new zipjs.Data64URIReader(window.playwrightReportBase64!), { useWebWorkers: false });
     for (const entry of await zipReader.getEntries())
       this._entries.set(entry.filename, entry);
     this._json = await this.entry('report.json') as HTMLReport;
