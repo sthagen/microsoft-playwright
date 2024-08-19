@@ -303,6 +303,21 @@ test.describe('browser', () => {
     await page.close();
   });
 
+  test('should pass with matching certificates when passing as content', async ({ browser, startCCServer, asset, browserName }) => {
+    const serverURL = await startCCServer({ useFakeLocalhost: browserName === 'webkit' && process.platform === 'darwin' });
+    const page = await browser.newPage({
+      ignoreHTTPSErrors: true,
+      clientCertificates: [{
+        origin: new URL(serverURL).origin,
+        cert: await fs.promises.readFile(asset('client-certificates/client/trusted/cert.pem')),
+        key: await fs.promises.readFile(asset('client-certificates/client/trusted/key.pem')),
+      }],
+    });
+    await page.goto(serverURL);
+    await expect(page.getByTestId('message')).toHaveText('Hello Alice, your certificate was issued by localhost!');
+    await page.close();
+  });
+
   test('should not hang on tls errors during TLS 1.2 handshake', async ({ browser, asset, platform, browserName }) => {
     for (const tlsVersion of ['TLSv1.3', 'TLSv1.2'] as const) {
       await test.step(`TLS version: ${tlsVersion}`, async () => {
@@ -360,34 +375,43 @@ test.describe('browser', () => {
     await page.close();
   });
 
-  test('should fail with matching certificates in legacy pfx format', async ({ browser, startCCServer, asset, browserName }) => {
+  test('should pass with matching certificates in pfx format when passing as content', async ({ browser, startCCServer, asset, browserName }) => {
     const serverURL = await startCCServer({ useFakeLocalhost: browserName === 'webkit' && process.platform === 'darwin' });
     const page = await browser.newPage({
+      ignoreHTTPSErrors: true,
+      clientCertificates: [{
+        origin: new URL(serverURL).origin,
+        pfx: await fs.promises.readFile(asset('client-certificates/client/trusted/cert.pfx')),
+        passphrase: 'secure'
+      }],
+    });
+    await page.goto(serverURL);
+    await expect(page.getByTestId('message')).toHaveText('Hello Alice, your certificate was issued by localhost!');
+    await page.close();
+  });
+
+  test('should fail with matching certificates in legacy pfx format', async ({ browser, startCCServer, asset, browserName }) => {
+    const serverURL = await startCCServer({ useFakeLocalhost: browserName === 'webkit' && process.platform === 'darwin' });
+    await expect(browser.newPage({
       ignoreHTTPSErrors: true,
       clientCertificates: [{
         origin: new URL(serverURL).origin,
         pfxPath: asset('client-certificates/client/trusted/cert-legacy.pfx'),
         passphrase: 'secure'
       }],
-    });
-    await page.goto(serverURL);
-    await expect(page.getByText('Unsupported TLS certificate.')).toBeVisible();
-    await page.close();
+    })).rejects.toThrow('Unsupported TLS certificate');
   });
 
   test('should throw a http error if the pfx passphrase is incorect', async ({ browser, startCCServer, asset, browserName }) => {
     const serverURL = await startCCServer({ useFakeLocalhost: browserName === 'webkit' && process.platform === 'darwin' });
-    const page = await browser.newPage({
+    await expect(browser.newPage({
       ignoreHTTPSErrors: true,
       clientCertificates: [{
         origin: new URL(serverURL).origin,
         pfxPath: asset('client-certificates/client/trusted/cert.pfx'),
         passphrase: 'this-password-is-incorrect'
       }],
-    });
-    await page.goto(serverURL);
-    await expect(page.getByText('Playwright client-certificate error: mac verify failure')).toBeVisible();
-    await page.close();
+    })).rejects.toThrow('Failed to load client certificate: mac verify failure');
   });
 
   test('should pass with matching certificates on context APIRequestContext instance', async ({ browser, startCCServer, asset, browserName }) => {
