@@ -312,9 +312,9 @@ export interface Page {
    * // Passing 42 as an argument to the default export function.
    * await page.addInitScript({ path: mockPath }, 42);
    *
-   * // Make sure to pass undefined even if you do not need to pass an argument.
+   * // Make sure to pass something even if you do not need to pass an argument.
    * // This instructs Playwright to treat the file as a commonjs module.
-   * await page.addInitScript({ path: mockPath }, undefined);
+   * await page.addInitScript({ path: mockPath }, '');
    * ```
    *
    * @param script Script to be evaluated in the page.
@@ -3897,10 +3897,8 @@ export interface Page {
     force?: boolean;
 
     /**
-     * Actions that initiate navigations are waiting for these navigations to happen and for pages to start loading. You
-     * can opt out of waiting via setting this flag. You would only need this option in the exceptional cases such as
-     * navigating to inaccessible pages. Defaults to `false`.
-     * @deprecated This option will default to `true` in the future.
+     * This option has no effect.
+     * @deprecated This option has no effect.
      */
     noWaitAfter?: boolean;
 
@@ -7023,10 +7021,8 @@ export interface Frame {
     force?: boolean;
 
     /**
-     * Actions that initiate navigations are waiting for these navigations to happen and for pages to start loading. You
-     * can opt out of waiting via setting this flag. You would only need this option in the exceptional cases such as
-     * navigating to inaccessible pages. Defaults to `false`.
-     * @deprecated This option will default to `true` in the future.
+     * This option has no effect.
+     * @deprecated This option has no effect.
      */
     noWaitAfter?: boolean;
 
@@ -7723,9 +7719,9 @@ export interface BrowserContext {
    * // Passing 42 as an argument to the default export function.
    * await context.addInitScript({ path: mockPath }, 42);
    *
-   * // Make sure to pass undefined even if you do not need to pass an argument.
+   * // Make sure to pass something even if you do not need to pass an argument.
    * // This instructs Playwright to treat the file as a commonjs module.
-   * await context.addInitScript({ path: mockPath }, undefined);
+   * await context.addInitScript({ path: mockPath }, '');
    * ```
    *
    * @param script Script to be evaluated in all pages in the browser context.
@@ -9372,10 +9368,6 @@ export interface Browser {
 
     /**
      * Network proxy settings to use with this context. Defaults to none.
-     *
-     * **NOTE** For Chromium on Windows the browser needs to be launched with the global proxy for this option to work. If
-     * all contexts override the proxy, global proxy will be never used and can be any string, for example `launch({
-     * proxy: { server: 'http://per-context' } })`.
      */
     proxy?: {
       /**
@@ -11140,10 +11132,8 @@ export interface ElementHandle<T=Node> extends JSHandle<T> {
     force?: boolean;
 
     /**
-     * Actions that initiate navigations are waiting for these navigations to happen and for pages to start loading. You
-     * can opt out of waiting via setting this flag. You would only need this option in the exceptional cases such as
-     * navigating to inaccessible pages. Defaults to `false`.
-     * @deprecated This option will default to `true` in the future.
+     * This option has no effect.
+     * @deprecated This option has no effect.
      */
     noWaitAfter?: boolean;
 
@@ -13335,10 +13325,8 @@ export interface Locator {
     force?: boolean;
 
     /**
-     * Actions that initiate navigations are waiting for these navigations to happen and for pages to start loading. You
-     * can opt out of waiting via setting this flag. You would only need this option in the exceptional cases such as
-     * navigating to inaccessible pages. Defaults to `false`.
-     * @deprecated This option will default to `true` in the future.
+     * This option has no effect.
+     * @deprecated This option has no effect.
      */
     noWaitAfter?: boolean;
 
@@ -20847,10 +20835,6 @@ export interface BrowserContextOptions {
 
   /**
    * Network proxy settings to use with this context. Defaults to none.
-   *
-   * **NOTE** For Chromium on Windows the browser needs to be launched with the global proxy for this option to work. If
-   * all contexts override the proxy, global proxy will be never used and can be any string, for example `launch({
-   * proxy: { server: 'http://per-context' } })`.
    */
   proxy?: {
     /**
