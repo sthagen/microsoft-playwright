@@ -17,17 +17,11 @@
 import * as fs from 'fs';
 import type * as actions from './recorder/recorderActions';
 import type * as channels from '@protocol/channels';
-import type { ActionInContext } from './recorder/codeGenerator';
-import { CodeGenerator } from './recorder/codeGenerator';
-import { toClickOptions, toModifiers } from './recorder/utils';
+import type { ActionInContext, FrameDescription } from './codegen/codeGenerator';
+import { CodeGenerator } from './codegen/codeGenerator';
 import { Page } from './page';
 import { Frame } from './frames';
 import { BrowserContext } from './browserContext';
-import { JavaLanguageGenerator } from './recorder/java';
-import { JavaScriptLanguageGenerator } from './recorder/javascript';
-import { JsonlLanguageGenerator } from './recorder/jsonl';
-import { CSharpLanguageGenerator } from './recorder/csharp';
-import { PythonLanguageGenerator } from './recorder/python';
 import * as recorderSource from '../generated/recorderSource';
 import * as consoleApiSource from '../generated/consoleApiSource';
 import { EmptyRecorderApp } from './recorder/recorderApp';
@@ -36,15 +30,17 @@ import { RecorderApp } from './recorder/recorderApp';
 import type { CallMetadata, InstrumentationListener, SdkObject } from './instrumentation';
 import type { Point } from '../common/types';
 import type { CallLog, CallLogStatus, EventData, Mode, OverlayState, Source, UIState } from '@recorder/recorderTypes';
-import { createGuid, isUnderTest, monotonicTime, serializeExpectedTextValues } from '../utils';
+import { isUnderTest, monotonicTime } from '../utils';
 import { metadataToCallLog } from './recorder/recorderUtils';
 import { Debugger } from './debugger';
 import { EventEmitter } from 'events';
 import { raceAgainstDeadline } from '../utils/timeoutRunner';
-import type { Language, LanguageGenerator } from './recorder/language';
+import { type Language, type LanguageGenerator } from './codegen/language';
 import { locatorOrSelectorAsSelector } from '../utils/isomorphic/locatorParser';
 import { quoteCSSAttributeValue, eventsHelper, type RegisteredListener } from '../utils';
 import type { Dialog } from './dialog';
+import { performAction } from './recorderRunner';
+import { languageSet } from './codegen/languages';
 
 type BindingSource = { frame: Frame, page: Page };
 
@@ -191,15 +187,9 @@ export class Recorder implements InstrumentationListener {
     });
 
     await this._context.exposeBinding('__pw_recorderSetSelector', false, async ({ frame }, selector: string) => {
-      const selectorPromises: Promise<string | undefined>[] = [];
-      let currentFrame: Frame | null = frame;
-      while (currentFrame) {
-        selectorPromises.push(findFrameSelector(currentFrame));
-        currentFrame = currentFrame.parentFrame();
-      }
-      const fullSelector = (await Promise.all(selectorPromises)).filter(Boolean);
-      fullSelector.push(selector);
-      await this._recorderApp?.setSelector(fullSelector.join(' >> internal:control=enter-frame >> '), true);
+      const selectorChain = await generateFrameSelector(frame);
+      selectorChain.push(selector);
+      await this._recorderApp?.setSelector(selectorChain.join(' >> internal:control=enter-frame >> '), true);
     });
 
     await this._context.exposeBinding('__pw_recorderSetMode', false, async ({ frame }, mode: Mode) => {
@@ -431,19 +421,7 @@ class ContextRecorder extends EventEmitter {
   }
 
   setOutput(codegenId: string, outputFile?: string) {
-    const languages = new Set([
-      new JavaLanguageGenerator('junit'),
-      new JavaLanguageGenerator('library'),
-      new JavaScriptLanguageGenerator(/* isPlaywrightTest */false),
-      new JavaScriptLanguageGenerator(/* isPlaywrightTest */true),
-      new PythonLanguageGenerator(/* isAsync */false, /* isPytest */true),
-      new PythonLanguageGenerator(/* isAsync */false, /* isPytest */false),
-      new PythonLanguageGenerator(/* isAsync */true,  /* isPytest */false),
-      new CSharpLanguageGenerator('mstest'),
-      new CSharpLanguageGenerator('nunit'),
-      new CSharpLanguageGenerator('library'),
-      new JsonlLanguageGenerator(),
-    ]);
+    const languages = languageSet();
     const primaryLanguage = [...languages].find(l => l.id === codegenId);
     if (!primaryLanguage)
       throw new Error(`\n===============================\nUnsupported language: '${codegenId}'\n===============================\n`);
@@ -536,48 +514,17 @@ class ContextRecorder extends EventEmitter {
     }
   }
 
-  private _describeMainFrame(page: Page): actions.FrameDescription {
+  private _describeMainFrame(page: Page): FrameDescription {
     return {
       pageAlias: this._pageAliases.get(page)!,
-      isMainFrame: true,
+      framePath: [],
     };
   }
 
-  private async _describeFrame(frame: Frame): Promise<actions.FrameDescription> {
-    const page = frame._page;
-    const pageAlias = this._pageAliases.get(page)!;
-    const chain: Frame[] = [];
-    for (let ancestor: Frame | null = frame; ancestor; ancestor = ancestor.parentFrame())
-      chain.push(ancestor);
-    chain.reverse();
-
-    if (chain.length === 1)
-      return this._describeMainFrame(page);
-
-    const selectorPromises: Promise<string | undefined>[] = [];
-    for (let i = 0; i < chain.length - 1; i++)
-      selectorPromises.push(findFrameSelector(chain[i + 1]));
-
-    const result = await raceAgainstDeadline(() => Promise.all(selectorPromises), monotonicTime() + 2000);
-    if (!result.timedOut && result.result.every(selector => !!selector)) {
-      return {
-        pageAlias,
-        isMainFrame: false,
-        selectorsChain: result.result as string[],
-      };
-    }
-    // Best effort to find a selector for the frame.
-    const selectorsChain = [];
-    for (let i = 0; i < chain.length - 1; i++) {
-      if (chain[i].name())
-        selectorsChain.push(`iframe[name=${quoteCSSAttributeValue(chain[i].name())}]`);
-      else
-        selectorsChain.push(`iframe[src=${quoteCSSAttributeValue(chain[i].url())}]`);
-    }
+  private async _describeFrame(frame: Frame): Promise<FrameDescription> {
     return {
-      pageAlias,
-      isMainFrame: false,
-      selectorsChain,
+      pageAlias: this._pageAliases.get(frame._page)!,
+      framePath: await generateFrameSelector(frame),
     };
   }
 
@@ -691,113 +638,39 @@ function isScreenshotCommand(metadata: CallMetadata) {
   return metadata.method.toLowerCase().includes('screenshot');
 }
 
-async function findFrameSelector(frame: Frame): Promise<string | undefined> {
-  try {
+async function generateFrameSelector(frame: Frame): Promise<string[]> {
+  const selectorPromises: Promise<string>[] = [];
+  while (frame) {
     const parent = frame.parentFrame();
-    const frameElement = await frame.frameElement();
-    if (!frameElement || !parent)
-      return;
-    const utility = await parent._utilityContext();
-    const injected = await utility.injectedScript();
-    const selector = await injected.evaluate((injected, element) => {
-      return injected.generateSelectorSimple(element as Element, { testIdAttributeName: '', omitInternalEngines: true });
-    }, frameElement);
-    return selector;
-  } catch (e) {
+    if (!parent)
+      break;
+    selectorPromises.push(generateFrameSelectorInParent(parent, frame));
+    frame = parent;
   }
+  const result = await Promise.all(selectorPromises);
+  return result.reverse();
 }
 
-async function innerPerformAction(frame: Frame, action: string, params: any, cb: (callMetadata: CallMetadata) => Promise<any>): Promise<boolean> {
-  const callMetadata: CallMetadata = {
-    id: `call@${createGuid()}`,
-    apiName: 'frame.' + action,
-    objectId: frame.guid,
-    pageId: frame._page.guid,
-    frameId: frame.guid,
-    startTime: monotonicTime(),
-    endTime: 0,
-    type: 'Frame',
-    method: action,
-    params,
-    log: [],
-  };
+async function generateFrameSelectorInParent(parent: Frame, frame: Frame): Promise<string> {
+  const result = await raceAgainstDeadline(async () => {
+    try {
+      const frameElement = await frame.frameElement();
+      if (!frameElement || !parent)
+        return;
+      const utility = await parent._utilityContext();
+      const injected = await utility.injectedScript();
+      const selector = await injected.evaluate((injected, element) => {
+        return injected.generateSelectorSimple(element as Element);
+      }, frameElement);
+      return selector;
+    } catch (e) {
+      return e.toString();
+    }
+  }, monotonicTime() + 2000);
+  if (!result.timedOut && result.result)
+    return result.result;
 
-  try {
-    await frame.instrumentation.onBeforeCall(frame, callMetadata);
-    await cb(callMetadata);
-  } catch (e) {
-    callMetadata.endTime = monotonicTime();
-    await frame.instrumentation.onAfterCall(frame, callMetadata);
-    return false;
-  }
-
-  callMetadata.endTime = monotonicTime();
-  await frame.instrumentation.onAfterCall(frame, callMetadata);
-  return true;
-}
-
-async function performAction(frame: Frame, action: actions.Action): Promise<boolean> {
-  const kActionTimeout = 5000;
-  if (action.name === 'click') {
-    const { options } = toClickOptions(action);
-    return await innerPerformAction(frame, 'click', { selector: action.selector }, callMetadata => frame.click(callMetadata, action.selector, { ...options, timeout: kActionTimeout, strict: true }));
-  }
-  if (action.name === 'press') {
-    const modifiers = toModifiers(action.modifiers);
-    const shortcut = [...modifiers, action.key].join('+');
-    return await innerPerformAction(frame, 'press', { selector: action.selector, key: shortcut }, callMetadata => frame.press(callMetadata, action.selector, shortcut, { timeout: kActionTimeout, strict: true }));
-  }
-  if (action.name === 'fill')
-    return await innerPerformAction(frame, 'fill', { selector: action.selector, text: action.text }, callMetadata => frame.fill(callMetadata, action.selector, action.text, { timeout: kActionTimeout, strict: true }));
-  if (action.name === 'setInputFiles')
-    return await innerPerformAction(frame, 'setInputFiles', { selector: action.selector, files: action.files }, callMetadata => frame.setInputFiles(callMetadata, action.selector, { selector: action.selector, payloads: [], timeout: kActionTimeout, strict: true }));
-  if (action.name === 'check')
-    return await innerPerformAction(frame, 'check', { selector: action.selector }, callMetadata => frame.check(callMetadata, action.selector, { timeout: kActionTimeout, strict: true }));
-  if (action.name === 'uncheck')
-    return await innerPerformAction(frame, 'uncheck', { selector: action.selector }, callMetadata => frame.uncheck(callMetadata, action.selector, { timeout: kActionTimeout, strict: true }));
-  if (action.name === 'select') {
-    const values = action.options.map(value => ({ value }));
-    return await innerPerformAction(frame, 'selectOption', { selector: action.selector, values }, callMetadata => frame.selectOption(callMetadata, action.selector, [], values, { timeout: kActionTimeout, strict: true }));
-  }
-  if (action.name === 'navigate')
-    return await innerPerformAction(frame, 'goto', { url: action.url }, callMetadata => frame.goto(callMetadata, action.url, { timeout: kActionTimeout }));
-  if (action.name === 'closePage')
-    return await innerPerformAction(frame, 'close', {}, callMetadata => frame._page.close(callMetadata));
-  if (action.name === 'openPage')
-    throw Error('Not reached');
-  if (action.name === 'assertChecked') {
-    return await innerPerformAction(frame, 'expect', { selector: action.selector }, callMetadata => frame.expect(callMetadata, action.selector, {
-      selector: action.selector,
-      expression: 'to.be.checked',
-      isNot: !action.checked,
-      timeout: kActionTimeout,
-    }));
-  }
-  if (action.name === 'assertText') {
-    return await innerPerformAction(frame, 'expect', { selector: action.selector }, callMetadata => frame.expect(callMetadata, action.selector, {
-      selector: action.selector,
-      expression: 'to.have.text',
-      expectedText: serializeExpectedTextValues([action.text], { matchSubstring: true, normalizeWhiteSpace: true }),
-      isNot: false,
-      timeout: kActionTimeout,
-    }));
-  }
-  if (action.name === 'assertValue') {
-    return await innerPerformAction(frame, 'expect', { selector: action.selector }, callMetadata => frame.expect(callMetadata, action.selector, {
-      selector: action.selector,
-      expression: 'to.have.value',
-      expectedValue: action.value,
-      isNot: false,
-      timeout: kActionTimeout,
-    }));
-  }
-  if (action.name === 'assertVisible') {
-    return await innerPerformAction(frame, 'expect', { selector: action.selector }, callMetadata => frame.expect(callMetadata, action.selector, {
-      selector: action.selector,
-      expression: 'to.be.visible',
-      isNot: false,
-      timeout: kActionTimeout,
-    }));
-  }
-  throw new Error('Internal error: unexpected action ' + (action as any).name);
+  if (frame.name())
+    return `iframe[name=${quoteCSSAttributeValue(frame.name())}]`;
+  return `iframe[src=${quoteCSSAttributeValue(frame.url())}]`;
 }
