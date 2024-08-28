@@ -15,8 +15,7 @@
  */
 
 import type { BrowserContextOptions } from '../../../types/types';
-import type { ActionInContext } from './codeGenerator';
-import type { Language, LanguageGenerator, LanguageGeneratorOptions } from './language';
+import type { ActionInContext, Language, LanguageGenerator, LanguageGeneratorOptions } from './types';
 import { sanitizeDeviceOptions, toSignalMap, toKeyboardModifiers, toClickOptions } from './language';
 import { deviceDescriptors } from '../deviceDescriptors';
 import { escapeWithQuotes, asLocator } from '../../utils';
@@ -65,7 +64,7 @@ export class JavaScriptLanguageGenerator implements LanguageGenerator {
     if (signals.download)
       formatter.add(`const download${signals.download.downloadAlias}Promise = ${pageAlias}.waitForEvent('download');`);
 
-    formatter.add(this._generateActionCall(subject, actionInContext));
+    formatter.add(wrapWithStep(actionInContext.description, this._generateActionCall(subject, actionInContext)));
 
     if (signals.popup)
       formatter.add(`const ${signals.popup.popupAlias} = await ${signals.popup.popupAlias}Promise;`);
@@ -258,4 +257,10 @@ export class JavaScriptFormatter {
 
 function quote(text: string) {
   return escapeWithQuotes(text, '\'');
+}
+
+function wrapWithStep(description: string | undefined, body: string) {
+  return description ? `await test.step(\`${description}\`, async () => {
+${body}
+});` : body;
 }
