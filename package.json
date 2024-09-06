@@ -1,7 +1,7 @@
 {
   "name": "playwright-internal",
   "private": true,
-  "version": "1.47.0-next",
+  "version": "1.48.0-next",
   "description": "A high-level API to automate web browsers",
   "repository": {
     "type": "git",
@@ -77,6 +77,7 @@
     "@vitejs/plugin-react": "^4.2.1",
     "@zip.js/zip.js": "^2.7.29",
     "chokidar": "^3.5.3",
+    "chromium-bidi": "^0.6.4",
     "colors": "^1.4.0",
     "concurrently": "^6.2.1",
     "cross-env": "^7.0.3",

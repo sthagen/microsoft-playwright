@@ -20,23 +20,21 @@ import { installRootRedirect, openTraceInBrowser, openTraceViewerApp, registry, 
 import { ManualPromise, gracefullyProcessExitDoNotHang, isUnderTest } from 'playwright-core/lib/utils';
 import type { Transport, HttpServer } from 'playwright-core/lib/utils';
 import type * as reporterTypes from '../../types/testReporter';
-import { collectAffectedTestFiles, dependenciesForTestFile } from '../transform/compilationCache';
+import { affectedTestFiles, collectAffectedTestFiles, dependenciesForTestFile } from '../transform/compilationCache';
 import type { ConfigLocation, FullConfigInternal } from '../common/config';
-import { createReporterForTestServer, createReporters } from './reporters';
-import { TestRun, createTaskRunnerForList, createTaskRunnerForTestServer, createTaskRunnerForWatchSetup, createTaskRunnerForListFiles, createTaskRunnerForDevServer } from './tasks';
+import { createErrorCollectingReporter, createReporterForTestServer, createReporters } from './reporters';
+import { TestRun, createTaskRunnerForList, createTaskRunnerForTestServer, createTaskRunnerForWatchSetup, createTaskRunnerForListFiles, createTaskRunnerForDevServer, createTaskRunnerForRelatedTestFiles, createTaskRunnerForClearCache } from './tasks';
 import { open } from 'playwright-core/lib/utilsBundle';
 import ListReporter from '../reporters/list';
 import { SigIntWatcher } from './sigIntWatcher';
 import { Watcher } from '../fsWatcher';
 import type { ReportEntry, TestServerInterface, TestServerInterfaceEventEmitters } from '../isomorphic/testServerInterface';
-import { Runner } from './runner';
 import type { ConfigCLIOverrides } from '../common/ipc';
 import { loadConfig, resolveConfigLocation, restartWithExperimentalTsEsm } from '../common/configLoader';
 import { webServerPluginsForConfig } from '../plugins/webServerPlugin';
 import type { TraceViewerRedirectOptions, TraceViewerServerOptions } from 'playwright-core/lib/server/trace/viewer/traceViewer';
 import type { TestRunnerPluginRegistration } from '../plugins';
 import { serializeError } from '../util';
-import { cacheDir } from '../transform/compilationCache';
 import { baseFullConfig } from '../isomorphic/teleReceiver';
 import { InternalReporter } from '../reporters/internalReporter';
 import type { ReporterV2 } from '../reporters/reporterV2';
@@ -203,9 +201,17 @@ export class TestServerDispatcher implements TestServerInterface {
   }
 
   async clearCache(params: Parameters<TestServerInterface['clearCache']>[0]): ReturnType<TestServerInterface['clearCache']> {
-    const { config } = await this._loadConfig();
-    if (config)
-      await clearCacheAndLogToConsole(config);
+    const reporter = new InternalReporter([]);
+    const config = await this._loadConfigOrReportError(reporter);
+    if (!config)
+      return;
+
+    const taskRunner = createTaskRunnerForClearCache(config, reporter, 'out-of-process', false);
+    const testRun = new TestRun(config);
+    reporter.onConfigure(config.config);
+    const status = await taskRunner.run(testRun, 0);
+    await reporter.onEnd({ status });
+    await reporter.onExit();
   }
 
   async listFiles(params: Parameters<TestServerInterface['listFiles']>[0]): ReturnType<TestServerInterface['listFiles']> {
@@ -362,11 +368,21 @@ export class TestServerDispatcher implements TestServerInterface {
   }
 
   async findRelatedTestFiles(params: Parameters<TestServerInterface['findRelatedTestFiles']>[0]): ReturnType<TestServerInterface['findRelatedTestFiles']> {
-    const { config, error } = await this._loadConfig();
-    if (error)
-      return { testFiles: [], errors: [error] };
-    const runner = new Runner(config!);
-    return runner.findRelatedTestFiles('out-of-process', params.files);
+    const errorReporter = createErrorCollectingReporter();
+    const reporter = new InternalReporter([errorReporter]);
+    const config = await this._loadConfigOrReportError(reporter);
+    if (!config)
+      return { errors: errorReporter.errors(), testFiles: [] };
+
+    const taskRunner = createTaskRunnerForRelatedTestFiles(config, reporter, 'out-of-process', false);
+    const testRun = new TestRun(config);
+    reporter.onConfigure(config.config);
+    const status = await taskRunner.run(testRun, 0);
+    await reporter.onEnd({ status });
+    await reporter.onExit();
+    if (status !== 'passed')
+      return { errors: errorReporter.errors(), testFiles: [] };
+    return { testFiles: affectedTestFiles(params.files) };
   }
 
   async stopTests() {
@@ -515,24 +531,4 @@ export async function resolveCtDirs(config: FullConfigInternal) {
     outDir,
     templateDir
   };
-}
-
-export async function clearCacheAndLogToConsole(config: FullConfigInternal) {
-  const override = (config.config as any)['@playwright/test']?.['cli']?.['clear-cache'];
-  if (override) {
-    await override(config);
-    return;
-  }
-  await removeFolderAndLogToConsole(cacheDir);
-}
-
-export async function removeFolderAndLogToConsole(folder: string) {
-  try {
-    if (!fs.existsSync(folder))
-      return;
-    // eslint-disable-next-line no-console
-    console.log(`Removing ${await fs.promises.realpath(folder)}`);
-    await fs.promises.rm(folder, { recursive: true, force: true });
-  } catch {
-  }
 }

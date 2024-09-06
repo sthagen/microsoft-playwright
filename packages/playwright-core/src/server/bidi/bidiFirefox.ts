@@ -16,11 +16,10 @@
 
 import os from 'os';
 import path from 'path';
-import { assert, ManualPromise, wrapInASCIIBox } from '../../utils';
+import { assert, wrapInASCIIBox } from '../../utils';
 import type { Env } from '../../utils/processLauncher';
 import type { BrowserOptions } from '../browser';
-import type { BrowserReadyState } from '../browserType';
-import { BrowserType, kNoXServerRunningError } from '../browserType';
+import { BrowserReadyState, BrowserType, kNoXServerRunningError } from '../browserType';
 import type { SdkObject } from '../instrumentation';
 import type { ProtocolError } from '../protocolError';
 import type { ConnectionTransport } from '../transport';
@@ -88,25 +87,15 @@ export class BidiFirefox extends BrowserType {
 
   override readyState(options: types.LaunchOptions): BrowserReadyState | undefined {
     assert(options.useWebSocket);
-    return new BidiReadyState();
+    return new FirefoxReadyState();
   }
 }
 
-class BidiReadyState implements BrowserReadyState {
-  private readonly _wsEndpoint = new ManualPromise<string|undefined>();
-
-  onBrowserOutput(message: string): void {
+class FirefoxReadyState extends BrowserReadyState {
+  override onBrowserOutput(message: string): void {
     // Bidi WebSocket in Firefox.
     const match = message.match(/WebDriver BiDi listening on (ws:\/\/.*)$/);
     if (match)
       this._wsEndpoint.resolve(match[1] + '/session');
-  }
-  onBrowserExit(): void {
-    // Unblock launch when browser prematurely exits.
-    this._wsEndpoint.resolve(undefined);
-  }
-  async waitUntilReady(): Promise<{ wsEndpoint?: string }> {
-    const wsEndpoint = await this._wsEndpoint;
-    return { wsEndpoint };
   }
 }
