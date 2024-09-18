@@ -30,7 +30,7 @@ import { HttpsProxyAgent, SocksProxyAgent } from '../utilsBundle';
 import { BrowserContext, verifyClientCertificates } from './browserContext';
 import { CookieStore, domainMatches, parseRawCookie } from './cookieStore';
 import { MultipartFormData } from './formData';
-import { httpHappyEyeballsAgent, httpsHappyEyeballsAgent } from '../utils/happy-eyeballs';
+import { httpHappyEyeballsAgent, httpsHappyEyeballsAgent, timingForSocket } from '../utils/happy-eyeballs';
 import type { CallMetadata } from './instrumentation';
 import { SdkObject } from './instrumentation';
 import type { Playwright } from './playwright';
@@ -40,6 +40,8 @@ import { Tracing } from './trace/recorder/tracing';
 import type * as types from './types';
 import type { HeadersArray, ProxySettings } from './types';
 import { getMatchingTLSOptionsForOrigin, rewriteOpenSSLErrorIfNeeded } from './socksClientCertificatesInterceptor';
+import type * as har from '@trace/har';
+import { TLSSocket } from 'tls';
 
 type FetchRequestOptions = {
   userAgent: string;
@@ -71,6 +73,8 @@ export type APIRequestFinishedEvent = {
   statusCode: number;
   statusMessage: string;
   body?: Buffer;
+  timings: har.Timings;
+  securityDetails?: har.SecurityDetails;
 };
 
 type SendRequestOptions = https.RequestOptions & {
@@ -294,8 +298,30 @@ export abstract class APIRequestContext extends SdkObject {
       // If we have a proxy agent already, do not override it.
       const agent = options.agent || (url.protocol === 'https:' ? httpsHappyEyeballsAgent : httpHappyEyeballsAgent);
       const requestOptions = { ...options, agent };
+
+      const startAt = monotonicTime();
+      let dnsLookupAt: number | undefined;
+      let tcpConnectionAt: number | undefined;
+      let tlsHandshakeAt: number | undefined;
+      let requestFinishAt: number | undefined;
+
+      let securityDetails: har.SecurityDetails | undefined;
+
       const request = requestConstructor(url, requestOptions as any, async response => {
+        const responseAt = monotonicTime();
         const notifyRequestFinished = (body?: Buffer) => {
+          const endAt = monotonicTime();
+          // spec: http://www.softwareishard.com/blog/har-12-spec/#timings
+          const timings: har.Timings = {
+            send: requestFinishAt! - startAt,
+            wait: responseAt - requestFinishAt!,
+            receive: endAt - responseAt,
+            dns: dnsLookupAt ? dnsLookupAt - startAt : -1,
+            connect: (tlsHandshakeAt ?? tcpConnectionAt!) - startAt, // "If [ssl] is defined then the time is also included in the connect field "
+            ssl: tlsHandshakeAt ? tlsHandshakeAt - tcpConnectionAt! : -1,
+            blocked: -1,
+          };
+
           const requestFinishedEvent: APIRequestFinishedEvent = {
             requestEvent,
             httpVersion: response.httpVersion,
@@ -304,7 +330,9 @@ export abstract class APIRequestContext extends SdkObject {
             headers: response.headers,
             rawHeaders: response.rawHeaders,
             cookies,
-            body
+            body,
+            timings,
+            securityDetails,
           };
           this.emit(APIRequestContext.Events.RequestFinished, requestFinishedEvent);
         };
@@ -449,6 +477,32 @@ export abstract class APIRequestContext extends SdkObject {
       };
       this.on(APIRequestContext.Events.Dispose, disposeListener);
       request.on('close', () => this.off(APIRequestContext.Events.Dispose, disposeListener));
+
+      request.on('socket', socket => {
+        // happy eyeballs don't emit lookup and connect events, so we use our custom ones
+        const happyEyeBallsTimings = timingForSocket(socket);
+        dnsLookupAt = happyEyeBallsTimings.dnsLookupAt;
+        tcpConnectionAt = happyEyeBallsTimings.tcpConnectionAt;
+
+        // non-happy-eyeballs sockets
+        socket.on('lookup', () => { dnsLookupAt = monotonicTime(); });
+        socket.on('connect', () => { tcpConnectionAt = monotonicTime(); });
+        socket.on('secureConnect', () => {
+          tlsHandshakeAt = monotonicTime();
+
+          if (socket instanceof TLSSocket) {
+            const peerCertificate = socket.getPeerCertificate();
+            securityDetails = {
+              protocol: socket.getProtocol() ?? undefined,
+              subjectName: peerCertificate.subject.CN,
+              validFrom: new Date(peerCertificate.valid_from).getTime() / 1000,
+              validTo: new Date(peerCertificate.valid_to).getTime() / 1000,
+              issuer: peerCertificate.issuer.CN
+            };
+          }
+        });
+      });
+      request.on('finish', () => { requestFinishAt = monotonicTime(); });
 
       progress.log(`→ ${options.method} ${url.toString()}`);
       if (options.headers) {
