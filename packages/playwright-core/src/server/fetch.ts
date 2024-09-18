@@ -74,6 +74,8 @@ export type APIRequestFinishedEvent = {
   statusMessage: string;
   body?: Buffer;
   timings: har.Timings;
+  serverIPAddress?: string;
+  serverPort?: number;
   securityDetails?: har.SecurityDetails;
 };
 
@@ -261,6 +263,7 @@ export abstract class APIRequestContext extends SdkObject {
       try {
         return await this._sendRequest(progress, url, options, postData);
       } catch (e) {
+        e = rewriteOpenSSLErrorIfNeeded(e);
         if (maxRetries === 0)
           throw e;
         if (i === maxRetries || (options.deadline && monotonicTime() + backoff > options.deadline))
@@ -304,6 +307,8 @@ export abstract class APIRequestContext extends SdkObject {
       let tcpConnectionAt: number | undefined;
       let tlsHandshakeAt: number | undefined;
       let requestFinishAt: number | undefined;
+      let serverIPAddress: string | undefined;
+      let serverPort: number | undefined;
 
       let securityDetails: har.SecurityDetails | undefined;
 
@@ -332,6 +337,8 @@ export abstract class APIRequestContext extends SdkObject {
             cookies,
             body,
             timings,
+            serverIPAddress,
+            serverPort,
             securityDetails,
           };
           this.emit(APIRequestContext.Events.RequestFinished, requestFinishedEvent);
@@ -469,7 +476,7 @@ export abstract class APIRequestContext extends SdkObject {
         body.on('data', chunk => chunks.push(chunk));
         body.on('end', notifyBodyFinished);
       });
-      request.on('error', error => reject(rewriteOpenSSLErrorIfNeeded(error)));
+      request.on('error', reject);
 
       const disposeListener = () => {
         reject(new Error('Request context disposed.'));
@@ -501,6 +508,9 @@ export abstract class APIRequestContext extends SdkObject {
             };
           }
         });
+
+        serverIPAddress = socket.remoteAddress;
+        serverPort = socket.remotePort;
       });
       request.on('finish', () => { requestFinishAt = monotonicTime(); });
 
