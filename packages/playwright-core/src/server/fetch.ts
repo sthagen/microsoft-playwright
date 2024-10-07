@@ -20,12 +20,11 @@ import http from 'http';
 import https from 'https';
 import type { Readable, TransformCallback } from 'stream';
 import { pipeline, Transform } from 'stream';
-import url from 'url';
 import zlib from 'zlib';
 import type { HTTPCredentials } from '../../types/types';
 import { TimeoutSettings } from '../common/timeoutSettings';
 import { getUserAgent } from '../utils/userAgent';
-import { assert, constructURLBasedOnBaseURL, createGuid, monotonicTime } from '../utils';
+import { assert, constructURLBasedOnBaseURL, createGuid, eventsHelper, monotonicTime, type RegisteredListener } from '../utils';
 import { HttpsProxyAgent, SocksProxyAgent } from '../utilsBundle';
 import { BrowserContext, verifyClientCertificates } from './browserContext';
 import { CookieStore, domainMatches, parseRawCookie } from './cookieStore';
@@ -312,8 +311,11 @@ export abstract class APIRequestContext extends SdkObject {
 
       let securityDetails: har.SecurityDetails | undefined;
 
+      const listeners: RegisteredListener[] = [];
+
       const request = requestConstructor(url, requestOptions as any, async response => {
         const responseAt = monotonicTime();
+
         const notifyRequestFinished = (body?: Buffer) => {
           const endAt = monotonicTime();
           // spec: http://www.softwareishard.com/blog/har-12-spec/#timings
@@ -478,41 +480,54 @@ export abstract class APIRequestContext extends SdkObject {
       });
       request.on('error', reject);
 
-      const disposeListener = () => {
-        reject(new Error('Request context disposed.'));
-        request.destroy();
-      };
-      this.on(APIRequestContext.Events.Dispose, disposeListener);
-      request.on('close', () => this.off(APIRequestContext.Events.Dispose, disposeListener));
+      listeners.push(
+          eventsHelper.addEventListener(this, APIRequestContext.Events.Dispose, () => {
+            reject(new Error('Request context disposed.'));
+            request.destroy();
+          })
+      );
+      request.on('close', () => eventsHelper.removeEventListeners(listeners));
 
       request.on('socket', socket => {
         // happy eyeballs don't emit lookup and connect events, so we use our custom ones
         const happyEyeBallsTimings = timingForSocket(socket);
         dnsLookupAt = happyEyeBallsTimings.dnsLookupAt;
-        tcpConnectionAt = happyEyeBallsTimings.tcpConnectionAt;
+        tcpConnectionAt ??= happyEyeBallsTimings.tcpConnectionAt;
 
         // non-happy-eyeballs sockets
-        socket.on('lookup', () => { dnsLookupAt = monotonicTime(); });
-        socket.on('connect', () => { tcpConnectionAt = monotonicTime(); });
-        socket.on('secureConnect', () => {
-          tlsHandshakeAt = monotonicTime();
+        listeners.push(
+            eventsHelper.addEventListener(socket, 'lookup', () => { dnsLookupAt = monotonicTime(); }),
+            eventsHelper.addEventListener(socket, 'connect', () => { tcpConnectionAt ??= monotonicTime(); }),
+            eventsHelper.addEventListener(socket, 'secureConnect', () => {
+              tlsHandshakeAt = monotonicTime();
 
-          if (socket instanceof TLSSocket) {
-            const peerCertificate = socket.getPeerCertificate();
-            securityDetails = {
-              protocol: socket.getProtocol() ?? undefined,
-              subjectName: peerCertificate.subject.CN,
-              validFrom: new Date(peerCertificate.valid_from).getTime() / 1000,
-              validTo: new Date(peerCertificate.valid_to).getTime() / 1000,
-              issuer: peerCertificate.issuer.CN
-            };
-          }
-        });
+              if (socket instanceof TLSSocket) {
+                const peerCertificate = socket.getPeerCertificate();
+                securityDetails = {
+                  protocol: socket.getProtocol() ?? undefined,
+                  subjectName: peerCertificate.subject.CN,
+                  validFrom: new Date(peerCertificate.valid_from).getTime() / 1000,
+                  validTo: new Date(peerCertificate.valid_to).getTime() / 1000,
+                  issuer: peerCertificate.issuer.CN
+                };
+              }
+            }),
+        );
+
+        // when using socks proxy, having the socket means the connection got established
+        if (agent instanceof SocksProxyAgent)
+          tcpConnectionAt ??= monotonicTime();
 
         serverIPAddress = socket.remoteAddress;
         serverPort = socket.remotePort;
       });
       request.on('finish', () => { requestFinishAt = monotonicTime(); });
+
+      // http proxy
+      request.on('proxyConnect', () => {
+        tcpConnectionAt ??= monotonicTime();
+      });
+
 
       progress.log(`→ ${options.method} ${url.toString()}`);
       if (options.headers) {
@@ -680,17 +695,16 @@ export class GlobalAPIRequestContext extends APIRequestContext {
 }
 
 export function createProxyAgent(proxy: types.ProxySettings) {
-  const proxyOpts = url.parse(proxy.server);
-  if (proxyOpts.protocol?.startsWith('socks')) {
-    return new SocksProxyAgent({
-      host: proxyOpts.hostname,
-      port: proxyOpts.port || undefined,
-    });
-  }
+  const proxyURL = new URL(proxy.server);
+  if (proxyURL.protocol?.startsWith('socks'))
+    return new SocksProxyAgent(proxyURL);
+
   if (proxy.username)
-    proxyOpts.auth = `${proxy.username}:${proxy.password || ''}`;
-  // TODO: We should use HttpProxyAgent conditional on proxyOpts.protocol instead of always using CONNECT method.
-  return new HttpsProxyAgent(proxyOpts);
+    proxyURL.username = proxy.username;
+  if (proxy.password)
+    proxyURL.password = proxy.password;
+  // TODO: We should use HttpProxyAgent conditional on proxyURL.protocol instead of always using CONNECT method.
+  return new HttpsProxyAgent(proxyURL);
 }
 
 function toHeadersArray(rawHeaders: string[]): types.HeadersArray {
