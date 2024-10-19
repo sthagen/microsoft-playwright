@@ -3,9 +3,9 @@
   "browsers": [
     {
       "name": "chromium",
-      "revision": "1142",
+      "revision": "1143",
       "installByDefault": true,
-      "browserVersion": "130.0.6723.44"
+      "browserVersion": "131.0.6778.3"
     },
     {
       "name": "chromium-tip-of-tree",
@@ -21,9 +21,9 @@
     },
     {
       "name": "firefox-beta",
-      "revision": "1464",
+      "revision": "1465",
       "installByDefault": false,
-      "browserVersion": "131.0b2"
+      "browserVersion": "132.0b8"
     },
     {
       "name": "webkit",
