@@ -1410,6 +1410,33 @@ test('should show baseURL in metadata pane', {
   await expect(traceViewer.metadataTab).toContainText('baseURL:https://example.com');
 });
 
+test('should not leak recorders', {
+  annotation: { type: 'issue', description: 'https://github.com/microsoft/playwright/issues/33086' },
+}, async ({ showTraceViewer }) => {
+  const traceViewer = await showTraceViewer([traceFile]);
+
+  const counts = async () => {
+    return await traceViewer.page.evaluate(() => {
+      const weakSet = (window as any)._weakRecordersForTest || new Set();
+      const weakList = [...weakSet];
+      const aliveList = weakList.filter(r => !!r.deref());
+      return { total: weakList.length, alive: aliveList.length };
+    });
+  };
+
+  await traceViewer.snapshotFrame('page.goto');
+  await traceViewer.snapshotFrame('page.evaluate');
+  await traceViewer.page.requestGC();
+  await expect.poll(() => counts()).toEqual({ total: 4, alive: 1 });
+
+  await traceViewer.snapshotFrame('page.setContent');
+  await traceViewer.snapshotFrame('page.goto');
+  await traceViewer.snapshotFrame('page.evaluate');
+  await traceViewer.snapshotFrame('page.setContent');
+  await traceViewer.page.requestGC();
+  await expect.poll(() => counts()).toEqual({ total: 8, alive: 1 });
+});
+
 test('should serve css without content-type', async ({ page, runAndTrace, server }) => {
   server.setRoute('/one-style.css', (req, res) => {
     res.writeHead(200);
@@ -1420,24 +1447,6 @@ test('should serve css without content-type', async ({ page, runAndTrace, server
   });
   const snapshotFrame = await traceViewer.snapshotFrame('page.goto');
   await expect(snapshotFrame.locator('body')).toHaveCSS('background-color', 'rgb(255, 0, 0)', { timeout: 0 });
-});
-
-test.skip('should allow showing screenshots instead of snapshots', async ({ runAndTrace, page, server }) => {
-  const traceViewer = await runAndTrace(async () => {
-    await page.goto(server.PREFIX + '/one-style.html');
-    await page.waitForTimeout(1000); // ensure we could take a screenshot
-  });
-
-  const screenshot = traceViewer.page.getByAltText(`Screenshot of page.goto`);
-  const snapshot = (await traceViewer.snapshotFrame('page.goto')).owner();
-  await expect(snapshot).toBeVisible();
-  await expect(screenshot).not.toBeVisible();
-
-  await traceViewer.page.getByTitle('Settings').click();
-  await traceViewer.page.getByText('Show screenshot instead of snapshot').setChecked(true);
-
-  await expect(snapshot).not.toBeVisible();
-  await expect(screenshot).toBeVisible();
 });
 
 test('canvas clipping', async ({ runAndTrace, page, server }) => {
@@ -1464,18 +1473,6 @@ test('canvas clipping in iframe', async ({ runAndTrace, page, server }) => {
   const snapshot = await traceViewer.snapshotFrame('page.evaluate');
   const canvas = snapshot.locator('iframe').contentFrame().locator('canvas');
   await expect(canvas).toHaveAttribute('title', `Playwright displays canvas contents on a best-effort basis. It doesn't support canvas elements inside an iframe yet. If this impacts your workflow, please open an issue so we can prioritize.`);
-});
-
-test.skip('should handle case where neither snapshots nor screenshots exist', async ({ runAndTrace, page, server }) => {
-  const traceViewer = await runAndTrace(async () => {
-    await page.goto(server.PREFIX + '/one-style.html');
-  }, { snapshots: false, screenshots: false });
-
-  await traceViewer.page.getByTitle('Settings').click();
-  await traceViewer.page.getByText('Show screenshot instead of snapshot').setChecked(true);
-
-  const screenshot = traceViewer.page.getByAltText(`Screenshot of page.goto > Action`);
-  await expect(screenshot).not.toBeVisible();
 });
 
 test('should show only one pointer with multilevel iframes', async ({ page, runAndTrace, server, browserName }) => {
