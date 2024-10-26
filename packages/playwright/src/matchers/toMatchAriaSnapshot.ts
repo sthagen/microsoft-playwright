@@ -22,6 +22,7 @@ import { colors } from 'playwright-core/lib/utilsBundle';
 import { EXPECTED_COLOR } from '../common/expectBundle';
 import { callLogText } from '../util';
 import { printReceivedStringContainExpectedSubstring } from './expect';
+import { currentTestInfo } from '../common/globals';
 
 export async function toMatchAriaSnapshot(
   this: ExpectMatcherState,
@@ -30,6 +31,15 @@ export async function toMatchAriaSnapshot(
   options: { timeout?: number, matchSubstring?: boolean } = {},
 ): Promise<MatcherResult<string | RegExp, string>> {
   const matcherName = 'toMatchAriaSnapshot';
+
+  const testInfo = currentTestInfo();
+  if (!testInfo)
+    throw new Error(`toMatchAriaSnapshot() must be called during the test`);
+
+  if (testInfo._projectInternal.ignoreSnapshots)
+    return { pass: !this.isNot, message: () => '', name: 'toMatchAriaSnapshot', expected };
+
+  const updateSnapshots = testInfo.config.updateSnapshots;
 
   const matcherOptions = {
     isNot: this.isNot,
@@ -44,13 +54,27 @@ export async function toMatchAriaSnapshot(
     ].join('\n\n'));
   }
 
+  const generateMissingBaseline = updateSnapshots === 'missing' && !expected;
+  const generateNewBaseline = updateSnapshots === 'all' || generateMissingBaseline;
+
+  if (generateMissingBaseline) {
+    if (this.isNot) {
+      const message = `Matchers using ".not" can't generate new baselines`;
+      return { pass: this.isNot, message: () => message, name: 'toMatchAriaSnapshot' };
+    } else {
+      // When generating new baseline, run entire pipeline against impossible match.
+      expected = `- none "Generating new baseline"`;
+    }
+  }
+
   const timeout = options.timeout ?? this.timeout;
+  expected = unshift(expected);
   const { matches: pass, received, log, timedOut } = await receiver._expect('to.match.aria', { expectedValue: expected, isNot: this.isNot, timeout });
 
   const messagePrefix = matcherHint(this, receiver, matcherName, 'locator', undefined, matcherOptions, timedOut ? timeout : undefined);
   const notFound = received === kNoElementsFoundError;
-  const escapedExpected = unshift(escapePrivateUsePoints(expected));
-  const escapedReceived = unshift(escapePrivateUsePoints(received));
+  const escapedExpected = escapePrivateUsePoints(expected);
+  const escapedReceived = escapePrivateUsePoints(received);
   const message = () => {
     if (pass) {
       if (notFound)
@@ -64,6 +88,12 @@ export async function toMatchAriaSnapshot(
       return messagePrefix + this.utils.printDiffOrStringify(escapedExpected, escapedReceived, labelExpected, 'Received string', false) + callLogText(log);
     }
   };
+
+  if (!this.isNot && pass === this.isNot && generateNewBaseline) {
+    // Only rebaseline failed snapshots.
+    const suggestedRebaseline = `toMatchAriaSnapshot(\`\n${indent(received, '${indent}  ')}\n\${indent}\`)`;
+    return { pass: this.isNot, message: () => '', name: 'toMatchAriaSnapshot', suggestedRebaseline };
+  }
 
   return {
     name: matcherName,
@@ -92,4 +122,8 @@ function unshift(snapshot: string): string {
     break;
   }
   return lines.filter(t => t.trim()).map(line => line.substring(whitespacePrefixLength)).join('\n');
+}
+
+function indent(snapshot: string, indent: string): string {
+  return snapshot.split('\n').map(line => indent + line).join('\n');
 }

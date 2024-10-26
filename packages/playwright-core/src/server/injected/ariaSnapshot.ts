@@ -14,7 +14,6 @@
  * limitations under the License.
  */
 
-import { escapeWithQuotes } from '@isomorphic/stringUtils';
 import * as roleUtils from './roleUtils';
 import { getElementComputedStyle } from './domUtils';
 import type { AriaRole } from './roleUtils';
@@ -108,7 +107,7 @@ export function generateAriaTree(rootElement: Element): AriaNode {
 
 function toAriaNode(element: Element): AriaNode | null {
   const role = roleUtils.getAriaRole(element);
-  if (!role)
+  if (!role || role === 'presentation' || role === 'none')
     return null;
 
   const name = roleUtils.getElementAccessibleName(element, false) || '';
@@ -169,7 +168,7 @@ function normalizeStringChildren(rootA11yNode: AriaNode) {
   visit(rootA11yNode);
 }
 
-const normalizeWhitespaceWithin = (text: string) => text.replace(/[\s\t\r\n]+/g, ' ');
+const normalizeWhitespaceWithin = (text: string) => text.replace(/[\u200b\s\t\r\n]+/g, ' ');
 
 function matchesText(text: string | undefined, template: RegExp | string | undefined) {
   if (!template)
@@ -184,7 +183,7 @@ function matchesText(text: string | undefined, template: RegExp | string | undef
 export function matchesAriaTree(rootElement: Element, template: AriaTemplateNode): { matches: boolean, received: string } {
   const root = generateAriaTree(rootElement);
   const matches = matchesNodeDeep(root, template);
-  return { matches, received: renderAriaTree(root, { noText: true }) };
+  return { matches, received: renderAriaTree(root) };
 }
 
 function matchesNode(node: AriaNode | string, template: AriaTemplateNode | RegExp | string, depth: number): boolean {
@@ -262,7 +261,7 @@ export function renderAriaTree(ariaNode: AriaNode, options?: { noText?: boolean 
     }
     let line = `${indent}- ${ariaNode.role}`;
     if (ariaNode.name)
-      line += ` ${escapeWithQuotes(ariaNode.name, '"')}`;
+      line += ` ${quoteYamlString(ariaNode.name)}`;
 
     if (ariaNode.checked === 'mixed')
       line += ` [checked=mixed]`;
@@ -281,9 +280,17 @@ export function renderAriaTree(ariaNode: AriaNode, options?: { noText?: boolean 
     if (ariaNode.selected === true)
       line += ` [selected]`;
 
-    lines.push(line + (ariaNode.children.length ? ':' : ''));
-    for (const child of ariaNode.children || [])
-      visit(child, indent + '  ');
+    if (!ariaNode.children.length) {
+      lines.push(line);
+    } else if (ariaNode.children.length === 1 && typeof ariaNode.children[0] === 'string') {
+      if (!options?.noText)
+        line += ': ' + quoteYamlString(ariaNode.children[0]);
+      lines.push(line);
+    } else {
+      lines.push(line + ':');
+      for (const child of ariaNode.children || [])
+        visit(child, indent + '  ');
+    }
   };
 
   if (ariaNode.role === 'fragment') {
