@@ -15,7 +15,7 @@
  */
 
 import * as fs from 'fs';
-import { test, expect } from './playwright-test-fixtures';
+import { test, expect, playwrightCtConfigText } from './playwright-test-fixtures';
 
 test.describe.configure({ mode: 'parallel' });
 
@@ -114,14 +114,14 @@ test('should generate baseline with regex', async ({ runInlineTest }, testInfo) 
 +          - list:
 +            - listitem: Item 1
 +            - listitem: Item 2
-+            - listitem: /Time \\d+:\\d+/
-+            - listitem: /Year \\d+/
-+            - listitem: /Duration \\d+[hms]+/
-+            - listitem: /\\d+,\\d+/
-+            - listitem: /2,\\d+\\.\\d+/
-+            - listitem: /Total \\d+/
++            - listitem: /Time \\\\d+:\\\\d+/
++            - listitem: /Year \\\\d+/
++            - listitem: /Duration \\\\d+[hmsp]+/
++            - listitem: /\\\\d+,\\\\d+/
++            - listitem: /\\\\d+,\\\\d+\\\\.\\\\d+/
++            - listitem: /Total \\\\d+/
 +            - listitem: /Regex 1/
-+            - listitem: /\\/Regex \\d+[hms]+\\//
++            - listitem: /\\\\/Regex \\\\d+[hmsp]+\\\\//
 +        \`);
        });
      
@@ -135,6 +135,9 @@ test('should generate baseline with special characters', async ({ runInlineTest 
       test('test', async ({ page }) => {
         await page.setContent(\`<ul>
           <button>Click: me</button>
+          <button>Click: 123</button>
+          <button>Click ' me</button>
+          <button>Click: ' me</button>
           <li>Item: 1</li>
           <li>Item {a: b}</li>
         </ul>\`);
@@ -148,7 +151,7 @@ test('should generate baseline with special characters', async ({ runInlineTest 
   const data = fs.readFileSync(patchPath, 'utf-8');
   expect(data).toBe(`--- a/a.spec.ts
 +++ b/a.spec.ts
-@@ -6,6 +6,11 @@
+@@ -9,6 +9,14 @@
            <li>Item: 1</li>
            <li>Item {a: b}</li>
          </ul>\`);
@@ -156,8 +159,141 @@ test('should generate baseline with special characters', async ({ runInlineTest 
 +        await expect(page.locator('body')).toMatchAriaSnapshot(\`
 +          - list:
 +            - 'button "Click: me"'
++            - 'button /Click: \\\\d+/'
++            - button "Click ' me"
++            - 'button "Click: '' me"'
 +            - listitem: \"Item: 1\"
 +            - listitem: \"Item {a: b}\"
++        \`);
+       });
+     
+`);
+});
+
+test('should update missing snapshots in tsx', async ({ runInlineTest }, testInfo) => {
+  const result = await runInlineTest({
+    'playwright.config.ts': playwrightCtConfigText,
+    'playwright/index.html': `<script type="module" src="./index.ts"></script>`,
+    'playwright/index.ts': ``,
+
+    'src/button.tsx': `
+      export const Button = () => <button>Button</button>;
+    `,
+
+    'src/button.test.tsx': `
+      import { test, expect } from '@playwright/experimental-ct-react';
+      import { Button } from './button.tsx';
+
+      test('pass', async ({ mount }) => {
+        const component = await mount(<Button></Button>);
+        await expect(component).toMatchAriaSnapshot(\`\`);
+      });
+    `,
+  });
+
+  expect(result.exitCode).toBe(0);
+  const patchPath = testInfo.outputPath('test-results/rebaselines.patch');
+  const data = fs.readFileSync(patchPath, 'utf-8');
+  expect(data).toBe(`--- a/src/button.test.tsx
++++ b/src/button.test.tsx
+@@ -4,6 +4,8 @@
+ 
+       test('pass', async ({ mount }) => {
+         const component = await mount(<Button></Button>);
+-        await expect(component).toMatchAriaSnapshot(\`\`);
++        await expect(component).toMatchAriaSnapshot(\`
++          - button \"Button\"
++        \`);
+       });
+     
+`);
+});
+
+test('should update multiple files', async ({ runInlineTest }, testInfo) => {
+  const result = await runInlineTest({
+    'playwright.config.ts': playwrightCtConfigText,
+    'playwright/index.html': `<script type="module" src="./index.ts"></script>`,
+    'playwright/index.ts': ``,
+
+    'src/button.tsx': `
+      export const Button = () => <button>Button</button>;
+    `,
+
+    'src/button-1.test.tsx': `
+      import { test, expect } from '@playwright/experimental-ct-react';
+      import { Button } from './button.tsx';
+
+      test('pass 1', async ({ mount }) => {
+        const component = await mount(<Button></Button>);
+        await expect(component).toMatchAriaSnapshot(\`\`);
+      });
+    `,
+
+    'src/button-2.test.tsx': `
+      import { test, expect } from '@playwright/experimental-ct-react';
+      import { Button } from './button.tsx';
+
+      test('pass 2', async ({ mount }) => {
+        const component = await mount(<Button></Button>);
+        await expect(component).toMatchAriaSnapshot(\`\`);
+      });
+    `,
+  });
+
+  expect(result.exitCode).toBe(0);
+  const patchPath = testInfo.outputPath('test-results/rebaselines.patch');
+  const data = fs.readFileSync(patchPath, 'utf-8');
+  expect(data).toBe(`--- a/src/button-1.test.tsx
++++ b/src/button-1.test.tsx
+@@ -4,6 +4,8 @@
+ 
+       test('pass 1', async ({ mount }) => {
+         const component = await mount(<Button></Button>);
+-        await expect(component).toMatchAriaSnapshot(\`\`);
++        await expect(component).toMatchAriaSnapshot(\`
++          - button \"Button\"
++        \`);
+       });
+     
+
+--- a/src/button-2.test.tsx
++++ b/src/button-2.test.tsx
+@@ -4,6 +4,8 @@
+ 
+       test('pass 2', async ({ mount }) => {
+         const component = await mount(<Button></Button>);
+-        await expect(component).toMatchAriaSnapshot(\`\`);
++        await expect(component).toMatchAriaSnapshot(\`
++          - button \"Button\"
++        \`);
+       });
+     
+`);
+});
+
+test('should generate baseline for input values', async ({ runInlineTest }, testInfo) => {
+  const result = await runInlineTest({
+    'a.spec.ts': `
+      import { test, expect } from '@playwright/test';
+      test('test', async ({ page }) => {
+        await page.setContent(\`<input value="hello world">\`);
+        await expect(page.locator('body')).toMatchAriaSnapshot(\`\`);
+      });
+    `
+  });
+
+  expect(result.exitCode).toBe(0);
+  const patchPath = testInfo.outputPath('test-results/rebaselines.patch');
+  const data = fs.readFileSync(patchPath, 'utf-8');
+  expect(data).toBe(`--- a/a.spec.ts
++++ b/a.spec.ts
+@@ -2,6 +2,8 @@
+       import { test, expect } from '@playwright/test';
+       test('test', async ({ page }) => {
+         await page.setContent(\`<input value="hello world">\`);
+-        await expect(page.locator('body')).toMatchAriaSnapshot(\`\`);
++        await expect(page.locator('body')).toMatchAriaSnapshot(\`
++          - textbox: hello world
 +        \`);
        });
      
