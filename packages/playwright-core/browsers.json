@@ -3,21 +3,21 @@
   "browsers": [
     {
       "name": "chromium",
-      "revision": "1147",
+      "revision": "1148",
       "installByDefault": true,
-      "browserVersion": "131.0.6778.24"
+      "browserVersion": "131.0.6778.33"
     },
     {
       "name": "chromium-headless-shell",
-      "revision": "1147",
+      "revision": "1148",
       "installByDefault": false,
-      "browserVersion": "131.0.6778.24"
+      "browserVersion": "131.0.6778.33"
     },
     {
       "name": "chromium-tip-of-tree",
-      "revision": "1275",
+      "revision": "1276",
       "installByDefault": false,
-      "browserVersion": "132.0.6820.0"
+      "browserVersion": "132.0.6824.0"
     },
     {
       "name": "firefox",
