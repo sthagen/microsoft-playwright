@@ -64,6 +64,7 @@ test.describe(() => {
   test('should inspect aria snapshot', async ({ openRecorder }) => {
     const { recorder } = await openRecorder();
     await recorder.setContentAndWait(`<main><button>Submit</button></main>`);
+    await recorder.recorderPage.getByRole('button', { name: 'Record' }).click();
     await recorder.page.click('x-pw-tool-item.pick-locator');
     await recorder.page.hover('button');
     await recorder.trustedClick();
@@ -95,7 +96,6 @@ test.describe(() => {
     `);
 
     await recorder.recorderPage.locator('.tab-aria .CodeMirror').click();
-    await recorder.recorderPage.keyboard.press('ArrowLeft');
     for (let i = 0; i < '"Submit"'.length; i++)
       await recorder.recorderPage.keyboard.press('Backspace');
 
@@ -140,10 +140,8 @@ test.describe(() => {
     `);
 
     await recorder.recorderPage.locator('.tab-aria .CodeMirror').click();
-    await recorder.recorderPage.keyboard.press('ArrowLeft');
     await recorder.recorderPage.keyboard.press('Backspace');
-    await expect(recorder.recorderPage.locator('.tab-aria .CodeMirror')).toMatchAriaSnapshot(`
-      - text: '- button "Submit Unterminated string'
-    `);
+    // 3 highlighted tokens.
+    await expect(recorder.recorderPage.locator('.source-line-error-underline')).toHaveCount(3);
   });
 });

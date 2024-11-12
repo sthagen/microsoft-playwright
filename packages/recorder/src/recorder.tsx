@@ -122,6 +122,9 @@ export const Recorder: React.FC<RecorderProps> = ({
     if (!errors.length)
       window.dispatch({ event: 'highlightRequested', params: { ariaSnapshot: fragment } });
   }, [mode]);
+  const isRecording = mode === 'recording' || mode === 'recording-inspecting';
+  const locatorPlaceholder = isRecording ? '// Unavailable while recording' : (locator ? undefined : '// Pick element or type locator');
+  const ariaPlaceholder = isRecording ? '# Unavailable while recording' : (ariaSnapshot ? undefined : '# Pick element or type snapshot');
 
   return <div className='recorder'>
     <Toolbar>
@@ -188,7 +191,7 @@ export const Recorder: React.FC<RecorderProps> = ({
           {
             id: 'locator',
             title: 'Locator',
-            render: () => <CodeMirrorWrapper text={locator} language={source.language} readOnly={false} focusOnChange={true} onChange={onEditorChange} wrapLines={true} />
+            render: () => <CodeMirrorWrapper text={locatorPlaceholder || locator} language={source.language} readOnly={isRecording} focusOnChange={true} onChange={onEditorChange} wrapLines={true} />
           },
           {
             id: 'log',
@@ -198,7 +201,7 @@ export const Recorder: React.FC<RecorderProps> = ({
           {
             id: 'aria',
             title: 'Aria snapshot',
-            render: () => <CodeMirrorWrapper text={ariaSnapshot || ''} language={'yaml'} readOnly={false} onChange={onAriaEditorChange} highlight={ariaSnapshotErrors} wrapLines={false} />
+            render: () => <CodeMirrorWrapper text={ariaPlaceholder || ariaSnapshot || ''} language={'yaml'} readOnly={isRecording} onChange={onAriaEditorChange} highlight={ariaSnapshotErrors} wrapLines={true} />
           },
         ]}
         selectedTab={selectedTab}
@@ -220,7 +223,7 @@ function parseAriaSnapshot(ariaSnapshot: string): { fragment?: ParsedYaml, error
   for (const error of yamlDoc.errors) {
     errors.push({
       line: lineCounter.linePos(error.pos[0]).line,
-      type: 'error',
+      type: 'subtle-error',
       message: error.message,
     });
   }
@@ -233,10 +236,12 @@ function parseAriaSnapshot(ariaSnapshot: string): { fragment?: ParsedYaml, error
       parseAriaKey(key.value);
     } catch (e) {
       const keyError = e as AriaKeyError;
+      const linePos = lineCounter.linePos(key.srcToken!.offset + keyError.pos);
       errors.push({
         message: keyError.shortMessage,
-        line: lineCounter.linePos(key.srcToken!.offset + keyError.pos).line,
-        type: 'error',
+        line: linePos.line,
+        column: linePos.col,
+        type: 'subtle-error',
       });
     }
   };
