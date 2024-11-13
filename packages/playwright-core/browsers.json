@@ -10,7 +10,7 @@
     {
       "name": "chromium-headless-shell",
       "revision": "1148",
-      "installByDefault": false,
+      "installByDefault": true,
       "browserVersion": "131.0.6778.33"
     },
     {
@@ -45,7 +45,7 @@
         "ubuntu20.04-x64": "2092",
         "ubuntu20.04-arm64": "2092"
       },
-      "browserVersion": "18.0"
+      "browserVersion": "18.2"
     },
     {
       "name": "ffmpeg",
