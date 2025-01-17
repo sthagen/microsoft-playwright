@@ -1313,7 +1313,7 @@ await Expect(locator).ToHaveAccessibleNameAsync("Save to disk");
 
 ### param: LocatorAssertions.toHaveAccessibleName.name
 * since: v1.44
-- `name` <[string]|[RegExp]|[Array]<[string]|[RegExp]>>
+- `name` <[string]|[RegExp]>
 
 Expected accessible name.
 
@@ -2241,8 +2241,7 @@ assertThat(page.locator("body")).matchesAriaSnapshot("""
 
 ## async method: LocatorAssertions.toMatchAriaSnapshot#2
 * since: v1.50
-* langs:
-  - alias-java: matchesAriaSnapshot
+* langs: js
 
 Asserts that the target element matches the given [accessibility snapshot](../aria-snapshots.md).
 
