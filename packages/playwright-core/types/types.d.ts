@@ -14603,14 +14603,12 @@ export interface BrowserType<Unused = {}> {
    */
   connectOverCDP(options: ConnectOverCDPOptions & { wsEndpoint?: string }): Promise<Browser>;
   /**
-   * This method attaches Playwright to an existing browser instance created via
-   * [browserType.launchServer([options])](https://playwright.dev/docs/api/class-browsertype#browser-type-launch-server).
+   * This method attaches Playwright to an existing browser instance created via `BrowserType.launchServer` in Node.js.
    *
    * **NOTE** The major and minor version of the Playwright instance that connects needs to match the version of
    * Playwright that launches the browser (1.2.3 → is compatible with 1.2.x).
    *
-   * @param wsEndpoint A Playwright browser websocket endpoint to connect to. You obtain this endpoint via
-   * [browserServer.wsEndpoint()](https://playwright.dev/docs/api/class-browserserver#browser-server-ws-endpoint).
+   * @param wsEndpoint A Playwright browser websocket endpoint to connect to. You obtain this endpoint via `BrowserServer.wsEndpoint`.
    * @param options
    */
   connect(wsEndpoint: string, options?: ConnectOptions): Promise<Browser>;
@@ -14621,14 +14619,12 @@ export interface BrowserType<Unused = {}> {
    * @deprecated
    */
   /**
-   * This method attaches Playwright to an existing browser instance created via
-   * [browserType.launchServer([options])](https://playwright.dev/docs/api/class-browsertype#browser-type-launch-server).
+   * This method attaches Playwright to an existing browser instance created via `BrowserType.launchServer` in Node.js.
    *
    * **NOTE** The major and minor version of the Playwright instance that connects needs to match the version of
    * Playwright that launches the browser (1.2.3 → is compatible with 1.2.x).
    *
-   * @param wsEndpoint A Playwright browser websocket endpoint to connect to. You obtain this endpoint via
-   * [browserServer.wsEndpoint()](https://playwright.dev/docs/api/class-browserserver#browser-server-ws-endpoint).
+   * @param wsEndpoint A Playwright browser websocket endpoint to connect to. You obtain this endpoint via `BrowserServer.wsEndpoint`.
    * @param options
    */
   connect(options: ConnectOptions & { wsEndpoint?: string }): Promise<Browser>;
@@ -21305,8 +21301,11 @@ export interface WebError {
 }
 
 /**
- * The [WebSocket](https://playwright.dev/docs/api/class-websocket) class represents websocket connections in the
- * page.
+ * The [WebSocket](https://playwright.dev/docs/api/class-websocket) class represents WebSocket connections within a
+ * page. It provides the ability to inspect and manipulate the data being transmitted and received.
+ *
+ * If you want to intercept or modify WebSocket frames, consider using
+ * [WebSocketRoute](https://playwright.dev/docs/api/class-websocketroute).
  */
 export interface WebSocket {
   /**
