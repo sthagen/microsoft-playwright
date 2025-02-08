@@ -14,19 +14,21 @@
  * limitations under the License.
  */
 
-import fs from 'fs';
-import type * as channels from '@protocol/channels';
-import { BrowserContext, prepareBrowserContextParams } from './browserContext';
-import type { Page } from './page';
-import { ChannelOwner } from './channelOwner';
-import { Events } from './events';
-import type { LaunchOptions, BrowserContextOptions, HeadersArray } from './types';
-import { isTargetClosedError } from './errors';
-import type * as api from '../../types/types';
-import { CDPSession } from './cdpSession';
-import type { BrowserType } from './browserType';
+import * as fs from 'fs';
+
 import { Artifact } from './artifact';
+import { BrowserContext, prepareBrowserContextParams } from './browserContext';
+import { CDPSession } from './cdpSession';
+import { ChannelOwner } from './channelOwner';
+import { isTargetClosedError } from './errors';
+import { Events } from './events';
 import { mkdirIfNeeded } from '../utils';
+
+import type { BrowserType } from './browserType';
+import type { Page } from './page';
+import type { BrowserContextOptions, HeadersArray, LaunchOptions } from './types';
+import type * as api from '../../types/types';
+import type * as channels from '@protocol/channels';
 
 export class Browser extends ChannelOwner<channels.BrowserChannel> implements api.Browser {
   readonly _contexts = new Set<BrowserContext>();
@@ -80,7 +82,7 @@ export class Browser extends ChannelOwner<channels.BrowserChannel> implements ap
   }
 
   async _innerNewContext(options: BrowserContextOptions = {}, forReuse: boolean): Promise<BrowserContext> {
-    options = { ...this._browserType._defaultContextOptions, ...options };
+    options = { ...this._browserType._playwright._defaultContextOptions, ...options };
     const contextOptions = await prepareBrowserContextParams(options);
     const response = forReuse ? await this._channel.newContextForReuse(contextOptions) : await this._channel.newContext(contextOptions);
     const context = BrowserContext.from(response.context);

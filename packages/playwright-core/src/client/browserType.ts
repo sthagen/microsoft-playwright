@@ -14,19 +14,20 @@
  * limitations under the License.
  */
 
-import type * as channels from '@protocol/channels';
 import { Browser } from './browser';
 import { BrowserContext, prepareBrowserContextParams } from './browserContext';
 import { ChannelOwner } from './channelOwner';
-import type { LaunchOptions, LaunchServerOptions, ConnectOptions, LaunchPersistentContextOptions, BrowserContextOptions, Logger } from './types';
+import { envObjectToArray } from './clientHelper';
 import { Connection } from './connection';
 import { Events } from './events';
-import type { ChildProcess } from 'child_process';
-import { envObjectToArray } from './clientHelper';
 import { assert, headersObjectToArray, monotonicTime } from '../utils';
-import type * as api from '../../types/types';
 import { raceAgainstDeadline } from '../utils/timeoutRunner';
+
 import type { Playwright } from './playwright';
+import type { ConnectOptions, LaunchOptions, LaunchPersistentContextOptions, LaunchServerOptions, Logger } from './types';
+import type * as api from '../../types/types';
+import type * as channels from '@protocol/channels';
+import type { ChildProcess } from 'child_process';
 
 export interface BrowserServerLauncher {
   launchServer(options?: LaunchServerOptions): Promise<api.BrowserServer>;
@@ -44,12 +45,6 @@ export class BrowserType extends ChannelOwner<channels.BrowserTypeChannel> imple
   _serverLauncher?: BrowserServerLauncher;
   _contexts = new Set<BrowserContext>();
   _playwright!: Playwright;
-
-  // Instrumentation.
-  _defaultContextOptions?: BrowserContextOptions;
-  _defaultContextTimeout?: number;
-  _defaultContextNavigationTimeout?: number;
-  private _defaultLaunchOptions?: LaunchOptions;
 
   static from(browserType: channels.BrowserTypeChannel): BrowserType {
     return (browserType as any)._object;
@@ -69,8 +64,8 @@ export class BrowserType extends ChannelOwner<channels.BrowserTypeChannel> imple
     assert(!(options as any).userDataDir, 'userDataDir option is not supported in `browserType.launch`. Use `browserType.launchPersistentContext` instead');
     assert(!(options as any).port, 'Cannot specify a port without launching as a server.');
 
-    const logger = options.logger || this._defaultLaunchOptions?.logger;
-    options = { ...this._defaultLaunchOptions, ...options };
+    const logger = options.logger || this._playwright._defaultLaunchOptions?.logger;
+    options = { ...this._playwright._defaultLaunchOptions, ...options };
     const launchOptions: channels.BrowserTypeLaunchParams = {
       ...options,
       ignoreDefaultArgs: Array.isArray(options.ignoreDefaultArgs) ? options.ignoreDefaultArgs : undefined,
@@ -87,14 +82,14 @@ export class BrowserType extends ChannelOwner<channels.BrowserTypeChannel> imple
   async launchServer(options: LaunchServerOptions = {}): Promise<api.BrowserServer> {
     if (!this._serverLauncher)
       throw new Error('Launching server is not supported');
-    options = { ...this._defaultLaunchOptions, ...options };
+    options = { ...this._playwright._defaultLaunchOptions, ...options };
     return await this._serverLauncher.launchServer(options);
   }
 
   async launchPersistentContext(userDataDir: string, options: LaunchPersistentContextOptions = {}): Promise<BrowserContext> {
-    const logger = options.logger || this._defaultLaunchOptions?.logger;
+    const logger = options.logger || this._playwright._defaultLaunchOptions?.logger;
     assert(!(options as any).port, 'Cannot specify a port without launching as a server.');
-    options = { ...this._defaultLaunchOptions, ...this._defaultContextOptions, ...options };
+    options = { ...this._playwright._defaultLaunchOptions, ...this._playwright._defaultContextOptions, ...options };
     const contextParams = await prepareBrowserContextParams(options);
     const persistentParams: channels.BrowserTypeLaunchPersistentContextParams = {
       ...contextParams,
@@ -237,10 +232,10 @@ export class BrowserType extends ChannelOwner<channels.BrowserTypeChannel> imple
     context._browserType = this;
     this._contexts.add(context);
     context._setOptions(contextOptions, browserOptions);
-    if (this._defaultContextTimeout !== undefined)
-      context.setDefaultTimeout(this._defaultContextTimeout);
-    if (this._defaultContextNavigationTimeout !== undefined)
-      context.setDefaultNavigationTimeout(this._defaultContextNavigationTimeout);
+    if (this._playwright._defaultContextTimeout !== undefined)
+      context.setDefaultTimeout(this._playwright._defaultContextTimeout);
+    if (this._playwright._defaultContextNavigationTimeout !== undefined)
+      context.setDefaultNavigationTimeout(this._playwright._defaultContextNavigationTimeout);
     await this._instrumentation.runAfterCreateBrowserContext(context);
   }
 
