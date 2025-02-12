@@ -19,9 +19,10 @@ import * as path from 'path';
 import * as url from 'url';
 import util from 'util';
 
-import { sanitizeForFilePath } from 'playwright-core/lib/server';
+import { sanitizeForFilePath } from 'playwright-core/lib/utils';
 import { calculateSha1, formatCallLog, isRegExp, isString, stringifyStackFrames } from 'playwright-core/lib/utils';
-import { debug, mime, minimatch, parseStackTraceLine } from 'playwright-core/lib/utilsBundle';
+import { parseStackTraceLine } from 'playwright-core/lib/utils';
+import { debug, mime, minimatch } from 'playwright-core/lib/utilsBundle';
 
 import type { Location } from './../types/testReporter';
 import type { TestInfoErrorImpl } from './common/ipc';

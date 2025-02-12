@@ -20,12 +20,12 @@ import * as path from 'path';
 
 import { normalizeProxySettings, validateBrowserContextOptions } from './browserContext';
 import { DEFAULT_TIMEOUT, TimeoutSettings } from '../common/timeoutSettings';
-import { ManualPromise, debugMode } from '../utils';
-import { existsAsync } from './fileUtils';
+import { ManualPromise, assert, debugMode } from '../utils';
+import { existsAsync } from './utils/fileUtils';
 import { helper } from './helper';
 import { SdkObject } from './instrumentation';
 import { PipeTransport } from './pipeTransport';
-import { envArrayToObject, launchProcess } from './processLauncher';
+import { envArrayToObject, launchProcess } from './utils/processLauncher';
 import { ProgressController } from './progress';
 import {  isProtocolError } from './protocolError';
 import { registry } from './registry';
@@ -36,7 +36,7 @@ import { RecentLogsCollector } from '../utils/debugLogger';
 import type { Browser, BrowserOptions, BrowserProcess } from './browser';
 import type { BrowserContext } from './browserContext';
 import type { CallMetadata } from './instrumentation';
-import type { Env } from './processLauncher';
+import type { Env } from './utils/processLauncher';
 import type { Progress } from './progress';
 import type { ProtocolError } from './protocolError';
 import type { BrowserName } from './registry';
@@ -188,6 +188,7 @@ export abstract class BrowserType extends SdkObject {
     tempDirectories.push(artifactsDir);
 
     if (userDataDir) {
+      assert(path.isAbsolute(userDataDir), 'userDataDir must be an absolute path');
       // Firefox bails if the profile directory does not exist, Chrome creates it. We ensure consistent behavior here.
       if (!await existsAsync(userDataDir))
         await fs.promises.mkdir(userDataDir, { recursive: true, mode: 0o700 });

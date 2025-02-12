@@ -17,8 +17,8 @@
 import * as fs from 'fs';
 import * as path from 'path';
 
-import { gracefullyProcessExitDoNotHang, installRootRedirect, openTraceInBrowser, openTraceViewerApp, registry, startTraceViewerServer } from 'playwright-core/lib/server';
-import { ManualPromise, isUnderTest } from 'playwright-core/lib/utils';
+import { installRootRedirect, openTraceInBrowser, openTraceViewerApp, registry, startTraceViewerServer } from 'playwright-core/lib/server';
+import { ManualPromise, isUnderTest, gracefullyProcessExitDoNotHang } from 'playwright-core/lib/utils';
 import { open } from 'playwright-core/lib/utilsBundle';
 
 import { createErrorCollectingReporter, createReporterForTestServer, createReporters } from './reporters';
@@ -312,9 +312,9 @@ export class TestServerDispatcher implements TestServerInterface {
         ...(params.trace === 'off' ? { trace: 'off' } : {}),
         ...(params.video === 'on' || params.video === 'off' ? { video: params.video } : {}),
         ...(params.headed !== undefined ? { headless: !params.headed } : {}),
+        ...(params.pageSnapshot ? { pageSnapshot: params.pageSnapshot } : undefined),
         _optionContextReuseMode: params.reuseContext ? 'when-possible' : undefined,
         _optionConnectOptions: params.connectWsEndpoint ? { wsEndpoint: params.connectWsEndpoint } : undefined,
-        _pageSnapshot: params.pageSnapshot,
       },
       ...(params.updateSnapshots ? { updateSnapshots: params.updateSnapshots } : {}),
       ...(params.updateSourceMethod ? { updateSourceMethod: params.updateSourceMethod } : {}),

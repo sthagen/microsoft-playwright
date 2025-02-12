@@ -18,7 +18,7 @@ import fs from 'fs';
 import path from 'path';
 import url from 'url';
 import { test as baseTest, expect as baseExpect, createImage } from './playwright-test-fixtures';
-import type { HttpServer } from '../../packages/playwright-core/src/utils';
+import type { HttpServer } from '../../packages/playwright-core/lib/server/utils/httpServer';
 import { startHtmlReportServer } from '../../packages/playwright/lib/reporters/html';
 import { msToString } from '../../packages/web/src/uiUtils';
 const { spawnAsync } = require('../../packages/playwright-core/lib/utils');
@@ -1238,7 +1238,7 @@ for (const useIntermediateMergeReport of [true, false] as const) {
         - link "Logs"
         - link "Pull Request"
         - link /^[a-f0-9]{7}$/
-        - text: 'foo: value1 bar: {"prop":"value2"} baz: ["value3",123]'
+        - text: 'foo : value1 bar : {"prop":"value2"} baz : ["value3",123]'
       `);
     });
 

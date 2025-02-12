@@ -23,9 +23,11 @@ import * as path from 'path';
 import * as playwright from '../..';
 import { launchBrowserServer, printApiJson, runDriver, runServer } from './driver';
 import { isTargetClosedError } from '../client/errors';
-import { gracefullyProcessExitDoNotHang, registry, writeDockerVersion } from '../server';
+import { registry, writeDockerVersion } from '../server';
+import { gracefullyProcessExitDoNotHang } from '../utils';
 import { runTraceInBrowser, runTraceViewerApp } from '../server/trace/viewer/traceViewer';
-import { assert, getPackageManagerExecCommand, isLikelyNpxGlobal, wrapInASCIIBox } from '../utils';
+import { assert, getPackageManagerExecCommand, isLikelyNpxGlobal } from '../utils';
+import { wrapInASCIIBox } from '../server/utils/ascii';
 import { dotenv, program } from '../utilsBundle';
 
 import type { Browser } from '../client/browser';
