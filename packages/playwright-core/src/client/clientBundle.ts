@@ -1,7 +1,7 @@
 /**
  * Copyright (c) Microsoft Corporation.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
+ * Licensed under the Apache License, Version 2.0 (the 'License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
@@ -14,12 +14,14 @@
  * limitations under the License.
  */
 
+import { Connection } from './connection';
+import { setPlatformForSelectors } from './selectors';
+import { setIsUnderTestForValidator } from '../protocol/validatorPrimitives';
+
 import type { Platform } from './platform';
 
-// Keep in sync with the server.
-export const fileUploadSizeLimit = 50 * 1024 * 1024;
-
-export async function mkdirIfNeeded(platform: Platform, filePath: string) {
-  // This will harmlessly throw on windows if the dirname is the root directory.
-  await platform.fs().promises.mkdir(platform.path().dirname(filePath), { recursive: true }).catch(() => {});
+export function createConnectionFactory(platform: Platform): () => Connection {
+  setPlatformForSelectors(platform);
+  setIsUnderTestForValidator(() => platform.isUnderTest());
+  return () => new Connection(platform);
 }
