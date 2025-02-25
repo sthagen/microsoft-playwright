@@ -2332,7 +2332,7 @@ This method expects [Locator] to point to an
 ## async method: Locator.tap
 * since: v1.14
 
-Perform a tap gesture on the element matching the locator.
+Perform a tap gesture on the element matching the locator. For examples of emulating other gestures by manually dispatching touch events, see the [emulating legacy touch events](../touch-events.md) page.
 
 **Details**
 
@@ -2477,6 +2477,18 @@ When all steps combined have not finished during the specified [`option: timeout
 
 ### option: Locator.uncheck.trial = %%-input-trial-%%
 * since: v1.14
+
+## method: Locator.visible
+* since: v1.51
+- returns: <[Locator]>
+
+Returns a locator that only matches [visible](../actionability.md#visible) elements.
+
+### option: Locator.visible.visible
+* since: v1.51
+- `visible` <[boolean]>
+
+Whether to match visible or invisible elements.
 
 ## async method: Locator.waitFor
 * since: v1.16
