@@ -960,6 +960,37 @@ interface TestConfig<TestArgs = {}, WorkerArgs = {}> {
   };
 
   /**
+   * - These settings control whether git information is captured and stored in the config
+   *   [testConfig.metadata](https://playwright.dev/docs/api/class-testconfig#test-config-metadata).
+   * - The structure of the git commit metadata is subject to change.
+   * - Default values for these settings depend on the environment. When tests run as a part of CI where it is safe to
+   *   obtain git information, the default value is true, false otherwise.
+   *
+   * **Usage**
+   *
+   * ```js
+   * // playwright.config.ts
+   * import { defineConfig } from '@playwright/test';
+   *
+   * export default defineConfig({
+   *   captureGitInfo: { commit: true, diff: true }
+   * });
+   * ```
+   *
+   */
+  captureGitInfo?: {
+    /**
+     * Whether to capture commit information such as hash, author, timestamp.
+     */
+    commit?: boolean;
+
+    /**
+     * Whether to capture commit diff.
+     */
+    diff?: boolean;
+  };
+
+  /**
    * Configuration for the `expect` assertion library. Learn more about [various timeouts](https://playwright.dev/docs/test-timeouts).
    *
    * **Usage**
@@ -1284,11 +1315,6 @@ interface TestConfig<TestArgs = {}, WorkerArgs = {}> {
   /**
    * Metadata contains key-value pairs to be included in the report. For example, HTML report will display it as
    * key-value pairs, and JSON report will include metadata serialized as json.
-   * - Providing `gitCommit: 'generate'` property will populate it with the git commit details.
-   * - Providing `gitDiff: 'generate'` property will populate it with the git diff details.
-   *
-   * On selected CI providers, both will be generated automatically. Specifying values will prevent the automatic
-   * generation.
    *
    * **Usage**
    *
@@ -5798,7 +5824,11 @@ export interface TestType<TestArgs extends {}, WorkerArgs extends {}> {
   <T>(title: string, body: (step: TestStepInfo) => T | Promise<T>, options?: { box?: boolean, location?: Location, timeout?: number }): Promise<T>;
     /**
    * Mark a test step as "skip" to temporarily disable its execution, useful for steps that are currently failing and
-   * planned for a near-term fix. Playwright will not run the step.
+   * planned for a near-term fix. Playwright will not run the step. See also
+   * [testStepInfo.skip(condition[, description])](https://playwright.dev/docs/api/class-teststepinfo#test-step-info-skip-2).
+   *
+   * We recommend [testStepInfo.skip()](https://playwright.dev/docs/api/class-teststepinfo#test-step-info-skip-1)
+   * instead.
    *
    * **Usage**
    *
@@ -6168,27 +6198,6 @@ export interface PlaywrightWorkerOptions {
    */
   screenshot: ScreenshotMode | { mode: ScreenshotMode } & Pick<PageScreenshotOptions, 'fullPage' | 'omitBackground'>;
   /**
-   * Whether to automatically capture a ARIA snapshot of the page after each test. Defaults to `'only-on-failure'`.
-   * - `'off'`: Do not capture page snapshots.
-   * - `'on'`: Capture page snapshot after each test.
-   * - `'only-on-failure'`: Capture page snapshot after each test failure.
-   *
-   * **Usage**
-   *
-   * ```js
-   * // playwright.config.ts
-   * import { defineConfig } from '@playwright/test';
-   *
-   * export default defineConfig({
-   *   use: {
-   *     pageSnapshot: 'on',
-   *   },
-   * });
-   * ```
-   *
-   */
-  pageSnapshot: PageSnapshotMode;
-  /**
    * Whether to record trace for each test. Defaults to `'off'`.
    * - `'off'`: Do not record trace.
    * - `'on'`: Record trace for each test.
@@ -6247,7 +6256,6 @@ export interface PlaywrightWorkerOptions {
 }
 
 export type ScreenshotMode = 'off' | 'on' | 'only-on-failure' | 'on-first-failure';
-export type PageSnapshotMode = 'off' | 'on' | 'only-on-failure';
 export type TraceMode = 'off' | 'on' | 'retain-on-failure' | 'on-first-retry' | 'on-all-retries' | 'retain-on-first-failure';
 export type VideoMode = 'off' | 'on' | 'retain-on-failure' | 'on-first-retry';
 
@@ -8793,14 +8801,14 @@ interface LocatorAssertions {
   /**
    * Asserts that the target element matches the given [accessibility snapshot](https://playwright.dev/docs/aria-snapshots).
    *
-   * Snapshot is stored in a separate `.snapshot.yml` file in a location configured by
+   * Snapshot is stored in a separate `.aria.yml` file in a location configured by
    * `expect.toMatchAriaSnapshot.pathTemplate` and/or `snapshotPathTemplate` properties in the configuration file.
    *
    * **Usage**
    *
    * ```js
    * await expect(page.locator('body')).toMatchAriaSnapshot();
-   * await expect(page.locator('body')).toMatchAriaSnapshot({ name: 'body.snapshot.yml' });
+   * await expect(page.locator('body')).toMatchAriaSnapshot({ name: 'body.aria.yml' });
    * ```
    *
    * @param options
@@ -9580,7 +9588,7 @@ export interface TestInfoError {
  * ```js
  * import { test, expect } from '@playwright/test';
  *
- * test('basic test', async ({ page, browserName }, TestStepInfo) => {
+ * test('basic test', async ({ page, browserName }) => {
  *   await test.step('check some behavior', async step => {
  *     await step.skip(browserName === 'webkit', 'The feature is not available in WebKit');
  *     // ... rest of the step code
@@ -9658,14 +9666,45 @@ export interface TestStepInfo {
   }): Promise<void>;
 
   /**
-   * Unconditionally skip the currently running step. Test step is immediately aborted. This is similar to
-   * [test.step.skip(title, body[, options])](https://playwright.dev/docs/api/class-test#test-step-skip).
+   * Abort the currently running step and mark it as skipped. Useful for steps that are currently failing and planned
+   * for a near-term fix.
+   *
+   * **Usage**
+   *
+   * ```js
+   * import { test, expect } from '@playwright/test';
+   *
+   * test('my test', async ({ page }) => {
+   *   await test.step('check expectations', async () => {
+   *     test.skip();
+   *     // step body below will not run
+   *     // ...
+   *   });
+   * });
+   * ```
+   *
    */
   skip(): void;
 
   /**
-   * Conditionally skips the currently running step with an optional description. This is similar to
-   * [test.step.skip(title, body[, options])](https://playwright.dev/docs/api/class-test#test-step-skip).
+   * Conditionally abort the currently running step and mark it as skipped with an optional description. Useful for
+   * steps that should not be executed in some cases.
+   *
+   * **Usage**
+   *
+   * ```js
+   * import { test, expect } from '@playwright/test';
+   *
+   * test('my test', async ({ page, isMobile }) => {
+   *   await test.step('check desktop expectations', async () => {
+   *     test.skip(isMobile, 'not present in the mobile layout');
+   *
+   *     // step body below will not run
+   *     // ...
+   *   });
+   * });
+   * ```
+   *
    * @param condition A skip condition. Test step is skipped when the condition is `true`.
    * @param description Optional description that will be reflected in a test report.
    */
