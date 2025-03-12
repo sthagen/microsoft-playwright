@@ -1178,6 +1178,25 @@ interface TestConfig<TestArgs = {}, WorkerArgs = {}> {
   };
 
   /**
+   * Whether to exit with an error if any tests are marked as flaky. Useful on CI.
+   *
+   * Also available in the [command line](https://playwright.dev/docs/test-cli) with the `--fail-on-flaky-tests` option.
+   *
+   * **Usage**
+   *
+   * ```js
+   * // playwright.config.ts
+   * import { defineConfig } from '@playwright/test';
+   *
+   * export default defineConfig({
+   *   failOnFlakyTests: !!process.env.CI,
+   * });
+   * ```
+   *
+   */
+  failOnFlakyTests?: boolean;
+
+  /**
    * Whether to exit with an error if any tests or groups are marked as
    * [test.only(title[, details, body])](https://playwright.dev/docs/api/class-test#test-only) or
    * [test.describe.only([title, details, callback])](https://playwright.dev/docs/api/class-test#test-describe-only).
@@ -1910,6 +1929,12 @@ export interface FullConfig<TestArgs = {}, WorkerArgs = {}> {
    * Path to the configuration file used to run the tests. The value is an empty string if no config file was used.
    */
   configFile?: string;
+
+  /**
+   * See
+   * [testConfig.failOnFlakyTests](https://playwright.dev/docs/api/class-testconfig#test-config-fail-on-flaky-tests).
+   */
+  failOnFlakyTests: boolean;
 
   /**
    * See [testConfig.forbidOnly](https://playwright.dev/docs/api/class-testconfig#test-config-forbid-only).
@@ -9922,9 +9947,27 @@ interface TestConfigWebServer {
   env?: { [key: string]: string; };
 
   /**
+   * How to shut down the process. If unspecified, the process group is forcefully `SIGKILL`ed. If set to `{ signal:
+   * 'SIGTERM', timeout: 500 }`, the process group is sent a `SIGTERM` signal, followed by `SIGKILL` if it doesn't exit
+   * within 500ms. You can also use `SIGINT` as the signal instead. A `0` timeout means no `SIGKILL` will be sent.
+   * Windows doesn't support `SIGTERM` and `SIGINT` signals, so this option is ignored on Windows. Note that shutting
+   * down a Docker container requires `SIGTERM`.
+   */
+  gracefulShutdown?: {
+    signal: "SIGINT"|"SIGTERM";
+
+    timeout: number;
+  };
+
+  /**
    * Whether to ignore HTTPS errors when fetching the `url`. Defaults to `false`.
    */
   ignoreHTTPSErrors?: boolean;
+
+  /**
+   * Specifies a custom name for the web server. This name will be prefixed to log messages. Defaults to `[WebServer]`.
+   */
+  name?: string;
 
   /**
    * The port that your http server is expected to appear on. It does wait until it accepts connections. Either `port`
@@ -9941,15 +9984,15 @@ interface TestConfigWebServer {
   reuseExistingServer?: boolean;
 
   /**
+   * Whether to pipe the stderr of the command to the process stderr or ignore it. Defaults to `"pipe"`.
+   */
+  stderr?: "pipe"|"ignore";
+
+  /**
    * If `"pipe"`, it will pipe the stdout of the command to the process stdout. If `"ignore"`, it will ignore the stdout
    * of the command. Default to `"ignore"`.
    */
   stdout?: "pipe"|"ignore";
-
-  /**
-   * Whether to pipe the stderr of the command to the process stderr or ignore it. Defaults to `"pipe"`.
-   */
-  stderr?: "pipe"|"ignore";
 
   /**
    * How long to wait for the process to start up and be available in milliseconds. Defaults to 60000.
@@ -9957,28 +10000,10 @@ interface TestConfigWebServer {
   timeout?: number;
 
   /**
-   * How to shut down the process. If unspecified, the process group is forcefully `SIGKILL`ed. If set to `{ signal:
-   * 'SIGTERM', timeout: 500 }`, the process group is sent a `SIGTERM` signal, followed by `SIGKILL` if it doesn't exit
-   * within 500ms. You can also use `SIGINT` as the signal instead. A `0` timeout means no `SIGKILL` will be sent.
-   * Windows doesn't support `SIGTERM` and `SIGINT` signals, so this option is ignored on Windows. Note that shutting
-   * down a Docker container requires `SIGTERM`.
-   */
-  gracefulShutdown?: {
-    signal: "SIGINT"|"SIGTERM";
-
-    timeout: number;
-  };
-
-  /**
    * The url on your http server that is expected to return a 2xx, 3xx, 400, 401, 402, or 403 status code when the
    * server is ready to accept connections. Redirects (3xx status codes) are being followed and the new location is
    * checked. Either `port` or `url` should be specified.
    */
   url?: string;
-
-  /**
-   * Specifies a custom name for the web server. This name will be prefixed to log messages. Defaults to `[WebServer]`.
-   */
-  name?: string;
 }
 
