@@ -26,8 +26,10 @@ it('should work', async ({ page, server }) => {
 
 it('should amend HTTP headers', async ({ page, server }) => {
   await page.route('**/*', route => {
-    const headers = Object.assign({}, route.request().headers());
-    headers['FOO'] = 'bar';
+    const headers = {
+      ...route.request().headers(),
+      FOO: 'bar'
+    };
     void route.continue({ headers });
   });
   await page.goto(server.EMPTY_PAGE);
@@ -36,6 +38,30 @@ it('should amend HTTP headers', async ({ page, server }) => {
     page.evaluate(() => fetch('/sleep.zzz'))
   ]);
   expect(request.headers['foo']).toBe('bar');
+});
+
+it('should not allow to override unsafe HTTP headers', async ({ page, server, browserName }) => {
+  let resolve;
+  const routePromise = new Promise<Route>(f => resolve = f);
+  await page.route('**/*', route => resolve(route));
+  const serverRequestPromise = server.waitForRequest('/empty.html');
+  page.goto(server.EMPTY_PAGE).catch(() => {});
+  const route = await routePromise;
+  const error = await route.continue({
+    headers: {
+      ...route.request().headers(),
+      host: 'bar'
+    }
+  }).catch(e => e);
+  if (browserName === 'chromium') {
+    expect(error.message).toContain('Unsafe header: host');
+  } else {
+    expect(error).toBeFalsy();
+    // These lines just document current behavior in FF and WK,
+    // we don't necessarily want to maintain this behavior.
+    const serverRequest = await serverRequestPromise;
+    expect(serverRequest.headers['host']).toBe('bar');
+  }
 });
 
 it('should delete header with undefined value', async ({ page, server, browserName }) => {
@@ -392,6 +418,33 @@ it('should continue preload link requests', async ({ page, server, browserName }
   expect(intercepted).toBe(true);
   const color = await page.evaluate(() => window.getComputedStyle(document.body).backgroundColor);
   expect(color).toBe('rgb(255, 192, 203)');
+});
+
+it('should respect set-cookie in redirect response', {
+  annotation: { type: 'issue', description: 'https://github.com/microsoft/playwright/issues/35154' }
+}, async ({ page, server, browserName }) => {
+  it.fixme(browserName === 'firefox', 'Firefox does not respect set-cookie in redirect response');
+  await page.goto(server.EMPTY_PAGE);
+  await page.setContent('<a href="/set-cookie-redirect">Set cookie</a>');
+  server.setRoute('/set-cookie-redirect', (request, response) => {
+    response.writeHead(302, {
+      'set-cookie': 'foo=bar;  max-age=36000',
+      'location': '/empty.html'
+    });
+    response.end();
+  });
+  await page.route('**/set-cookie-redirect', route => {
+    void route.continue({
+      headers: {
+        ...route.request().headers()
+      }
+    });
+  });
+  const serverRequestPromise = server.waitForRequest('/empty.html');
+  await page.goto(server.PREFIX + '/set-cookie-redirect');
+  const serverRequest = await serverRequestPromise;
+  expect.soft(serverRequest.headers['cookie']).toBe('foo=bar');
+  expect.soft(await page.evaluate(() => document.cookie)).toBe('foo=bar');
 });
 
 it('continue should propagate headers to redirects', {
