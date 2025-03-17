@@ -14710,11 +14710,15 @@ export interface BrowserType<Unused = {}> {
    * Launches browser that uses persistent storage located at
    * [`userDataDir`](https://playwright.dev/docs/api/class-browsertype#browser-type-launch-persistent-context-option-user-data-dir)
    * and returns the only context. Closing this context will automatically close the browser.
-   * @param userDataDir Path to a User Data Directory, which stores browser session data like cookies and local storage. More details for
+   * @param userDataDir Path to a User Data Directory, which stores browser session data like cookies and local storage. Pass an empty
+   * string to create a temporary directory.
+   *
+   * More details for
    * [Chromium](https://chromium.googlesource.com/chromium/src/+/master/docs/user_data_dir.md#introduction) and
-   * [Firefox](https://wiki.mozilla.org/Firefox/CommandLineOptions#User_profile). Note that Chromium's user data
-   * directory is the **parent** directory of the "Profile Path" seen at `chrome://version`. Pass an empty string to use
-   * a temporary directory instead.
+   * [Firefox](https://wiki.mozilla.org/Firefox/CommandLineOptions#User_profile). Chromium's user data directory is the
+   * **parent** directory of the "Profile Path" seen at `chrome://version`.
+   *
+   * Note that browsers do not allow launching multiple instances with the same User Data Directory.
    * @param options
    */
   launchPersistentContext(userDataDir: string, options?: {
@@ -17568,6 +17572,13 @@ export interface APIRequest {
      * Whether to ignore HTTPS errors when sending network requests. Defaults to `false`.
      */
     ignoreHTTPSErrors?: boolean;
+
+    /**
+     * Maximum number of request redirects that will be followed automatically. An error will be thrown if the number is
+     * exceeded. Defaults to `20`. Pass `0` to not follow redirects. This can be overwritten for each request
+     * individually.
+     */
+    maxRedirects?: number;
 
     /**
      * Network proxy settings.
