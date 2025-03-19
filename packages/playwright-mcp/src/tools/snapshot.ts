@@ -24,46 +24,68 @@ import type { Tool } from './tool';
 
 export const snapshot: Tool = {
   schema: {
-    name: 'snapshot',
+    name: 'browser_snapshot',
     description: 'Capture accessibility snapshot of the current page, this is better than screenshot',
     inputSchema: zodToJsonSchema(z.object({})),
   },
 
   handle: async context => {
-    return await captureAriaSnapshot(context.page);
+    return await captureAriaSnapshot(await context.ensurePage());
   },
 };
 
 const elementSchema = z.object({
-  element: z.string().describe('Element label, description of any other text to describe the element'),
-  ref: z.string().describe('Target element reference'),
+  element: z.string().describe('Human-readable element description used to obtain the permission to interact with the element'),
+  ref: z.string().describe('Exact target element reference from the page snapshot'),
 });
 
 export const click: Tool = {
   schema: {
-    name: 'click',
+    name: 'browser_click',
     description: 'Perform click on a web page',
     inputSchema: zodToJsonSchema(elementSchema),
   },
 
   handle: async (context, params) => {
     const validatedParams = elementSchema.parse(params);
-    const locator = refLocator(context.page, validatedParams);
-    return runAndWait(context, () => locator.click(), true);
+    return runAndWait(context, page => refLocator(page, validatedParams.ref).click(), true);
+  },
+};
+
+const dragSchema = z.object({
+  startElement: z.string().describe('Human-readable source element description used to obtain the permission to interact with the element'),
+  startRef: z.string().describe('Exact source element reference from the page snapshot'),
+  endElement: z.string().describe('Human-readable target element description used to obtain the permission to interact with the element'),
+  endRef: z.string().describe('Exact target element reference from the page snapshot'),
+});
+
+export const drag: Tool = {
+  schema: {
+    name: 'browser_drag',
+    description: 'Perform drag and drop between two elements',
+    inputSchema: zodToJsonSchema(dragSchema),
+  },
+
+  handle: async (context, params) => {
+    const validatedParams = dragSchema.parse(params);
+    return runAndWait(context, async page => {
+      const startLocator = refLocator(page, validatedParams.startRef);
+      const endLocator = refLocator(page, validatedParams.endRef);
+      await startLocator.dragTo(endLocator);
+    }, true);
   },
 };
 
 export const hover: Tool = {
   schema: {
-    name: 'hover',
+    name: 'browser_hover',
     description: 'Hover over element on page',
     inputSchema: zodToJsonSchema(elementSchema),
   },
 
   handle: async (context, params) => {
     const validatedParams = elementSchema.parse(params);
-    const locator = refLocator(context.page, validatedParams);
-    return runAndWait(context, () => locator.hover(), true);
+    return runAndWait(context, page => refLocator(page, validatedParams.ref).hover(), true);
   },
 };
 
@@ -74,15 +96,15 @@ const typeSchema = elementSchema.extend({
 
 export const type: Tool = {
   schema: {
-    name: 'type',
+    name: 'browser_type',
     description: 'Type text into editable element',
     inputSchema: zodToJsonSchema(typeSchema),
   },
 
   handle: async (context, params) => {
     const validatedParams = typeSchema.parse(params);
-    const locator = refLocator(context.page, validatedParams);
-    return await runAndWait(context, async () => {
+    return await runAndWait(context, async page => {
+      const locator = refLocator(page, validatedParams.ref);
       await locator.fill(validatedParams.text);
       if (validatedParams.submit)
         await locator.press('Enter');
@@ -90,6 +112,6 @@ export const type: Tool = {
   },
 };
 
-function refLocator(page: playwright.Page, params: z.infer<typeof elementSchema>): playwright.Locator {
-  return page.locator(`aria-ref=${params.ref}`);
+function refLocator(page: playwright.Page, ref: string): playwright.Locator {
+  return page.locator(`aria-ref=${ref}`);
 }
