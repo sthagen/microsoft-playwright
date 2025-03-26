@@ -619,7 +619,7 @@ for (const useIntermediateMergeReport of [true, false] as const) {
       expect(result.passed).toBe(1);
 
       await showReport();
-      await page.getByRole('link', { name: 'View trace' }).click();
+      await page.getByRole('link', { name: 'View Trace' }).click();
 
       // Trace viewer should not hang here when displaying parallal requests.
       await expect(page.getByTestId('actions-tree')).toContainText('apiRequestContext.get');
@@ -645,14 +645,14 @@ for (const useIntermediateMergeReport of [true, false] as const) {
 
       await test.step('view via server', async () => {
         await showReport();
-        await page.locator('[title="View trace"]').click();
+        await page.getByRole('link', { name: 'View Trace' }).click();
         await expect(page.locator('dialog')).toBeHidden();
       });
 
       await test.step('view via local file://', async () => {
         const reportFolder = testInfo.outputPath('playwright-report');
         await page.goto(url.pathToFileURL(path.join(reportFolder, 'index.html')).toString());
-        await page.locator('[title="View trace"]').click();
+        await page.getByRole('link', { name: 'View Trace' }).click();
         await expect(page.locator('dialog')).toBeVisible();
         await expect(page.locator('dialog')).toContainText('must be loaded over');
       });
@@ -827,6 +827,33 @@ for (const useIntermediateMergeReport of [true, false] as const) {
       await showReport();
       await page.click('text=annotated test');
       await expect(page.locator('.test-case-annotation')).toHaveText('issue: I am not interested in this test');
+    });
+
+    test('should render dynamic annotations at test result level', async ({ runInlineTest, page, showReport }) => {
+      const result = await runInlineTest({
+        'playwright.config.js': `
+          module.exports = { timeout: 1500, retries: 3 };
+        `,
+        'a.test.js': `
+          import { test, expect } from '@playwright/test';
+          test('annotated test', async ({}) => {
+            test.info().annotations.push({ type: 'foo', description: 'retry #' + test.info().retry });
+            test.info().annotations.push({ type: 'bar', description: 'static value' });
+            throw new Error('fail');
+          });
+        `,
+      }, { reporter: 'dot,html' }, { PLAYWRIGHT_HTML_OPEN: 'never' });
+      expect(result.failed).toBe(1);
+
+      await showReport();
+      await page.getByRole('link', { name: 'annotated test' }).click();
+      await page.getByRole('tab', { name: 'Retry #1' }).click();
+      await expect(page.getByTestId('test-case-annotations')).toContainText('foo: retry #1');
+
+      await page.getByRole('tab', { name: 'Retry #3' }).click();
+      await expect(page.getByTestId('test-case-annotations')).toContainText('foo: retry #3');
+
+      await expect(page.getByTestId('test-case-annotations').getByText('static value')).toHaveCount(1);
     });
 
     test('should render annotations as link if needed', async ({ runInlineTest, page, showReport, server }) => {
@@ -2431,12 +2458,13 @@ for (const useIntermediateMergeReport of [true, false] as const) {
         'a.test.js': `
           const { test, expect } = require('@playwright/test');
           test('annotated test',{ annotation :[{type:'key',description:'value'}]}, async ({}) => {expect(1).toBe(1);});
+          test('slow test', () => { test.slow(); });
           test('non-annotated test', async ({}) => {expect(1).toBe(2);});
         `,
       }, { reporter: 'dot,html' }, { PW_TEST_HTML_REPORT_OPEN: 'never' });
 
       expect(result.exitCode).toBe(1);
-      expect(result.passed).toBe(1);
+      expect(result.passed).toBe(2);
       expect(result.failed).toBe(1);
 
       await showReport();
@@ -2455,6 +2483,11 @@ for (const useIntermediateMergeReport of [true, false] as const) {
         await expect(page.getByText('a.test.js', { exact: true })).toBeVisible();
         await expect(page.getByText('non-annotated test')).not.toBeVisible();
         await expect(page.getByText('annotated test')).toBeVisible();
+      });
+
+      await test.step('filter by result annotation', async () => {
+        await searchInput.fill('annot:slow');
+        await expect(page.getByText('slow test')).toBeVisible();
       });
     });
 
