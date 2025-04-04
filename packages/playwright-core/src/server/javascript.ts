@@ -17,12 +17,12 @@
 import { SdkObject } from './instrumentation';
 import * as utilityScriptSource from '../generated/utilityScriptSource';
 import { isUnderTest } from '../utils';
-import { ensureBuiltins } from './isomorphic/builtins';
-import { source } from './isomorphic/utilityScriptSerializers';
+import { ensureBuiltins } from '../utils/isomorphic/builtins';
+import { source } from '../utils/isomorphic/utilityScriptSerializers';
 import { LongStandingScope } from '../utils/isomorphic/manualPromise';
 
 import type * as dom from './dom';
-import type { UtilityScript } from './injected/utilityScript';
+import type { UtilityScript } from '@injected/utilityScript';
 
 interface TaggedAsJSHandle<T> {
   __jshandle: T;
