@@ -27,19 +27,19 @@
     },
     {
       "name": "firefox",
-      "revision": "1481",
+      "revision": "1482",
       "installByDefault": true,
       "browserVersion": "137.0"
     },
     {
       "name": "firefox-beta",
-      "revision": "1476",
+      "revision": "1477",
       "installByDefault": false,
       "browserVersion": "137.0b2"
     },
     {
       "name": "webkit",
-      "revision": "2152",
+      "revision": "2155",
       "installByDefault": true,
       "revisionOverrides": {
         "debian11-x64": "2105",
