@@ -26,7 +26,6 @@ import { getEastAsianWidth } from '../utilsBundle';
 import type { ReporterV2 } from './reporterV2';
 import type { FullConfig, FullResult, Location, Suite, TestCase, TestError, TestResult, TestStep } from '../../types/testReporter';
 import type { Colors } from '@isomorphic/colors';
-import type { TestAnnotation } from '../../types/test';
 
 export type TestResultOutput = { chunk: string | Buffer, type: 'stdout' | 'stderr' };
 export const kOutputSymbol = Symbol('output');
@@ -320,7 +319,7 @@ export function formatFailure(screen: Screen, config: FullConfig, test: TestCase
   const header = formatTestHeader(screen, config, test, { indent: '  ', index, mode: 'error' });
   lines.push(screen.colors.red(header));
   for (const result of test.results) {
-    const warnings = result.annotations.filter(a => a.type === 'warning');
+    // const warnings = result.annotations.filter(a => a.type === 'warning');
     const resultLines: string[] = [];
     const errors = formatResultFailure(screen, test, result, '    ');
     if (!errors.length)
@@ -330,15 +329,16 @@ export function formatFailure(screen: Screen, config: FullConfig, test: TestCase
       resultLines.push(screen.colors.gray(separator(screen, `    Retry #${result.retry}`)));
     }
     resultLines.push(...errors.map(error => '\n' + error.message));
-    if (warnings.length) {
-      resultLines.push('');
-      resultLines.push(...formatTestWarning(screen, config, warnings));
-    }
+    // TODO: 1.53: Actually build annotations
+    // if (warnings.length) {
+    //   resultLines.push('');
+    //   resultLines.push(...formatTestWarning(screen, config, warnings));
+    // }
     for (let i = 0; i < result.attachments.length; ++i) {
       const attachment = result.attachments[i];
-      if (attachment.name.startsWith('_prompt') && attachment.path) {
+      if (attachment.name.startsWith('_error-context') && attachment.path) {
         resultLines.push('');
-        resultLines.push(screen.colors.dim(`    Error Prompt: ${relativeFilePath(screen, config, attachment.path)}`));
+        resultLines.push(screen.colors.dim(`    Error Context: ${relativeFilePath(screen, config, attachment.path)}`));
         continue;
       }
       if (attachment.name.startsWith('_'))
@@ -374,26 +374,6 @@ export function formatFailure(screen: Screen, config: FullConfig, test: TestCase
   }
   lines.push('');
   return lines.join('\n');
-}
-
-function formatTestWarning(screen: Screen, config: FullConfig, warnings: TestAnnotation[]): string[] {
-  warnings.sort((a, b) => {
-    const aLocationKey = a.location ? `${a.location.file}:${a.location.line}:${a.location.column}` : undefined;
-    const bLocationKey = b.location ? `${b.location.file}:${b.location.line}:${b.location.column}` : undefined;
-
-    if (!aLocationKey && !bLocationKey)
-      return 0;
-    if (!aLocationKey)
-      return 1;
-    if (!bLocationKey)
-      return -1;
-    return aLocationKey.localeCompare(bLocationKey);
-  });
-
-  return warnings.filter(w => !!w.description).map(w => {
-    const location = !!w.location ? `${relativeFilePath(screen, config, w.location.file)}:${w.location.line}:${w.location.column}: ` : '';
-    return `${screen.colors.yellow(`    Warning: ${location}${w.description}`)}`;
-  });
 }
 
 export function formatRetry(screen: Screen, result: TestResult) {
