@@ -40,7 +40,7 @@ export type AriaSnapshot = {
   ids: Map<Element, number>;
 };
 
-export function generateAriaTree(rootElement: Element, generation: number, options?: { emitGeneric?: boolean }): AriaSnapshot {
+export function generateAriaTree(rootElement: Element, generation: number, options?: { forAI?: boolean }): AriaSnapshot {
   const visited = new Set<Node>();
 
   const snapshot: AriaSnapshot = {
@@ -102,7 +102,7 @@ export function generateAriaTree(rootElement: Element, generation: number, optio
     if (treatAsBlock)
       ariaNode.children.push(treatAsBlock);
 
-    ariaNode.children.push(roleUtils.getPseudoContent(element, '::before'));
+    ariaNode.children.push(roleUtils.getCSSContent(element, '::before') || '');
     const assignedNodes = element.nodeName === 'SLOT' ? (element as HTMLSlotElement).assignedNodes() : [];
     if (assignedNodes.length) {
       for (const child of assignedNodes)
@@ -121,7 +121,7 @@ export function generateAriaTree(rootElement: Element, generation: number, optio
     for (const child of ariaChildren)
       visit(ariaNode, child);
 
-    ariaNode.children.push(roleUtils.getPseudoContent(element, '::after'));
+    ariaNode.children.push(roleUtils.getCSSContent(element, '::after') || '');
 
     if (treatAsBlock)
       ariaNode.children.push(treatAsBlock);
@@ -147,11 +147,11 @@ export function generateAriaTree(rootElement: Element, generation: number, optio
   return snapshot;
 }
 
-function toAriaNode(element: Element, options?: { emitGeneric?: boolean }): AriaNode | null {
+function toAriaNode(element: Element, options?: { forAI?: boolean }): AriaNode | null {
   if (element.nodeName === 'IFRAME')
     return { role: 'iframe', name: '', children: [], props: {}, element, box: box(element), receivesPointerEvents: true };
 
-  const defaultRole = options?.emitGeneric ? 'generic' : null;
+  const defaultRole = options?.forAI ? 'generic' : null;
   const role = roleUtils.getAriaRole(element) ?? defaultRole;
   if (!role || role === 'presentation' || role === 'none')
     return null;
@@ -363,7 +363,7 @@ function matchesNodeDeep(root: AriaNode, template: AriaTemplateNode, collectAll:
   return results;
 }
 
-export function renderAriaTree(ariaSnapshot: AriaSnapshot, options?: { mode?: 'raw' | 'regex', ref?: boolean }): string {
+export function renderAriaTree(ariaSnapshot: AriaSnapshot, options?: { mode?: 'raw' | 'regex', forAI?: boolean }): string {
   const lines: string[] = [];
   const includeText = options?.mode === 'regex' ? textContributesInfo : () => true;
   const renderString = options?.mode === 'regex' ? convertToBestGuessRegex : (str: string) => str;
@@ -402,7 +402,7 @@ export function renderAriaTree(ariaSnapshot: AriaSnapshot, options?: { mode?: 'r
       key += ` [pressed]`;
     if (ariaNode.selected === true)
       key += ` [selected]`;
-    if (options?.ref && canRef(ariaNode)) {
+    if (options?.forAI && canRef(ariaNode)) {
       const id = ariaSnapshot.ids.get(ariaNode.element);
       if (id)
         key += ` [ref=s${ariaSnapshot.generation}e${id}]`;
