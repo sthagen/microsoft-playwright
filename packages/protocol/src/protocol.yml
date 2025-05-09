@@ -496,7 +496,7 @@ LaunchOptions:
     tracesDir: string?
     chromiumSandbox: boolean?
     firefoxUserPrefs: json?
-    webSocketPort: number?
+    cdpPort: number?
 
 
 ContextOptions:
@@ -1976,8 +1976,15 @@ Frame:
     ariaSnapshot:
       parameters:
         selector: string
-        forAI: boolean?
         timeout: number?
+      returns:
+        snapshot: string
+      flags:
+        snapshot: true
+
+    snapshotForAI:
+      parameters:
+        selector: string
       returns:
         snapshot: string
       flags:

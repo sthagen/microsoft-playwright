@@ -16,7 +16,7 @@
 
 import { escapeRegExp, longestCommonSubstring, normalizeWhiteSpace } from '@isomorphic/stringUtils';
 
-import { box, getElementComputedStyle, getGlobalOptions } from './domUtils';
+import { box, getElementComputedStyle, getGlobalOptions, isElementVisible } from './domUtils';
 import * as roleUtils from './roleUtils';
 import { yamlEscapeKeyIfNeeded, yamlEscapeValueIfNeeded } from './yaml';
 
@@ -26,6 +26,7 @@ import type { Box } from './domUtils';
 export type AriaNode = AriaProps & {
   role: AriaRole | 'fragment' | 'iframe';
   name: string;
+  ref?: number;
   children: (AriaNode | string)[];
   element: Element;
   box: Box;
@@ -36,27 +37,23 @@ export type AriaNode = AriaProps & {
 export type AriaSnapshot = {
   root: AriaNode;
   elements: Map<number, Element>;
-  generation: number;
-  ids: Map<Element, number>;
 };
 
-export function generateAriaTree(rootElement: Element, generation: number, options?: { forAI?: boolean }): AriaSnapshot {
+type AriaRef = {
+  role: string;
+  name: string;
+  ref: number;
+};
+
+let lastRef = 0;
+
+export function generateAriaTree(rootElement: Element, options?: { forAI?: boolean }): AriaSnapshot {
   const visited = new Set<Node>();
 
   const snapshot: AriaSnapshot = {
     root: { role: 'fragment', name: '', children: [], element: rootElement, props: {}, box: box(rootElement), receivesPointerEvents: true },
     elements: new Map<number, Element>(),
-    generation,
-    ids: new Map<Element, number>(),
   };
-
-  const addElement = (element: Element) => {
-    const id = snapshot.elements.size + 1;
-    snapshot.elements.set(id, element);
-    snapshot.ids.set(element, id);
-  };
-
-  addElement(rootElement);
 
   const visit = (ariaNode: AriaNode, node: Node) => {
     if (visited.has(node))
@@ -75,7 +72,10 @@ export function generateAriaTree(rootElement: Element, generation: number, optio
       return;
 
     const element = node as Element;
-    if (roleUtils.isElementHiddenForAria(element))
+    let isVisible = !roleUtils.isElementHiddenForAria(element);
+    if (options?.forAI)
+      isVisible = isVisible || isElementVisible(element);
+    if (!isVisible)
       return;
 
     const ariaChildren: Element[] = [];
@@ -88,10 +88,12 @@ export function generateAriaTree(rootElement: Element, generation: number, optio
       }
     }
 
-    addElement(element);
     const childAriaNode = toAriaNode(element, options);
-    if (childAriaNode)
+    if (childAriaNode) {
+      if (childAriaNode.ref)
+        snapshot.elements.set(childAriaNode.ref, element);
       ariaNode.children.push(childAriaNode);
+    }
     processElement(childAriaNode || ariaNode, element, ariaChildren);
   };
 
@@ -147,9 +149,32 @@ export function generateAriaTree(rootElement: Element, generation: number, optio
   return snapshot;
 }
 
+function ariaRef(element: Element, role: string, name: string, options?: { forAI?: boolean }): number | undefined {
+  if (!options?.forAI)
+    return undefined;
+
+  let ariaRef: AriaRef | undefined;
+  ariaRef = (element as any)._ariaRef;
+  if (!ariaRef || ariaRef.role !== role || ariaRef.name !== name) {
+    ariaRef = { role, name, ref: ++lastRef };
+    (element as any)._ariaRef = ariaRef;
+  }
+  return ariaRef.ref;
+}
+
 function toAriaNode(element: Element, options?: { forAI?: boolean }): AriaNode | null {
-  if (element.nodeName === 'IFRAME')
-    return { role: 'iframe', name: '', children: [], props: {}, element, box: box(element), receivesPointerEvents: true };
+  if (element.nodeName === 'IFRAME') {
+    return {
+      role: 'iframe',
+      name: '',
+      ref: ariaRef(element, 'iframe', '', options),
+      children: [],
+      props: {},
+      element,
+      box: box(element),
+      receivesPointerEvents: true
+    };
+  }
 
   const defaultRole = options?.forAI ? 'generic' : null;
   const role = roleUtils.getAriaRole(element) ?? defaultRole;
@@ -158,7 +183,17 @@ function toAriaNode(element: Element, options?: { forAI?: boolean }): AriaNode |
 
   const name = normalizeWhiteSpace(roleUtils.getElementAccessibleName(element, false) || '');
   const receivesPointerEvents = roleUtils.receivesPointerEvents(element);
-  const result: AriaNode = { role, name, children: [], props: {}, element, box: box(element), receivesPointerEvents };
+
+  const result: AriaNode = {
+    role,
+    name,
+    ref: ariaRef(element, role, name, options),
+    children: [],
+    props: {},
+    element,
+    box: box(element),
+    receivesPointerEvents
+  };
 
   if (roleUtils.kAriaCheckedRoles.includes(role))
     result.checked = roleUtils.getAriaChecked(element);
@@ -197,7 +232,9 @@ function normalizeGenericRoles(node: AriaNode) {
       const normalized = normalizeChildren(child);
       result.push(...normalized);
     }
-    const removeSelf = node.role === 'generic' && result.every(c => typeof c !== 'string' && canRef(c));
+
+    // Only remove generic that encloses one element, logical grouping still makes sense, even if it is not ref-able.
+    const removeSelf = node.role === 'generic' && result.length <= 1 && result.every(c => typeof c !== 'string' && receivesPointerEvents(c));
     if (removeSelf)
       return result;
     node.children = result;
@@ -261,7 +298,7 @@ export type MatcherReceived = {
 };
 
 export function matchesAriaTree(rootElement: Element, template: AriaTemplateNode): { matches: AriaNode[], received: MatcherReceived } {
-  const snapshot = generateAriaTree(rootElement, 0);
+  const snapshot = generateAriaTree(rootElement);
   const matches = matchesNodeDeep(snapshot.root, template, false, false);
   return {
     matches,
@@ -273,7 +310,7 @@ export function matchesAriaTree(rootElement: Element, template: AriaTemplateNode
 }
 
 export function getAllByAria(rootElement: Element, template: AriaTemplateNode): Element[] {
-  const root = generateAriaTree(rootElement, 0).root;
+  const root = generateAriaTree(rootElement).root;
   const matches = matchesNodeDeep(root, template, true, false);
   return matches.map(n => n.element);
 }
@@ -402,10 +439,11 @@ export function renderAriaTree(ariaSnapshot: AriaSnapshot, options?: { mode?: 'r
       key += ` [pressed]`;
     if (ariaNode.selected === true)
       key += ` [selected]`;
-    if (options?.forAI && canRef(ariaNode)) {
-      const id = ariaSnapshot.ids.get(ariaNode.element);
-      if (id)
-        key += ` [ref=s${ariaSnapshot.generation}e${id}]`;
+    if (options?.forAI && receivesPointerEvents(ariaNode)) {
+      const ref = ariaNode.ref;
+      const cursor = hasPointerCursor(ariaNode) ? ' [cursor=pointer]' : '';
+      if (ref)
+        key += ` [ref=e${ref}]${cursor}`;
     }
 
     const escapedKey = indent + '- ' + yamlEscapeKeyIfNeeded(key);
@@ -496,6 +534,10 @@ function textContributesInfo(node: AriaNode, text: string): boolean {
   return filtered.trim().length / text.length > 0.1;
 }
 
-function canRef(ariaNode: AriaNode): boolean {
+function receivesPointerEvents(ariaNode: AriaNode): boolean {
   return ariaNode.box.visible && ariaNode.receivesPointerEvents;
+}
+
+function hasPointerCursor(ariaNode: AriaNode): boolean {
+  return ariaNode.box.style?.cursor === 'pointer';
 }

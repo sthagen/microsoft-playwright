@@ -557,7 +557,7 @@ scheme.BrowserTypeLaunchParams = tObject({
   tracesDir: tOptional(tString),
   chromiumSandbox: tOptional(tBoolean),
   firefoxUserPrefs: tOptional(tAny),
-  webSocketPort: tOptional(tNumber),
+  cdpPort: tOptional(tNumber),
   slowMo: tOptional(tNumber),
 });
 scheme.BrowserTypeLaunchResult = tObject({
@@ -587,7 +587,7 @@ scheme.BrowserTypeLaunchPersistentContextParams = tObject({
   tracesDir: tOptional(tString),
   chromiumSandbox: tOptional(tBoolean),
   firefoxUserPrefs: tOptional(tAny),
-  webSocketPort: tOptional(tNumber),
+  cdpPort: tOptional(tNumber),
   noDefaultViewport: tOptional(tBoolean),
   viewport: tOptional(tObject({
     width: tNumber,
@@ -1484,10 +1484,15 @@ scheme.FrameAddStyleTagResult = tObject({
 });
 scheme.FrameAriaSnapshotParams = tObject({
   selector: tString,
-  forAI: tOptional(tBoolean),
   timeout: tOptional(tNumber),
 });
 scheme.FrameAriaSnapshotResult = tObject({
+  snapshot: tString,
+});
+scheme.FrameSnapshotForAIParams = tObject({
+  selector: tString,
+});
+scheme.FrameSnapshotForAIResult = tObject({
   snapshot: tString,
 });
 scheme.FrameBlurParams = tObject({
