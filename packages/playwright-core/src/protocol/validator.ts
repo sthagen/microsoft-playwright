@@ -1386,6 +1386,10 @@ scheme.PagePdfParams = tObject({
 scheme.PagePdfResult = tObject({
   pdf: tBinary,
 });
+scheme.PageSnapshotForAIParams = tOptional(tObject({}));
+scheme.PageSnapshotForAIResult = tObject({
+  snapshot: tString,
+});
 scheme.PageStartJSCoverageParams = tObject({
   resetOnNavigation: tOptional(tBoolean),
   reportAnonymousScripts: tOptional(tBoolean),
@@ -1484,15 +1488,10 @@ scheme.FrameAddStyleTagResult = tObject({
 });
 scheme.FrameAriaSnapshotParams = tObject({
   selector: tString,
+  forAI: tOptional(tBoolean),
   timeout: tOptional(tNumber),
 });
 scheme.FrameAriaSnapshotResult = tObject({
-  snapshot: tString,
-});
-scheme.FrameSnapshotForAIParams = tObject({
-  selector: tString,
-});
-scheme.FrameSnapshotForAIResult = tObject({
   snapshot: tString,
 });
 scheme.FrameBlurParams = tObject({

@@ -308,11 +308,6 @@ export class Locator implements api.Locator {
     return result.snapshot;
   }
 
-  async _snapshotForAI(): Promise<string> {
-    const result = await this._frame._channel.snapshotForAI({ selector: this._selector });
-    return result.snapshot;
-  }
-
   async scrollIntoViewIfNeeded(options: channels.ElementHandleScrollIntoViewIfNeededOptions = {}) {
     return await this._withElement((h, timeout) => h.scrollIntoViewIfNeeded({ ...options, timeout }), options.timeout);
   }

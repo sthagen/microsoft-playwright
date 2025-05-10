@@ -17,7 +17,7 @@
 import { test as it, expect } from './pageTest';
 
 function snapshotForAI(page: any): Promise<string> {
-  return page.locator('body')._snapshotForAI();
+  return page._snapshotForAI();
 }
 
 it('should generate refs', async ({ page }) => {
@@ -70,14 +70,23 @@ it('should stitch all frame snapshots', async ({ page, server }) => {
   expect(snapshot).toContainYaml(`
     - generic [ref=e1]:
       - iframe [ref=e2]:
-        - generic [ref=e1]:
-          - iframe [ref=e2]:
-            - generic [ref=e2]: Hi, I'm frame
-          - iframe [ref=e3]:
-            - generic [ref=e2]: Hi, I'm frame
+        - generic [ref=f1e1]:
+          - iframe [ref=f1e2]:
+            - generic [ref=f2e2]: Hi, I'm frame
+          - iframe [ref=f1e3]:
+            - generic [ref=f3e2]: Hi, I'm frame
       - iframe [ref=e3]:
-        - generic [ref=e2]: Hi, I'm frame
+        - generic [ref=f4e2]: Hi, I'm frame
   `);
+
+  const href = await page.locator('aria-ref=e1').evaluate(e => e.ownerDocument.defaultView.location.href);
+  expect(href).toBe(server.PREFIX + '/frames/nested-frames.html');
+
+  const href2 = await page.locator('aria-ref=f1e2').evaluate(e => e.ownerDocument.defaultView.location.href);
+  expect(href2).toBe(server.PREFIX + '/frames/two-frames.html');
+
+  const href3 = await page.locator('aria-ref=f3e2').evaluate(e => e.ownerDocument.defaultView.location.href);
+  expect(href3).toBe(server.PREFIX + '/frames/frame.html');
 });
 
 it('should not generate refs for hidden elements', async ({ page }) => {

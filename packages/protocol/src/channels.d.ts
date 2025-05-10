@@ -2057,6 +2057,7 @@ export interface PageChannel extends PageEventTarget, EventTargetChannel {
   touchscreenTap(params: PageTouchscreenTapParams, metadata?: CallMetadata): Promise<PageTouchscreenTapResult>;
   accessibilitySnapshot(params: PageAccessibilitySnapshotParams, metadata?: CallMetadata): Promise<PageAccessibilitySnapshotResult>;
   pdf(params: PagePdfParams, metadata?: CallMetadata): Promise<PagePdfResult>;
+  snapshotForAI(params?: PageSnapshotForAIParams, metadata?: CallMetadata): Promise<PageSnapshotForAIResult>;
   startJSCoverage(params: PageStartJSCoverageParams, metadata?: CallMetadata): Promise<PageStartJSCoverageResult>;
   stopJSCoverage(params?: PageStopJSCoverageParams, metadata?: CallMetadata): Promise<PageStopJSCoverageResult>;
   startCSSCoverage(params: PageStartCSSCoverageParams, metadata?: CallMetadata): Promise<PageStartCSSCoverageResult>;
@@ -2497,6 +2498,11 @@ export type PagePdfOptions = {
 export type PagePdfResult = {
   pdf: Binary,
 };
+export type PageSnapshotForAIParams = {};
+export type PageSnapshotForAIOptions = {};
+export type PageSnapshotForAIResult = {
+  snapshot: string,
+};
 export type PageStartJSCoverageParams = {
   resetOnNavigation?: boolean,
   reportAnonymousScripts?: boolean,
@@ -2589,7 +2595,6 @@ export interface FrameChannel extends FrameEventTarget, Channel {
   addScriptTag(params: FrameAddScriptTagParams, metadata?: CallMetadata): Promise<FrameAddScriptTagResult>;
   addStyleTag(params: FrameAddStyleTagParams, metadata?: CallMetadata): Promise<FrameAddStyleTagResult>;
   ariaSnapshot(params: FrameAriaSnapshotParams, metadata?: CallMetadata): Promise<FrameAriaSnapshotResult>;
-  snapshotForAI(params: FrameSnapshotForAIParams, metadata?: CallMetadata): Promise<FrameSnapshotForAIResult>;
   blur(params: FrameBlurParams, metadata?: CallMetadata): Promise<FrameBlurResult>;
   check(params: FrameCheckParams, metadata?: CallMetadata): Promise<FrameCheckResult>;
   click(params: FrameClickParams, metadata?: CallMetadata): Promise<FrameClickResult>;
@@ -2696,21 +2701,14 @@ export type FrameAddStyleTagResult = {
 };
 export type FrameAriaSnapshotParams = {
   selector: string,
+  forAI?: boolean,
   timeout?: number,
 };
 export type FrameAriaSnapshotOptions = {
+  forAI?: boolean,
   timeout?: number,
 };
 export type FrameAriaSnapshotResult = {
-  snapshot: string,
-};
-export type FrameSnapshotForAIParams = {
-  selector: string,
-};
-export type FrameSnapshotForAIOptions = {
-
-};
-export type FrameSnapshotForAIResult = {
   snapshot: string,
 };
 export type FrameBlurParams = {
