@@ -234,6 +234,10 @@ export class CRPage implements PageDelegate {
     await this._forAllFrameSessions(frame => frame._evaluateOnNewDocument(initScript, world));
   }
 
+  async exposePlaywrightBinding() {
+    await this._forAllFrameSessions(frame => frame.exposePlaywrightBinding());
+  }
+
   async removeNonInternalInitScripts() {
     await this._forAllFrameSessions(frame => frame._removeEvaluatesOnNewDocument());
   }
@@ -488,8 +492,6 @@ class FrameSession {
             grantUniveralAccess: true,
             worldName: UTILITY_WORLD_NAME,
           });
-          for (const initScript of this._crPage._page.allInitScripts())
-            frame.evaluateExpression(initScript.source).catch(e => {});
         }
 
         const isInitialEmptyPage = this._isMainFrame() && this._page.mainFrame().url() === ':';
@@ -508,7 +510,6 @@ class FrameSession {
       this._client.send('Log.enable', {}),
       lifecycleEventsEnabled = this._client.send('Page.setLifecycleEventsEnabled', { enabled: true }),
       this._client.send('Runtime.enable', {}),
-      this._client.send('Runtime.addBinding', { name: kPlaywrightBinding }),
       this._client.send('Page.addScriptToEvaluateOnNewDocument', {
         source: '',
         worldName: UTILITY_WORLD_NAME,
@@ -517,6 +518,8 @@ class FrameSession {
       this._client.send('Target.setAutoAttach', { autoAttach: true, waitForDebuggerOnStart: true, flatten: true }),
     ];
     if (!isSettingStorageState) {
+      if (this._crPage._browserContext.needsPlaywrightBinding())
+        promises.push(this.exposePlaywrightBinding());
       if (this._isMainFrame())
         promises.push(this._client.send('Emulation.setFocusEmulationEnabled', { enabled: true }));
       const options = this._crPage._browserContext._options;
@@ -542,7 +545,7 @@ class FrameSession {
       promises.push(this._updateEmulateMedia());
       promises.push(this._updateFileChooserInterception(true));
       for (const initScript of this._crPage._page.allInitScripts())
-        promises.push(this._evaluateOnNewDocument(initScript, 'main'));
+        promises.push(this._evaluateOnNewDocument(initScript, 'main', true /* runImmediately */));
       if (screencastOptions)
         promises.push(this._startVideoRecording(screencastOptions));
     }
@@ -1051,9 +1054,9 @@ class FrameSession {
     await this._client.send('Page.setInterceptFileChooserDialog', { enabled }).catch(() => {}); // target can be closed.
   }
 
-  async _evaluateOnNewDocument(initScript: InitScript, world: types.World): Promise<void> {
+  async _evaluateOnNewDocument(initScript: InitScript, world: types.World, runImmediately?: boolean): Promise<void> {
     const worldName = world === 'utility' ? UTILITY_WORLD_NAME : undefined;
-    const { identifier } = await this._client.send('Page.addScriptToEvaluateOnNewDocument', { source: initScript.source, worldName });
+    const { identifier } = await this._client.send('Page.addScriptToEvaluateOnNewDocument', { source: initScript.source, worldName, runImmediately });
     if (!initScript.internal)
       this._evaluateOnNewDocumentIdentifiers.push(identifier);
   }
@@ -1062,6 +1065,10 @@ class FrameSession {
     const identifiers = this._evaluateOnNewDocumentIdentifiers;
     this._evaluateOnNewDocumentIdentifiers = [];
     await Promise.all(identifiers.map(identifier => this._client.send('Page.removeScriptToEvaluateOnNewDocument', { identifier })));
+  }
+
+  async exposePlaywrightBinding() {
+    await this._client.send('Runtime.addBinding', { name: kPlaywrightBinding });
   }
 
   async _getContentFrame(handle: dom.ElementHandle): Promise<frames.Frame | null> {

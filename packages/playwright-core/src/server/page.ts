@@ -29,7 +29,6 @@ import { ProgressController } from './progress';
 import { Screenshotter, validateScreenshotOptions } from './screenshotter';
 import { TimeoutSettings } from './timeoutSettings';
 import { LongStandingScope, assert, trimStringWithEllipsis } from '../utils';
-import { createGuid } from './utils/crypto';
 import { asLocator } from '../utils';
 import { getComparator } from './utils/comparators';
 import { debugLogger } from './utils/debugLogger';
@@ -345,6 +344,7 @@ export class Page extends SdkObject {
       throw new Error(`Function "${name}" has been already registered`);
     if (this.browserContext._pageBindings.has(name))
       throw new Error(`Function "${name}" has been already registered in the browser context`);
+    await this.browserContext.exposePlaywrightBindingIfNeeded();
     const binding = new PageBinding(name, playwrightBinding, needsHandle);
     this._pageBindings.set(name, binding);
     await this.delegate.addInitScript(binding.initScript);
@@ -905,17 +905,7 @@ export class InitScript {
   readonly name?: string;
 
   constructor(source: string, internal?: boolean, name?: string) {
-    const guid = createGuid();
     this.source = `(() => {
-      const name = '__pw_init_scripts__${js.runtimeGuid}';
-      if (!globalThis[name])
-        Object.defineProperty(globalThis, name, { value: {}, configurable: false, enumerable: false, writable: false });
-
-      const globalInitScripts = globalThis[name];
-      const hasInitScript = globalInitScripts[${JSON.stringify(guid)}];
-      if (hasInitScript)
-        return;
-      globalThis[name][${JSON.stringify(guid)}] = true;
       ${source}
     })();`;
     this.internal = !!internal;

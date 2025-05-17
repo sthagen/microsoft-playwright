@@ -9882,6 +9882,7 @@ export interface Browser {
 
     /**
      * Logger sink for Playwright logging.
+     * @deprecated The logs received by the logger are incomplete. Please use tracing instead.
      */
     logger?: Logger;
 
@@ -12910,6 +12911,13 @@ export interface Locator {
   }): Promise<void>;
 
   /**
+   * Describes the locator, description is used in the trace viewer and reports. Returns the locator pointing to the
+   * same element.
+   * @param description Locator description.
+   */
+  describe(description: string): Locator;
+
+  /**
    * Programmatically dispatch an event on the matching element.
    *
    * **Usage**
@@ -15018,6 +15026,7 @@ export interface BrowserType<Unused = {}> {
 
     /**
      * Logger sink for Playwright logging.
+     * @deprecated The logs received by the logger are incomplete. Please use tracing instead.
      */
     logger?: Logger;
 
@@ -15372,6 +15381,7 @@ export interface BrowserType<Unused = {}> {
 
     /**
      * Logger sink for Playwright logging.
+     * @deprecated The logs received by the logger are incomplete. Please use tracing instead.
      */
     logger?: Logger;
 
@@ -16774,6 +16784,7 @@ export interface AndroidDevice {
 
     /**
      * Logger sink for Playwright logging.
+     * @deprecated The logs received by the logger are incomplete. Please use tracing instead.
      */
     logger?: Logger;
 
@@ -21775,6 +21786,7 @@ export interface LaunchOptions {
 
   /**
    * Logger sink for Playwright logging.
+   * @deprecated The logs received by the logger are incomplete. Please use tracing instead.
    */
   logger?: Logger;
 
@@ -21824,7 +21836,7 @@ export interface LaunchOptions {
 
 export interface ConnectOverCDPOptions {
   /**
-   * Deprecated, use the first argument instead. Optional.
+   * @deprecated Use the first argument instead.
    */
   endpointURL?: string;
 
@@ -21835,6 +21847,7 @@ export interface ConnectOverCDPOptions {
 
   /**
    * Logger sink for Playwright logging. Optional.
+   * @deprecated The logs received by the logger are incomplete. Please use tracing instead.
    */
   logger?: Logger;
 
@@ -21876,6 +21889,7 @@ export interface ConnectOptions {
 
   /**
    * Logger sink for Playwright logging. Optional.
+   * @deprecated The logs received by the logger are incomplete. Please use tracing instead.
    */
   logger?: Logger;
 
@@ -22158,6 +22172,7 @@ export interface BrowserContextOptions {
 
   /**
    * Logger sink for Playwright logging.
+   * @deprecated The logs received by the logger are incomplete. Please use tracing instead.
    */
   logger?: Logger;
 
