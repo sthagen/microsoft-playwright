@@ -18,7 +18,6 @@
 import fs from 'fs';
 import path from 'path';
 
-import { TimeoutSettings } from './timeoutSettings';
 import { createGuid } from './utils/crypto';
 import { debugMode } from './utils/debug';
 import { Clock } from './clock';
@@ -36,6 +35,7 @@ import { RecorderApp } from './recorder/recorderApp';
 import { Tracing } from './trace/recorder/tracing';
 import * as js from './javascript';
 import * as rawStorageSource from '../generated/storageScriptSource';
+import * as rawBindingsControllerSource from '../generated/bindingsControllerSource';
 
 import type { Artifact } from './artifact';
 import type { Browser, BrowserOptions } from './browser';
@@ -69,7 +69,6 @@ export abstract class BrowserContext extends SdkObject {
     VideoStarted: 'videostarted',
   };
 
-  readonly _timeoutSettings = new TimeoutSettings();
   readonly _pageBindings = new Map<string, PageBinding>();
   readonly _activeProgressControllers = new Set<ProgressController>();
   readonly _options: types.BrowserContextOptions;
@@ -90,6 +89,7 @@ export abstract class BrowserContext extends SdkObject {
   private _customCloseHandler?: () => Promise<any>;
   readonly _tempDirs: string[] = [];
   private _settingStorageState = false;
+  bindingsInitScript?: InitScript;
   initScripts: InitScript[] = [];
   private _routesInFlight = new Set<network.Route>();
   private _debugger!: Debugger;
@@ -195,8 +195,6 @@ export abstract class BrowserContext extends SdkObject {
   }
 
   async resetForReuse(metadata: CallMetadata, params: channels.BrowserNewContextForReuseParams | null) {
-    this.setDefaultNavigationTimeout(undefined);
-    this.setDefaultTimeout(undefined);
     this.tracing.resetForReuse();
 
     if (params) {
@@ -330,6 +328,17 @@ export abstract class BrowserContext extends SdkObject {
       return;
     this._playwrightBindingExposed = true;
     await this.doExposePlaywrightBinding();
+
+    this.bindingsInitScript = new InitScript(`
+      (() => {
+        const module = {};
+        ${js.prepareGeneratedScript(rawBindingsControllerSource.source)}
+        (module.exports.ensureBindingsController())();
+      })();
+    `, true /* internal */);
+    this.initScripts.push(this.bindingsInitScript);
+    await this.doAddInitScript(this.bindingsInitScript);
+    await this.safeNonStallingEvaluateInAllFrames(this.bindingsInitScript.source, 'main');
   }
 
   needsPlaywrightBinding() {
@@ -347,8 +356,7 @@ export abstract class BrowserContext extends SdkObject {
     const binding = new PageBinding(name, playwrightBinding, needsHandle);
     this._pageBindings.set(name, binding);
     await this.doAddInitScript(binding.initScript);
-    const frames = this.pages().map(page => page.frames()).flat();
-    await Promise.all(frames.map(frame => frame.evaluateExpression(binding.initScript.source).catch(e => {})));
+    await this.safeNonStallingEvaluateInAllFrames(binding.initScript.source, 'main');
   }
 
   async _removeExposedBindings() {
@@ -374,14 +382,6 @@ export abstract class BrowserContext extends SdkObject {
   async clearPermissions() {
     this._permissions.clear();
     await this.doClearPermissions();
-  }
-
-  setDefaultNavigationTimeout(timeout: number | undefined) {
-    this._timeoutSettings.setDefaultNavigationTimeout(timeout);
-  }
-
-  setDefaultTimeout(timeout: number | undefined) {
-    this._timeoutSettings.setDefaultTimeout(timeout);
   }
 
   async _loadDefaultContextAsIs(progress: Progress): Promise<Page | undefined> {
@@ -562,7 +562,7 @@ export abstract class BrowserContext extends SdkObject {
       });
       for (const origin of originsToSave) {
         const frame = page.mainFrame();
-        await frame.goto(internalMetadata, origin);
+        await frame.goto(internalMetadata, origin, { timeout: 0 });
         const storage: SerializedStorage = await frame.evaluateExpression(collectScript, { world: 'utility' });
         if (storage.localStorage.length || storage.indexedDB?.length)
           result.origins.push({ origin, localStorage: storage.localStorage, indexedDB: storage.indexedDB });
@@ -593,7 +593,7 @@ export abstract class BrowserContext extends SdkObject {
 
     for (const origin of new Set([...oldOrigins, ...newOrigins.keys()])) {
       const frame = page.mainFrame();
-      await frame.goto(internalMetadata, origin);
+      await frame.goto(internalMetadata, origin, { timeout: 0 });
       await frame.resetStorageForCurrentOriginBestEffort(newOrigins.get(origin));
     }
 
@@ -627,7 +627,7 @@ export abstract class BrowserContext extends SdkObject {
         });
         for (const originState of state.origins) {
           const frame = page.mainFrame();
-          await frame.goto(metadata, originState.origin);
+          await frame.goto(metadata, originState.origin, { timeout: 0 });
           const restoreScript = `(() => {
             const module = {};
             ${js.prepareGeneratedScript(rawStorageSource.source)}

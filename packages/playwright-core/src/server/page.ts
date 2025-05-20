@@ -27,7 +27,6 @@ import { SdkObject } from './instrumentation';
 import * as js from './javascript';
 import { ProgressController } from './progress';
 import { Screenshotter, validateScreenshotOptions } from './screenshotter';
-import { TimeoutSettings } from './timeoutSettings';
 import { LongStandingScope, assert, trimStringWithEllipsis } from '../utils';
 import { asLocator } from '../utils';
 import { getComparator } from './utils/comparators';
@@ -44,10 +43,9 @@ import type * as network from './network';
 import type { Progress } from './progress';
 import type { ScreenshotOptions } from './screenshotter';
 import type * as types from './types';
-import type { TimeoutOptions } from '../utils/isomorphic/types';
 import type { ImageComparatorOptions } from './utils/comparators';
 import type * as channels from '@protocol/channels';
-import type { BindingPayload, UtilityScript } from '@injected/utilityScript';
+import type { BindingPayload } from '@injected/bindingsController';
 
 export interface PageDelegate {
   readonly rawMouse: input.RawMouse;
@@ -111,7 +109,7 @@ type EmulatedMedia = {
 };
 
 type ExpectScreenshotOptions = ImageComparatorOptions & ScreenshotOptions & {
-  timeout?: number,
+  timeout: number,
   expected?: Buffer,
   isNot?: boolean,
   locator?: {
@@ -148,7 +146,6 @@ export class Page extends SdkObject {
   readonly keyboard: input.Keyboard;
   readonly mouse: input.Mouse;
   readonly touchscreen: input.Touchscreen;
-  readonly timeoutSettings: TimeoutSettings;
   readonly delegate: PageDelegate;
   private _emulatedSize: EmulatedSize | undefined;
   private _extraHTTPHeaders: types.HeadersArray | undefined;
@@ -186,7 +183,6 @@ export class Page extends SdkObject {
     this.keyboard = new input.Keyboard(delegate.rawKeyboard);
     this.mouse = new input.Mouse(delegate.rawMouse, this);
     this.touchscreen = new input.Touchscreen(delegate.rawTouchscreen, this);
-    this.timeoutSettings = new TimeoutSettings(browserContext._timeoutSettings);
     this.screenshotter = new Screenshotter(this);
     this.frameManager = new frames.FrameManager(this);
     if (delegate.pdf)
@@ -259,8 +255,6 @@ export class Page extends SdkObject {
   }
 
   async resetForReuse(metadata: CallMetadata) {
-    this.setDefaultNavigationTimeout(undefined);
-    this.setDefaultTimeout(undefined);
     this._locatorHandlers.clear();
 
     await this._removeExposedBindings();
@@ -269,7 +263,8 @@ export class Page extends SdkObject {
     await this.setServerRequestInterceptor(undefined);
     await this.setFileChooserIntercepted(false);
     // Re-navigate once init scripts are gone.
-    await this.mainFrame().goto(metadata, 'about:blank');
+    // TODO: we should have a timeout for `resetForReuse`.
+    await this.mainFrame().goto(metadata, 'about:blank', { timeout: 0 });
     this._emulatedSize = undefined;
     this._emulatedMedia = {};
     this._extraHTTPHeaders = undefined;
@@ -332,14 +327,6 @@ export class Page extends SdkObject {
     return this.frameManager.frames();
   }
 
-  setDefaultNavigationTimeout(timeout: number | undefined) {
-    this.timeoutSettings.setDefaultNavigationTimeout(timeout);
-  }
-
-  setDefaultTimeout(timeout: number | undefined) {
-    this.timeoutSettings.setDefaultTimeout(timeout);
-  }
-
   async exposeBinding(name: string, needsHandle: boolean, playwrightBinding: frames.FunctionWithSource) {
     if (this._pageBindings.has(name))
       throw new Error(`Function "${name}" has been already registered`);
@@ -349,7 +336,7 @@ export class Page extends SdkObject {
     const binding = new PageBinding(name, playwrightBinding, needsHandle);
     this._pageBindings.set(name, binding);
     await this.delegate.addInitScript(binding.initScript);
-    await Promise.all(this.frames().map(frame => frame.evaluateExpression(binding.initScript.source).catch(e => {})));
+    await this.safeNonStallingEvaluateInAllFrames(binding.initScript.source, 'main');
   }
 
   private async _removeExposedBindings() {
@@ -395,7 +382,7 @@ export class Page extends SdkObject {
         this.delegate.reload(),
       ]);
       return response;
-    }), this.timeoutSettings.navigationTimeout(options));
+    }), options.timeout);
   }
 
   async goBack(metadata: CallMetadata, options: types.NavigateOptions): Promise<network.Response | null> {
@@ -415,7 +402,7 @@ export class Page extends SdkObject {
       if (error)
         throw error;
       return response;
-    }), this.timeoutSettings.navigationTimeout(options));
+    }), options.timeout);
   }
 
   async goForward(metadata: CallMetadata, options: types.NavigateOptions): Promise<network.Response | null> {
@@ -435,7 +422,7 @@ export class Page extends SdkObject {
       if (error)
         throw error;
       return response;
-    }), this.timeoutSettings.navigationTimeout(options));
+    }), options.timeout);
   }
 
   requestGC(): Promise<void> {
@@ -596,7 +583,7 @@ export class Page extends SdkObject {
     await this.delegate.updateRequestInterception();
   }
 
-  async expectScreenshot(metadata: CallMetadata, options: ExpectScreenshotOptions = {}): Promise<{ actual?: Buffer, previous?: Buffer, diff?: Buffer, errorMessage?: string, log?: string[] }> {
+  async expectScreenshot(metadata: CallMetadata, options: ExpectScreenshotOptions): Promise<{ actual?: Buffer, previous?: Buffer, diff?: Buffer, errorMessage?: string, log?: string[] }> {
     const locator = options.locator;
     const rafrafScreenshot = locator ? async (progress: Progress, timeout: number) => {
       return await locator.frame.rafrafTimeoutScreenshotElementWithProgress(progress, locator.selector, timeout, options || {});
@@ -631,7 +618,7 @@ export class Page extends SdkObject {
         intermediateResult = { errorMessage: comparatorResult.errorMessage, diff: comparatorResult.diff, actual, previous };
       return false;
     };
-    const callTimeout = this.timeoutSettings.timeout(options);
+    const callTimeout = options.timeout;
     return controller.run(async progress => {
       let actual: Buffer | undefined;
       let previous: Buffer | undefined;
@@ -698,11 +685,11 @@ export class Page extends SdkObject {
     });
   }
 
-  async screenshot(metadata: CallMetadata, options: ScreenshotOptions & TimeoutOptions = {}): Promise<Buffer> {
+  async screenshot(metadata: CallMetadata, options: ScreenshotOptions & types.TimeoutOptions): Promise<Buffer> {
     const controller = new ProgressController(metadata, this);
     return controller.run(
         progress => this.screenshotter.screenshotPage(progress, options),
-        this.timeoutSettings.timeout(options));
+        options.timeout);
   }
 
   async close(metadata: CallMetadata, options: { runBeforeUnload?: boolean, reason?: string } = {}) {
@@ -770,8 +757,10 @@ export class Page extends SdkObject {
   }
 
   allInitScripts() {
-    const bindings = [...this.browserContext._pageBindings.values(), ...this._pageBindings.values()];
-    return [kUtilityInitScript, ...bindings.map(binding => binding.initScript), ...this.browserContext.initScripts, ...this.initScripts];
+    const bindings = [...this.browserContext._pageBindings.values(), ...this._pageBindings.values()].map(binding => binding.initScript);
+    if (this.browserContext.bindingsInitScript)
+      bindings.unshift(this.browserContext.bindingsInitScript);
+    return [kUtilityInitScript, ...bindings, ...this.browserContext.initScripts, ...this.initScripts];
   }
 
   getBinding(name: string) {
@@ -870,23 +859,21 @@ export class PageBinding {
   constructor(name: string, playwrightFunction: frames.FunctionWithSource, needsHandle: boolean) {
     this.name = name;
     this.playwrightFunction = playwrightFunction;
-    this.initScript = new InitScript(`${js.accessUtilityScript()}.addBinding(${JSON.stringify(name)}, ${needsHandle})`, true /* internal */);
+    this.initScript = new InitScript(`${js.accessBindingsController()}.addBinding(${JSON.stringify(name)}, ${needsHandle})`, true /* internal */);
     this.needsHandle = needsHandle;
     this.internal = name.startsWith('__pw');
   }
 
   static async dispatch(page: Page, payload: string, context: dom.FrameExecutionContext) {
     const { name, seq, serializedArgs } = JSON.parse(payload) as BindingPayload;
-    let utilityScript: js.JSHandle<UtilityScript> | undefined;
     try {
-      utilityScript = await context.utilityScript();
       assert(context.world);
       const binding = page.getBinding(name);
       if (!binding)
         throw new Error(`Function "${name}" is not exposed`);
       let result: any;
       if (binding.needsHandle) {
-        const handle = await utilityScript.evaluateHandle((utility, arg) => utility.takeBindingHandle(arg), { name, seq }).catch(e => null);
+        const handle = await context.evaluateExpressionHandle(`arg => ${js.accessBindingsController()}.takeBindingHandle(arg)`, { isFunction: true }, { name, seq }).catch(e => null);
         result = await binding.playwrightFunction({ frame: context.frame, page, context: page.browserContext }, handle);
       } else {
         if (!Array.isArray(serializedArgs))
@@ -894,9 +881,9 @@ export class PageBinding {
         const args = serializedArgs!.map(a => parseEvaluationResultValue(a));
         result = await binding.playwrightFunction({ frame: context.frame, page, context: page.browserContext }, ...args);
       }
-      utilityScript.evaluate((utility, arg) => utility.deliverBindingResult(arg), { name, seq, result }).catch(e => debugLogger.log('error', e));
+      context.evaluateExpressionHandle(`arg => ${js.accessBindingsController()}.deliverBindingResult(arg)`, { isFunction: true }, { name, seq, result }).catch(e => debugLogger.log('error', e));
     } catch (error) {
-      utilityScript?.evaluate((utility, arg) => utility.deliverBindingResult(arg), { name, seq, error }).catch(e => debugLogger.log('error', e));
+      context.evaluateExpressionHandle(`arg => ${js.accessBindingsController()}.deliverBindingResult(arg)`, { isFunction: true }, { name, seq, error }).catch(e => debugLogger.log('error', e));
     }
   }
 }
