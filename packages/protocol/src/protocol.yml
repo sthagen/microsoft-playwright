@@ -32,6 +32,7 @@ Metadata:
         line: number?
         column: number?
     apiName: string?
+    title: string?
     internal: boolean?
     # Test runner step id.
     stepId: string?
@@ -362,7 +363,7 @@ APIRequestContext:
   commands:
 
     fetch:
-      title: Fetch
+      title: Fetch "{url}"
       parameters:
         url: string
         encodedParams: string?
@@ -1033,6 +1034,7 @@ BrowserType:
         userDataDir: string
         slowMo: number?
       returns:
+        browser: Browser
         context: BrowserContext
 
     connectOverCDP:
@@ -1071,7 +1073,7 @@ Browser:
         userAgent: string
 
     newContext:
-      title: Create new context
+      title: Create context
       parameters:
         $mixin: ContextOptions
         proxy:
@@ -1144,6 +1146,10 @@ Browser:
 
   events:
 
+    context:
+      parameters:
+        context: BrowserContext
+
     close:
 
 ConsoleMessage:
@@ -1167,7 +1173,7 @@ EventTarget:
 
   commands:
     waitForEventInfo:
-      internal: true
+      title: Wait for event "{info.event}"
       parameters:
         info:
           type: object
@@ -1194,6 +1200,10 @@ BrowserContext:
     isChromium: boolean
     requestContext: APIRequestContext
     tracing: Tracing
+    options:
+      type: object
+      properties:
+        $mixin: ContextOptions
 
   commands:
 
@@ -1256,7 +1266,7 @@ BrowserContext:
         origin: string?
 
     newPage:
-      title: Create new page
+      title: Create page
       returns:
         page: Page
 
@@ -1415,19 +1425,19 @@ BrowserContext:
         enabled: boolean
 
     clockFastForward:
-      title: Fast forward clock
+      title: Fast forward clock "{ticksNumber}{ticksString}"
       parameters:
         ticksNumber: number?
         ticksString: string?
 
     clockInstall:
-      title: Install clock
+      title: Install clock "{timeNumber}{timeString}"
       parameters:
         timeNumber: number?
         timeString: string?
 
     clockPauseAt:
-      title: Pause clock
+      title: Pause clock "{timeNumber}{timeString}"
       parameters:
         timeNumber: number?
         timeString: string?
@@ -1436,19 +1446,19 @@ BrowserContext:
       title: Resume clock
 
     clockRunFor:
-      title: Run clock
+      title: Run clock "{ticksNumber}{ticksString}"
       parameters:
         ticksNumber: number?
         ticksString: string?
 
     clockSetFixedTime:
-      title: Set fixed time
+      title: Set fixed time "{timeNumber}{timeString}"
       parameters:
         timeNumber: number?
         timeString: string?
 
     clockSetSystemTime:
-      title: Set system time
+      title: Set system time "{timeNumber}{timeString}"
       parameters:
         timeNumber: number?
         timeString: string?
@@ -1545,6 +1555,7 @@ Page:
         source: string
 
     close:
+      title: Close
       parameters:
         runBeforeUnload: boolean?
         reason: string?
@@ -1738,7 +1749,7 @@ Page:
         snapshot: true
 
     keyboardDown:
-      title: Key down
+      title: Key down "{key}"
       parameters:
         key: string
       flags:
@@ -1746,7 +1757,7 @@ Page:
         snapshot: true
 
     keyboardUp:
-      title: Key up
+      title: Key up "{key}"
       parameters:
         key: string
       flags:
@@ -1754,7 +1765,7 @@ Page:
         snapshot: true
 
     keyboardInsertText:
-      title: Insert text
+      title: Insert "{text}"
       parameters:
         text: string
       flags:
@@ -1762,7 +1773,7 @@ Page:
         snapshot: true
 
     keyboardType:
-      title: Type
+      title: Type "{text}"
       parameters:
         text: string
         delay: number?
@@ -1771,7 +1782,7 @@ Page:
         snapshot: true
 
     keyboardPress:
-      title: Press
+      title: Press "{key}"
       parameters:
         key: string
         delay: number?
@@ -1780,7 +1791,7 @@ Page:
         snapshot: true
 
     mouseMove:
-      title: Move mouse
+      title: Mouse move
       parameters:
         x: number
         y: number
@@ -2214,7 +2225,7 @@ Frame:
         pausesBeforeInput: true
 
     dispatchEvent:
-      title: Dispatch event
+      title: Dispatch "{type}"
       parameters:
         selector: string
         strict: boolean?
@@ -2248,7 +2259,7 @@ Frame:
         snapshot: true
 
     fill:
-      title: Fill
+      title: Fill "{value}"
       parameters:
         selector: string
         strict: boolean?
@@ -2293,7 +2304,7 @@ Frame:
         snapshot: true
 
     goto:
-      title: Navigate
+      title: Navigate to "{url}"
       parameters:
         url: string
         timeout: number
@@ -2427,7 +2438,7 @@ Frame:
         snapshot: true
 
     press:
-      title: Press
+      title: Press "{key}"
       parameters:
         selector: string
         strict: boolean?
@@ -2643,7 +2654,7 @@ Frame:
         snapshot: true
 
     expect:
-      title: Expect
+      title: Expect "{expression}"
       parameters:
         selector: string
         expression: string
@@ -2907,7 +2918,7 @@ ElementHandle:
         snapshot: true
 
     fill:
-      title: Fill
+      title: Fill "{value}"
       parameters:
         value: string
         force: boolean?
@@ -3026,7 +3037,7 @@ ElementHandle:
         frame: Frame?
 
     press:
-      title: Press
+      title: Press "{key}"
       parameters:
         key: string
         delay: number?
@@ -3543,7 +3554,6 @@ Tracing:
         traceName: string
 
     tracingGroup:
-      title: Group
       parameters:
         name: string
         location:
@@ -3845,7 +3855,7 @@ AndroidDevice:
         timeout: number
 
     fill:
-      title: Fill
+      title: Fill "{text}"
       parameters:
         selector: AndroidSelector
         text: string
