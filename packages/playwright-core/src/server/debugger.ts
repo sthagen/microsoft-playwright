@@ -18,7 +18,7 @@ import { EventEmitter } from 'events';
 
 import { debugMode, isUnderTest, monotonicTime } from '../utils';
 import { BrowserContext } from './browserContext';
-import { methodMetainfo } from '../protocol/debug';
+import { methodMetainfo } from '../utils/isomorphic/protocolMetainfo';
 
 import type { CallMetadata, InstrumentationListener, SdkObject } from './instrumentation';
 
@@ -131,7 +131,7 @@ function shouldPauseOnCall(sdkObject: SdkObject, metadata: CallMetadata): boolea
 
 function shouldPauseBeforeStep(metadata: CallMetadata): boolean {
   // Don't stop on internal.
-  if (!metadata.apiName || metadata.internal)
+  if (metadata.internal)
     return false;
   // Always stop on 'close'
   if (metadata.method === 'close')
