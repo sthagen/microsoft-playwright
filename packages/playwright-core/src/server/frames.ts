@@ -583,7 +583,7 @@ export class Frame extends SdkObject {
     }
   }
 
-  async raceNavigationAction(progress: Progress, options: types.GotoOptions, action: () => Promise<network.Response | null>): Promise<network.Response | null> {
+  async raceNavigationAction(progress: Progress, action: () => Promise<network.Response | null>): Promise<network.Response | null> {
     return LongStandingScope.raceMultiple([
       this._detachedScope,
       this._page.openScope,
@@ -592,7 +592,7 @@ export class Frame extends SdkObject {
         const data = this._redirectedNavigations.get(e.documentId);
         if (data) {
           progress.log(`waiting for redirected navigation to "${data.url}"`);
-          return data.gotoPromise;
+          return progress.race(data.gotoPromise);
         }
       }
       throw e;
@@ -600,7 +600,7 @@ export class Frame extends SdkObject {
   }
 
   redirectNavigation(url: string, documentId: string, referer: string | undefined) {
-    const controller = new ProgressController(serverSideCallMetadata(), this);
+    const controller = new ProgressController(serverSideCallMetadata(), this, 'strict');
     const data = {
       url,
       gotoPromise: controller.run(progress => this.gotoImpl(progress, url, { referer }), 0),
@@ -610,10 +610,10 @@ export class Frame extends SdkObject {
   }
 
   async goto(metadata: CallMetadata, url: string, options: types.GotoOptions): Promise<network.Response | null> {
-    const constructedNavigationURL = constructURLBasedOnBaseURL(this._page.browserContext._options.baseURL, url);
-    const controller = new ProgressController(metadata, this);
+    const controller = new ProgressController(metadata, this, 'strict');
     return controller.run(progress => {
-      return this.raceNavigationAction(progress, options, async () => this.gotoImpl(progress, constructedNavigationURL, options));
+      const constructedNavigationURL = constructURLBasedOnBaseURL(this._page.browserContext._options.baseURL, url);
+      return this.raceNavigationAction(progress, async () => this.gotoImpl(progress, constructedNavigationURL, options));
     }, options.timeout);
   }
 
@@ -633,7 +633,7 @@ export class Frame extends SdkObject {
     const navigationEvents: NavigationEvent[] = [];
     const collectNavigations = (arg: NavigationEvent) => navigationEvents.push(arg);
     this.on(Frame.Events.InternalNavigation, collectNavigations);
-    const navigateResult = await this._page.delegate.navigateFrame(this, url, referer).finally(
+    const navigateResult = await progress.race(this._page.delegate.navigateFrame(this, url, referer)).finally(
         () => this.off(Frame.Events.InternalNavigation, collectNavigations));
 
     let event: NavigationEvent;
@@ -669,7 +669,7 @@ export class Frame extends SdkObject {
       await helper.waitForEvent(progress, this, Frame.Events.AddLifecycle, (e: types.LifecycleEvent) => e === waitUntil).promise;
 
     const request = event.newDocument ? event.newDocument.request : undefined;
-    const response = request ? request._finalRequest().response() : null;
+    const response = request ? progress.race(request._finalRequest().response()) : null;
     return response;
   }
 
@@ -693,7 +693,7 @@ export class Frame extends SdkObject {
       await helper.waitForEvent(progress, this, Frame.Events.AddLifecycle, (e: types.LifecycleEvent) => e === waitUntil).promise;
 
     const request = navigationEvent.newDocument ? navigationEvent.newDocument.request : undefined;
-    return request ? request._finalRequest().response() : null;
+    return request ? progress.race(request._finalRequest().response()) : null;
   }
 
   async _waitForLoadState(progress: Progress, state: types.LifecycleEvent): Promise<void> {
@@ -864,33 +864,34 @@ export class Frame extends SdkObject {
         return retVal;
       });
     } catch (e) {
-      if (isAbortError(e) || js.isJavaScriptErrorInEvaluate(e) || isSessionClosedError(e))
+      if (this.isNonRetriableError(e))
         throw e;
       throw new Error(`Unable to retrieve content because the page is navigating and changing the content.`);
     }
   }
 
   async setContent(metadata: CallMetadata, html: string, options: types.NavigateOptions): Promise<void> {
-    const controller = new ProgressController(metadata, this);
+    const controller = new ProgressController(metadata, this, 'strict');
     return controller.run(async progress => {
-      await this.raceNavigationAction(progress, options, async () => {
+      await this.raceNavigationAction(progress, async () => {
         const waitUntil = options.waitUntil === undefined ? 'load' : options.waitUntil;
         progress.log(`setting frame content, waiting until "${waitUntil}"`);
         const tag = `--playwright--set--content--${this._id}--${++this._setContentCounter}--`;
-        const context = await this._utilityContext();
-        const lifecyclePromise = new Promise((resolve, reject) => {
-          this._page.frameManager._consoleMessageTags.set(tag, () => {
-            // Clear lifecycle right after document.open() - see 'tag' below.
-            this._onClearLifecycle();
-            this._waitForLoadState(progress, waitUntil).then(resolve).catch(reject);
-          });
+        const context = await progress.race(this._utilityContext());
+        const tagPromise = new ManualPromise<void>();
+        this._page.frameManager._consoleMessageTags.set(tag, () => {
+          // Clear lifecycle right after document.open() - see 'tag' below.
+          this._onClearLifecycle();
+          tagPromise.resolve();
         });
-        const contentPromise = context.evaluate(({ html, tag }) => {
+        progress.cleanupWhenAborted(() => this._page.frameManager._consoleMessageTags.delete(tag));
+        const lifecyclePromise = progress.race(tagPromise).then(() => this._waitForLoadState(progress, waitUntil));
+        const contentPromise = progress.race(context.evaluate(({ html, tag }) => {
           document.open();
           console.debug(tag);  // eslint-disable-line no-console
           document.write(html);
           document.close();
-        }, { html, tag });
+        }, { html, tag }));
         await Promise.all([contentPromise, lifecyclePromise]);
         return null;
       });
@@ -1059,14 +1060,14 @@ export class Frame extends SdkObject {
           continue;
         return result as R;
       } catch (e) {
-        if (this._isErrorThatCannotBeRetried(e))
+        if (this.isNonRetriableError(e))
           throw e;
         continue;
       }
     }
   }
 
-  private _isErrorThatCannotBeRetried(e: Error) {
+  isNonRetriableError(e: Error) {
     if (isAbortError(e))
       return true;
     // Always fail on JavaScript errors or when the main connection is closed.
@@ -1135,7 +1136,7 @@ export class Frame extends SdkObject {
 
   async rafrafTimeoutScreenshotElementWithProgress(progress: Progress, selector: string, timeout: number, options: ScreenshotOptions): Promise<Buffer> {
     return await this._retryWithProgressIfNotConnected(progress, selector, true /* strict */, true /* performActionPreChecks */, async handle => {
-      await handle._frame.rafrafTimeout(timeout);
+      await handle._frame.rafrafTimeout(progress, timeout);
       return await this._page.screenshotter.screenshotElement(progress, handle, options);
     });
   }
@@ -1287,7 +1288,7 @@ export class Frame extends SdkObject {
         return state.matches;
       }, { info: resolved.info, root: resolved.frame === this ? scope : undefined }));
     } catch (e) {
-      if (isAbortError(e) || js.isJavaScriptErrorInEvaluate(e) || isInvalidSelectorError(e) || isSessionClosedError(e))
+      if (this.isNonRetriableError(e))
         throw e;
       return false;
     }
@@ -1369,9 +1370,9 @@ export class Frame extends SdkObject {
   }
 
   async ariaSnapshot(metadata: CallMetadata, selector: string, options: { forAI?: boolean } & types.TimeoutOptions): Promise<string> {
-    const controller = new ProgressController(metadata, this);
+    const controller = new ProgressController(metadata, this, 'strict');
     return controller.run(async progress => {
-      return await this._retryWithProgressIfNotConnected(progress, selector, true /* strict */, true /* performActionPreChecks */, handle => handle.ariaSnapshot(options));
+      return await this._retryWithProgressIfNotConnected(progress, selector, true /* strict */, true /* performActionPreChecks */, handle => progress.race(handle.ariaSnapshot(options)));
     }, options.timeout);
   }
 
@@ -1390,7 +1391,7 @@ export class Frame extends SdkObject {
       const start = timeout > 0 ? monotonicTime() : 0;
 
       // Step 1: perform locator handlers checkpoint with a specified timeout.
-      await (new ProgressController(metadata, this)).run(async progress => {
+      await (new ProgressController(metadata, this, 'strict')).run(async progress => {
         progress.log(`${renderTitleForCall(metadata)}${timeout ? ` with timeout ${timeout}ms` : ''}`);
         if (selector)
           progress.log(`waiting for ${this._asLocator(selector)}`);
@@ -1401,13 +1402,13 @@ export class Frame extends SdkObject {
       // Supports the case of `expect(locator).toBeVisible({ timeout: 1 })`
       // that should succeed when the locator is already visible.
       try {
-        const resultOneShot = await (new ProgressController(metadata, this)).run(async progress => {
+        const resultOneShot = await (new ProgressController(metadata, this, 'strict')).run(async progress => {
           return await this._expectInternal(progress, selector, options, lastIntermediateResult);
         });
         if (resultOneShot.matches !== options.isNot)
           return resultOneShot;
       } catch (e) {
-        if (isAbortError(e) || js.isJavaScriptErrorInEvaluate(e) || isInvalidSelectorError(e))
+        if (this.isNonRetriableError(e))
           throw e;
         // Ignore any other errors from one-shot, we'll handle them during retries.
       }
@@ -1419,7 +1420,7 @@ export class Frame extends SdkObject {
         return { matches: options.isNot, log: compressCallLog(metadata.log), timedOut: true, received: lastIntermediateResult.received };
 
       // Step 3: auto-retry expect with increasing timeouts. Bounded by the total remaining time.
-      return await (new ProgressController(metadata, this)).run(async progress => {
+      return await (new ProgressController(metadata, this, 'strict')).run(async progress => {
         return await this.retryWithProgressAndTimeouts(progress, [100, 250, 500, 1000], async continuePolling => {
           await this._page.performActionPreChecks(progress);
           const { matches, received } = await this._expectInternal(progress, selector, options, lastIntermediateResult);
@@ -1433,7 +1434,7 @@ export class Frame extends SdkObject {
         });
       }, timeout);
     } catch (e) {
-      // Q: Why not throw upon isSessionClosedError(e) as in other places?
+      // Q: Why not throw upon isNonRetriableError(e) as in other places?
       // A: We want user to receive a friendly message containing the last intermediate result.
       if (js.isJavaScriptErrorInEvaluate(e) || isInvalidSelectorError(e))
         throw e;
@@ -1447,16 +1448,14 @@ export class Frame extends SdkObject {
   }
 
   private async _expectInternal(progress: Progress, selector: string | undefined, options: FrameExpectParams, lastIntermediateResult: { received?: any, isSet: boolean }) {
-    const selectorInFrame = selector ? await this.selectors.resolveFrameForSelector(selector, { strict: true }) : undefined;
-    progress.throwIfAborted();
+    const selectorInFrame = selector ? await progress.race(this.selectors.resolveFrameForSelector(selector, { strict: true })) : undefined;
 
     const { frame, info } = selectorInFrame || { frame: this, info: undefined };
     const world = options.expression === 'to.have.property' ? 'main' : (info?.world ?? 'utility');
-    const context = await frame._context(world);
-    const injected = await context.injectedScript();
-    progress.throwIfAborted();
+    const context = await progress.race(frame._context(world));
+    const injected = await progress.race(context.injectedScript());
 
-    const { log, matches, received, missingReceived } = await injected.evaluate(async (injected, { info, options, callId }) => {
+    const { log, matches, received, missingReceived } = await progress.race(injected.evaluate(async (injected, { info, options, callId }) => {
       const elements = info ? injected.querySelectorAll(info.parsed, document) : [];
       if (callId)
         injected.markTargetElements(new Set(elements), callId);
@@ -1469,7 +1468,7 @@ export class Frame extends SdkObject {
       else if (elements.length)
         log = `  locator resolved to ${injected.previewNode(elements[0])}`;
       return { log, ...await injected.expect(elements[0], options, elements) };
-    }, { info, options, callId: progress.metadata.id });
+    }, { info, options, callId: progress.metadata.id }));
 
     if (log)
       progress.log(log);
@@ -1483,63 +1482,67 @@ export class Frame extends SdkObject {
     return { matches, received };
   }
 
-  async _waitForFunctionExpression<R>(metadata: CallMetadata, expression: string, isFunction: boolean | undefined, arg: any, options: types.WaitForFunctionOptions, world: types.World = 'main'): Promise<js.SmartHandle<R>> {
-    const controller = new ProgressController(metadata, this);
+  async waitForFunctionExpression<R>(metadata: CallMetadata, expression: string, isFunction: boolean | undefined, arg: any, options: types.WaitForFunctionOptions): Promise<js.SmartHandle<R>> {
+    const controller = new ProgressController(metadata, this, 'strict');
+    return controller.run(progress => this.waitForFunctionExpressionImpl(progress, expression, isFunction, arg, options, 'main'), options.timeout);
+  }
+
+  async waitForFunctionExpressionImpl<R>(progress: Progress, expression: string, isFunction: boolean | undefined, arg: any, options: { pollingInterval?: number }, world: types.World = 'main'): Promise<js.SmartHandle<R>> {
     if (typeof options.pollingInterval === 'number')
       assert(options.pollingInterval > 0, 'Cannot poll with non-positive interval: ' + options.pollingInterval);
     expression = js.normalizeEvaluationExpression(expression, isFunction);
-    return controller.run(async progress => {
-      return this.retryWithProgressAndTimeouts(progress, [100], async () => {
-        const context = world === 'main' ? await this._mainContext() : await this._utilityContext();
-        const injectedScript = await context.injectedScript();
-        const handle = await injectedScript.evaluateHandle((injected, { expression, isFunction, polling, arg }) => {
-          const predicate = (): R => {
-            // NOTE: make sure to use `globalThis.eval` instead of `self.eval` due to a bug with sandbox isolation
-            // in firefox.
-            // See https://bugzilla.mozilla.org/show_bug.cgi?id=1814898
-            let result = globalThis.eval(expression);
-            if (isFunction === true) {
+    return this.retryWithProgressAndTimeouts(progress, [100], async () => {
+      const context = world === 'main' ? await progress.race(this._mainContext()) : await progress.race(this._utilityContext());
+      const injectedScript = await progress.race(context.injectedScript());
+      const handle = await progress.race(injectedScript.evaluateHandle((injected, { expression, isFunction, polling, arg }) => {
+        const predicate = (): R => {
+          // NOTE: make sure to use `globalThis.eval` instead of `self.eval` due to a bug with sandbox isolation
+          // in firefox.
+          // See https://bugzilla.mozilla.org/show_bug.cgi?id=1814898
+          let result = globalThis.eval(expression);
+          if (isFunction === true) {
+            result = result(arg);
+          } else if (isFunction === false) {
+            result = result;
+          } else {
+            // auto detect.
+            if (typeof result === 'function')
               result = result(arg);
-            } else if (isFunction === false) {
-              result = result;
-            } else {
-              // auto detect.
-              if (typeof result === 'function')
-                result = result(arg);
-            }
-            return result;
-          };
+          }
+          return result;
+        };
 
-          let fulfill: (result: R) => void;
-          let reject: (error: Error) => void;
-          let aborted = false;
-          const result = new Promise<R>((f, r) => { fulfill = f; reject = r; });
+        let fulfill: (result: R) => void;
+        let reject: (error: Error) => void;
+        let aborted = false;
+        const result = new Promise<R>((f, r) => { fulfill = f; reject = r; });
 
-          const next = () => {
-            if (aborted)
+        const next = () => {
+          if (aborted)
+            return;
+          try {
+            const success = predicate();
+            if (success) {
+              fulfill(success);
               return;
-            try {
-              const success = predicate();
-              if (success) {
-                fulfill(success);
-                return;
-              }
-              if (typeof polling !== 'number')
-                injected.utils.builtins.requestAnimationFrame(next);
-              else
-                injected.utils.builtins.setTimeout(next, polling);
-            } catch (e) {
-              reject(e);
             }
-          };
+            if (typeof polling !== 'number')
+              injected.utils.builtins.requestAnimationFrame(next);
+            else
+              injected.utils.builtins.setTimeout(next, polling);
+          } catch (e) {
+            reject(e);
+          }
+        };
 
-          next();
-          return { result, abort: () => aborted = true };
-        }, { expression, isFunction, polling: options.pollingInterval, arg });
-        progress.cleanupWhenAborted(() => handle.evaluate(h => h.abort()).catch(() => {}));
-        return handle.evaluateHandle(h => h.result);
-      });
-    }, options.timeout);
+        next();
+        return { result, abort: () => aborted = true };
+      }, { expression, isFunction, polling: options.pollingInterval, arg }));
+      progress.cleanupWhenAborted(() => handle.evaluate(h => h.abort()).finally(() => handle.dispose()));
+      const result = await progress.race(handle.evaluateHandle(h => h.result));
+      handle.dispose();
+      return result;
+    });
   }
 
   async waitForFunctionValueInUtility<R>(progress: Progress, pageFunction: js.Func1<any, R>) {
@@ -1549,7 +1552,7 @@ export class Frame extends SdkObject {
         return result;
       return JSON.stringify(result);
     }`;
-    const handle = await this._waitForFunctionExpression(serverSideCallMetadata(), expression, true, undefined, { timeout: progress.timeUntilDeadline() }, 'utility');
+    const handle = await this.waitForFunctionExpressionImpl(progress, expression, true, undefined, {}, 'utility');
     return JSON.parse(handle.rawValue()) as R;
   }
 
@@ -1558,18 +1561,18 @@ export class Frame extends SdkObject {
     return context.evaluate(() => document.title);
   }
 
-  async rafrafTimeout(timeout: number): Promise<void> {
+  async rafrafTimeout(progress: Progress, timeout: number): Promise<void> {
     if (timeout === 0)
       return;
-    const context = await this._utilityContext();
+    const context = await progress.race(this._utilityContext());
     await Promise.all([
       // wait for double raf
-      context.evaluate(() => new Promise(x => {
+      progress.race(context.evaluate(() => new Promise(x => {
         requestAnimationFrame(() => {
           requestAnimationFrame(x);
         });
-      })),
-      new Promise(fulfill => setTimeout(fulfill, timeout)),
+      }))),
+      progress.wait(timeout),
     ]);
   }
 

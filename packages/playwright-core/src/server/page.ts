@@ -25,7 +25,7 @@ import { helper } from './helper';
 import * as input from './input';
 import { SdkObject } from './instrumentation';
 import * as js from './javascript';
-import { isAbortError, ProgressController } from './progress';
+import { ProgressController } from './progress';
 import { Screenshotter, validateScreenshotOptions } from './screenshotter';
 import { LongStandingScope, assert, renderTitleForCall, trimStringWithEllipsis } from '../utils';
 import { asLocator } from '../utils';
@@ -36,7 +36,6 @@ import { ManualPromise } from '../utils/isomorphic/manualPromise';
 import { parseEvaluationResultValue } from '../utils/isomorphic/utilityScriptSerializers';
 import { compressCallLog } from './callLog';
 import * as rawBindingsControllerSource from '../generated/bindingsControllerSource';
-import { isSessionClosedError } from './protocolError';
 
 import type { Artifact } from './artifact';
 import type * as dom from './dom';
@@ -369,22 +368,22 @@ export class Page extends SdkObject {
   }
 
   async reload(metadata: CallMetadata, options: types.NavigateOptions): Promise<network.Response | null> {
-    const controller = new ProgressController(metadata, this);
-    return controller.run(progress => this.mainFrame().raceNavigationAction(progress, options, async () => {
+    const controller = new ProgressController(metadata, this, 'strict');
+    return controller.run(progress => this.mainFrame().raceNavigationAction(progress, async () => {
       // Note: waitForNavigation may fail before we get response to reload(),
       // so we should await it immediately.
       const [response] = await Promise.all([
         // Reload must be a new document, and should not be confused with a stray pushState.
         this.mainFrame()._waitForNavigation(progress, true /* requiresNewDocument */, options),
-        this.delegate.reload(),
+        progress.race(this.delegate.reload()),
       ]);
       return response;
     }), options.timeout);
   }
 
   async goBack(metadata: CallMetadata, options: types.NavigateOptions): Promise<network.Response | null> {
-    const controller = new ProgressController(metadata, this);
-    return controller.run(progress => this.mainFrame().raceNavigationAction(progress, options, async () => {
+    const controller = new ProgressController(metadata, this, 'strict');
+    return controller.run(progress => this.mainFrame().raceNavigationAction(progress, async () => {
       // Note: waitForNavigation may fail before we get response to goBack,
       // so we should catch it immediately.
       let error: Error | undefined;
@@ -392,9 +391,11 @@ export class Page extends SdkObject {
         error = e;
         return null;
       });
-      const result = await this.delegate.goBack();
-      if (!result)
+      const result = await progress.race(this.delegate.goBack());
+      if (!result) {
+        waitPromise.catch(() => {}); // Avoid an unhandled rejection.
         return null;
+      }
       const response = await waitPromise;
       if (error)
         throw error;
@@ -403,8 +404,8 @@ export class Page extends SdkObject {
   }
 
   async goForward(metadata: CallMetadata, options: types.NavigateOptions): Promise<network.Response | null> {
-    const controller = new ProgressController(metadata, this);
-    return controller.run(progress => this.mainFrame().raceNavigationAction(progress, options, async () => {
+    const controller = new ProgressController(metadata, this, 'strict');
+    return controller.run(progress => this.mainFrame().raceNavigationAction(progress, async () => {
       // Note: waitForNavigation may fail before we get response to goForward,
       // so we should catch it immediately.
       let error: Error | undefined;
@@ -412,9 +413,11 @@ export class Page extends SdkObject {
         error = e;
         return null;
       });
-      const result = await this.delegate.goForward();
-      if (!result)
+      const result = await progress.race(this.delegate.goForward());
+      if (!result) {
+        waitPromise.catch(() => {}); // Avoid an unhandled rejection.
         return null;
+      }
       const response = await waitPromise;
       if (error)
         throw error;
@@ -591,12 +594,12 @@ export class Page extends SdkObject {
       return await locator.frame.rafrafTimeoutScreenshotElementWithProgress(progress, locator.selector, timeout, options || {});
     } : async (progress: Progress, timeout: number) => {
       await this.performActionPreChecks(progress);
-      await this.mainFrame().rafrafTimeout(timeout);
+      await this.mainFrame().rafrafTimeout(progress, timeout);
       return await this.screenshotter.screenshotPage(progress, options || {});
     };
 
     const comparator = getComparator('image/png');
-    const controller = new ProgressController(metadata, this);
+    const controller = new ProgressController(metadata, this, 'strict');
     if (!options.expected && options.isNot)
       return { errorMessage: '"not" matcher requires expected result' };
     try {
@@ -632,7 +635,6 @@ export class Page extends SdkObject {
         progress.log(`  generating new stable screenshot expectation`);
       let isFirstIteration = true;
       while (true) {
-        progress.throwIfAborted();
         if (this.isClosed())
           throw new Error('The page has closed');
         const screenshotTimeout = pollIntervals.shift() ?? 1000;
@@ -640,6 +642,8 @@ export class Page extends SdkObject {
           progress.log(`waiting ${screenshotTimeout}ms before taking screenshot`);
         previous = actual;
         actual = await rafrafScreenshot(progress, screenshotTimeout).catch(e => {
+          if (this.mainFrame().isNonRetriableError(e))
+            throw e;
           progress.log(`failed to take screenshot - ` + e.message);
           return undefined;
         });
@@ -671,7 +675,7 @@ export class Page extends SdkObject {
       }
       throw new Error(intermediateResult!.errorMessage);
     }, callTimeout).catch(e => {
-      // Q: Why not throw upon isSessionClosedError(e) as in other places?
+      // Q: Why not throw upon isNonRetriableError(e) as in other places?
       // A: We want user to receive a friendly diff between actual and expected/previous.
       if (js.isJavaScriptErrorInEvaluate(e) || isInvalidSelectorError(e))
         throw e;
@@ -807,10 +811,13 @@ export class Page extends SdkObject {
     this._isServerSideOnly = true;
   }
 
-  async snapshotForAI(metadata: CallMetadata): Promise<string> {
-    this.lastSnapshotFrameIds = [];
-    const snapshot = await snapshotFrameForAI(metadata, this.mainFrame(), 0, this.lastSnapshotFrameIds);
-    return snapshot.join('\n');
+  snapshotForAI(metadata: CallMetadata): Promise<string> {
+    const controller = new ProgressController(metadata, this, 'strict');
+    return controller.run(async progress => {
+      this.lastSnapshotFrameIds = [];
+      const snapshot = await snapshotFrameForAI(progress, this.mainFrame(), 0, this.lastSnapshotFrameIds);
+      return snapshot.join('\n');
+    });
   }
 }
 
@@ -986,29 +993,26 @@ class FrameThrottler {
   }
 }
 
-async function snapshotFrameForAI(metadata: CallMetadata, frame: frames.Frame, frameOrdinal: number, frameIds: string[]): Promise<string[]> {
+async function snapshotFrameForAI(progress: Progress, frame: frames.Frame, frameOrdinal: number, frameIds: string[]): Promise<string[]> {
   // Only await the topmost navigations, inner frames will be empty when racing.
-  const controller = new ProgressController(metadata, frame);
-  const snapshot = await controller.run(progress => {
-    return frame.retryWithProgressAndTimeouts(progress, [1000, 2000, 4000, 8000], async continuePolling => {
-      try {
-        const context = await frame._utilityContext();
-        const injectedScript = await context.injectedScript();
-        const snapshotOrRetry = await injectedScript.evaluate((injected, refPrefix) => {
-          const node = injected.document.body;
-          if (!node)
-            return true;
-          return injected.ariaSnapshot(node, { forAI: true, refPrefix });
-        }, frameOrdinal ? 'f' + frameOrdinal : '');
-        if (snapshotOrRetry === true)
-          return continuePolling;
-        return snapshotOrRetry;
-      } catch (e) {
-        if (isAbortError(e) || isSessionClosedError(e) || js.isJavaScriptErrorInEvaluate(e))
-          throw e;
+  const snapshot = await frame.retryWithProgressAndTimeouts(progress, [1000, 2000, 4000, 8000], async continuePolling => {
+    try {
+      const context = await progress.race(frame._utilityContext());
+      const injectedScript = await progress.race(context.injectedScript());
+      const snapshotOrRetry = await progress.race(injectedScript.evaluate((injected, refPrefix) => {
+        const node = injected.document.body;
+        if (!node)
+          return true;
+        return injected.ariaSnapshot(node, { forAI: true, refPrefix });
+      }, frameOrdinal ? 'f' + frameOrdinal : ''));
+      if (snapshotOrRetry === true)
         return continuePolling;
-      }
-    });
+      return snapshotOrRetry;
+    } catch (e) {
+      if (frame.isNonRetriableError(e))
+        throw e;
+      return continuePolling;
+    }
   });
 
   const lines = snapshot.split('\n');
@@ -1024,7 +1028,7 @@ async function snapshotFrameForAI(metadata: CallMetadata, frame: frames.Frame, f
     const ref = match[2];
     const frameSelector = `aria-ref=${ref} >> internal:control=enter-frame`;
     const frameBodySelector = `${frameSelector} >> body`;
-    const child = await frame.selectors.resolveFrameForSelector(frameBodySelector, { strict: true });
+    const child = await progress.race(frame.selectors.resolveFrameForSelector(frameBodySelector, { strict: true }));
     if (!child) {
       result.push(line);
       continue;
@@ -1032,7 +1036,7 @@ async function snapshotFrameForAI(metadata: CallMetadata, frame: frames.Frame, f
     const frameOrdinal = frameIds.length + 1;
     frameIds.push(child.frame._id);
     try {
-      const childSnapshot = await snapshotFrameForAI(metadata, child.frame, frameOrdinal, frameIds);
+      const childSnapshot = await snapshotFrameForAI(progress, child.frame, frameOrdinal, frameIds);
       result.push(line + ':', ...childSnapshot.map(l => leadingSpace + '  ' + l));
     } catch {
       result.push(line);
