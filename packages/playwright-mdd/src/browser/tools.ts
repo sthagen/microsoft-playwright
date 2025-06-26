@@ -14,13 +14,15 @@
  * limitations under the License.
  */
 
-import snapshot from './tools/snapshot';
-import done from './tools/done';
-import navigate from './tools/navigate';
+import assert from './assert';
+import snapshot from './snapshot';
+import done from './done';
+import navigate from './navigate';
 
-import type { Tool } from './tools/tool.js';
+import type { Tool } from './tool.js';
 
 export const tools: Tool<any>[] = [
+  ...assert,
   ...navigate,
   ...snapshot,
   ...done,
