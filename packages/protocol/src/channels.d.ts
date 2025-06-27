@@ -638,7 +638,7 @@ export interface PlaywrightEventTarget {
 }
 export interface PlaywrightChannel extends PlaywrightEventTarget, Channel {
   _type_Playwright: boolean;
-  newRequest(params: PlaywrightNewRequestParams, metadata?: CallMetadata): Promise<PlaywrightNewRequestResult>;
+  newRequest(params: PlaywrightNewRequestParams, progress?: Progress): Promise<PlaywrightNewRequestResult>;
 }
 export type PlaywrightNewRequestParams = {
   baseURL?: string,
@@ -839,11 +839,11 @@ export interface SocksSupportEventTarget {
 }
 export interface SocksSupportChannel extends SocksSupportEventTarget, Channel {
   _type_SocksSupport: boolean;
-  socksConnected(params: SocksSupportSocksConnectedParams, metadata?: CallMetadata): Promise<SocksSupportSocksConnectedResult>;
-  socksFailed(params: SocksSupportSocksFailedParams, metadata?: CallMetadata): Promise<SocksSupportSocksFailedResult>;
-  socksData(params: SocksSupportSocksDataParams, metadata?: CallMetadata): Promise<SocksSupportSocksDataResult>;
-  socksError(params: SocksSupportSocksErrorParams, metadata?: CallMetadata): Promise<SocksSupportSocksErrorResult>;
-  socksEnd(params: SocksSupportSocksEndParams, metadata?: CallMetadata): Promise<SocksSupportSocksEndResult>;
+  socksConnected(params: SocksSupportSocksConnectedParams, progress?: Progress): Promise<SocksSupportSocksConnectedResult>;
+  socksFailed(params: SocksSupportSocksFailedParams, progress?: Progress): Promise<SocksSupportSocksFailedResult>;
+  socksData(params: SocksSupportSocksDataParams, progress?: Progress): Promise<SocksSupportSocksDataResult>;
+  socksError(params: SocksSupportSocksErrorParams, progress?: Progress): Promise<SocksSupportSocksErrorResult>;
+  socksEnd(params: SocksSupportSocksEndParams, progress?: Progress): Promise<SocksSupportSocksEndResult>;
 }
 export type SocksSupportSocksRequestedEvent = {
   uid: string,
@@ -1621,38 +1621,38 @@ export interface BrowserContextEventTarget {
 }
 export interface BrowserContextChannel extends BrowserContextEventTarget, EventTargetChannel {
   _type_BrowserContext: boolean;
-  addCookies(params: BrowserContextAddCookiesParams, metadata?: CallMetadata): Promise<BrowserContextAddCookiesResult>;
-  addInitScript(params: BrowserContextAddInitScriptParams, metadata?: CallMetadata): Promise<BrowserContextAddInitScriptResult>;
-  clearCookies(params: BrowserContextClearCookiesParams, metadata?: CallMetadata): Promise<BrowserContextClearCookiesResult>;
-  clearPermissions(params?: BrowserContextClearPermissionsParams, metadata?: CallMetadata): Promise<BrowserContextClearPermissionsResult>;
-  close(params: BrowserContextCloseParams, metadata?: CallMetadata): Promise<BrowserContextCloseResult>;
-  cookies(params: BrowserContextCookiesParams, metadata?: CallMetadata): Promise<BrowserContextCookiesResult>;
-  exposeBinding(params: BrowserContextExposeBindingParams, metadata?: CallMetadata): Promise<BrowserContextExposeBindingResult>;
-  grantPermissions(params: BrowserContextGrantPermissionsParams, metadata?: CallMetadata): Promise<BrowserContextGrantPermissionsResult>;
-  newPage(params?: BrowserContextNewPageParams, metadata?: CallMetadata): Promise<BrowserContextNewPageResult>;
-  registerSelectorEngine(params: BrowserContextRegisterSelectorEngineParams, metadata?: CallMetadata): Promise<BrowserContextRegisterSelectorEngineResult>;
-  setTestIdAttributeName(params: BrowserContextSetTestIdAttributeNameParams, metadata?: CallMetadata): Promise<BrowserContextSetTestIdAttributeNameResult>;
-  setExtraHTTPHeaders(params: BrowserContextSetExtraHTTPHeadersParams, metadata?: CallMetadata): Promise<BrowserContextSetExtraHTTPHeadersResult>;
-  setGeolocation(params: BrowserContextSetGeolocationParams, metadata?: CallMetadata): Promise<BrowserContextSetGeolocationResult>;
-  setHTTPCredentials(params: BrowserContextSetHTTPCredentialsParams, metadata?: CallMetadata): Promise<BrowserContextSetHTTPCredentialsResult>;
-  setNetworkInterceptionPatterns(params: BrowserContextSetNetworkInterceptionPatternsParams, metadata?: CallMetadata): Promise<BrowserContextSetNetworkInterceptionPatternsResult>;
-  setWebSocketInterceptionPatterns(params: BrowserContextSetWebSocketInterceptionPatternsParams, metadata?: CallMetadata): Promise<BrowserContextSetWebSocketInterceptionPatternsResult>;
-  setOffline(params: BrowserContextSetOfflineParams, metadata?: CallMetadata): Promise<BrowserContextSetOfflineResult>;
-  storageState(params: BrowserContextStorageStateParams, metadata?: CallMetadata): Promise<BrowserContextStorageStateResult>;
-  pause(params?: BrowserContextPauseParams, metadata?: CallMetadata): Promise<BrowserContextPauseResult>;
-  enableRecorder(params: BrowserContextEnableRecorderParams, metadata?: CallMetadata): Promise<BrowserContextEnableRecorderResult>;
-  newCDPSession(params: BrowserContextNewCDPSessionParams, metadata?: CallMetadata): Promise<BrowserContextNewCDPSessionResult>;
-  harStart(params: BrowserContextHarStartParams, metadata?: CallMetadata): Promise<BrowserContextHarStartResult>;
-  harExport(params: BrowserContextHarExportParams, metadata?: CallMetadata): Promise<BrowserContextHarExportResult>;
-  createTempFiles(params: BrowserContextCreateTempFilesParams, metadata?: CallMetadata): Promise<BrowserContextCreateTempFilesResult>;
-  updateSubscription(params: BrowserContextUpdateSubscriptionParams, metadata?: CallMetadata): Promise<BrowserContextUpdateSubscriptionResult>;
-  clockFastForward(params: BrowserContextClockFastForwardParams, metadata?: CallMetadata): Promise<BrowserContextClockFastForwardResult>;
-  clockInstall(params: BrowserContextClockInstallParams, metadata?: CallMetadata): Promise<BrowserContextClockInstallResult>;
-  clockPauseAt(params: BrowserContextClockPauseAtParams, metadata?: CallMetadata): Promise<BrowserContextClockPauseAtResult>;
-  clockResume(params?: BrowserContextClockResumeParams, metadata?: CallMetadata): Promise<BrowserContextClockResumeResult>;
-  clockRunFor(params: BrowserContextClockRunForParams, metadata?: CallMetadata): Promise<BrowserContextClockRunForResult>;
-  clockSetFixedTime(params: BrowserContextClockSetFixedTimeParams, metadata?: CallMetadata): Promise<BrowserContextClockSetFixedTimeResult>;
-  clockSetSystemTime(params: BrowserContextClockSetSystemTimeParams, metadata?: CallMetadata): Promise<BrowserContextClockSetSystemTimeResult>;
+  addCookies(params: BrowserContextAddCookiesParams, progress?: Progress): Promise<BrowserContextAddCookiesResult>;
+  addInitScript(params: BrowserContextAddInitScriptParams, progress?: Progress): Promise<BrowserContextAddInitScriptResult>;
+  clearCookies(params: BrowserContextClearCookiesParams, progress?: Progress): Promise<BrowserContextClearCookiesResult>;
+  clearPermissions(params?: BrowserContextClearPermissionsParams, progress?: Progress): Promise<BrowserContextClearPermissionsResult>;
+  close(params: BrowserContextCloseParams, progress?: Progress): Promise<BrowserContextCloseResult>;
+  cookies(params: BrowserContextCookiesParams, progress?: Progress): Promise<BrowserContextCookiesResult>;
+  exposeBinding(params: BrowserContextExposeBindingParams, progress?: Progress): Promise<BrowserContextExposeBindingResult>;
+  grantPermissions(params: BrowserContextGrantPermissionsParams, progress?: Progress): Promise<BrowserContextGrantPermissionsResult>;
+  newPage(params?: BrowserContextNewPageParams, progress?: Progress): Promise<BrowserContextNewPageResult>;
+  registerSelectorEngine(params: BrowserContextRegisterSelectorEngineParams, progress?: Progress): Promise<BrowserContextRegisterSelectorEngineResult>;
+  setTestIdAttributeName(params: BrowserContextSetTestIdAttributeNameParams, progress?: Progress): Promise<BrowserContextSetTestIdAttributeNameResult>;
+  setExtraHTTPHeaders(params: BrowserContextSetExtraHTTPHeadersParams, progress?: Progress): Promise<BrowserContextSetExtraHTTPHeadersResult>;
+  setGeolocation(params: BrowserContextSetGeolocationParams, progress?: Progress): Promise<BrowserContextSetGeolocationResult>;
+  setHTTPCredentials(params: BrowserContextSetHTTPCredentialsParams, progress?: Progress): Promise<BrowserContextSetHTTPCredentialsResult>;
+  setNetworkInterceptionPatterns(params: BrowserContextSetNetworkInterceptionPatternsParams, progress?: Progress): Promise<BrowserContextSetNetworkInterceptionPatternsResult>;
+  setWebSocketInterceptionPatterns(params: BrowserContextSetWebSocketInterceptionPatternsParams, progress?: Progress): Promise<BrowserContextSetWebSocketInterceptionPatternsResult>;
+  setOffline(params: BrowserContextSetOfflineParams, progress?: Progress): Promise<BrowserContextSetOfflineResult>;
+  storageState(params: BrowserContextStorageStateParams, progress?: Progress): Promise<BrowserContextStorageStateResult>;
+  pause(params?: BrowserContextPauseParams, progress?: Progress): Promise<BrowserContextPauseResult>;
+  enableRecorder(params: BrowserContextEnableRecorderParams, progress?: Progress): Promise<BrowserContextEnableRecorderResult>;
+  newCDPSession(params: BrowserContextNewCDPSessionParams, progress?: Progress): Promise<BrowserContextNewCDPSessionResult>;
+  harStart(params: BrowserContextHarStartParams, progress?: Progress): Promise<BrowserContextHarStartResult>;
+  harExport(params: BrowserContextHarExportParams, progress?: Progress): Promise<BrowserContextHarExportResult>;
+  createTempFiles(params: BrowserContextCreateTempFilesParams, progress?: Progress): Promise<BrowserContextCreateTempFilesResult>;
+  updateSubscription(params: BrowserContextUpdateSubscriptionParams, progress?: Progress): Promise<BrowserContextUpdateSubscriptionResult>;
+  clockFastForward(params: BrowserContextClockFastForwardParams, progress?: Progress): Promise<BrowserContextClockFastForwardResult>;
+  clockInstall(params: BrowserContextClockInstallParams, progress?: Progress): Promise<BrowserContextClockInstallResult>;
+  clockPauseAt(params: BrowserContextClockPauseAtParams, progress?: Progress): Promise<BrowserContextClockPauseAtResult>;
+  clockResume(params?: BrowserContextClockResumeParams, progress?: Progress): Promise<BrowserContextClockResumeResult>;
+  clockRunFor(params: BrowserContextClockRunForParams, progress?: Progress): Promise<BrowserContextClockRunForResult>;
+  clockSetFixedTime(params: BrowserContextClockSetFixedTimeParams, progress?: Progress): Promise<BrowserContextClockSetFixedTimeResult>;
+  clockSetSystemTime(params: BrowserContextClockSetSystemTimeParams, progress?: Progress): Promise<BrowserContextClockSetSystemTimeResult>;
 }
 export type BrowserContextBindingCallEvent = {
   binding: BindingCallChannel,
@@ -2067,43 +2067,43 @@ export interface PageEventTarget {
 }
 export interface PageChannel extends PageEventTarget, EventTargetChannel {
   _type_Page: boolean;
-  addInitScript(params: PageAddInitScriptParams, metadata?: CallMetadata): Promise<PageAddInitScriptResult>;
-  close(params: PageCloseParams, metadata?: CallMetadata): Promise<PageCloseResult>;
-  emulateMedia(params: PageEmulateMediaParams, metadata?: CallMetadata): Promise<PageEmulateMediaResult>;
-  exposeBinding(params: PageExposeBindingParams, metadata?: CallMetadata): Promise<PageExposeBindingResult>;
-  goBack(params: PageGoBackParams, metadata?: CallMetadata): Promise<PageGoBackResult>;
-  goForward(params: PageGoForwardParams, metadata?: CallMetadata): Promise<PageGoForwardResult>;
-  requestGC(params?: PageRequestGCParams, metadata?: CallMetadata): Promise<PageRequestGCResult>;
-  registerLocatorHandler(params: PageRegisterLocatorHandlerParams, metadata?: CallMetadata): Promise<PageRegisterLocatorHandlerResult>;
-  resolveLocatorHandlerNoReply(params: PageResolveLocatorHandlerNoReplyParams, metadata?: CallMetadata): Promise<PageResolveLocatorHandlerNoReplyResult>;
-  unregisterLocatorHandler(params: PageUnregisterLocatorHandlerParams, metadata?: CallMetadata): Promise<PageUnregisterLocatorHandlerResult>;
-  reload(params: PageReloadParams, metadata?: CallMetadata): Promise<PageReloadResult>;
-  expectScreenshot(params: PageExpectScreenshotParams, metadata?: CallMetadata): Promise<PageExpectScreenshotResult>;
-  screenshot(params: PageScreenshotParams, metadata?: CallMetadata): Promise<PageScreenshotResult>;
-  setExtraHTTPHeaders(params: PageSetExtraHTTPHeadersParams, metadata?: CallMetadata): Promise<PageSetExtraHTTPHeadersResult>;
-  setNetworkInterceptionPatterns(params: PageSetNetworkInterceptionPatternsParams, metadata?: CallMetadata): Promise<PageSetNetworkInterceptionPatternsResult>;
-  setWebSocketInterceptionPatterns(params: PageSetWebSocketInterceptionPatternsParams, metadata?: CallMetadata): Promise<PageSetWebSocketInterceptionPatternsResult>;
-  setViewportSize(params: PageSetViewportSizeParams, metadata?: CallMetadata): Promise<PageSetViewportSizeResult>;
-  keyboardDown(params: PageKeyboardDownParams, metadata?: CallMetadata): Promise<PageKeyboardDownResult>;
-  keyboardUp(params: PageKeyboardUpParams, metadata?: CallMetadata): Promise<PageKeyboardUpResult>;
-  keyboardInsertText(params: PageKeyboardInsertTextParams, metadata?: CallMetadata): Promise<PageKeyboardInsertTextResult>;
-  keyboardType(params: PageKeyboardTypeParams, metadata?: CallMetadata): Promise<PageKeyboardTypeResult>;
-  keyboardPress(params: PageKeyboardPressParams, metadata?: CallMetadata): Promise<PageKeyboardPressResult>;
-  mouseMove(params: PageMouseMoveParams, metadata?: CallMetadata): Promise<PageMouseMoveResult>;
-  mouseDown(params: PageMouseDownParams, metadata?: CallMetadata): Promise<PageMouseDownResult>;
-  mouseUp(params: PageMouseUpParams, metadata?: CallMetadata): Promise<PageMouseUpResult>;
-  mouseClick(params: PageMouseClickParams, metadata?: CallMetadata): Promise<PageMouseClickResult>;
-  mouseWheel(params: PageMouseWheelParams, metadata?: CallMetadata): Promise<PageMouseWheelResult>;
-  touchscreenTap(params: PageTouchscreenTapParams, metadata?: CallMetadata): Promise<PageTouchscreenTapResult>;
-  accessibilitySnapshot(params: PageAccessibilitySnapshotParams, metadata?: CallMetadata): Promise<PageAccessibilitySnapshotResult>;
-  pdf(params: PagePdfParams, metadata?: CallMetadata): Promise<PagePdfResult>;
-  snapshotForAI(params?: PageSnapshotForAIParams, metadata?: CallMetadata): Promise<PageSnapshotForAIResult>;
-  startJSCoverage(params: PageStartJSCoverageParams, metadata?: CallMetadata): Promise<PageStartJSCoverageResult>;
-  stopJSCoverage(params?: PageStopJSCoverageParams, metadata?: CallMetadata): Promise<PageStopJSCoverageResult>;
-  startCSSCoverage(params: PageStartCSSCoverageParams, metadata?: CallMetadata): Promise<PageStartCSSCoverageResult>;
-  stopCSSCoverage(params?: PageStopCSSCoverageParams, metadata?: CallMetadata): Promise<PageStopCSSCoverageResult>;
-  bringToFront(params?: PageBringToFrontParams, metadata?: CallMetadata): Promise<PageBringToFrontResult>;
-  updateSubscription(params: PageUpdateSubscriptionParams, metadata?: CallMetadata): Promise<PageUpdateSubscriptionResult>;
+  addInitScript(params: PageAddInitScriptParams, progress?: Progress): Promise<PageAddInitScriptResult>;
+  close(params: PageCloseParams, progress?: Progress): Promise<PageCloseResult>;
+  emulateMedia(params: PageEmulateMediaParams, progress?: Progress): Promise<PageEmulateMediaResult>;
+  exposeBinding(params: PageExposeBindingParams, progress?: Progress): Promise<PageExposeBindingResult>;
+  goBack(params: PageGoBackParams, progress?: Progress): Promise<PageGoBackResult>;
+  goForward(params: PageGoForwardParams, progress?: Progress): Promise<PageGoForwardResult>;
+  requestGC(params?: PageRequestGCParams, progress?: Progress): Promise<PageRequestGCResult>;
+  registerLocatorHandler(params: PageRegisterLocatorHandlerParams, progress?: Progress): Promise<PageRegisterLocatorHandlerResult>;
+  resolveLocatorHandlerNoReply(params: PageResolveLocatorHandlerNoReplyParams, progress?: Progress): Promise<PageResolveLocatorHandlerNoReplyResult>;
+  unregisterLocatorHandler(params: PageUnregisterLocatorHandlerParams, progress?: Progress): Promise<PageUnregisterLocatorHandlerResult>;
+  reload(params: PageReloadParams, progress?: Progress): Promise<PageReloadResult>;
+  expectScreenshot(params: PageExpectScreenshotParams, progress?: Progress): Promise<PageExpectScreenshotResult>;
+  screenshot(params: PageScreenshotParams, progress?: Progress): Promise<PageScreenshotResult>;
+  setExtraHTTPHeaders(params: PageSetExtraHTTPHeadersParams, progress?: Progress): Promise<PageSetExtraHTTPHeadersResult>;
+  setNetworkInterceptionPatterns(params: PageSetNetworkInterceptionPatternsParams, progress?: Progress): Promise<PageSetNetworkInterceptionPatternsResult>;
+  setWebSocketInterceptionPatterns(params: PageSetWebSocketInterceptionPatternsParams, progress?: Progress): Promise<PageSetWebSocketInterceptionPatternsResult>;
+  setViewportSize(params: PageSetViewportSizeParams, progress?: Progress): Promise<PageSetViewportSizeResult>;
+  keyboardDown(params: PageKeyboardDownParams, progress?: Progress): Promise<PageKeyboardDownResult>;
+  keyboardUp(params: PageKeyboardUpParams, progress?: Progress): Promise<PageKeyboardUpResult>;
+  keyboardInsertText(params: PageKeyboardInsertTextParams, progress?: Progress): Promise<PageKeyboardInsertTextResult>;
+  keyboardType(params: PageKeyboardTypeParams, progress?: Progress): Promise<PageKeyboardTypeResult>;
+  keyboardPress(params: PageKeyboardPressParams, progress?: Progress): Promise<PageKeyboardPressResult>;
+  mouseMove(params: PageMouseMoveParams, progress?: Progress): Promise<PageMouseMoveResult>;
+  mouseDown(params: PageMouseDownParams, progress?: Progress): Promise<PageMouseDownResult>;
+  mouseUp(params: PageMouseUpParams, progress?: Progress): Promise<PageMouseUpResult>;
+  mouseClick(params: PageMouseClickParams, progress?: Progress): Promise<PageMouseClickResult>;
+  mouseWheel(params: PageMouseWheelParams, progress?: Progress): Promise<PageMouseWheelResult>;
+  touchscreenTap(params: PageTouchscreenTapParams, progress?: Progress): Promise<PageTouchscreenTapResult>;
+  accessibilitySnapshot(params: PageAccessibilitySnapshotParams, progress?: Progress): Promise<PageAccessibilitySnapshotResult>;
+  pdf(params: PagePdfParams, progress?: Progress): Promise<PagePdfResult>;
+  snapshotForAI(params?: PageSnapshotForAIParams, progress?: Progress): Promise<PageSnapshotForAIResult>;
+  startJSCoverage(params: PageStartJSCoverageParams, progress?: Progress): Promise<PageStartJSCoverageResult>;
+  stopJSCoverage(params?: PageStopJSCoverageParams, progress?: Progress): Promise<PageStopJSCoverageResult>;
+  startCSSCoverage(params: PageStartCSSCoverageParams, progress?: Progress): Promise<PageStartCSSCoverageResult>;
+  stopCSSCoverage(params?: PageStopCSSCoverageParams, progress?: Progress): Promise<PageStopCSSCoverageResult>;
+  bringToFront(params?: PageBringToFrontParams, progress?: Progress): Promise<PageBringToFrontResult>;
+  updateSubscription(params: PageUpdateSubscriptionParams, progress?: Progress): Promise<PageUpdateSubscriptionResult>;
 }
 export type PageBindingCallEvent = {
   binding: BindingCallChannel,
@@ -3288,8 +3288,8 @@ export interface WorkerEventTarget {
 }
 export interface WorkerChannel extends WorkerEventTarget, Channel {
   _type_Worker: boolean;
-  evaluateExpression(params: WorkerEvaluateExpressionParams, metadata?: CallMetadata): Promise<WorkerEvaluateExpressionResult>;
-  evaluateExpressionHandle(params: WorkerEvaluateExpressionHandleParams, metadata?: CallMetadata): Promise<WorkerEvaluateExpressionHandleResult>;
+  evaluateExpression(params: WorkerEvaluateExpressionParams, progress?: Progress): Promise<WorkerEvaluateExpressionResult>;
+  evaluateExpressionHandle(params: WorkerEvaluateExpressionHandleParams, progress?: Progress): Promise<WorkerEvaluateExpressionHandleResult>;
 }
 export type WorkerCloseEvent = {};
 export type WorkerEvaluateExpressionParams = {
@@ -3328,12 +3328,12 @@ export interface JSHandleEventTarget {
 }
 export interface JSHandleChannel extends JSHandleEventTarget, Channel {
   _type_JSHandle: boolean;
-  dispose(params?: JSHandleDisposeParams, metadata?: CallMetadata): Promise<JSHandleDisposeResult>;
-  evaluateExpression(params: JSHandleEvaluateExpressionParams, metadata?: CallMetadata): Promise<JSHandleEvaluateExpressionResult>;
-  evaluateExpressionHandle(params: JSHandleEvaluateExpressionHandleParams, metadata?: CallMetadata): Promise<JSHandleEvaluateExpressionHandleResult>;
-  getPropertyList(params?: JSHandleGetPropertyListParams, metadata?: CallMetadata): Promise<JSHandleGetPropertyListResult>;
-  getProperty(params: JSHandleGetPropertyParams, metadata?: CallMetadata): Promise<JSHandleGetPropertyResult>;
-  jsonValue(params?: JSHandleJsonValueParams, metadata?: CallMetadata): Promise<JSHandleJsonValueResult>;
+  dispose(params?: JSHandleDisposeParams, progress?: Progress): Promise<JSHandleDisposeResult>;
+  evaluateExpression(params: JSHandleEvaluateExpressionParams, progress?: Progress): Promise<JSHandleEvaluateExpressionResult>;
+  evaluateExpressionHandle(params: JSHandleEvaluateExpressionHandleParams, progress?: Progress): Promise<JSHandleEvaluateExpressionHandleResult>;
+  getPropertyList(params?: JSHandleGetPropertyListParams, progress?: Progress): Promise<JSHandleGetPropertyListResult>;
+  getProperty(params: JSHandleGetPropertyParams, progress?: Progress): Promise<JSHandleGetPropertyResult>;
+  jsonValue(params?: JSHandleJsonValueParams, progress?: Progress): Promise<JSHandleJsonValueResult>;
 }
 export type JSHandlePreviewUpdatedEvent = {
   preview: string,
@@ -3909,12 +3909,12 @@ export interface WebSocketRouteEventTarget {
 }
 export interface WebSocketRouteChannel extends WebSocketRouteEventTarget, Channel {
   _type_WebSocketRoute: boolean;
-  connect(params?: WebSocketRouteConnectParams, metadata?: CallMetadata): Promise<WebSocketRouteConnectResult>;
-  ensureOpened(params?: WebSocketRouteEnsureOpenedParams, metadata?: CallMetadata): Promise<WebSocketRouteEnsureOpenedResult>;
-  sendToPage(params: WebSocketRouteSendToPageParams, metadata?: CallMetadata): Promise<WebSocketRouteSendToPageResult>;
-  sendToServer(params: WebSocketRouteSendToServerParams, metadata?: CallMetadata): Promise<WebSocketRouteSendToServerResult>;
-  closePage(params: WebSocketRouteClosePageParams, metadata?: CallMetadata): Promise<WebSocketRouteClosePageResult>;
-  closeServer(params: WebSocketRouteCloseServerParams, metadata?: CallMetadata): Promise<WebSocketRouteCloseServerResult>;
+  connect(params?: WebSocketRouteConnectParams, progress?: Progress): Promise<WebSocketRouteConnectResult>;
+  ensureOpened(params?: WebSocketRouteEnsureOpenedParams, progress?: Progress): Promise<WebSocketRouteEnsureOpenedResult>;
+  sendToPage(params: WebSocketRouteSendToPageParams, progress?: Progress): Promise<WebSocketRouteSendToPageResult>;
+  sendToServer(params: WebSocketRouteSendToServerParams, progress?: Progress): Promise<WebSocketRouteSendToServerResult>;
+  closePage(params: WebSocketRouteClosePageParams, progress?: Progress): Promise<WebSocketRouteClosePageResult>;
+  closeServer(params: WebSocketRouteCloseServerParams, progress?: Progress): Promise<WebSocketRouteCloseServerResult>;
 }
 export type WebSocketRouteMessageFromPageEvent = {
   message: string,
@@ -4111,8 +4111,8 @@ export interface BindingCallEventTarget {
 }
 export interface BindingCallChannel extends BindingCallEventTarget, Channel {
   _type_BindingCall: boolean;
-  reject(params: BindingCallRejectParams, metadata?: CallMetadata): Promise<BindingCallRejectResult>;
-  resolve(params: BindingCallResolveParams, metadata?: CallMetadata): Promise<BindingCallResolveResult>;
+  reject(params: BindingCallRejectParams, progress?: Progress): Promise<BindingCallRejectResult>;
+  resolve(params: BindingCallResolveParams, progress?: Progress): Promise<BindingCallResolveResult>;
 }
 export type BindingCallRejectParams = {
   error: SerializedError,
@@ -4143,8 +4143,8 @@ export interface DialogEventTarget {
 }
 export interface DialogChannel extends DialogEventTarget, Channel {
   _type_Dialog: boolean;
-  accept(params: DialogAcceptParams, metadata?: CallMetadata): Promise<DialogAcceptResult>;
-  dismiss(params?: DialogDismissParams, metadata?: CallMetadata): Promise<DialogDismissResult>;
+  accept(params: DialogAcceptParams, progress?: Progress): Promise<DialogAcceptResult>;
+  dismiss(params?: DialogDismissParams, progress?: Progress): Promise<DialogDismissResult>;
 }
 export type DialogAcceptParams = {
   promptText?: string,
@@ -4166,12 +4166,12 @@ export interface TracingEventTarget {
 }
 export interface TracingChannel extends TracingEventTarget, Channel {
   _type_Tracing: boolean;
-  tracingStart(params: TracingTracingStartParams, metadata?: CallMetadata): Promise<TracingTracingStartResult>;
-  tracingStartChunk(params: TracingTracingStartChunkParams, metadata?: CallMetadata): Promise<TracingTracingStartChunkResult>;
-  tracingGroup(params: TracingTracingGroupParams, metadata?: CallMetadata): Promise<TracingTracingGroupResult>;
-  tracingGroupEnd(params?: TracingTracingGroupEndParams, metadata?: CallMetadata): Promise<TracingTracingGroupEndResult>;
-  tracingStopChunk(params: TracingTracingStopChunkParams, metadata?: CallMetadata): Promise<TracingTracingStopChunkResult>;
-  tracingStop(params?: TracingTracingStopParams, metadata?: CallMetadata): Promise<TracingTracingStopResult>;
+  tracingStart(params: TracingTracingStartParams, progress?: Progress): Promise<TracingTracingStartResult>;
+  tracingStartChunk(params: TracingTracingStartChunkParams, progress?: Progress): Promise<TracingTracingStartChunkResult>;
+  tracingGroup(params: TracingTracingGroupParams, progress?: Progress): Promise<TracingTracingGroupResult>;
+  tracingGroupEnd(params?: TracingTracingGroupEndParams, progress?: Progress): Promise<TracingTracingGroupEndResult>;
+  tracingStopChunk(params: TracingTracingStopChunkParams, progress?: Progress): Promise<TracingTracingStopChunkResult>;
+  tracingStop(params?: TracingTracingStopParams, progress?: Progress): Promise<TracingTracingStopResult>;
 }
 export type TracingTracingStartParams = {
   name?: string,
@@ -4292,8 +4292,8 @@ export interface StreamEventTarget {
 }
 export interface StreamChannel extends StreamEventTarget, Channel {
   _type_Stream: boolean;
-  read(params: StreamReadParams, metadata?: CallMetadata): Promise<StreamReadResult>;
-  close(params?: StreamCloseParams, metadata?: CallMetadata): Promise<StreamCloseResult>;
+  read(params: StreamReadParams, progress?: Progress): Promise<StreamReadResult>;
+  close(params?: StreamCloseParams, progress?: Progress): Promise<StreamCloseResult>;
 }
 export type StreamReadParams = {
   size?: number,
@@ -4317,8 +4317,8 @@ export interface WritableStreamEventTarget {
 }
 export interface WritableStreamChannel extends WritableStreamEventTarget, Channel {
   _type_WritableStream: boolean;
-  write(params: WritableStreamWriteParams, metadata?: CallMetadata): Promise<WritableStreamWriteResult>;
-  close(params?: WritableStreamCloseParams, metadata?: CallMetadata): Promise<WritableStreamCloseResult>;
+  write(params: WritableStreamWriteParams, progress?: Progress): Promise<WritableStreamWriteResult>;
+  close(params?: WritableStreamCloseParams, progress?: Progress): Promise<WritableStreamCloseResult>;
 }
 export type WritableStreamWriteParams = {
   binary: Binary,
@@ -4341,8 +4341,8 @@ export interface CDPSessionEventTarget {
 }
 export interface CDPSessionChannel extends CDPSessionEventTarget, Channel {
   _type_CDPSession: boolean;
-  send(params: CDPSessionSendParams, metadata?: CallMetadata): Promise<CDPSessionSendResult>;
-  detach(params?: CDPSessionDetachParams, metadata?: CallMetadata): Promise<CDPSessionDetachResult>;
+  send(params: CDPSessionSendParams, progress?: Progress): Promise<CDPSessionSendResult>;
+  detach(params?: CDPSessionDetachParams, progress?: Progress): Promise<CDPSessionDetachResult>;
 }
 export type CDPSessionEventEvent = {
   method: string,
@@ -5019,8 +5019,8 @@ export interface JsonPipeEventTarget {
 }
 export interface JsonPipeChannel extends JsonPipeEventTarget, Channel {
   _type_JsonPipe: boolean;
-  send(params: JsonPipeSendParams, metadata?: CallMetadata): Promise<JsonPipeSendResult>;
-  close(params?: JsonPipeCloseParams, metadata?: CallMetadata): Promise<JsonPipeCloseResult>;
+  send(params: JsonPipeSendParams, progress?: Progress): Promise<JsonPipeSendResult>;
+  close(params?: JsonPipeCloseParams, progress?: Progress): Promise<JsonPipeCloseResult>;
 }
 export type JsonPipeMessageEvent = {
   message: any,

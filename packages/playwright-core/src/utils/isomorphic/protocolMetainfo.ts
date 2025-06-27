@@ -311,6 +311,20 @@ export const methodMetainfo = new Map<string, { internal?: boolean, title?: stri
 ]);
 
 export const progressTypes = new Set<string>([
+  'Playwright',
+  'SocksSupport',
+  'BrowserContext',
+  'Page',
   'Frame',
-  'ElementHandle'
+  'Worker',
+  'JSHandle',
+  'ElementHandle',
+  'WebSocketRoute',
+  'BindingCall',
+  'Dialog',
+  'Tracing',
+  'Stream',
+  'WritableStream',
+  'CDPSession',
+  'JsonPipe'
 ]);
