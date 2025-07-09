@@ -9313,8 +9313,6 @@ export interface BrowserContext {
       secure: boolean;
 
       sameSite: "Strict"|"Lax"|"None";
-
-      partitionKey?: string;
     }>;
 
     origins: Array<{
@@ -18852,11 +18850,6 @@ export interface ConsoleMessage {
    */
   text(): string;
 
-  /**
-   * One of the following values: `'log'`, `'debug'`, `'info'`, `'error'`, `'warning'`, `'dir'`, `'dirxml'`, `'table'`,
-   * `'trace'`, `'clear'`, `'startGroup'`, `'startGroupCollapsed'`, `'endGroup'`, `'assert'`, `'profile'`,
-   * `'profileEnd'`, `'count'`, `'timeEnd'`.
-   */
   type(): "log"|"debug"|"info"|"error"|"warning"|"dir"|"dirxml"|"table"|"trace"|"clear"|"startGroup"|"startGroupCollapsed"|"endGroup"|"assert"|"profile"|"profileEnd"|"count"|"timeEnd";
 }
 

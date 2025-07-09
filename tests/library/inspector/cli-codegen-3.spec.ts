@@ -16,12 +16,11 @@
 
 import type { TestServer } from 'tests/config/testserver';
 import type { Recorder } from './inspectorTest';
-import { test, expect, matrixDescribe } from './inspectorTest';
+import { test, expect } from './inspectorTest';
 import type { Page } from '@playwright/test';
 
-matrixDescribe<('record' | 'perform')>('cli codegen', ['record', 'perform'], recorderMode => {
+test.describe('cli codegen', () => {
   test.skip(({ mode }) => mode !== 'default');
-  test.use({ recorderMode });
 
   test('should click locator.first', async ({ openRecorder }) => {
     const { page, recorder } = await openRecorder();
@@ -66,6 +65,7 @@ await page.GetByRole(AriaRole.Button, new() { Name = "Submit" }).First.ClickAsyn
       signals: [],
       framePath: [],
       pageAlias: 'page',
+      pageGuid: expect.any(String),
     });
 
     expect(message.text()).toBe('click1');
@@ -141,6 +141,7 @@ await page.Locator("#frame1").ContentFrame.GetByText("Hello1").ClickAsync();`);
       signals: [],
       framePath: ['#frame1'],
       pageAlias: 'page',
+      pageGuid: expect.any(String),
     });
   });
 
@@ -179,6 +180,7 @@ await page.Locator("#frame1").ContentFrame.Locator("iframe").ContentFrame.GetByT
       signals: [],
       framePath: ['#frame1', 'iframe'],
       pageAlias: 'page',
+      pageGuid: expect.any(String),
     });
   });
 
@@ -217,6 +219,7 @@ await page.Locator("#frame1").ContentFrame.Locator("iframe").ContentFrame.Locato
       signals: [],
       framePath: ['#frame1', 'iframe', 'iframe >> nth=2'],
       pageAlias: 'page',
+      pageGuid: expect.any(String),
     });
   });
 
@@ -658,8 +661,8 @@ await page.GetByRole(AriaRole.Textbox, new() { Name = \"Coun\\\"try\" }).ClickAs
     expect(message.text()).toBe('clicked');
     expect(await page.evaluate('log')).toEqual([
       'pointermove', 'mousemove',
-      // There is no second mouse move in record mode
-      ...(recorderMode === 'record' ? [] : ['pointermove', 'mousemove']),
+      'pointermove',
+      'mousemove',
       'pointerdown', 'mousedown',
       'pointerup', 'mouseup',
       'click',
@@ -667,8 +670,6 @@ await page.GetByRole(AriaRole.Textbox, new() { Name = \"Coun\\\"try\" }).ClickAs
   });
 
   test('should consume contextmenu events, despite a custom context menu', async ({ openRecorder, browserName, platform }) => {
-    test.skip(recorderMode === 'record', 'It actually works in record mode, perform mode is broken see comments inline');
-
     const { page, recorder } = await openRecorder();
 
     await recorder.setContentAndWait(`

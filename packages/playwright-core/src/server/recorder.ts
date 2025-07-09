@@ -40,7 +40,6 @@ import type * as channels from '@protocol/channels';
 import type * as actions from '@recorder/actions';
 import type { CallLog, CallLogStatus, ElementInfo, Mode, OverlayState, Source, UIState } from '@recorder/recorderTypes';
 import type { RegisteredListener } from '../utils';
-import type { Signal } from '../../../recorder/src/actions';
 
 const recorderSymbol = Symbol('recorderSymbol');
 
@@ -65,7 +64,7 @@ export type RecorderEventMap = {
   [RecorderEvent.CallLogsUpdated]: [callLogs: CallLog[]];
   [RecorderEvent.UserSourcesChanged]: [sources: Source[]];
   [RecorderEvent.ActionAdded]: [action: actions.ActionInContext];
-  [RecorderEvent.SignalAdded]: [signal: actions.Signal];
+  [RecorderEvent.SignalAdded]: [signal: actions.SignalInContext];
   [RecorderEvent.PageNavigated]: [url: string];
   [RecorderEvent.ContextClosed]: [];
 };
@@ -82,7 +81,7 @@ export class Recorder extends EventEmitter<RecorderEventMap> implements Instrume
   private _debugger: Debugger;
   private _omitCallTracking = false;
   private _currentLanguage: Language = 'javascript';
-  private _recorderMode: 'record' | 'perform';
+  private _recorderMode: 'default' | 'api';
 
   private _signalProcessor: RecorderSignalProcessor;
   private _pageAliases = new Map<Page, string>();
@@ -102,6 +101,10 @@ export class Recorder extends EventEmitter<RecorderEventMap> implements Instrume
     return recorderPromise;
   }
 
+  static existingForContext(context: BrowserContext): Recorder | undefined {
+    return (context as any)[recorderSymbol] as Recorder;
+  }
+
   private static async _create(context: BrowserContext, params: channels.BrowserContextEnableRecorderParams = {}): Promise<Recorder> {
     const recorder = new Recorder(context, params);
     await recorder._install();
@@ -113,17 +116,18 @@ export class Recorder extends EventEmitter<RecorderEventMap> implements Instrume
     this._context = context;
     this._params = params;
     this._mode = params.mode || 'none';
-    this._recorderMode = params.recorderMode ?? 'perform';
+    this._recorderMode = params.recorderMode ?? 'default';
     this.handleSIGINT = params.handleSIGINT;
 
-    this._signalProcessor = new RecorderSignalProcessor();
-    this._signalProcessor.on('action', (actionInContext: actions.ActionInContext) => {
-      if (this._enabled)
-        this.emit(RecorderEvent.ActionAdded, actionInContext);
-    });
-    this._signalProcessor.on('signal', (signal: Signal) => {
-      if (this._enabled)
-        this.emit(RecorderEvent.SignalAdded, signal);
+    this._signalProcessor = new RecorderSignalProcessor({
+      addAction: (actionInContext: actions.ActionInContext) => {
+        if (this._enabled)
+          this.emit(RecorderEvent.ActionAdded, actionInContext);
+      },
+      addSignal: (signal: actions.SignalInContext) => {
+        if (this._enabled)
+          this.emit(RecorderEvent.SignalAdded, signal);
+      },
     });
 
     context.on(BrowserContext.Events.BeforeClose, () => {
@@ -172,7 +176,6 @@ export class Recorder extends EventEmitter<RecorderEventMap> implements Instrume
         }
         const uiState: UIState = {
           mode: this._mode,
-          recorderMode: this._recorderMode,
           actionPoint,
           actionSelector,
           ariaTemplate: this._highlightedElement.ariaTemplate,
@@ -222,7 +225,7 @@ export class Recorder extends EventEmitter<RecorderEventMap> implements Instrume
       await this._context.exposeBinding(progress, '__pw_recorderRecordAction', false,
           (source: BindingSource, action: actions.Action) => this._recordAction(source.frame, action));
 
-      await this._context.extendInjectedScript(rawRecorderSource.source);
+      await this._context.extendInjectedScript(rawRecorderSource.source, { recorderMode: this._recorderMode });
     });
 
     if (this._debugger.isPaused())
@@ -488,6 +491,7 @@ export class Recorder extends EventEmitter<RecorderEventMap> implements Instrume
 
   private _describeMainFrame(page: Page): actions.FrameDescription {
     return {
+      pageGuid: page.guid,
       pageAlias: this._pageAliases.get(page)!,
       framePath: [],
     };
@@ -495,6 +499,7 @@ export class Recorder extends EventEmitter<RecorderEventMap> implements Instrume
 
   private async _describeFrame(frame: Frame): Promise<actions.FrameDescription> {
     return {
+      pageGuid: frame._page.guid,
       pageAlias: this._pageAliases.get(frame._page)!,
       framePath: await generateFrameSelector(frame),
     };
@@ -510,7 +515,7 @@ export class Recorder extends EventEmitter<RecorderEventMap> implements Instrume
       frame: frameDescription,
       action,
       description: undefined,
-      startTime: monotonicTime()
+      startTime: monotonicTime(),
     };
     return actionInContext;
   }

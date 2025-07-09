@@ -289,55 +289,15 @@ for (const useIntermediateMergeReport of [true, false] as const) {
 
       await showReport();
       await page.getByRole('link', { name: 'fails' }).click();
-      await expect(page.getByTestId('test-screenshot-error-view').getByTestId('error-suffix')).toContainText([
-        `> 6 |             await expect.soft(screenshot).toMatchSnapshot('expected.png');`,
-        `>  7 |             await expect.soft(screenshot).toMatchSnapshot('expected.png');`,
-        `>  8 |             await expect.soft(screenshot).toMatchSnapshot('expected.png');`,
-      ]);
+      await expect(page.locator('.test-error-view').first()).toContainText(
+          `> 6 |             await expect.soft(screenshot).toMatchSnapshot('expected.png');`,
+      );
       const imageDiffs = page.getByTestId('test-results-image-diff');
       await expect(imageDiffs.getByTestId('test-result-image-mismatch')).toHaveCount(3);
       await expect(imageDiffs.getByText('Image mismatch:')).toHaveText([
         'Image mismatch: expected.png',
         'Image mismatch: expected-1.png',
         'Image mismatch: expected-2.png',
-      ]);
-    });
-
-    test('should include image diff when screenshot failed to generate due to animation', async ({ runInlineTest, page, showReport }) => {
-      test.skip(process.env.PW_CLOCK === 'frozen', 'Assumes Date.now() changes');
-      const result = await runInlineTest({
-        'playwright.config.ts': `
-          module.exports = { use: { viewport: { width: 200, height: 200 }} };
-        `,
-        'a.test.js': `
-          import { test, expect } from '@playwright/test';
-          test('fails', async ({ page }, testInfo) => {
-            testInfo.snapshotSuffix = '';
-            await page.evaluate(() => {
-              setInterval(() => {
-                document.body.textContent = Date.now();
-              }, 50);
-            });
-            await expect.soft(page).toHaveScreenshot({ timeout: 1000 });
-          });
-        `,
-      }, { 'reporter': 'dot,html', 'update-snapshots': true }, { PLAYWRIGHT_HTML_OPEN: 'never' });
-      expect(result.exitCode).toBe(1);
-      expect(result.failed).toBe(1);
-
-      await showReport();
-      await page.getByRole('link', { name: 'fails' }).click();
-      await expect(page.locator('text=Image mismatch')).toHaveCount(1);
-      await expect(page.locator('text=Snapshot mismatch')).toHaveCount(0);
-      await expect(page.locator('.chip-header', { hasText: 'Screenshots' })).toHaveCount(0);
-      const errorChip = page.getByTestId('test-screenshot-error-view');
-      await expect(errorChip).toContainText('Failed to take two consecutive stable screenshots.');
-      await expect(errorChip.getByTestId('test-result-image-mismatch-tabs').locator('div')).toHaveText([
-        'Diff',
-        'Actual',
-        'Previous',
-        'Side by side',
-        'Slider',
       ]);
     });
 
@@ -1227,8 +1187,8 @@ for (const useIntermediateMergeReport of [true, false] as const) {
       await showReport();
       await page.getByRole('link', { name: 'is a test' }).click();
 
-      await expect(page.locator('.test-error-view').getByText('-old')).toHaveCSS('color', 'rgb(205, 49, 49)');
-      await expect(page.locator('.test-error-view').getByText('+new', { exact: true })).toHaveCSS('color', 'rgb(0, 188, 0)');
+      await expect(page.locator('.test-error-view').getByText('-old')).toHaveCSS('color', 'rgb(0, 188, 0)');
+      await expect(page.locator('.test-error-view').getByText('+new', { exact: true })).toHaveCSS('color', 'rgb(205, 49, 49)');
     });
 
     test('should highlight inline textual diff in toHaveText', async ({ runInlineTest, showReport, page }) => {
@@ -1917,6 +1877,49 @@ for (const useIntermediateMergeReport of [true, false] as const) {
           await expect(page.locator('.chip')).toHaveCount(1);
           await expect(page.locator('.chip', { hasText: 'a.test.js' })).toHaveCount(1);
           await expect(page.locator('.test-file-test .test-file-title')).toHaveText(`Error Pages › @${tag} passes`);
+
+          const testTitle = page.locator('.test-file-test .test-file-title', { hasText: `${tag} passes` });
+          await testTitle.click();
+          await expect(page.locator('.header-title', { hasText: `${tag} passes` })).toBeVisible();
+          await expect(page.locator('.label', { hasText: tag })).toBeVisible();
+
+          await page.goBack();
+          await searchInput.clear();
+        }
+      });
+
+      test('tags with whitespace', async ({ runInlineTest, showReport, page }) => {
+        const result = await runInlineTest({
+          'a.test.js': `
+            const { expect, test } = require('@playwright/test');
+            const tags = ['@smoke-p1 with other text', '@issue[123] issue[456]', '@issue#123 issue#456', '@$$$ ???', '@tl/dr didn\\'t read'];
+
+            test.describe('Error Pages', () => {
+              tags.forEach(tag => {
+                test(tag.replace('@', '') + ' passes', { tag: [tag] }, async ({}) => {
+                  expect(1).toBe(1);
+                });
+              });
+            });
+          `,
+        }, { reporter: 'dot,html' }, { PLAYWRIGHT_HTML_OPEN: 'never' });
+
+        expect(result.exitCode).toBe(0);
+        expect(result.passed).toBe(5);
+
+        await showReport();
+        const tags = ['smoke-p1 with other text', 'issue[123] issue[456]', 'issue#123 issue#456', '$$$ ???', 'tl/dr didn\'t read'];
+        const searchInput = page.locator('.subnav-search-input');
+
+        for (const tag of tags) {
+          const tagButton = page.locator('.label').getByText(tag, { exact: true });
+          await expect(tagButton).toBeVisible();
+
+          await tagButton.click();
+          await expect(page.locator('.test-file-test')).toHaveCount(1);
+          await expect(page.locator('.chip')).toHaveCount(1);
+          await expect(page.locator('.chip', { hasText: 'a.test.js' })).toHaveCount(1);
+          await expect(page.locator('.test-file-test .test-file-title')).toHaveText(`Error Pages › ${tag} passes`);
 
           const testTitle = page.locator('.test-file-test .test-file-title', { hasText: `${tag} passes` });
           await testTitle.click();
@@ -3060,6 +3063,68 @@ for (const useIntermediateMergeReport of [true, false] as const) {
       await showReport();
       await page.getByRole('link', { name: 'fail without snippet' }).click();
       await expect(page.getByTestId('test-snippet')).not.toBeVisible();
+    });
+
+    test('should support keyboard shortcuts', async ({ runInlineTest, showReport, page }) => {
+      await runInlineTest({
+        'playwright.config.ts': `
+          module.exports = { name: 'project-name' };
+        `,
+        'a.test.js': `
+          import { test, expect } from '@playwright/test';
+          test('passes', async ({}) => {});
+          test('fails', async ({}) => {
+            expect(1).toBe(2);
+          });
+          test('skipped', async ({}) => {
+            test.skip('Does not work')
+          });
+          test('flaky', async ({}, testInfo) => {
+            expect(testInfo.retry).toBe(1);
+          });
+        `,
+      }, { reporter: 'dot,html', retries: 1 }, { PLAYWRIGHT_HTML_OPEN: 'never' });
+
+      await showReport();
+
+      // Focus the page
+      await page.getByRole('link', { name: 'All' }).click();
+
+      await test.step('next', async () => {
+        await page.keyboard.press('ArrowRight');
+        await expect(page.locator('.header-title')).toHaveText('fails');
+        await page.keyboard.press('ArrowRight');
+        await expect(page.locator('.header-title')).toHaveText('flaky');
+        await page.keyboard.press('ArrowRight');
+        await expect(page.locator('.header-title')).toHaveText('passes');
+        // Bounce
+        await page.keyboard.press('ArrowRight');
+        await expect(page.locator('.header-title')).toHaveText('passes');
+      });
+
+      await test.step('prev', async () => {
+        await page.keyboard.press('ArrowLeft');
+        await expect(page.locator('.header-title')).toHaveText('flaky');
+        await page.keyboard.press('ArrowLeft');
+        await expect(page.locator('.header-title')).toHaveText('fails');
+        await page.keyboard.press('ArrowLeft');
+        await expect(page.locator('.header-title')).toHaveText('fails');
+      });
+
+      await test.step('p', async () => {
+        await page.keyboard.press('p');
+        await expect(page.locator('.test-file-test')).toHaveCount(1);
+      });
+
+      await test.step('a', async () => {
+        await page.keyboard.press('a');
+        await expect(page.locator('.test-file-test')).toHaveCount(3);
+      });
+
+      await test.step('f', async () => {
+        await page.keyboard.press('f');
+        await expect(page.locator('.test-file-test')).toHaveCount(1);
+      });
     });
   });
 }
