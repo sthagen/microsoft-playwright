@@ -26,10 +26,12 @@ import { verifyClientCertificates } from './browserContext';
 import { createProxyAgent } from './utils/network';
 import { debugLogger } from './utils/debugLogger';
 import { createSocket, createTLSSocket } from './utils/happyEyeballs';
+import { getProxyForUrl } from '../utilsBundle';
 
 import type * as types from './types';
 import type { SocksSocketClosedPayload, SocksSocketDataPayload, SocksSocketRequestedPayload } from './utils/socksProxy';
 import type https from 'https';
+import type { Progress } from '@protocol/progress';
 
 let dummyServerTlsOptions: tls.TlsOptions | undefined = undefined;
 function loadDummyServerCertsIfNeeded() {
@@ -99,8 +101,9 @@ class SocksProxyConnection {
   }
 
   async connect() {
-    if (this.socksProxy.proxyAgentFromOptions)
-      this.target = await this.socksProxy.proxyAgentFromOptions.callback(new EventEmitter() as any, { host: rewriteToLocalhostIfNeeded(this.host), port: this.port, secureEndpoint: false });
+    const proxyAgent = this.socksProxy.getProxyAgent(this.host, this.port);
+    if (proxyAgent)
+      this.target = await proxyAgent.callback(new EventEmitter() as any, { host: rewriteToLocalhostIfNeeded(this.host), port: this.port, secureEndpoint: false });
     else
       this.target = await createSocket(rewriteToLocalhostIfNeeded(this.host), this.port);
 
@@ -242,7 +245,7 @@ export class ClientCertificatesProxy {
   ignoreHTTPSErrors: boolean | undefined;
   secureContextMap: Map<string, tls.SecureContext> = new Map();
   alpnCache: ALPNCache;
-  proxyAgentFromOptions: ReturnType<typeof createProxyAgent>;
+  private _proxy: types.ProxySettings | undefined;
 
   private constructor(
     contextOptions: Pick<types.BrowserContextOptions, 'clientCertificates' | 'ignoreHTTPSErrors' | 'proxy'>
@@ -250,7 +253,7 @@ export class ClientCertificatesProxy {
     verifyClientCertificates(contextOptions.clientCertificates);
     this.alpnCache = new ALPNCache();
     this.ignoreHTTPSErrors = contextOptions.ignoreHTTPSErrors;
-    this.proxyAgentFromOptions = createProxyAgent(contextOptions.proxy);
+    this._proxy = contextOptions.proxy;
     this._initSecureContexts(contextOptions.clientCertificates);
     this._socksProxy = new SocksProxy();
     this._socksProxy.setPattern('*');
@@ -274,6 +277,15 @@ export class ClientCertificatesProxy {
     loadDummyServerCertsIfNeeded();
   }
 
+  getProxyAgent(host: string, port: number) {
+    const proxyFromOptions = createProxyAgent(this._proxy);
+    if (proxyFromOptions)
+      return proxyFromOptions;
+    const proxyFromEnv = getProxyForUrl(`https://${host}:${port}`);
+    if (proxyFromEnv)
+      return createProxyAgent({ server: proxyFromEnv });
+  }
+
   _initSecureContexts(clientCertificates: types.BrowserContextOptions['clientCertificates']) {
     // Step 1. Group certificates by origin.
     const origin2certs = new Map<string, types.BrowserContextOptions['clientCertificates']>();
@@ -295,10 +307,15 @@ export class ClientCertificatesProxy {
     }
   }
 
-  public static async create(contextOptions: Pick<types.BrowserContextOptions, 'clientCertificates' | 'ignoreHTTPSErrors' | 'proxy'>) {
+  public static async create(progress: Progress, contextOptions: Pick<types.BrowserContextOptions, 'clientCertificates' | 'ignoreHTTPSErrors' | 'proxy'>) {
     const proxy = new ClientCertificatesProxy(contextOptions);
-    await proxy._socksProxy.listen(0, '127.0.0.1');
-    return proxy;
+    try {
+      await progress.race(proxy._socksProxy.listen(0, '127.0.0.1'));
+      return proxy;
+    } catch (error) {
+      await proxy.close();
+      throw error;
+    }
   }
 
   public proxySettings(): types.ProxySettings {
