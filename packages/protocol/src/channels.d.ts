@@ -1612,6 +1612,7 @@ export interface BrowserContextChannel extends BrowserContextEventTarget, EventT
   setWebSocketInterceptionPatterns(params: BrowserContextSetWebSocketInterceptionPatternsParams, progress?: Progress): Promise<BrowserContextSetWebSocketInterceptionPatternsResult>;
   setOffline(params: BrowserContextSetOfflineParams, progress?: Progress): Promise<BrowserContextSetOfflineResult>;
   storageState(params: BrowserContextStorageStateParams, progress?: Progress): Promise<BrowserContextStorageStateResult>;
+  setStorageState(params: BrowserContextSetStorageStateParams, progress?: Progress): Promise<BrowserContextSetStorageStateResult>;
   pause(params?: BrowserContextPauseParams, progress?: Progress): Promise<BrowserContextPauseResult>;
   enableRecorder(params: BrowserContextEnableRecorderParams, progress?: Progress): Promise<BrowserContextEnableRecorderResult>;
   disableRecorder(params?: BrowserContextDisableRecorderParams, progress?: Progress): Promise<BrowserContextDisableRecorderResult>;
@@ -1627,6 +1628,7 @@ export interface BrowserContextChannel extends BrowserContextEventTarget, EventT
   clockRunFor(params: BrowserContextClockRunForParams, progress?: Progress): Promise<BrowserContextClockRunForResult>;
   clockSetFixedTime(params: BrowserContextClockSetFixedTimeParams, progress?: Progress): Promise<BrowserContextClockSetFixedTimeResult>;
   clockSetSystemTime(params: BrowserContextClockSetSystemTimeParams, progress?: Progress): Promise<BrowserContextClockSetSystemTimeResult>;
+  clockUninstall(params?: BrowserContextClockUninstallParams, progress?: Progress): Promise<BrowserContextClockUninstallResult>;
 }
 export type BrowserContextBindingCallEvent = {
   binding: BindingCallChannel,
@@ -1861,6 +1863,16 @@ export type BrowserContextStorageStateResult = {
   cookies: NetworkCookie[],
   origins: OriginStorage[],
 };
+export type BrowserContextSetStorageStateParams = {
+  storageState: {
+    cookies?: SetNetworkCookie[],
+    origins?: SetOriginStorage[],
+  },
+};
+export type BrowserContextSetStorageStateOptions = {
+
+};
+export type BrowserContextSetStorageStateResult = void;
 export type BrowserContextPauseParams = {};
 export type BrowserContextPauseOptions = {};
 export type BrowserContextPauseResult = void;
@@ -2005,6 +2017,9 @@ export type BrowserContextClockSetSystemTimeOptions = {
   timeString?: string,
 };
 export type BrowserContextClockSetSystemTimeResult = void;
+export type BrowserContextClockUninstallParams = {};
+export type BrowserContextClockUninstallOptions = {};
+export type BrowserContextClockUninstallResult = void;
 
 export interface BrowserContextEvents {
   'bindingCall': BrowserContextBindingCallEvent;
@@ -2721,11 +2736,10 @@ export type FrameAddStyleTagResult = {
 };
 export type FrameAriaSnapshotParams = {
   selector: string,
-  forAI?: boolean,
   timeout: number,
 };
 export type FrameAriaSnapshotOptions = {
-  forAI?: boolean,
+
 };
 export type FrameAriaSnapshotResult = {
   snapshot: string,

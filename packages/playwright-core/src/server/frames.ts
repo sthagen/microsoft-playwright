@@ -1341,8 +1341,8 @@ export class Frame extends SdkObject {
     return progress.wait(timeout);
   }
 
-  async ariaSnapshot(progress: Progress, selector: string, options: { forAI?: boolean }): Promise<string> {
-    return await this._retryWithProgressIfNotConnected(progress, selector, true /* strict */, true /* performActionPreChecks */, handle => progress.race(handle.ariaSnapshot(options)));
+  async ariaSnapshot(progress: Progress, selector: string): Promise<string> {
+    return await this._retryWithProgressIfNotConnected(progress, selector, true /* strict */, true /* performActionPreChecks */, handle => progress.race(handle.ariaSnapshot()));
   }
 
   async expect(progress: Progress, selector: string | undefined, options: FrameExpectParams, timeout?: number): Promise<ExpectResult> {
@@ -1625,40 +1625,6 @@ export class Frame extends SdkObject {
     return injectedScriptHandle.evaluateHandle((injectedScript, { source, arg }) => {
       return injectedScript.extend(source, arg);
     }, { source, arg });
-  }
-
-  async resetStorageForCurrentOriginBestEffort(newStorage: channels.SetOriginStorage | undefined) {
-    const context = await this._utilityContext();
-    await context.evaluate(async ({ ls }) => {
-      // Clean DOMStorage.
-      sessionStorage.clear();
-      localStorage.clear();
-
-      // Add new DOM Storage values.
-      for (const entry of ls || [])
-        localStorage[entry.name] = entry.value;
-
-      // Clean Service Workers
-      const registrations = navigator.serviceWorker ? await navigator.serviceWorker.getRegistrations() : [];
-      await Promise.all(registrations.map(async r => {
-        // Heuristic for service workers that stalled during main script fetch or importScripts:
-        // Waiting for them to finish unregistering takes ages so we do not await.
-        // However, they will unregister immediately after fetch finishes and should not affect next page load.
-        // Unfortunately, loading next page in Chromium still takes 5 seconds waiting for
-        // some operation on this bogus service worker to finish.
-        if (!r.installing && !r.waiting && !r.active)
-          r.unregister().catch(() => {});
-        else
-          await r.unregister().catch(() => {});
-      }));
-
-      // Clean IndexedDB
-      for (const db of await indexedDB.databases?.() || []) {
-        // Do not wait for the callback - it is called on timer in Chromium (slow).
-        if (db.name)
-          indexedDB.deleteDatabase(db.name!);
-      }
-    }, { ls: newStorage?.localStorage }).catch(() => {});
   }
 
   private _asLocator(selector: string) {
