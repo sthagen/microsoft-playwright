@@ -459,6 +459,7 @@ scheme.DebugControllerSetReportStateChangedResult = tOptional(tObject({}));
 scheme.DebugControllerSetRecorderModeParams = tObject({
   mode: tEnum(['inspecting', 'recording', 'none']),
   testIdAttributeName: tOptional(tString),
+  generateAutoExpect: tOptional(tBoolean),
 });
 scheme.DebugControllerSetRecorderModeResult = tOptional(tObject({}));
 scheme.DebugControllerHighlightParams = tObject({
@@ -1071,13 +1072,6 @@ scheme.BrowserContextStorageStateResult = tObject({
   cookies: tArray(tType('NetworkCookie')),
   origins: tArray(tType('OriginStorage')),
 });
-scheme.BrowserContextSetStorageStateParams = tObject({
-  storageState: tObject({
-    cookies: tOptional(tArray(tType('SetNetworkCookie'))),
-    origins: tOptional(tArray(tType('SetOriginStorage'))),
-  }),
-});
-scheme.BrowserContextSetStorageStateResult = tOptional(tObject({}));
 scheme.BrowserContextPauseParams = tOptional(tObject({}));
 scheme.BrowserContextPauseResult = tOptional(tObject({}));
 scheme.BrowserContextEnableRecorderParams = tObject({
@@ -1165,8 +1159,6 @@ scheme.BrowserContextClockSetSystemTimeParams = tObject({
   timeString: tOptional(tString),
 });
 scheme.BrowserContextClockSetSystemTimeResult = tOptional(tObject({}));
-scheme.BrowserContextClockUninstallParams = tOptional(tObject({}));
-scheme.BrowserContextClockUninstallResult = tOptional(tObject({}));
 scheme.PageInitializer = tObject({
   mainFrame: tChannel(['Frame']),
   viewportSize: tOptional(tObject({
