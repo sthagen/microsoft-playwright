@@ -89,7 +89,9 @@ export class BidiNetworkManager {
     if (!request)
       return;
     const getResponseBody = async () => {
-      throw new Error(`Response body is not available for requests in Bidi`);
+      const { bytes } = await this._session.send('network.getData', { request: params.request.request, dataType: bidi.Network.DataType.Response });
+      const encoding = bytes.type === 'base64' ? 'base64' : 'utf8';
+      return Buffer.from(bytes.value, encoding);
     };
     const timings = params.request.timings;
     const startTime = timings.requestTime;
@@ -159,7 +161,7 @@ export class BidiNetworkManager {
   private _onAuthRequired(params: bidi.Network.AuthRequiredParameters) {
     const isBasic = params.response.authChallenges?.some(challenge => challenge.scheme.startsWith('Basic'));
     const credentials = this._page.browserContext._options.httpCredentials;
-    if (isBasic && credentials) {
+    if (isBasic && credentials && (!credentials.origin || (new URL(params.request.url).origin).toLowerCase() === credentials.origin.toLowerCase())) {
       if (this._attemptedAuthentications.has(params.request.request)) {
         this._session.sendMayFail('network.continueWithAuth', {
           request: params.request.request,
@@ -180,7 +182,7 @@ export class BidiNetworkManager {
     } else {
       this._session.sendMayFail('network.continueWithAuth', {
         request: params.request.request,
-        action: 'default',
+        action: 'cancel',
       });
     }
   }
