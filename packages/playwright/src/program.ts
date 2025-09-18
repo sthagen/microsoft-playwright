@@ -37,7 +37,7 @@ import { ServerBackendFactory, runMainBackend } from './mcp/sdk/exports';
 import { TestServerBackend } from './mcp/test/testBackend';
 import { decorateCommand } from './mcp/program';
 import { setupExitWatchdog } from './mcp/browser/watchdog';
-import { initClaudeCodeRepo, initOpencodeRepo } from './agents/generateAgents';
+import { initClaudeCodeRepo, initOpencodeRepo, initVSCodeRepo } from './agents/generateAgents';
 
 import type { ConfigCLIOverrides } from './common/ipc';
 import type { TraceMode } from '../types/test';
@@ -177,12 +177,15 @@ function addTestMCPServerCommand(program: Command) {
 function addInitAgentsCommand(program: Command) {
   const command = program.command('init-agents', { hidden: true });
   command.description('Initialize repository agents for the Claude Code');
-  command.option('--claude', 'Initialize repository agents for the Claude Code');
-  command.option('--opencode', 'Initialize repository agents for the Opencode');
+  const option = command.createOption('--loop <loop>', 'Agentic loop provider');
+  option.choices(['claude', 'opencode', 'vscode']);
+  command.addOption(option);
   command.action(async opts => {
-    if (opts.opencode)
+    if (opts.loop === 'opencode')
       await initOpencodeRepo();
-    else
+    else if (opts.loop === 'vscode')
+      await initVSCodeRepo();
+    else if (opts.loop === 'claude')
       await initClaudeCodeRepo();
   });
 }
