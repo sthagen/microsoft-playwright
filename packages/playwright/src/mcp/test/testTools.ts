@@ -23,6 +23,7 @@ import { z } from '../sdk/bundle';
 import { terminalScreen } from '../../reporters/base';
 import ListReporter from '../../reporters/list';
 import ListModeReporter from '../../reporters/listModeReporter';
+import { findTopLevelProjects } from '../../runner/projectUtils';
 
 import { defineTestTool } from './testTool';
 import { StringWriteStream } from './streams';
@@ -65,17 +66,17 @@ export const runTests = defineTestTool({
     const configDir = context.configLocation.configDir;
     const reporter = new ListReporter({ configDir, screen, includeTestId: true });
     const testRunner = await context.createTestRunner();
-    const result = await testRunner.runTests(reporter, {
+    await testRunner.runTests(reporter, {
       locations: params.locations,
       projects: params.projects,
+      disableConfigReporters: true,
     });
 
     const text = stream.content();
     return {
       content: [
         { type: 'text', text },
-      ],
-      isError: result.status !== 'passed',
+      ]
     };
   },
 });
@@ -106,6 +107,7 @@ export const debugTest = defineTestTool({
       timeout: 0,
       workers: 1,
       pauseOnError: true,
+      disableConfigReporters: true,
     });
 
     const text = stream.content();
@@ -140,10 +142,11 @@ export const setupPage = defineTestTool({
     if (!testLocation) {
       testLocation = 'default.seed.spec.ts';
       const config = await testRunner.loadConfig();
-      const project = params.project ? config.projects.find(p => p.project.name === params.project) : config.projects[0];
+      const project = params.project ? config.projects.find(p => p.project.name === params.project) : findTopLevelProjects(config)[0];
       const testDir = project?.project.testDir || configDir;
       const seedFile = path.join(testDir, testLocation);
       if (!fs.existsSync(seedFile)) {
+        await fs.promises.mkdir(path.dirname(seedFile), { recursive: true });
         await fs.promises.writeFile(seedFile, `import { test, expect } from '@playwright/test';
 
 test('seed', async ({ page }) => {});
@@ -158,6 +161,7 @@ test('seed', async ({ page }) => {});
       timeout: 0,
       workers: 1,
       pauseAtEnd: true,
+      disableConfigReporters: true,
     });
 
     const text = stream.content();
