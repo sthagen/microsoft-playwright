@@ -117,7 +117,7 @@ export const test = serverTest.extend<TestFixtures & TestOptions, WorkerFixtures
       const { transport, stderr } = await createTransport(mcpServerType, args, env);
       let stderrBuffer = '';
       stderr?.on('data', data => {
-        if (process.env.PWMCP_DEBUG)
+        if (process.env.PWDEBUGIMPL)
           process.stderr.write(data);
         stderrBuffer += data.toString();
       });
@@ -330,4 +330,23 @@ export async function writeFiles(files: Files, options?: { update?: boolean }) {
   }));
 
   return baseDir;
+}
+
+export async function prepareDebugTest(startClient: StartClient, testFile?: string, clientArgs?: Parameters<StartClient>[0]) {
+  await writeFiles({
+    'a.test.ts': testFile || `
+      import { test, expect } from '@playwright/test';
+      test('fail', async ({ page }) => {
+        await page.setContent('<button>Submit</button>');
+        await expect(page.getByRole('button', { name: 'Missing' })).toBeVisible({ timeout: 1000 });
+      });
+    `
+  });
+
+  const { client } = await startClient(clientArgs);
+  const listResult = await client.callTool({
+    name: 'test_list',
+  });
+  const [, id] = listResult.content[0].text.match(/\[id=([^\]]+)\]/);
+  return { client, id };
 }

@@ -14,18 +14,21 @@
  * limitations under the License.
  */
 
+import { debug } from 'playwright-core/lib/utilsBundle';
 import { renderModalStates } from './tab';
 
 import type { Tab, TabSnapshot } from './tab';
 import type { ImageContent, TextContent } from '@modelcontextprotocol/sdk/types.js';
 import type { Context } from './context';
 
+export const requestDebug = debug('pw:mcp:request');
+
 export class Response {
   private _result: string[] = [];
   private _code: string[] = [];
   private _images: { contentType: string, data: Buffer }[] = [];
   private _context: Context;
-  private _includeSnapshot: 'full' | 'partial' | 'none' = 'none';
+  private _includeSnapshot = false;
   private _includeTabs = false;
   private _tabSnapshot: TabSnapshot | undefined;
 
@@ -72,8 +75,8 @@ export class Response {
     return this._images;
   }
 
-  setIncludeSnapshot(full?: 'full') {
-    this._includeSnapshot = full ?? 'partial';
+  setIncludeSnapshot() {
+    this._includeSnapshot = true;
   }
 
   setIncludeTabs() {
@@ -83,7 +86,7 @@ export class Response {
   async finish() {
     // All the async snapshotting post-action is happening here.
     // Everything below should race against modal states.
-    if (this._includeSnapshot !== 'none' && this._context.currentTab())
+    if (this._includeSnapshot && this._context.currentTab())
       this._tabSnapshot = await this._context.currentTabOrDie().captureSnapshot();
     for (const tab of this._context.tabs())
       await tab.updateTitle();
@@ -93,7 +96,17 @@ export class Response {
     return this._tabSnapshot;
   }
 
-  serialize(): { content: (TextContent | ImageContent)[], isError?: boolean } {
+  logBegin() {
+    if (requestDebug.enabled)
+      requestDebug(this.toolName, this.toolArgs);
+  }
+
+  logEnd() {
+    if (requestDebug.enabled)
+      requestDebug(this.serialize({ omitSnapshot: true, omitBlobs: true }));
+  }
+
+  serialize(options: { omitSnapshot?: boolean, omitBlobs?: boolean } = {}): { content: (TextContent | ImageContent)[], isError?: boolean } {
     const response: string[] = [];
 
     // Start with command result.
@@ -113,7 +126,7 @@ ${this._code.join('\n')}
     }
 
     // List browser tabs.
-    if (this._includeSnapshot !== 'none' || this._includeTabs)
+    if (this._includeSnapshot || this._includeTabs)
       response.push(...renderTabsMarkdown(this._context.tabs(), this._includeTabs));
 
     // Add snapshot if provided.
@@ -121,7 +134,7 @@ ${this._code.join('\n')}
       response.push(...renderModalStates(this._context, this._tabSnapshot.modalStates));
       response.push('');
     } else if (this._tabSnapshot) {
-      response.push(renderTabSnapshot(this._tabSnapshot, this._includeSnapshot === 'full'));
+      response.push(renderTabSnapshot(this._tabSnapshot, options));
       response.push('');
     }
 
@@ -133,7 +146,7 @@ ${this._code.join('\n')}
     // Image attachments.
     if (this._context.config.imageResponses !== 'omit') {
       for (const image of this._images)
-        content.push({ type: 'image', data: image.data.toString('base64'), mimeType: image.contentType });
+        content.push({ type: 'image', data: options.omitBlobs ? '<blob>' : image.data.toString('base64'), mimeType: image.contentType });
     }
 
     this._redactSecrets(content);
@@ -153,7 +166,7 @@ ${this._code.join('\n')}
   }
 }
 
-function renderTabSnapshot(tabSnapshot: TabSnapshot, fullSnapshot: boolean): string {
+function renderTabSnapshot(tabSnapshot: TabSnapshot, options: { omitSnapshot?: boolean } = {}): string {
   const lines: string[] = [];
 
   if (tabSnapshot.consoleMessages.length) {
@@ -177,15 +190,10 @@ function renderTabSnapshot(tabSnapshot: TabSnapshot, fullSnapshot: boolean): str
   lines.push(`### Page state`);
   lines.push(`- Page URL: ${tabSnapshot.url}`);
   lines.push(`- Page Title: ${tabSnapshot.title}`);
-  if (!fullSnapshot && tabSnapshot.formattedAriaSnapshotDiff) {
-    lines.push(`- Page Snapshot Diff:`);
-    lines.push(tabSnapshot.formattedAriaSnapshotDiff);
-  } else {
-    lines.push(`- Page Snapshot:`);
-    lines.push('```yaml');
-    lines.push(tabSnapshot.ariaSnapshot);
-    lines.push('```');
-  }
+  lines.push(`- Page Snapshot:`);
+  lines.push('```yaml');
+  lines.push(options.omitSnapshot ? '<snapshot>' : tabSnapshot.ariaSnapshot);
+  lines.push('```');
 
   return lines.join('\n');
 }

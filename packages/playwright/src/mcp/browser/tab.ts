@@ -16,12 +16,13 @@
 
 import { EventEmitter } from 'events';
 import * as playwright from 'playwright-core';
-import { ManualPromise, diffAriaSnapshots } from 'playwright-core/lib/utils';
-import { yaml } from 'playwright-core/lib/utilsBundle';
+import { ManualPromise } from 'playwright-core/lib/utils';
 
 import { callOnPageNoTrace, waitForCompletion } from './tools/utils';
 import { logUnhandledError } from '../log';
 import { ModalState } from './tools/tool';
+import { handleDialog } from './tools/dialogs';
+import { uploadFile } from './tools/files';
 
 import type { Context } from './context';
 
@@ -41,7 +42,6 @@ export type TabSnapshot = {
   url: string;
   title: string;
   ariaSnapshot: string;
-  formattedAriaSnapshotDiff?: string;
   modalStates: ModalState[];
   consoleMessages: ConsoleMessage[];
   downloads: { download: playwright.Download, finished: boolean, outputFile: string }[];
@@ -57,7 +57,6 @@ export class Tab extends EventEmitter<TabEventsInterface> {
   private _onPageClose: (tab: Tab) => void;
   private _modalStates: ModalState[] = [];
   private _downloads: { download: playwright.Download, finished: boolean, outputFile: string }[] = [];
-  private _lastAriaSnapshot: string | undefined;
 
   constructor(context: Context, page: playwright.Page, onPageClose: (tab: Tab) => void) {
     super();
@@ -66,14 +65,7 @@ export class Tab extends EventEmitter<TabEventsInterface> {
     this._onPageClose = onPageClose;
     page.on('console', event => this._handleConsoleMessage(messageToConsoleMessage(event)));
     page.on('pageerror', error => this._handleConsoleMessage(pageErrorToConsoleMessage(error)));
-    page.on('request', request => {
-      this._requests.set(request, null);
-      // Note: unfortunately, 'framenavigated' event does not differentiate between
-      // a same-document (#hash or pushState) navigation and a new document being loaded.
-      // Relying upon a navigation request heuristic.
-      if (request.frame() === page.mainFrame() && request.isNavigationRequest())
-        this._willNavigateMainFrameToNewDocument();
-    });
+    page.on('request', request => this._requests.set(request, null));
     page.on('response', response => this._requests.set(response.request(), response));
     page.on('close', () => this._onClose());
     page.on('filechooser', chooser => {
@@ -81,7 +73,7 @@ export class Tab extends EventEmitter<TabEventsInterface> {
         type: 'fileChooser',
         description: 'File chooser',
         fileChooser: chooser,
-        clearedBy: 'browser_file_upload',
+        clearedBy: uploadFile.schema.name,
       });
     });
     page.on('dialog', dialog => this._dialogShown(dialog));
@@ -137,7 +129,7 @@ export class Tab extends EventEmitter<TabEventsInterface> {
       type: 'dialog',
       description: `"${dialog.type()}" dialog with message "${dialog.message()}"`,
       dialog,
-      clearedBy: 'browser_handle_dialog',
+      clearedBy: handleDialog.schema.name
     });
   }
 
@@ -145,7 +137,7 @@ export class Tab extends EventEmitter<TabEventsInterface> {
     const entry = {
       download,
       finished: false,
-      outputFile: await this.context.outputFile(download.suggestedFilename(), { origin: 'web' })
+      outputFile: await this.context.outputFile(download.suggestedFilename(), { origin: 'web', reason: 'Saving download' })
     };
     this._downloads.push(entry);
     await download.saveAs(entry.outputFile);
@@ -168,10 +160,6 @@ export class Tab extends EventEmitter<TabEventsInterface> {
     this._onPageClose(this);
   }
 
-  private _willNavigateMainFrameToNewDocument() {
-    this._lastAriaSnapshot = undefined;
-  }
-
   async updateTitle() {
     await this._raceAgainstModalStates(async () => {
       this._lastTitle = await callOnPageNoTrace(this.page, page => page.title());
@@ -192,7 +180,6 @@ export class Tab extends EventEmitter<TabEventsInterface> {
 
   async navigate(url: string) {
     this._clearCollectedArtifacts();
-    this._willNavigateMainFrameToNewDocument();
 
     const downloadEvent = callOnPageNoTrace(this.page, page => page.waitForEvent('download').catch(logUnhandledError));
     try {
@@ -236,7 +223,6 @@ export class Tab extends EventEmitter<TabEventsInterface> {
         url: this.page.url(),
         title: await this.page.title(),
         ariaSnapshot: snapshot,
-        formattedAriaSnapshotDiff: this._lastAriaSnapshot ? generateAriaSnapshotDiff(this._lastAriaSnapshot, snapshot) : undefined,
         modalStates: [],
         consoleMessages: [],
         downloads: this._downloads,
@@ -246,7 +232,6 @@ export class Tab extends EventEmitter<TabEventsInterface> {
       // Assign console message late so that we did not lose any to modal state.
       tabSnapshot.consoleMessages = this._recentConsoleMessages;
       this._recentConsoleMessages = [];
-      this._lastAriaSnapshot = tabSnapshot.ariaSnapshot;
     }
     return tabSnapshot ?? {
       url: this.page.url(),
@@ -347,22 +332,3 @@ export function renderModalStates(context: Context, modalStates: ModalState[]): 
 }
 
 const tabSymbol = Symbol('tabSymbol');
-
-function generateAriaSnapshotDiff(oldSnapshot: string, newSnapshot: string) {
-  const diffs = diffAriaSnapshots(yaml, oldSnapshot, newSnapshot);
-  if (diffs === 'equal')
-    return '<no changes>';
-  if (diffs === 'different')
-    return;
-  if (diffs.length > 3 || diffs.some(diff => diff.newSource.split('\n').length > 100)) {
-    // Being conservative - up to 3 small diff changes, otherwise include full snapshot.
-    return;
-  }
-  const lines = [`The following refs have changed`];
-  for (const diff of diffs)
-    lines.push('', '```yaml', diff.newSource.trimEnd(), '```');
-  const combined = lines.join('\n');
-  if (combined.length >= newSnapshot.length)
-    return;
-  return combined;
-}
