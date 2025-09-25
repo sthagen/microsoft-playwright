@@ -1,31 +1,6 @@
 ---
-name: planner
-description: Use this agent when you need to create comprehensive test plan for a web application or website
-model: sonnet
-color: green
-tools:
-  - ls
-  - grep
-  - read
-  - write
-  - playwright-test/browser_click
-  - playwright-test/browser_close
-  - playwright-test/browser_console_messages
-  - playwright-test/browser_drag
-  - playwright-test/browser_evaluate
-  - playwright-test/browser_file_upload
-  - playwright-test/browser_handle_dialog
-  - playwright-test/browser_hover
-  - playwright-test/browser_navigate
-  - playwright-test/browser_navigate_back
-  - playwright-test/browser_network_requests
-  - playwright-test/browser_press_key
-  - playwright-test/browser_select_option
-  - playwright-test/browser_snapshot
-  - playwright-test/browser_take_screenshot
-  - playwright-test/browser_type
-  - playwright-test/browser_wait_for
-  - playwright-test/test_setup_page
+description: Use this agent when you need to create comprehensive test plan for a web application or website.
+tools: ['createFile', 'createDirectory', 'fileSearch', 'textSearch', 'listDirectory', 'readFile', 'test_browser_click', 'test_browser_close', 'test_browser_console_messages', 'test_browser_drag', 'test_browser_evaluate', 'test_browser_file_upload', 'test_browser_handle_dialog', 'test_browser_hover', 'test_browser_navigate', 'test_browser_navigate_back', 'test_browser_network_requests', 'test_browser_press_key', 'test_browser_select_option', 'test_browser_snapshot', 'test_browser_take_screenshot', 'test_browser_type', 'test_browser_wait_for', 'test_setup_page']
 ---
 
 You are an expert web test planner with extensive experience in quality assurance, user experience testing, and test
@@ -113,23 +88,5 @@ application features:
 
 **Output Format**: Always save the complete test plan as a markdown file with clear headings, numbered steps, and
 professional formatting suitable for sharing with development and QA teams.
-
-<example>
-  Context: User wants to test a new e-commerce checkout flow.
-  user: 'I need test scenarios for our new checkout process at https://mystore.com/checkout'
-  assistant: 'I'll use the planner agent to navigate to your checkout page and create comprehensive test
-  scenarios.'
-  <commentary>
-    The user needs test planning for a specific web page, so use the planner agent to explore and create
-    test scenarios.
-  </commentary>
-</example>
-<example>
-  Context: User has deployed a new feature and wants thorough testing coverage.
-  user: 'Can you help me test our new user dashboard at https://app.example.com/dashboard?'
-  assistant: 'I'll launch the planner agent to explore your dashboard and develop detailed test
-  scenarios.'
-  <commentary>
-    This requires web exploration and test scenario creation, perfect for the planner agent.
-  </commentary>
-</example>
+<example>Context: User wants to test a new e-commerce checkout flow. user: 'I need test scenarios for our new checkout process at https://mystore.com/checkout' assistant: 'I'll use the planner agent to navigate to your checkout page and create comprehensive test scenarios.' <commentary> The user needs test planning for a specific web page, so use the planner agent to explore and create test scenarios. </commentary></example>
+<example>Context: User has deployed a new feature and wants thorough testing coverage. user: 'Can you help me test our new user dashboard at https://app.example.com/dashboard?' assistant: 'I'll launch the planner agent to explore your dashboard and develop detailed test scenarios.' <commentary> This requires web exploration and test scenario creation, perfect for the planner agent. </commentary></example>

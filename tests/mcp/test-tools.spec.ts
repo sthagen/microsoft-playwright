@@ -466,7 +466,7 @@ test('test_setup_page', async ({ startClient }) => {
   expect(await client.callTool({
     name: 'test_setup_page',
     arguments: {
-      testLocation: 'a.test.ts:6',
+      seedFile: 'a.test.ts',
     },
   })).toHaveTextResponse(`### Paused at end of test. ready for interaction
 
@@ -491,6 +491,67 @@ test('test_setup_page', async ({ startClient }) => {
   });
 });
 
+test('test_setup_page seed resolution', async ({ startClient }) => {
+  await writeFiles({
+    'playwright.config.ts': `
+      module.exports = {
+        testDir: './tests',
+      };
+    `,
+    'tests/seed.test.ts': `
+      import { test, expect } from '@playwright/test';
+      test('template', async ({ page }) => {
+        await page.setContent('<button>Submit</button>');
+      });
+    `,
+  });
+
+  const { client } = await startClient();
+
+  // Relative to test dir.
+  expect(await client.callTool({
+    name: 'test_setup_page',
+    arguments: {
+      seedFile: 'seed.test.ts',
+    },
+  })).toHaveTextResponse(expect.stringContaining(`### Paused at end of test.`));
+
+  // Relative to config dir.
+  expect(await client.callTool({
+    name: 'test_setup_page',
+    arguments: {
+      seedFile: 'tests/seed.test.ts',
+    },
+  })).toHaveTextResponse(expect.stringContaining(`### Paused at end of test.`));
+});
+
+test('test_setup_page seed resolution - cwd', async ({ startClient }) => {
+  await writeFiles({
+    'configs/playwright.config.ts': `
+      module.exports = {
+        testDir: '../tests',
+      };
+    `,
+    'tests/seed.test.ts': `
+      import { test, expect } from '@playwright/test';
+      test('template', async ({ page }) => {
+        await page.setContent('<button>Submit</button>');
+      });
+    `,
+  });
+
+  const { client } = await startClient({
+    args: ['--config=configs/playwright.config.ts'],
+  });
+
+  expect(await client.callTool({
+    name: 'test_setup_page',
+    arguments: {
+      seedFile: 'tests/seed.test.ts',
+    },
+  })).toHaveTextResponse(expect.stringContaining(`### Paused at end of test.`));
+});
+
 test('test_setup_page with dependencies', async ({ startClient }) => {
   const baseDir = await writeFiles({
     'playwright.config.ts': `
@@ -508,7 +569,7 @@ test('test_setup_page with dependencies', async ({ startClient }) => {
         require('fs').writeFileSync(testInfo.outputPath('auth.txt'), 'done');
       });
     `,
-    'template.test.ts': `
+    'seed.test.ts': `
       import { test, expect } from '@playwright/test';
       test('template', async ({ page }, testInfo) => {
         require('fs').writeFileSync(testInfo.outputPath('template.txt'), 'done');
@@ -520,7 +581,7 @@ test('test_setup_page with dependencies', async ({ startClient }) => {
   expect(await client.callTool({
     name: 'test_setup_page',
     arguments: {
-      testLocation: 'template.test.ts:3',
+      seedFile: 'seed.test.ts',
       project: 'chromium',
     },
   })).toHaveTextResponse(`### Paused at end of test. ready for interaction
@@ -536,8 +597,34 @@ test('test_setup_page with dependencies', async ({ startClient }) => {
 
   // Should pause at the target test, not in a dependency or any other stray project.
   expect(fs.existsSync(path.join(baseDir, 'test-results', 'auth.setup.ts-auth-setup', 'auth.txt'))).toBe(true);
-  expect(fs.existsSync(path.join(baseDir, 'test-results', 'template-template-chromium', 'template.txt'))).toBe(true);
-  expect(fs.existsSync(path.join(baseDir, 'test-results', 'template-template-ignored', 'template.txt'))).toBe(false);
+  expect(fs.existsSync(path.join(baseDir, 'test-results', 'seed-template-chromium', 'template.txt'))).toBe(true);
+  expect(fs.existsSync(path.join(baseDir, 'test-results', 'seed-template-ignored', 'template.txt'))).toBe(false);
+});
+
+test('test_setup_page (loading error)', async ({ startClient }) => {
+  await writeFiles({
+    'seed.test.ts': `
+      throw new Error('loading error');
+    `,
+  });
+  const { client } = await startClient();
+  expect(await client.callTool({
+    name: 'test_setup_page',
+    arguments: {
+      seedFile: 'seed.test.ts',
+    },
+  })).toHaveTextResponse(expect.stringContaining('Error: loading error'));
+});
+
+test('test_setup_page (wrong test location)', async ({ startClient }) => {
+  const { client } = await startClient();
+  expect(await client.callTool({
+    name: 'test_setup_page',
+    arguments: {
+      seedFile: 'a.test.ts',
+    },
+  })).toHaveTextResponse(`### Result
+Error: seed test not found.`);
 });
 
 test('test_setup_page (no test location)', async ({ startClient }) => {
@@ -584,8 +671,8 @@ test('test_setup_page chooses top-level project', async ({ startClient }) => {
 \`\`\`
 `);
 
-  expect(fs.existsSync(path.join(baseDir, 'one', 'default.seed.spec.ts'))).toBe(false);
-  expect(fs.existsSync(path.join(baseDir, 'two', 'default.seed.spec.ts'))).toBe(true);
+  expect(fs.existsSync(path.join(baseDir, 'one', 'seed.spec.ts'))).toBe(false);
+  expect(fs.existsSync(path.join(baseDir, 'two', 'seed.spec.ts'))).toBe(true);
 });
 
 test('test_setup_page without location respects testsDir', async ({ startClient }) => {
@@ -618,5 +705,5 @@ test('test_setup_page without location respects testsDir', async ({ startClient 
 
 \`\`\`
 `);
-  expect(fs.existsSync(test.info().outputPath('tests', 'default.seed.spec.ts'))).toBe(true);
+  expect(fs.existsSync(test.info().outputPath('tests', 'seed.spec.ts'))).toBe(true);
 });

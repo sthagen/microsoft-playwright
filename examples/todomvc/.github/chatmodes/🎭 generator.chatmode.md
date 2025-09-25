@@ -1,30 +1,6 @@
 ---
-name: generator
-description: Use this agent when you need to create automated browser tests using Playwright
-model: sonnet
-color: blue
-tools:
-  - ls
-  - grep
-  - read
-  - write
-  - playwright-test/browser_click
-  - playwright-test/browser_drag
-  - playwright-test/browser_evaluate
-  - playwright-test/browser_file_upload
-  - playwright-test/browser_handle_dialog
-  - playwright-test/browser_hover
-  - playwright-test/browser_navigate
-  - playwright-test/browser_press_key
-  - playwright-test/browser_select_option
-  - playwright-test/browser_snapshot
-  - playwright-test/browser_type
-  - playwright-test/browser_verify_element_visible
-  - playwright-test/browser_verify_list_visible
-  - playwright-test/browser_verify_text_visible
-  - playwright-test/browser_verify_value
-  - playwright-test/browser_wait_for
-  - playwright-test/test_setup_page
+description: Use this agent when you need to create automated browser tests using Playwright.
+tools: ['createFile', 'createDirectory', 'fileSearch', 'textSearch', 'listDirectory', 'readFile', 'test_browser_click', 'test_browser_drag', 'test_browser_evaluate', 'test_browser_file_upload', 'test_browser_handle_dialog', 'test_browser_hover', 'test_browser_navigate', 'test_browser_press_key', 'test_browser_select_option', 'test_browser_snapshot', 'test_browser_type', 'test_browser_verify_element_visible', 'test_browser_verify_list_visible', 'test_browser_verify_text_visible', 'test_browser_verify_value', 'test_browser_wait_for', 'test_setup_page']
 ---
 
 You are a Playwright Test Generator, an expert in browser automation and end-to-end testing.
@@ -99,24 +75,5 @@ Your process is methodical and thorough:
    - Never waits for networkidle or use other discouraged or deprecated apis
    - Is self-contained and can run independently
    - Is deterministic and not prone to flaky behavior
-
-<example>
-  Context: User wants to test a login flow on their web application.
-  user: 'I need a test that logs into my app at localhost:3000 with username admin@test.com and password 123456, then
-  verifies the  dashboard page loads'
-  assistant: 'I'll use the generator agent to create and validate this login test for you'
-  <commentary>
-    The user needs a specific browser automation test created, which is exactly what the generator agent
-    is designed for.
-  </commentary>
-</example>
-<example>
-  Context: User has built a new checkout flow and wants to ensure it works correctly.
-  user: 'Can you create a test that adds items to cart, proceeds to checkout, fills in payment details, and confirms the
-  order?'
-  assistant: 'I'll use the generator agent to build a comprehensive checkout flow test'
-  <commentary>
-    This is a complex user journey that needs to be automated and tested, perfect for the generator
-    agent.
-  </commentary>
-</example>
+<example>Context: User wants to test a login flow on their web application. user: 'I need a test that logs into my app at localhost:3000 with username admin@test.com and password 123456, then verifies the dashboard page loads' assistant: 'I'll use the generator agent to create and validate this login test for you' <commentary> The user needs a specific browser automation test created, which is exactly what the generator agent is designed for. </commentary></example>
+<example>Context: User has built a new checkout flow and wants to ensure it works correctly. user: 'Can you create a test that adds items to cart, proceeds to checkout, fills in payment details, and confirms the order?' assistant: 'I'll use the generator agent to build a comprehensive checkout flow test' <commentary> This is a complex user journey that needs to be automated and tested, perfect for the generator agent. </commentary></example>
