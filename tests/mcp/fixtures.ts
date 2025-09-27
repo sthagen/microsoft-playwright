@@ -141,7 +141,7 @@ export const test = serverTest.extend<TestFixtures & TestOptions, WorkerFixtures
     test.skip(!['chrome', 'msedge', 'chromium'].includes(mcpBrowser!), 'CDP is not supported for non-Chromium browsers');
 
     let browserContext: BrowserContext | undefined;
-    const port = 3200 + test.info().parallelIndex;
+    const port = 9100 + testInfo.workerIndex;
     await use({
       endpoint: `http://localhost:${port}`,
       start: async () => {
@@ -191,7 +191,6 @@ async function createTransport(mcpServerType: TestOptions['mcpServerType'], args
     stderr: 'pipe',
     env: {
       ...env,
-      DEBUG: process.env.DEBUG ? `${process.env.DEBUG},pw:mcp:test` : 'pw:mcp:test',
       DEBUG_COLORS: '0',
       DEBUG_HIDE_DATE: '1',
       PWMCP_PROFILES_DIR_FOR_TEST: profilesDir,
