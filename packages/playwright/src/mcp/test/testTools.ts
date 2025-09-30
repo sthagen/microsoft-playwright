@@ -23,8 +23,7 @@ import { z } from '../sdk/bundle';
 import { terminalScreen } from '../../reporters/base';
 import ListReporter from '../../reporters/list';
 import ListModeReporter from '../../reporters/listModeReporter';
-import { findTopLevelProjects } from '../../runner/projectUtils';
-
+import { ensureSeedTest, seedProject } from './seed';
 import { defineTestTool } from './testTool';
 import { StringWriteStream } from './streams';
 import { fileExistsAsync } from '../../util';
@@ -128,23 +127,13 @@ export const setupPage = defineTestTool({
     const reporter = new ListReporter({ configDir, screen });
     const testRunner = await context.createTestRunner();
     const config = await testRunner.loadConfig();
-    const project = params.project ? config.projects.find(p => p.project.name === params.project) : findTopLevelProjects(config)[0];
-    const testDir = project?.project.testDir || configDir;
 
     let seedFile: string | undefined;
     if (!params.seedFile) {
-      seedFile = path.resolve(testDir, 'seed.spec.ts');
-      await fs.promises.mkdir(path.dirname(seedFile), { recursive: true });
-      await fs.promises.writeFile(seedFile, `import { test, expect } from '@playwright/test';
-
-test.describe('Test group', () => {
-  test('seed', async ({ page }) => {
-    // generate code here.
-  });
-});
-`);
+      seedFile = await ensureSeedTest(config, params.project, false);
     } else {
       const candidateFiles: string[] = [];
+      const testDir = seedProject(config, params.project).project.testDir;
       candidateFiles.push(path.resolve(testDir, params.seedFile));
       candidateFiles.push(path.resolve(configDir, params.seedFile));
       candidateFiles.push(path.resolve(context.rootPath, params.seedFile));
