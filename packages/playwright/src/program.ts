@@ -35,7 +35,7 @@ import { runAllTestsWithConfig, TestRunner } from './runner/testRunner';
 import { createErrorCollectingReporter } from './runner/reporters';
 import { ServerBackendFactory, runMainBackend } from './mcp/sdk/exports';
 import { TestServerBackend } from './mcp/test/testBackend';
-import { ensureSeedTest } from './mcp/test/seed';
+import { ensureSeedTest, seedProject } from './mcp/test/seed';
 import { decorateCommand } from './mcp/program';
 import { setupExitWatchdog } from './mcp/browser/watchdog';
 import { initClaudeCodeRepo, initOpencodeRepo, initVSCodeRepo } from './agents/generateAgents';
@@ -169,7 +169,12 @@ function addTestMCPServerCommand(program: Command) {
       version: packageJSON.version,
       create: () => new TestServerBackend(options.config, { muteConsole: options.port === undefined, headless: options.headless }),
     };
-    const mdbUrl = await runMainBackend(backendFactory, { port: options.port === undefined ? undefined : +options.port });
+    const mdbUrl = await runMainBackend(
+        backendFactory,
+        {
+          port: options.port === undefined ? undefined : +options.port
+        },
+    );
     if (mdbUrl)
       console.error('MCP Listening on: ', mdbUrl);
   });
@@ -195,7 +200,8 @@ function addInitAgentsCommand(program: Command) {
       return;
     }
     const config = await loadConfigFromFile(opts.config);
-    await ensureSeedTest(config, opts.project, true);
+    const project = seedProject(config, opts.project);
+    await ensureSeedTest(project, true);
   });
 }
 

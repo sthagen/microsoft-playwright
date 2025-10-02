@@ -19,7 +19,7 @@ import { fileURLToPath } from 'url';
 import { debug } from 'playwright-core/lib/utilsBundle';
 
 import * as mcpBundle from './bundle';
-import { httpAddressToString, installHttpTransport, startHttpServer } from './http';
+import { installHttpTransport, startHttpServer } from './http';
 import { InProcessTransport } from './inProcessTransport';
 
 import type { Tool, CallToolResult, CallToolRequest, Root } from '@modelcontextprotocol/sdk/types.js';
@@ -43,6 +43,7 @@ export type ProgressCallback = (params: ProgressParams) => void;
 export interface ServerBackend {
   initialize?(server: Server, clientInfo: ClientInfo): Promise<void>;
   listTools(): Promise<Tool[]>;
+  afterCallTool?(name: string, args: CallToolRequest['params']['arguments'], result: CallToolResult): Promise<void>;
   callTool(name: string, args: CallToolRequest['params']['arguments'], progress: ProgressCallback): Promise<CallToolResult>;
   serverClosed?(server: Server): void;
 }
@@ -165,8 +166,7 @@ export async function start(serverBackendFactory: ServerBackendFactory, options:
   }
 
   const httpServer = await startHttpServer(options);
-  const url = httpAddressToString(httpServer.address());
-  await installHttpTransport(httpServer, serverBackendFactory, options.allowedHosts);
+  const url = await installHttpTransport(httpServer, serverBackendFactory, false, options.allowedHosts);
 
   const mcpConfig: any = { mcpServers: { } };
   mcpConfig.mcpServers[serverBackendFactory.nameInConfig] = {
