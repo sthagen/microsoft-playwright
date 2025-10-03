@@ -14,8 +14,6 @@
  * limitations under the License.
  */
 
-import * as idbKeyval from 'idb-keyval';
-
 import { splitProgress } from './progress';
 import { unwrapPopoutUrl } from './snapshotRenderer';
 import { SnapshotServer } from './snapshotServer';
@@ -35,13 +33,10 @@ self.addEventListener('activate', function(event: any) {
 });
 
 const scopePath = new URL(self.registration.scope).pathname;
-const loadedTraces = new Map<string, { traceModel: TraceModel, snapshotServer: SnapshotServer }>();
-const clientIdToTraceUrls = new Map<string, { limit: number | undefined, traceUrls: Set<string>, traceViewerServer: TraceViewerServer }>();
 
-function simulateServiceWorkerRestart() {
-  loadedTraces.clear();
-  clientIdToTraceUrls.clear();
-}
+const loadedTraces = new Map<string, { traceModel: TraceModel, snapshotServer: SnapshotServer }>();
+
+const clientIdToTraceUrls = new Map<string, { limit: number | undefined, traceUrls: Set<string>, traceViewerServer: TraceViewerServer }>();
 
 async function loadTrace(traceUrl: string, traceFileName: string | null, client: any | undefined, limit: number | undefined, progress: (done: number, total: number) => undefined): Promise<TraceModel> {
   await gc();
@@ -54,7 +49,6 @@ async function loadTrace(traceUrl: string, traceFileName: string | null, client:
     clientIdToTraceUrls.set(clientId, data);
   }
   data.traceUrls.add(traceUrl);
-  await saveClientIdParams();
 
   const traceModel = new TraceModel();
   try {
@@ -93,19 +87,6 @@ async function doFetch(event: FetchEvent): Promise<Response> {
   const request = event.request;
   const client = await self.clients.get(event.clientId);
 
-  const urlInScope = request.url.startsWith(self.registration.scope) ? new URL(unwrapPopoutUrl(request.url)) : undefined;
-  const relativePath = urlInScope?.pathname.substring(scopePath.length - 1);
-
-  if (relativePath !== '/contexts' && !clientIdToTraceUrls.has(event.clientId)) {
-    // Service worker was restarted upon subresource fetch.
-    // It was stopped because ping did not keep it alive since the tab itself was throttled.
-    const params = await loadClientIdParams(event.clientId);
-    if (params) {
-      for (const traceUrl of params.traceUrls)
-        await loadTrace(traceUrl, null, client, params.limit, () => {});
-    }
-  }
-
   // When trace viewer is deployed over https, we will force upgrade
   // insecure http subresources to https. Otherwise, these will fail
   // to load inside our https snapshots.
@@ -113,22 +94,20 @@ async function doFetch(event: FetchEvent): Promise<Response> {
   // the https urls.
   const isDeployedAsHttps = self.registration.scope.startsWith('https://');
 
-  if (urlInScope && relativePath) {
+  if (request.url.startsWith(self.registration.scope)) {
+    const url = new URL(unwrapPopoutUrl(request.url));
+    const relativePath = url.pathname.substring(scopePath.length - 1);
     if (relativePath === '/ping') {
       await gc();
       return new Response(null, { status: 200 });
     }
-    if (relativePath === '/restartServiceWorker') {
-      simulateServiceWorkerRestart();
-      return new Response(null, { status: 200 });
-    }
 
-    const traceUrl = urlInScope.searchParams.get('trace');
+    const traceUrl = url.searchParams.get('trace');
 
     if (relativePath === '/contexts') {
       try {
-        const limit = urlInScope.searchParams.has('limit') ? +urlInScope.searchParams.get('limit')! : undefined;
-        const traceModel = await loadTrace(traceUrl!, urlInScope.searchParams.get('traceFileName'), client, limit, (done: number, total: number) => {
+        const limit = url.searchParams.has('limit') ? +url.searchParams.get('limit')! : undefined;
+        const traceModel = await loadTrace(traceUrl!, url.searchParams.get('traceFileName'), client, limit, (done: number, total: number) => {
           client.postMessage({ method: 'progress', params: { done, total } });
         });
         return new Response(JSON.stringify(traceModel!.contextEntries), {
@@ -148,7 +127,7 @@ async function doFetch(event: FetchEvent): Promise<Response> {
       if (!snapshotServer)
         return new Response(null, { status: 404 });
       const pageOrFrameId = relativePath.substring('/snapshotInfo/'.length);
-      return snapshotServer.serveSnapshotInfo(pageOrFrameId, urlInScope.searchParams);
+      return snapshotServer.serveSnapshotInfo(pageOrFrameId, url.searchParams);
     }
 
     if (relativePath.startsWith('/snapshot/')) {
@@ -156,7 +135,7 @@ async function doFetch(event: FetchEvent): Promise<Response> {
       if (!snapshotServer)
         return new Response(null, { status: 404 });
       const pageOrFrameId = relativePath.substring('/snapshot/'.length);
-      const response = snapshotServer.serveSnapshot(pageOrFrameId, urlInScope.searchParams, urlInScope.href);
+      const response = snapshotServer.serveSnapshot(pageOrFrameId, url.searchParams, url.href);
       if (isDeployedAsHttps)
         response.headers.set('Content-Security-Policy', 'upgrade-insecure-requests');
       return response;
@@ -167,7 +146,7 @@ async function doFetch(event: FetchEvent): Promise<Response> {
       if (!snapshotServer)
         return new Response(null, { status: 404 });
       const pageOrFrameId = relativePath.substring('/closest-screenshot/'.length);
-      return snapshotServer.serveClosestScreenshot(pageOrFrameId, urlInScope.searchParams);
+      return snapshotServer.serveClosestScreenshot(pageOrFrameId, url.searchParams);
     }
 
     if (relativePath.startsWith('/sha1/')) {
@@ -176,13 +155,13 @@ async function doFetch(event: FetchEvent): Promise<Response> {
       for (const trace of loadedTraces.values()) {
         const blob = await trace.traceModel.resourceForSha1(sha1);
         if (blob)
-          return new Response(blob, { status: 200, headers: downloadHeaders(urlInScope.searchParams) });
+          return new Response(blob, { status: 200, headers: downloadHeaders(url.searchParams) });
       }
       return new Response(null, { status: 404 });
     }
 
     if (relativePath.startsWith('/file/')) {
-      const path = urlInScope.searchParams.get('path')!;
+      const path = url.searchParams.get('path')!;
       const traceViewerServer = clientIdToTraceUrls.get(event.clientId ?? '')?.traceViewerServer;
       if (!traceViewerServer)
         throw new Error('client is not initialized');
@@ -242,36 +221,6 @@ async function gc() {
     if (!usedTraces.has(traceUrl))
       loadedTraces.delete(traceUrl);
   }
-
-  await saveClientIdParams();
-}
-
-// Persist clientIdToTraceUrls to localStorage to avoid losing it when the service worker is restarted.
-async function saveClientIdParams() {
-  const serialized: Record<string, {
-    limit: number | undefined,
-    traceUrls: string[]
-  }> = {};
-  for (const [clientId, data] of clientIdToTraceUrls) {
-    serialized[clientId] = {
-      limit: data.limit,
-      traceUrls: [...data.traceUrls]
-    };
-  }
-
-  const newValue = JSON.stringify(serialized);
-  const oldValue = await idbKeyval.get('clientIdToTraceUrls');
-  if (newValue === oldValue)
-    return;
-  idbKeyval.set('clientIdToTraceUrls', newValue);
-}
-
-async function loadClientIdParams(clientId: string): Promise<{ limit: number | undefined, traceUrls: string[] } | undefined> {
-  const serialized = await idbKeyval.get('clientIdToTraceUrls') as string | undefined;
-  if (!serialized)
-    return;
-  const deserialized = JSON.parse(serialized);
-  return deserialized[clientId];
 }
 
 // @ts-ignore
