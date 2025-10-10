@@ -499,7 +499,7 @@ test('should popup snapshot', async ({ page, runAndTrace, server }) => {
   const popupPromise = traceViewer.page.context().waitForEvent('page');
   await traceViewer.page.getByTitle('Open snapshot in a new tab').click();
   const popup = await popupPromise;
-  await expect(popup.getByText('hello äöü 🙂')).toBeVisible();
+  await expect(popup.frameLocator('iframe').getByText('hello äöü 🙂')).toBeVisible();
 });
 
 test('should capture iframe with sandbox attribute', async ({ page, server, runAndTrace }) => {
@@ -1421,7 +1421,7 @@ test('should open snapshot in new browser context', async ({ browser, page, runA
   // doesn't share sw.bundle.js
   const newPage = await browser.newPage();
   await newPage.goto(popup.url());
-  await expect(newPage.getByText('hello')).toBeVisible();
+  await expect(newPage.frameLocator('iframe').getByText('hello')).toBeVisible();
   await newPage.close();
 });
 
@@ -1642,8 +1642,8 @@ test('canvas clipping in iframe', async ({ runAndTrace, page, server }) => {
   await expect(canvas).toHaveAttribute('title', 'Canvas contents are displayed on a best-effort basis based on viewport screenshots taken during test execution.');
 });
 
-test('should show only one pointer with multilevel iframes', async ({ page, runAndTrace, server, browserName }) => {
-  test.fixme(browserName === 'firefox', 'Elements in iframe are not marked');
+test('should show only one pointer with multilevel iframes', async ({ page, runAndTrace, server, browserName, channel }) => {
+  test.fixme(browserName === 'firefox' && !channel?.startsWith('moz-firefox'), 'Elements in iframe are not marked');
 
   server.setRoute('/level-0.html', (req, res) => {
     res.writeHead(200, { 'Content-Type': 'text/html' });
