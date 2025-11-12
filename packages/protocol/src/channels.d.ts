@@ -2789,6 +2789,7 @@ export type FrameDragAndDropParams = {
   sourcePosition?: Point,
   targetPosition?: Point,
   strict?: boolean,
+  steps?: number,
 };
 export type FrameDragAndDropOptions = {
   force?: boolean,
@@ -2796,6 +2797,7 @@ export type FrameDragAndDropOptions = {
   sourcePosition?: Point,
   targetPosition?: Point,
   strict?: boolean,
+  steps?: number,
 };
 export type FrameDragAndDropResult = void;
 export type FrameDblclickParams = {
@@ -3815,10 +3817,16 @@ export interface RequestEventTarget {
 }
 export interface RequestChannel extends RequestEventTarget, Channel {
   _type_Request: boolean;
+  body(params?: RequestBodyParams, progress?: Progress): Promise<RequestBodyResult>;
   response(params?: RequestResponseParams, progress?: Progress): Promise<RequestResponseResult>;
   rawRequestHeaders(params?: RequestRawRequestHeadersParams, progress?: Progress): Promise<RequestRawRequestHeadersResult>;
 }
 export type RequestResponseEvent = {};
+export type RequestBodyParams = {};
+export type RequestBodyOptions = {};
+export type RequestBodyResult = {
+  body?: Binary,
+};
 export type RequestResponseParams = {};
 export type RequestResponseOptions = {};
 export type RequestResponseResult = {

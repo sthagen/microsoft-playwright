@@ -1582,6 +1582,7 @@ scheme.FrameDragAndDropParams = tObject({
   sourcePosition: tOptional(tType('Point')),
   targetPosition: tOptional(tType('Point')),
   strict: tOptional(tBoolean),
+  steps: tOptional(tInt),
 });
 scheme.FrameDragAndDropResult = tOptional(tObject({}));
 scheme.FrameDblclickParams = tObject({
@@ -2221,6 +2222,10 @@ scheme.RequestInitializer = tObject({
   hasResponse: tBoolean,
 });
 scheme.RequestResponseEvent = tOptional(tObject({}));
+scheme.RequestBodyParams = tOptional(tObject({}));
+scheme.RequestBodyResult = tObject({
+  body: tOptional(tBinary),
+});
 scheme.RequestResponseParams = tOptional(tObject({}));
 scheme.RequestResponseResult = tObject({
   response: tOptional(tChannel(['Response'])),
