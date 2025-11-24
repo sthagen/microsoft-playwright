@@ -1194,6 +1194,20 @@ test('should pick locator', async ({ page, runAndTrace, server }) => {
   await expect(traceViewer.page.locator('.cm-wrapper').last()).toContainText(`- button "Submit"`);
 });
 
+test('should generate aria snapshot with unaltered urls', async ({ page, runAndTrace, server }) => {
+  const traceViewer = await runAndTrace(async () => {
+    await page.goto(server.EMPTY_PAGE);
+    await page.setContent('<a href="https://example.com">Example link</a>');
+  });
+  const snapshot = await traceViewer.snapshotFrame('Set content');
+  await traceViewer.page.getByTitle('Pick locator').click();
+  await snapshot.getByRole('link').click();
+  await expect(traceViewer.page.locator('.cm-wrapper').last()).toContainText(`
+    - link "Example link":
+      - /url: https://example.com
+  `);
+});
+
 test('should update highlight when typing locator', async ({ page, runAndTrace, server }) => {
   const traceViewer = await runAndTrace(async () => {
     await page.goto(server.EMPTY_PAGE);
@@ -1791,20 +1805,33 @@ test('should open settings dialog', async ({ showTraceViewer }) => {
   await expect(traceViewer.settingsDialog).toBeVisible();
 });
 
-test('should toggle theme color', async ({ showTraceViewer, page }) => {
+test('should toggle theme color', async ({ showTraceViewer }) => {
   const traceViewer = await showTraceViewer(traceFile);
   await traceViewer.selectAction('Navigate');
   await traceViewer.showSettings();
 
-  await expect(traceViewer.darkModeSetting).toBeChecked({ checked: false });
+  await expect(traceViewer.themeSetting).toHaveValue('system');
 
-  await traceViewer.darkModeSetting.click();
-  await expect(traceViewer.darkModeSetting).toBeChecked({ checked: true });
-  await expect(traceViewer.page.locator('.dark-mode')).toBeVisible();
+  await traceViewer.themeSetting.selectOption('Dark mode');
+  await expect(traceViewer.themeSetting).toHaveValue('dark-mode');
+  await expect(traceViewer.page.locator('html')).toHaveClass('dark-mode');
 
-  await traceViewer.darkModeSetting.click();
-  await expect(traceViewer.darkModeSetting).toBeChecked({ checked: false });
-  await expect(traceViewer.page.locator('.light-mode')).toBeVisible();
+  await traceViewer.themeSetting.selectOption('Light mode');
+  await expect(traceViewer.themeSetting).toHaveValue('light-mode');
+  await expect(traceViewer.page.locator('html')).toHaveClass('light-mode');
+});
+
+test('should reflect system color scheme changes in document theme', async ({ showTraceViewer }) => {
+  const traceViewer = await showTraceViewer(traceFile);
+  await traceViewer.selectAction('Navigate');
+
+  await expect(traceViewer.page.locator('html')).toHaveClass('light-mode');
+
+  await traceViewer.page.emulateMedia({ colorScheme: 'dark' });
+  await expect(traceViewer.page.locator('html')).toHaveClass('dark-mode');
+
+  await traceViewer.page.emulateMedia({ colorScheme: 'no-preference' });
+  await expect(traceViewer.page.locator('html')).toHaveClass('light-mode');
 });
 
 test('should toggle canvas rendering', async ({ runAndTrace, page }) => {
