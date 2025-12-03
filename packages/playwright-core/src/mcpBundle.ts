@@ -15,7 +15,7 @@
  */
 
 // @ts-ignore
-import * as bundle from '../../mcpBundleImpl';
+import * as bundle from './mcpBundleImpl';
 
 const zodToJsonSchema: typeof import('zod-to-json-schema').zodToJsonSchema = bundle.zodToJsonSchema;
 const Client: typeof import('@modelcontextprotocol/sdk/client/index.js').Client = bundle.Client;
@@ -31,7 +31,7 @@ const ListRootsRequestSchema: typeof import('@modelcontextprotocol/sdk/types.js'
 const ProgressNotificationSchema: typeof import('@modelcontextprotocol/sdk/types.js').ProgressNotificationSchema = bundle.ProgressNotificationSchema;
 const ListToolsRequestSchema: typeof import('@modelcontextprotocol/sdk/types.js').ListToolsRequestSchema = bundle.ListToolsRequestSchema;
 const PingRequestSchema: typeof import('@modelcontextprotocol/sdk/types.js').PingRequestSchema = bundle.PingRequestSchema;
-const Loop: typeof import('tiny-loop').Loop = bundle.Loop;
+const Loop: typeof import('@lowire/loop').Loop = bundle.Loop;
 const z: typeof import('zod') = bundle.z;
 
 export {
