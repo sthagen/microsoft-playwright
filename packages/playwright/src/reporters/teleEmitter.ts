@@ -35,7 +35,8 @@ export class TeleReporterEmitter implements ReporterV2 {
   private _rootDir!: string;
   private _emitterOptions: TeleReporterEmitterOptions;
   private _resultKnownAttachmentCounts = new Map<string, number>();
-  // In case there is blob reporter and UI mode, make sure one does override
+  private _resultKnownErrorCounts = new Map<string, number>();
+  // In case there is blob reporter and UI mode, make sure one doesn't override
   // the id assigned by the other.
   private readonly _idSymbol = Symbol('id');
 
@@ -71,15 +72,20 @@ export class TeleReporterEmitter implements ReporterV2 {
     });
   }
 
-  onTestError(test: reporterTypes.TestCase, result: reporterTypes.TestResult, error: reporterTypes.TestError): void {
+  async onTestPaused(test: reporterTypes.TestCase, result: reporterTypes.TestResult, step?: reporterTypes.TestStep) {
+    const resultId = (result as any)[this._idSymbol];
+    const stepId = (step as any)[this._idSymbol];
+    this._resultKnownErrorCounts.set(resultId, result.errors.length);
     this._messageSink({
-      method: 'onTestError',
+      method: 'onTestPaused',
       params: {
         testId: test.id,
-        resultId: (result as any)[this._idSymbol],
-        error,
+        resultId,
+        stepId,
+        errors: result.errors,
       }
     });
+    return { action: undefined };
   }
 
   onTestEnd(test: reporterTypes.TestCase, result: reporterTypes.TestResult): void {
@@ -98,7 +104,9 @@ export class TeleReporterEmitter implements ReporterV2 {
       }
     });
 
-    this._resultKnownAttachmentCounts.delete((result as any)[this._idSymbol]);
+    const resultId = (result as any)[this._idSymbol];
+    this._resultKnownAttachmentCounts.delete(resultId);
+    this._resultKnownErrorCounts.delete(resultId);
   }
 
   onStepBegin(test: reporterTypes.TestCase, result: reporterTypes.TestResult, step: reporterTypes.TestStep): void {
@@ -250,15 +258,18 @@ export class TeleReporterEmitter implements ReporterV2 {
       retry: result.retry,
       workerIndex: result.workerIndex,
       parallelIndex: result.parallelIndex,
+      shardIndex: result.shardIndex,
       startTime: +result.startTime,
     };
   }
 
   private _serializeResultEnd(result: reporterTypes.TestResult): teleReceiver.JsonTestResultEnd {
+    const id = (result as any)[this._idSymbol];
     return {
-      id: (result as any)[this._idSymbol],
+      id,
       duration: result.duration,
       status: result.status,
+      errors: this._resultKnownErrorCounts.has(id) ? result.errors.slice(this._resultKnownAttachmentCounts.get(id)) : result.errors,
       annotations: result.annotations?.length ? this._relativeAnnotationLocations(result.annotations) : undefined,
     };
   }

@@ -40,7 +40,10 @@ export type Attribution = {
   frame?: Frame;
 };
 
-export class SdkObject extends EventEmitter {
+
+export type EventMap = Record<string | symbol, any[]>;
+
+export class SdkObject<EM extends EventMap = EventMap> extends EventEmitter<EM> {
   guid: string;
   attribution: Attribution;
   instrumentation: Instrumentation;
@@ -52,6 +55,12 @@ export class SdkObject extends EventEmitter {
     this.setMaxListeners(0);
     this.attribution = { ...parent.attribution };
     this.instrumentation = parent.instrumentation;
+  }
+
+  closeReason(): string | undefined {
+    return this.attribution.page?._closeReason ||
+      this.attribution.context?._closeReason ||
+      this.attribution.browser?._closeReason;
   }
 }
 

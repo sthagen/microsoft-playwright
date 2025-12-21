@@ -326,7 +326,7 @@ function mergeConfigs(to: JsonConfig, from: JsonConfig): JsonConfig {
 function mergeEndEvents(endEvents: JsonOnEndEvent[]): JsonEvent {
   let startTime = endEvents.length ? 10000000000000 : Date.now();
   let status: JsonFullResult['status'] = 'passed';
-  let duration: number = 0;
+  let endTime: number = 0;
 
   for (const event of endEvents) {
     const shardResult = event.params.result;
@@ -337,12 +337,12 @@ function mergeEndEvents(endEvents: JsonOnEndEvent[]): JsonEvent {
     else if (shardResult.status === 'interrupted' && status !== 'failed' && status !== 'timedout')
       status = 'interrupted';
     startTime = Math.min(startTime, shardResult.startTime);
-    duration = Math.max(duration, shardResult.duration);
+    endTime = Math.max(endTime, shardResult.startTime + shardResult.duration);
   }
   const result: JsonFullResult = {
     status,
     startTime,
-    duration,
+    duration: endTime - startTime,
   };
   return {
     method: 'onEnd',
@@ -409,7 +409,6 @@ class IdsPatcher {
       case 'onProject':
         this._onProject(params.project);
         return;
-      case 'onTestError':
       case 'onAttach':
       case 'onTestBegin':
       case 'onStepBegin':
@@ -504,7 +503,7 @@ class PathSeparatorPatcher {
       test.annotations?.forEach(annotation => this._updateAnnotationLocation(annotation));
       const testResult = jsonEvent.params.result;
       testResult.annotations?.forEach(annotation => this._updateAnnotationLocation(annotation));
-      testResult.errors?.forEach(error => this._updateErrorLocations(error));
+      testResult.errors.forEach(error => this._updateErrorLocations(error));
       (testResult.attachments ?? []).forEach(attachment => {
         if (attachment.path)
           attachment.path = this._updatePath(attachment.path);
@@ -520,10 +519,6 @@ class PathSeparatorPatcher {
       const step = jsonEvent.params.step;
       this._updateErrorLocations(step.error);
       step.annotations?.forEach(annotation => this._updateAnnotationLocation(annotation));
-      return;
-    }
-    if (jsonEvent.method === 'onTestError') {
-      this._updateErrorLocations(jsonEvent.params.error);
       return;
     }
     if (jsonEvent.method === 'onAttach') {

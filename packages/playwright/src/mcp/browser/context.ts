@@ -15,15 +15,14 @@
  */
 
 import fs from 'fs';
-import path from 'path';
 
 import { debug } from 'playwright-core/lib/utilsBundle';
+import { escapeWithQuotes } from 'playwright-core/lib/utils';
 import { selectors } from 'playwright-core';
 
 import { logUnhandledError } from '../log';
 import { Tab } from './tab';
 import { outputFile  } from './config';
-import * as codegen from './codegen';
 import { dateAsFileName } from './tools/utils';
 
 import type * as playwright from '../../../types/test';
@@ -172,7 +171,6 @@ export class Context {
       await close(async () => {
         for (const video of videos) {
           const name = await this.outputFile(dateAsFileName('webm'), { origin: 'code', reason: 'Saving video' });
-          await fs.promises.mkdir(path.dirname(name), { recursive: true });
           const p = await video.path();
           // video.saveAs() does not work for persistent contexts.
           if (fs.existsSync(p)) {
@@ -258,7 +256,7 @@ export class Context {
 
   lookupSecret(secretName: string): { value: string, code: string } {
     if (!this.config.secrets?.[secretName])
-      return { value: secretName, code: codegen.quote(secretName) };
+      return { value: secretName, code: escapeWithQuotes(secretName, '\'') };
     return {
       value: this.config.secrets[secretName]!,
       code: `process.env['${secretName}']`,

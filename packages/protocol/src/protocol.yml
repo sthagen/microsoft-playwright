@@ -467,7 +467,6 @@ LaunchOptions:
       type: array?
       items: NameValue
     headless: boolean?
-    devtools: boolean?
     proxy:
       type: object?
       properties:
@@ -590,7 +589,18 @@ ContextOptions:
       type: array?
       items: SelectorEngine
     testIdAttributeName: string?
-
+    agent:
+      type: object?
+      properties:
+        provider: string?
+        model: string?
+        cacheFile: string?
+        cacheOutFile: string?
+        secrets:
+          type: array?
+          items: NameValue
+        maxTurns: int?
+        maxTokens: int?
 
 LocalUtils:
   type: interface
@@ -991,6 +1001,7 @@ BrowserType:
           items: NameValue
         slowMo: float?
         timeout: float
+        isLocal: boolean?
       returns:
         browser: Browser
         defaultContext: BrowserContext?
@@ -2011,7 +2022,41 @@ Page:
           - requestFailed
         enabled: boolean
 
+    perform:
+      internal: true
+      parameters:
+        task: string
+        key: string?
+        maxTurns: int?
+        maxTokens: int?
+      returns:
+        turns: int
+        inputTokens: int
+        outputTokens: int
+
+    extract:
+      internal: true
+      parameters:
+        query: string
+        schema: json
+        maxTurns: int?
+      returns:
+        result: json
+        turns: int
+        inputTokens: int
+        outputTokens: int
+
   events:
+
+    agentTurn:
+      parameters:
+        role: string
+        message: string
+        usage:
+          type: object?
+          properties:
+            inputTokens: int
+            outputTokens: int
 
     bindingCall:
       parameters:

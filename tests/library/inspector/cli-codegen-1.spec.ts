@@ -91,7 +91,9 @@ await page.GetByRole(AriaRole.Button, new() { Name = "Submit" }).DblClickAsync()
     ]);
   });
 
-  test('should click twice', async ({ openRecorder }) => {
+  test('should click twice', async ({ openRecorder, headless }) => {
+    test.skip(!headless, 'real mouse moves sneak between two clicks, moving away from the button');
+
     const { page, recorder } = await openRecorder();
 
     await recorder.setContentAndWait(`<button onclick="console.log('click')">Submit</button>`);
@@ -981,7 +983,7 @@ await page.GetByText("Click me").ClickAsync(new()
 });`);
   });
 
-  test('should record slider', async ({ openRecorder }) => {
+  test('should record slider', async ({ openRecorder, browserName, headless }) => {
     const { page, recorder } = await openRecorder();
 
     await recorder.setContentAndWait(`<input type="range" min="0" max="10" value="5">`);
@@ -990,7 +992,8 @@ await page.GetByText("Click me").ClickAsync(new()
       const { x, y, width, height } = await page.locator('input').boundingBox();
       await page.mouse.move(x + width / 2, y + height / 2);
       await page.mouse.down();
-      await page.mouse.move(x + width, y + height / 2);
+      // Dragging to the exact edge is not registered as slider change, so drag close to the end.
+      await page.mouse.move(x + width - 3, y + height / 2);
       await page.mouse.up();
     };
 

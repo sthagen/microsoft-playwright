@@ -3,49 +3,49 @@
   "browsers": [
     {
       "name": "chromium",
-      "revision": "1202",
+      "revision": "1205",
       "installByDefault": true,
-      "browserVersion": "143.0.7499.25",
+      "browserVersion": "144.0.7559.20",
       "title": "Chrome for Testing"
     },
     {
       "name": "chromium-headless-shell",
-      "revision": "1202",
+      "revision": "1205",
       "installByDefault": true,
-      "browserVersion": "143.0.7499.25",
+      "browserVersion": "144.0.7559.20",
       "title": "Chrome Headless Shell"
     },
     {
       "name": "chromium-tip-of-tree",
-      "revision": "1384",
+      "revision": "1392",
       "installByDefault": false,
-      "browserVersion": "143.0.7499.25",
+      "browserVersion": "144.0.7559.20",
       "title": "Chrome Canary for Testing"
     },
     {
       "name": "chromium-tip-of-tree-headless-shell",
-      "revision": "1384",
+      "revision": "1392",
       "installByDefault": false,
-      "browserVersion": "143.0.7499.25",
+      "browserVersion": "144.0.7559.20",
       "title": "Chrome Canary Headless Shell"
     },
     {
       "name": "firefox",
-      "revision": "1497",
+      "revision": "1507",
       "installByDefault": true,
-      "browserVersion": "144.0.2",
+      "browserVersion": "145.0.2",
       "title": "Firefox"
     },
     {
       "name": "firefox-beta",
-      "revision": "1493",
+      "revision": "1502",
       "installByDefault": false,
-      "browserVersion": "145.0b10",
+      "browserVersion": "146.0b8",
       "title": "Firefox Beta"
     },
     {
       "name": "webkit",
-      "revision": "2231",
+      "revision": "2240",
       "installByDefault": true,
       "revisionOverrides": {
         "debian11-x64": "2105",

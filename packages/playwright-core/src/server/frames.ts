@@ -90,7 +90,7 @@ export class NavigationAbortedError extends Error {
   }
 }
 
-type ExpectResult = { matches: boolean, received?: any, log?: string[], timedOut?: boolean, errorMessage?: string };
+export type ExpectResult = { matches: boolean, received?: any, log?: string[], timedOut?: boolean, errorMessage?: string };
 
 const kDummyFrameId = '<dummy>';
 
@@ -441,12 +441,20 @@ export class FrameManager {
   }
 }
 
-export class Frame extends SdkObject {
-  static Events = {
-    InternalNavigation: 'internalnavigation',
-    AddLifecycle: 'addlifecycle',
-    RemoveLifecycle: 'removelifecycle',
-  };
+const FrameEvent = {
+  InternalNavigation: 'internalnavigation',
+  AddLifecycle: 'addlifecycle',
+  RemoveLifecycle: 'removelifecycle',
+} as const;
+
+export type FrameEventMap = {
+  [FrameEvent.InternalNavigation]: [event: NavigationEvent];
+  [FrameEvent.AddLifecycle]: [event: types.LifecycleEvent];
+  [FrameEvent.RemoveLifecycle]: [event: types.LifecycleEvent];
+};
+
+export class Frame extends SdkObject<FrameEventMap> {
+  static Events = FrameEvent;
 
   _id: string;
   readonly seq: number;
@@ -704,7 +712,7 @@ export class Frame extends SdkObject {
     return request ? progress.race(request._finalRequest().response()) : null;
   }
 
-  async _waitForLoadState(progress: Progress, state: types.LifecycleEvent): Promise<void> {
+  async waitForLoadState(progress: Progress, state: types.LifecycleEvent): Promise<void> {
     const waitUntil = verifyLifecycle('state', state);
     if (!this._firedLifecycleEvents.has(waitUntil))
       await helper.waitForEvent(progress, this, Frame.Events.AddLifecycle, (e: types.LifecycleEvent) => e === waitUntil).promise;
@@ -890,7 +898,7 @@ export class Frame extends SdkObject {
         this._onClearLifecycle();
         tagPromise.resolve();
       });
-      const lifecyclePromise = progress.race(tagPromise).then(() => this._waitForLoadState(progress, waitUntil));
+      const lifecyclePromise = progress.race(tagPromise).then(() => this.waitForLoadState(progress, waitUntil));
       const contentPromise = progress.race(context.evaluate(({ html, tag }) => {
         document.open();
         console.debug(tag);  // eslint-disable-line no-console

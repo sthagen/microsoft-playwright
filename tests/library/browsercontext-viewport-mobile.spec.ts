@@ -18,7 +18,7 @@
 import { browserTest as it, expect } from '../config/browserTest';
 
 it.describe('mobile viewport', () => {
-  it.skip(({ browserName, channel }) => browserName === 'firefox' && !channel?.startsWith('moz-firefox'));
+  it.skip(({ browserName, isBidi }) => browserName === 'firefox' && !isBidi);
 
   it('should support mobile emulation', async ({ playwright, browser, server }) => {
     const iPhone = playwright.devices['iPhone 6'];
@@ -90,6 +90,16 @@ it.describe('mobile viewport', () => {
     await page.goto(server.PREFIX + '/mobile.html');
     expect(await page.evaluate(() => window.orientation)).toBe(0);
     await page.setViewportSize({ width: 400, height: 300 });
+    expect(await page.evaluate(() => window.orientation)).toBe(90);
+    await context.close();
+  });
+
+  it('should preserve window.orientation override after navigation', async ({ browser, server }) => {
+    const context = await browser.newContext({ viewport: { width: 400, height: 300 }, isMobile: true });
+    const page = await context.newPage();
+    await page.goto(server.PREFIX + '/mobile.html');
+    expect(await page.evaluate(() => window.orientation)).toBe(90);
+    await page.goto(server.CROSS_PROCESS_PREFIX + '/mobile.html');
     expect(await page.evaluate(() => window.orientation)).toBe(90);
     await context.close();
   });

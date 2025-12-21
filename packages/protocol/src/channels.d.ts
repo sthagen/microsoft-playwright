@@ -887,7 +887,6 @@ export type BrowserTypeLaunchParams = {
   timeout: number,
   env?: NameValue[],
   headless?: boolean,
-  devtools?: boolean,
   proxy?: {
     server: string,
     bypass?: string,
@@ -913,7 +912,6 @@ export type BrowserTypeLaunchOptions = {
   handleSIGHUP?: boolean,
   env?: NameValue[],
   headless?: boolean,
-  devtools?: boolean,
   proxy?: {
     server: string,
     bypass?: string,
@@ -943,7 +941,6 @@ export type BrowserTypeLaunchPersistentContextParams = {
   timeout: number,
   env?: NameValue[],
   headless?: boolean,
-  devtools?: boolean,
   proxy?: {
     server: string,
     bypass?: string,
@@ -1011,6 +1008,15 @@ export type BrowserTypeLaunchPersistentContextParams = {
   serviceWorkers?: 'allow' | 'block',
   selectorEngines?: SelectorEngine[],
   testIdAttributeName?: string,
+  agent?: {
+    provider?: string,
+    model?: string,
+    cacheFile?: string,
+    cacheOutFile?: string,
+    secrets?: NameValue[],
+    maxTurns?: number,
+    maxTokens?: number,
+  },
   userDataDir: string,
   slowMo?: number,
 };
@@ -1026,7 +1032,6 @@ export type BrowserTypeLaunchPersistentContextOptions = {
   handleSIGHUP?: boolean,
   env?: NameValue[],
   headless?: boolean,
-  devtools?: boolean,
   proxy?: {
     server: string,
     bypass?: string,
@@ -1094,6 +1099,15 @@ export type BrowserTypeLaunchPersistentContextOptions = {
   serviceWorkers?: 'allow' | 'block',
   selectorEngines?: SelectorEngine[],
   testIdAttributeName?: string,
+  agent?: {
+    provider?: string,
+    model?: string,
+    cacheFile?: string,
+    cacheOutFile?: string,
+    secrets?: NameValue[],
+    maxTurns?: number,
+    maxTokens?: number,
+  },
   slowMo?: number,
 };
 export type BrowserTypeLaunchPersistentContextResult = {
@@ -1105,10 +1119,12 @@ export type BrowserTypeConnectOverCDPParams = {
   headers?: NameValue[],
   slowMo?: number,
   timeout: number,
+  isLocal?: boolean,
 };
 export type BrowserTypeConnectOverCDPOptions = {
   headers?: NameValue[],
   slowMo?: number,
+  isLocal?: boolean,
 };
 export type BrowserTypeConnectOverCDPResult = {
   browser: BrowserChannel,
@@ -1215,6 +1231,15 @@ export type BrowserNewContextParams = {
   serviceWorkers?: 'allow' | 'block',
   selectorEngines?: SelectorEngine[],
   testIdAttributeName?: string,
+  agent?: {
+    provider?: string,
+    model?: string,
+    cacheFile?: string,
+    cacheOutFile?: string,
+    secrets?: NameValue[],
+    maxTurns?: number,
+    maxTokens?: number,
+  },
   proxy?: {
     server: string,
     bypass?: string,
@@ -1283,6 +1308,15 @@ export type BrowserNewContextOptions = {
   serviceWorkers?: 'allow' | 'block',
   selectorEngines?: SelectorEngine[],
   testIdAttributeName?: string,
+  agent?: {
+    provider?: string,
+    model?: string,
+    cacheFile?: string,
+    cacheOutFile?: string,
+    secrets?: NameValue[],
+    maxTurns?: number,
+    maxTokens?: number,
+  },
   proxy?: {
     server: string,
     bypass?: string,
@@ -1354,6 +1388,15 @@ export type BrowserNewContextForReuseParams = {
   serviceWorkers?: 'allow' | 'block',
   selectorEngines?: SelectorEngine[],
   testIdAttributeName?: string,
+  agent?: {
+    provider?: string,
+    model?: string,
+    cacheFile?: string,
+    cacheOutFile?: string,
+    secrets?: NameValue[],
+    maxTurns?: number,
+    maxTokens?: number,
+  },
   proxy?: {
     server: string,
     bypass?: string,
@@ -1422,6 +1465,15 @@ export type BrowserNewContextForReuseOptions = {
   serviceWorkers?: 'allow' | 'block',
   selectorEngines?: SelectorEngine[],
   testIdAttributeName?: string,
+  agent?: {
+    provider?: string,
+    model?: string,
+    cacheFile?: string,
+    cacheOutFile?: string,
+    secrets?: NameValue[],
+    maxTurns?: number,
+    maxTokens?: number,
+  },
   proxy?: {
     server: string,
     bypass?: string,
@@ -1557,6 +1609,15 @@ export type BrowserContextInitializer = {
     serviceWorkers?: 'allow' | 'block',
     selectorEngines?: SelectorEngine[],
     testIdAttributeName?: string,
+    agent?: {
+      provider?: string,
+      model?: string,
+      cacheFile?: string,
+      cacheOutFile?: string,
+      secrets?: NameValue[],
+      maxTurns?: number,
+      maxTokens?: number,
+    },
   },
 };
 export interface BrowserContextEventTarget {
@@ -2017,6 +2078,7 @@ export type PageInitializer = {
   opener?: PageChannel,
 };
 export interface PageEventTarget {
+  on(event: 'agentTurn', callback: (params: PageAgentTurnEvent) => void): this;
   on(event: 'bindingCall', callback: (params: PageBindingCallEvent) => void): this;
   on(event: 'close', callback: (params: PageCloseEvent) => void): this;
   on(event: 'crash', callback: (params: PageCrashEvent) => void): this;
@@ -2073,7 +2135,17 @@ export interface PageChannel extends PageEventTarget, EventTargetChannel {
   stopCSSCoverage(params?: PageStopCSSCoverageParams, progress?: Progress): Promise<PageStopCSSCoverageResult>;
   bringToFront(params?: PageBringToFrontParams, progress?: Progress): Promise<PageBringToFrontResult>;
   updateSubscription(params: PageUpdateSubscriptionParams, progress?: Progress): Promise<PageUpdateSubscriptionResult>;
+  perform(params: PagePerformParams, progress?: Progress): Promise<PagePerformResult>;
+  extract(params: PageExtractParams, progress?: Progress): Promise<PageExtractResult>;
 }
+export type PageAgentTurnEvent = {
+  role: string,
+  message: string,
+  usage?: {
+    inputTokens: number,
+    outputTokens: number,
+  },
+};
 export type PageBindingCallEvent = {
   binding: BindingCallChannel,
 };
@@ -2576,8 +2648,39 @@ export type PageUpdateSubscriptionOptions = {
 
 };
 export type PageUpdateSubscriptionResult = void;
+export type PagePerformParams = {
+  task: string,
+  key?: string,
+  maxTurns?: number,
+  maxTokens?: number,
+};
+export type PagePerformOptions = {
+  key?: string,
+  maxTurns?: number,
+  maxTokens?: number,
+};
+export type PagePerformResult = {
+  turns: number,
+  inputTokens: number,
+  outputTokens: number,
+};
+export type PageExtractParams = {
+  query: string,
+  schema: any,
+  maxTurns?: number,
+};
+export type PageExtractOptions = {
+  maxTurns?: number,
+};
+export type PageExtractResult = {
+  result: any,
+  turns: number,
+  inputTokens: number,
+  outputTokens: number,
+};
 
 export interface PageEvents {
+  'agentTurn': PageAgentTurnEvent;
   'bindingCall': PageBindingCallEvent;
   'close': PageCloseEvent;
   'crash': PageCrashEvent;
@@ -4840,6 +4943,15 @@ export type AndroidDeviceLaunchBrowserParams = {
   serviceWorkers?: 'allow' | 'block',
   selectorEngines?: SelectorEngine[],
   testIdAttributeName?: string,
+  agent?: {
+    provider?: string,
+    model?: string,
+    cacheFile?: string,
+    cacheOutFile?: string,
+    secrets?: NameValue[],
+    maxTurns?: number,
+    maxTokens?: number,
+  },
   pkg?: string,
   args?: string[],
   proxy?: {
@@ -4906,6 +5018,15 @@ export type AndroidDeviceLaunchBrowserOptions = {
   serviceWorkers?: 'allow' | 'block',
   selectorEngines?: SelectorEngine[],
   testIdAttributeName?: string,
+  agent?: {
+    provider?: string,
+    model?: string,
+    cacheFile?: string,
+    cacheOutFile?: string,
+    secrets?: NameValue[],
+    maxTurns?: number,
+    maxTokens?: number,
+  },
   pkg?: string,
   args?: string[],
   proxy?: {

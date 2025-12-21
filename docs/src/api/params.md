@@ -370,6 +370,18 @@ It makes the execution of the tests non-deterministic.
 Emulates consistent window screen size available inside web page via `window.screen`. Is only used when the
 [`option: viewport`] is set.
 
+## context-option-agent
+- `agent` <[Object]>
+  - `provider` ?<[string]> LLM provider to use. Required in non-cache mode.
+  - `model` ?<[string]> Model identifier within the provider. Required in non-cache mode.
+  - `cacheFile` ?<[string]> Cache file to use/generate code for performed actions into. Cache is not used if not specified (default).
+  - `cacheOutFile` ?<[string]> When specified, generated entries are written into the `cacheOutFile` instead of updating the `cacheFile`.
+  - `secrets` ?<[Object]<[string], [string]>> Secrets to hide from the LLM.
+  - `maxTurns` ?<[int]> Maximum number of agentic turns to take per call. Defaults to 10.
+  - `maxTokens` ?<[int]> Maximum number of tokens to consume per call. The agentic loop will stop after input + output tokens exceed this value. Defaults on unlimited.
+
+Agent settings for [`method: Page.perform`] and [`method: Page.extract`].
+
 ## fetch-param-url
 - `url` <[string]>
 
@@ -1078,8 +1090,7 @@ Close the browser process on SIGHUP. Defaults to `true`.
 
 Whether to run browser in headless mode. More details for
 [Chromium](https://developers.google.com/web/updates/2017/04/headless-chrome) and
-[Firefox](https://hacks.mozilla.org/2017/12/using-headless-mode-in-firefox/). Defaults to `true` unless the
-[`option: BrowserType.launch.devtools`] option is `true`.
+[Firefox](https://hacks.mozilla.org/2017/12/using-headless-mode-in-firefox/). Defaults to `true`.
 
 ## js-python-browser-option-firefoxuserprefs
 * langs: js, python
@@ -1117,13 +1128,6 @@ disable timeout.
 
 If specified, traces are saved into this directory.
 
-## browser-option-devtools
-* deprecated: Use [debugging tools](../debug.md) instead.
-- `devtools` <[boolean]>
-
-**Chromium-only** Whether to auto-open a Developer Tools panel for each tab. If this option is `true`, the
-[`option: headless`] option will be set `false`.
-
 ## browser-option-slowmo
 - `slowMo` <[float]>
 
@@ -1133,7 +1137,6 @@ Slows down Playwright operations by the specified amount of milliseconds. Useful
 - %%-browser-option-args-%%
 - %%-browser-option-channel-%%
 - %%-browser-option-chromiumsandbox-%%
-- %%-browser-option-devtools-%%
 - %%-browser-option-downloadspath-%%
 - %%-csharp-java-browser-option-env-%%
 - %%-js-browser-option-env-%%

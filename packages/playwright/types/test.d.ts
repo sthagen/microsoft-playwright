@@ -1612,6 +1612,12 @@ interface TestConfig<TestArgs = {}, WorkerArgs = {}> {
   retries?: number;
 
   /**
+   * Run agents to generate the code for
+   * [page.perform(task[, options])](https://playwright.dev/docs/api/class-page#page-perform) and similar.
+   */
+  runAgents?: boolean;
+
+  /**
    * Shard tests and execute only the selected shard. Specify in the one-based form like `{ total: 5, current: 2 }`.
    *
    * Learn more about [parallelism and sharding](https://playwright.dev/docs/test-parallel) with Playwright Test.
@@ -2066,6 +2072,12 @@ export interface FullConfig<TestArgs = {}, WorkerArgs = {}> {
    * Base directory for all relative paths used in the reporters.
    */
   rootDir: string;
+
+  /**
+   * Run agents to generate the code for
+   * [page.perform(task[, options])](https://playwright.dev/docs/api/class-page#page-perform) and similar.
+   */
+  runAgents: boolean;
 
   /**
    * See [testConfig.shard](https://playwright.dev/docs/api/class-testconfig#test-config-shard).
@@ -6747,9 +6759,7 @@ export interface PlaywrightWorkerOptions {
   /**
    * Whether to run browser in headless mode. More details for
    * [Chromium](https://developers.google.com/web/updates/2017/04/headless-chrome) and
-   * [Firefox](https://hacks.mozilla.org/2017/12/using-headless-mode-in-firefox/). Defaults to `true` unless the
-   * [`devtools`](https://playwright.dev/docs/api/class-browsertype#browser-type-launch-option-devtools) option is
-   * `true`.
+   * [Firefox](https://hacks.mozilla.org/2017/12/using-headless-mode-in-firefox/). Defaults to `true`.
    *
    * **Usage**
    *
@@ -6936,6 +6946,15 @@ export interface PlaywrightWorkerOptions {
 export type ScreenshotMode = 'off' | 'on' | 'only-on-failure' | 'on-first-failure';
 export type TraceMode = 'off' | 'on' | 'retain-on-failure' | 'on-first-retry' | 'on-all-retries' | 'retain-on-first-failure';
 export type VideoMode = 'off' | 'on' | 'retain-on-failure' | 'on-first-retry';
+export type Agent = {
+  provider: string;
+  model: string;
+  cachePathTemplate?: string;
+  maxTurns?: number;
+  maxTokens?: number;
+  runAgents?: boolean;
+  secrets?: { [key: string]: string };
+};
 
 /**
  * Playwright Test provides many options to configure test environment,
@@ -6976,6 +6995,7 @@ export type VideoMode = 'off' | 'on' | 'retain-on-failure' | 'on-first-retry';
  *
  */
 export interface PlaywrightTestOptions {
+  agent: Agent | undefined;
   /**
    * Whether to automatically download all the attachments. Defaults to `true` where all the downloads are accepted.
    *

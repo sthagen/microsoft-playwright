@@ -42,6 +42,7 @@ export type ConfigCLIOverrides = {
   ignoreSnapshots?: boolean;
   updateSnapshots?: 'all' | 'changed' | 'missing' | 'none';
   updateSourceMethod?: 'overwrite' | 'patch' | '3way';
+  runAgents?: boolean;
   workers?: number | string;
   projects?: { name: string, use?: any }[],
   use?: any;
@@ -84,15 +85,25 @@ export type AttachmentPayload = {
   stepId?: string;
 };
 
-export type TestErrorsPayload = {
-  testId: string;
-  errors: TestInfoErrorImpl[];
-};
-
 export type TestInfoErrorImpl = TestInfoError;
 
 export type TestPausedPayload = {
   testId: string;
+  stepId: string;
+  errors: TestInfoErrorImpl[];
+};
+
+export type ResumePayload = {
+  action?: 'continue' | 'abort';
+};
+
+export type CloneStoragePayload = {
+  storageFile: string;
+};
+
+export type UpstreamStoragePayload = {
+  storageFile: string;
+  storageOutFile: string;
 };
 
 export type CustomMessageRequestPayload = {
@@ -109,6 +120,7 @@ export type TestEndPayload = {
   testId: string;
   duration: number;
   status: TestStatus;
+  errors: TestInfoErrorImpl[];
   hasNonRetriableError: boolean;
   expectedStatus: TestStatus;
   annotations: { type: string, description?: string }[];

@@ -56,6 +56,7 @@ export type StartClient = (options?: {
   roots?: { name: string, uri: string }[],
   rootsResponseDelay?: number,
   env?: NodeJS.ProcessEnv,
+  noTimeoutForTest?: boolean,
 }) => Promise<{ client: Client, stderr: () => string }>;
 
 
@@ -107,6 +108,8 @@ export const test = serverTest.extend<TestFixtures & TestOptions, WorkerFixtures
           await fs.promises.writeFile(configFile, JSON.stringify(options.config, null, 2));
           args.push(`--config=${path.relative(configDir, configFile)}`);
         }
+        if (!options?.noTimeoutForTest)
+          args.push('--timeout-action=10000');
       }
 
       if (options?.args)
@@ -124,7 +127,11 @@ export const test = serverTest.extend<TestFixtures & TestOptions, WorkerFixtures
           };
         });
       }
-      const env = { ...process.env, ...options?.env };
+      const env = {
+        ...process.env,
+        PW_TMPDIR_FOR_TEST: testInfo.outputPath('tmp'),
+        ...options?.env
+      };
       const { transport, stderr } = await createTransport(mcpServerType, { args, env, cwd: options?.cwd || test.info().outputPath() });
       let stderrBuffer = '';
       stderr?.on('data', data => {
@@ -202,6 +209,7 @@ export const test = serverTest.extend<TestFixtures & TestOptions, WorkerFixtures
         messages: cache,
         secrets: { PORT: String(server.PORT) },
       },
+      maxTokens: 1_000_000,
       debug,
     });
     await use(loop);
@@ -343,3 +351,8 @@ export async function prepareDebugTest(startClient: StartClient, testFile?: stri
 function sanitizeFileName(name: string): string {
   return name.replace('.ts', '').replace(/[^a-zA-Z0-9_]+/g, '-');
 }
+
+export const lowireMeta = {
+  'dev.lowire/history': true,
+  'dev.lowire/state': true,
+};

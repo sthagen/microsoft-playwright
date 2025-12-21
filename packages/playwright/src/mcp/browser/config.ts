@@ -39,6 +39,7 @@ export type CLIOptions = {
   cdpEndpoint?: string;
   cdpHeader?: Record<string, string>;
   config?: string;
+  consoleLevel?: 'error' | 'warning' | 'info' | 'debug';
   device?: string;
   executablePath?: string;
   grantPermissions?: string[];
@@ -81,6 +82,9 @@ export const defaultConfig: FullConfig = {
       viewport: null,
     },
   },
+  console: {
+    level: 'info',
+  },
   network: {
     allowedOrigins: undefined,
     blockedOrigins: undefined,
@@ -103,6 +107,9 @@ export type FullConfig = Config & {
     browserName: 'chromium' | 'firefox' | 'webkit';
     launchOptions: NonNullable<BrowserUserConfig['launchOptions']>;
     contextOptions: NonNullable<BrowserUserConfig['contextOptions']>;
+  },
+  console: {
+    level: 'error' | 'warning' | 'info' | 'debug';
   },
   network: NonNullable<Config['network']>,
   saveTrace: boolean;
@@ -215,14 +222,6 @@ export function configFromCLIOptions(cliOptions: CLIOptions): Config {
   if (cliOptions.grantPermissions)
     contextOptions.permissions = cliOptions.grantPermissions;
 
-  if (cliOptions.saveVideo) {
-    contextOptions.recordVideo = {
-      // Videos are moved to output directory on saveAs.
-      dir: tmpDir(),
-      size: cliOptions.saveVideo,
-    };
-  }
-
   const result: Config = {
     browser: {
       browserName,
@@ -241,6 +240,9 @@ export function configFromCLIOptions(cliOptions: CLIOptions): Config {
       allowedHosts: cliOptions.allowedHosts,
     },
     capabilities: cliOptions.caps as ToolCapability[],
+    console: {
+      level: cliOptions.consoleLevel,
+    },
     network: {
       allowedOrigins: cliOptions.allowedOrigins,
       blockedOrigins: cliOptions.blockedOrigins,
@@ -274,6 +276,8 @@ function configFromEnv(): Config {
   options.cdpEndpoint = envToString(process.env.PLAYWRIGHT_MCP_CDP_ENDPOINT);
   options.cdpHeader = headerParser(process.env.PLAYWRIGHT_MCP_CDP_HEADERS, {});
   options.config = envToString(process.env.PLAYWRIGHT_MCP_CONFIG);
+  if (process.env.PLAYWRIGHT_MCP_CONSOLE_LEVEL)
+    options.consoleLevel = enumParser<'error' | 'warning' | 'info' | 'debug'>('--console-level', ['error', 'warning', 'info', 'debug'], process.env.PLAYWRIGHT_MCP_CONSOLE_LEVEL);
   options.device = envToString(process.env.PLAYWRIGHT_MCP_DEVICE);
   options.executablePath = envToString(process.env.PLAYWRIGHT_MCP_EXECUTABLE_PATH);
   options.grantPermissions = commaSeparatedList(process.env.PLAYWRIGHT_MCP_GRANT_PERMISSIONS);
@@ -287,8 +291,8 @@ function configFromEnv(): Config {
   if (initScript)
     options.initScript = [initScript];
   options.isolated = envToBoolean(process.env.PLAYWRIGHT_MCP_ISOLATED);
-  if (process.env.PLAYWRIGHT_MCP_IMAGE_RESPONSES === 'omit')
-    options.imageResponses = 'omit';
+  if (process.env.PLAYWRIGHT_MCP_IMAGE_RESPONSES)
+    options.imageResponses = enumParser<'allow' | 'omit'>('--image-responses', ['allow', 'omit'], process.env.PLAYWRIGHT_MCP_IMAGE_RESPONSES);
   options.sandbox = envToBoolean(process.env.PLAYWRIGHT_MCP_SANDBOX);
   options.outputDir = envToString(process.env.PLAYWRIGHT_MCP_OUTPUT_DIR);
   options.port = numberParser(process.env.PLAYWRIGHT_MCP_PORT);
@@ -318,7 +322,7 @@ async function loadConfig(configFile: string | undefined): Promise<Config> {
   }
 }
 
-function tmpDir(): string {
+export function tmpDir(): string {
   return path.join(process.env.PW_TMPDIR_FOR_TEST ?? os.tmpdir(), 'playwright-mcp-output');
 }
 
@@ -331,6 +335,7 @@ export function outputDir(config: FullConfig, clientInfo: ClientInfo): string {
 
 export async function outputFile(config: FullConfig, clientInfo: ClientInfo, fileName: string, options: { origin: 'code' | 'llm' | 'web', reason: string }): Promise<string> {
   const file = await resolveFile(config, clientInfo, fileName, options);
+  await fs.promises.mkdir(path.dirname(file), { recursive: true });
   debug('pw:mcp:file')(options.reason, file);
   return file;
 }
@@ -385,6 +390,10 @@ function mergeConfig(base: FullConfig, overrides: Config): FullConfig {
     ...pickDefined(base),
     ...pickDefined(overrides),
     browser,
+    console: {
+      ...pickDefined(base.console),
+      ...pickDefined(overrides.console),
+    },
     network: {
       ...pickDefined(base.network),
       ...pickDefined(overrides.network),
@@ -456,6 +465,12 @@ export function headerParser(arg: string | undefined, previous?: Record<string, 
   const [name, value] = arg.split(':').map(v => v.trim());
   result[name] = value;
   return result;
+}
+
+export function enumParser<T extends string>(name: string, options: T[], value: string): T {
+  if (!options.includes(value as T))
+    throw new Error(`Invalid ${name}: ${value}. Valid values are: ${options.join(', ')}`);
+  return value as T;
 }
 
 function envToBoolean(value: string | undefined): boolean | undefined {

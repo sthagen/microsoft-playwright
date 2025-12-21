@@ -14,6 +14,8 @@
  * limitations under the License.
  */
 
+import fs from 'fs';
+import path from 'path';
 import { test, expect } from './fixtures';
 
 test('should respect --snapshot-mode=full', async ({ startClient, server }) => {
@@ -98,4 +100,34 @@ test('should respect --snapshot-mode=none', async ({ startClient, server }) => {
   })).toHaveResponse({
     pageState: undefined
   });
+});
+
+test('should respect snapshot[filename]', async ({ startClient, server }, testInfo) => {
+  server.setContent('/', `<button>Button 1</button>`, 'text/html');
+
+  const outputDir = testInfo.outputPath('output');
+  const { client } = await startClient({
+    config: { outputDir },
+  });
+
+  await client.callTool({
+    name: 'browser_navigate',
+    arguments: {
+      url: server.PREFIX,
+    },
+  });
+
+  expect(await client.callTool({
+    name: 'browser_snapshot',
+    arguments: {
+      filename: 'snapshot1.md',
+    },
+  })).toHaveResponse({
+    pageState: undefined,
+    files: expect.stringMatching(/\[Saved snapshot\]\(.*md\)/)
+  });
+
+  expect(await fs.promises.readFile(path.join(outputDir, 'snapshot1.md'), 'utf8')).toContain(`
+- button "Button 1" [ref=e2]
+`);
 });

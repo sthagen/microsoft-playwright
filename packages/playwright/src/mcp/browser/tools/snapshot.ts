@@ -14,9 +14,12 @@
  * limitations under the License.
  */
 
+import fs from 'fs';
+
 import { z } from 'playwright-core/lib/mcpBundle';
+import { formatObject } from 'playwright-core/lib/utils';
+
 import { defineTabTool, defineTool } from './tool';
-import * as javascript from '../codegen';
 
 const snapshot = defineTool({
   capability: 'core',
@@ -24,13 +27,22 @@ const snapshot = defineTool({
     name: 'browser_snapshot',
     title: 'Page snapshot',
     description: 'Capture accessibility snapshot of the current page, this is better than screenshot',
-    inputSchema: z.object({}),
+    inputSchema: z.object({
+      filename: z.string().optional().describe('Save snapshot to markdown file instead of returning it in the response.'),
+    }),
     type: 'readOnly',
   },
 
   handle: async (context, params, response) => {
     await context.ensureTab();
     response.setIncludeFullSnapshot();
+    if (params.filename) {
+      await response.finish();
+      const renderedResponse = response.render();
+      const fileName = await response.addFile(params.filename, { origin: 'llm', reason: 'Saved snapshot' });
+      await fs.promises.writeFile(fileName, renderedResponse.asText());
+      response.setIncludeMetaOnly();
+    }
   },
 });
 
@@ -63,7 +75,7 @@ const click = defineTabTool({
       button: params.button,
       modifiers: params.modifiers,
     };
-    const formatted = javascript.formatObject(options, ' ', 'oneline');
+    const formatted = formatObject(options, ' ', 'oneline');
     const optionsAttr = formatted !== '{}' ? formatted : '';
 
     if (params.doubleClick)
@@ -151,7 +163,7 @@ const selectOption = defineTabTool({
     response.setIncludeSnapshot();
 
     const { locator, resolved } = await tab.refLocator(params);
-    response.addCode(`await page.${resolved}.selectOption(${javascript.formatObject(params.values)});`);
+    response.addCode(`await page.${resolved}.selectOption(${formatObject(params.values)});`);
 
     await tab.waitForCompletion(async () => {
       await locator.selectOption(params.values);

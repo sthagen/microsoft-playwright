@@ -27,6 +27,7 @@ import { RouteDispatcher, WebSocketDispatcher } from './networkDispatchers';
 import { WebSocketRouteDispatcher } from './webSocketRouteDispatcher';
 import { SdkObject } from '../instrumentation';
 import { urlMatches } from '../../utils/isomorphic/urlMatch';
+import { pagePerform, pageExtract } from '../agent/agent';
 
 import type { Artifact } from '../artifact';
 import type { BrowserContext } from '../browserContext';
@@ -93,6 +94,7 @@ export class PageDispatcher extends Dispatcher<Page, channels.PageChannel, Brows
       this._dispatchEvent('route', { route: new RouteDispatcher(RequestDispatcher.from(this.parentScope(), request), route) });
     };
 
+    this.addObjectListener(Page.Events.AgentTurn, params => this._dispatchEvent('agentTurn', params));
     this.addObjectListener(Page.Events.Close, () => {
       this._dispatchEvent('close');
       this._dispose();
@@ -318,6 +320,15 @@ export class PageDispatcher extends Dispatcher<Page, channels.PageChannel, Brows
       throw new Error('PDF generation is only supported for Headless Chromium');
     const buffer = await progress.race(this._page.pdf(params));
     return { pdf: buffer };
+  }
+
+  async perform(params: channels.PagePerformParams, progress: Progress): Promise<channels.PagePerformResult> {
+    return await pagePerform(progress, this._page, params);
+  }
+
+  async extract(params: channels.PageExtractParams, progress: Progress): Promise<channels.PageExtractResult> {
+    const { result, usage } = await pageExtract(progress, this._page, params);
+    return { result, ...usage };
   }
 
   async requests(params: channels.PageRequestsParams, progress: Progress): Promise<channels.PageRequestsResult> {

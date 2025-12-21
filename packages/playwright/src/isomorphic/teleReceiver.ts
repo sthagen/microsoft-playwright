@@ -87,6 +87,7 @@ export type JsonTestResultStart = {
   retry: number;
   workerIndex: number;
   parallelIndex: number;
+  shardIndex: number;
   startTime: number;
 };
 
@@ -96,8 +97,7 @@ export type JsonTestResultEnd = {
   id: string;
   duration: number;
   status: reporterTypes.TestStatus;
-  /** No longer emitted, but kept for backwards compatibility */
-  errors?: reporterTypes.TestError[];
+  errors: reporterTypes.TestError[];
   /** No longer emitted, but kept for backwards compatibility */
   attachments?: JsonAttachment[];
   annotations?: TestAnnotation[];
@@ -133,7 +133,7 @@ export type JsonFullResult = {
 };
 
 export type JsonEvent = JsonOnConfigureEvent | JsonOnBlobReportMetadataEvent | JsonOnEndEvent | JsonOnExitEvent | JsonOnProjectEvent | JsonOnBeginEvent | JsonOnTestBeginEvent
-  | JsonOnTestEndEvent | JsonOnStepBeginEvent | JsonOnStepEndEvent | JsonOnAttachEvent | JsonOnTestErrorEvent | JsonOnErrorEvent | JsonOnStdIOEvent;
+  | JsonOnTestEndEvent | JsonOnStepBeginEvent | JsonOnStepEndEvent | JsonOnAttachEvent | JsonOnErrorEvent | JsonOnTestPausedEvent | JsonOnStdIOEvent;
 
 export type JsonOnConfigureEvent = {
   method: 'onConfigure';
@@ -167,6 +167,16 @@ export type JsonOnTestBeginEvent = {
   };
 };
 
+export type JsonOnTestPausedEvent = {
+  method: 'onTestPaused';
+  params: {
+    testId: string;
+    resultId: string;
+    stepId: string;
+    errors: reporterTypes.TestError[];
+  };
+};
+
 export type JsonOnTestEndEvent = {
   method: 'onTestEnd';
   params: {
@@ -197,15 +207,6 @@ export type JsonOnStepEndEvent = {
 export type JsonOnAttachEvent = {
   method: 'onAttach';
   params: JsonTestResultOnAttach;
-};
-
-export type JsonOnTestErrorEvent = {
-  method: 'onTestError';
-  params: {
-    testId: string;
-    resultId: string;
-    error: reporterTypes.TestError;
-  }
 };
 
 export type JsonOnErrorEvent = {
@@ -292,6 +293,10 @@ export class TeleReporterReceiver {
       this._onTestBegin(params.testId, params.result);
       return;
     }
+    if (method === 'onTestPaused') {
+      this._onTestPaused(params.testId, params.resultId, params.stepId, params.errors);
+      return;
+    }
     if (method === 'onTestEnd') {
       this._onTestEnd(params.test, params.result);
       return;
@@ -302,10 +307,6 @@ export class TeleReporterReceiver {
     }
     if (method === 'onAttach') {
       this._onAttach(params.testId, params.resultId, params.attachments);
-      return;
-    }
-    if (method === 'onTestError') {
-      this._onTestError(params.testId, params.resultId, params.error);
       return;
     }
     if (method === 'onStepEnd') {
@@ -356,8 +357,19 @@ export class TeleReporterReceiver {
     testResult.retry = payload.retry;
     testResult.workerIndex = payload.workerIndex;
     testResult.parallelIndex = payload.parallelIndex;
+    testResult.shardIndex = payload.shardIndex;
     testResult.setStartTimeNumber(payload.startTime);
     this._reporter.onTestBegin?.(test, testResult);
+  }
+
+  private _onTestPaused(testId: string, resultId: string, stepId: string, errors: reporterTypes.TestError[]) {
+    const test = this._tests.get(testId)!;
+    const result = test.results.find(r => r._id === resultId)!;
+    const step = result._stepMap.get(stepId)!;
+
+    result.errors.push(...errors);
+    result.error = result.errors[0];
+    void this._reporter.onTestPaused?.(test, result, step);
   }
 
   private _onTestEnd(testEndPayload: JsonTestEnd, payload: JsonTestResultEnd) {
@@ -367,11 +379,8 @@ export class TeleReporterReceiver {
     const result = test.results.find(r => r._id === payload.id)!;
     result.duration = payload.duration;
     result.status = payload.status;
-    // Errors are only present here from legacy blobs. These override all _onTestError events
-    if (!!payload.errors) {
-      result.errors = payload.errors;
-      result.error = result.errors[0];
-    }
+    result.errors.push(...payload.errors ?? []);
+    result.error = result.errors[0];
     // Attachments are only present here from legacy blobs. These override all _onAttach events
     if (!!payload.attachments)
       result.attachments = this._parseAttachments(payload.attachments);
@@ -419,13 +428,6 @@ export class TeleReporterReceiver {
       path: a.path,
       body: a.base64 && (globalThis as any).Buffer ? Buffer.from(a.base64, 'base64') : undefined,
     })));
-  }
-
-  private _onTestError(testId: string, resultId: string, error: reporterTypes.TestError) {
-    const test = this._tests.get(testId)!;
-    const result = test.results.find(r => r._id === resultId)!;
-    result.errors.push(error);
-    result.error = result.errors[0];
   }
 
   private _onError(error: reporterTypes.TestError) {
@@ -723,6 +725,7 @@ export class TeleTestResult implements reporterTypes.TestResult {
   retry: reporterTypes.TestResult['retry'];
   parallelIndex: reporterTypes.TestResult['parallelIndex'] = -1;
   workerIndex: reporterTypes.TestResult['workerIndex'] = -1;
+  shardIndex: reporterTypes.TestResult['shardIndex'] = -1;
   duration: reporterTypes.TestResult['duration'] = -1;
   stdout: reporterTypes.TestResult['stdout'] = [];
   stderr: reporterTypes.TestResult['stderr'] = [];
@@ -779,6 +782,7 @@ export const baseFullConfig: reporterTypes.FullConfig = {
   tags: [],
   updateSnapshots: 'missing',
   updateSourceMethod: 'patch',
+  runAgents: false,
   version: '',
   workers: 0,
   webServer: null,

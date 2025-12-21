@@ -18,7 +18,7 @@ import { EventEmitter } from 'events';
 import * as playwright from 'playwright-core';
 import { asLocator, ManualPromise } from 'playwright-core/lib/utils';
 
-import { callOnPageNoTrace, waitForCompletion } from './tools/utils';
+import { callOnPageNoTrace, waitForCompletion, eventWaiter } from './tools/utils';
 import { logUnhandledError } from '../log';
 import { ModalState } from './tools/tool';
 import { handleDialog } from './tools/dialogs';
@@ -132,10 +132,6 @@ export class Tab extends EventEmitter<TabEventsInterface> {
     this._modalStates = this._modalStates.filter(state => state !== modalState);
   }
 
-  modalStatesMarkdown(): string[] {
-    return renderModalStates(this.context, this.modalStates());
-  }
-
   private _dialogShown(dialog: playwright.Dialog) {
     this.setModalState({
       type: 'dialog',
@@ -195,9 +191,10 @@ export class Tab extends EventEmitter<TabEventsInterface> {
     await this._initializedPromise;
     this._clearCollectedArtifacts();
 
-    const downloadEvent = callOnPageNoTrace(this.page, page => page.waitForEvent('download').catch(logUnhandledError));
+    const { promise: downloadEvent, abort: abortDownloadEvent } = eventWaiter<playwright.Download>(this.page, 'download', 3000);
     try {
       await this.page.goto(url, { waitUntil: 'domcontentloaded' });
+      abortDownloadEvent();
     } catch (_e: unknown) {
       const e = _e as Error;
       const mightBeDownload =
@@ -206,10 +203,7 @@ export class Tab extends EventEmitter<TabEventsInterface> {
       if (!mightBeDownload)
         throw e;
       // on chromium, the download event is fired *after* page.goto rejects, so we wait a lil bit
-      const download = await Promise.race([
-        downloadEvent,
-        new Promise(resolve => setTimeout(resolve, 3000)),
-      ]);
+      const download = await downloadEvent;
       if (!download)
         throw e;
       // Make sure other "download" listeners are notified first.
@@ -221,9 +215,9 @@ export class Tab extends EventEmitter<TabEventsInterface> {
     await this.waitForLoadState('load', { timeout: 5000 });
   }
 
-  async consoleMessages(type?: 'error'): Promise<ConsoleMessage[]> {
+  async consoleMessages(level: ConsoleMessageLevel): Promise<ConsoleMessage[]> {
     await this._initializedPromise;
-    return this._consoleMessages.filter(message => type ? message.type === type : true);
+    return this._consoleMessages.filter(message => shouldIncludeMessage(level, message.type));
   }
 
   async requests(): Promise<Set<playwright.Request>> {
@@ -248,7 +242,7 @@ export class Tab extends EventEmitter<TabEventsInterface> {
     });
     if (tabSnapshot) {
       // Assign console message late so that we did not lose any to modal state.
-      tabSnapshot.consoleMessages = this._recentConsoleMessages;
+      tabSnapshot.consoleMessages = this._recentConsoleMessages.filter(message => shouldIncludeMessage(this.context.config.console.level, message.type));
       this._recentConsoleMessages = [];
     }
     // If we failed to capture a snapshot this time, make sure we do a full one next time,
@@ -321,7 +315,7 @@ export class Tab extends EventEmitter<TabEventsInterface> {
 }
 
 export type ConsoleMessage = {
-  type: ReturnType<playwright.ConsoleMessage['type']> | undefined;
+  type: ReturnType<playwright.ConsoleMessage['type']>;
   text: string;
   toString(): string;
 };
@@ -349,13 +343,52 @@ function pageErrorToConsoleMessage(errorOrValue: Error | any): ConsoleMessage {
   };
 }
 
-export function renderModalStates(context: Context, modalStates: ModalState[]): string[] {
-  const result: string[] = ['### Modal state'];
+export function renderModalStates(modalStates: ModalState[]): string[] {
+  const result: string[] = [];
   if (modalStates.length === 0)
     result.push('- There is no modal state present');
   for (const state of modalStates)
     result.push(`- [${state.description}]: can be handled by the "${state.clearedBy}" tool`);
   return result;
+}
+
+type ConsoleMessageType = ReturnType<playwright.ConsoleMessage['type']>;
+type ConsoleMessageLevel = 'error' | 'warning' | 'info' | 'debug';
+const consoleMessageLevels: ConsoleMessageLevel[] = ['error', 'warning', 'info', 'debug'];
+
+function shouldIncludeMessage(thresholdLevel: ConsoleMessageLevel, type: ConsoleMessageType): boolean {
+  const messageLevel = consoleLevelForMessageType(type);
+  return consoleMessageLevels.indexOf(messageLevel) <= consoleMessageLevels.indexOf(thresholdLevel);
+}
+
+function consoleLevelForMessageType(type: ConsoleMessageType): ConsoleMessageLevel {
+  switch (type) {
+    case 'assert':
+    case 'error':
+      return 'error';
+    case 'warning':
+      return 'warning';
+    case 'count':
+    case 'dir':
+    case 'dirxml':
+    case 'info':
+    case 'log':
+    case 'table':
+    case 'time':
+    case 'timeEnd':
+      return 'info';
+    case 'clear':
+    case 'debug':
+    case 'endGroup':
+    case 'profile':
+    case 'profileEnd':
+    case 'startGroup':
+    case 'startGroupCollapsed':
+    case 'trace':
+      return 'debug';
+    default:
+      return 'info';
+  }
 }
 
 const tabSymbol = Symbol('tabSymbol');

@@ -15,7 +15,7 @@
  */
 
 import { TimeoutError } from './errors';
-import { assert } from '../utils';
+import { assert, monotonicTime } from '../utils';
 import { ManualPromise } from '../utils/isomorphic/manualPromise';
 
 import type { Progress } from '@protocol/progress';
@@ -47,10 +47,12 @@ export class ProgressController {
   }
 
   async run<T>(task: (progress: Progress) => Promise<T>, timeout?: number): Promise<T> {
+    const deadline = timeout ? monotonicTime() + timeout : 0;
     assert(this._state === 'before');
     this._state = 'running';
 
     const progress: Progress = {
+      deadline,
       log: message => {
         if (this._state === 'running')
           this.metadata.log.push(message);
@@ -58,11 +60,15 @@ export class ProgressController {
         this._onCallLog?.(message);
       },
       metadata: this.metadata,
-      race: <T>(promise: Promise<T> | Promise<T>[]) => {
+      race: <T>(promise: Promise<T> | Promise<T>[], options?: { timeout?: number }) => {
         const promises = Array.isArray(promise) ? promise : [promise];
-        return Promise.race([...promises, this._forceAbortPromise]);
+        const mt = monotonicTime();
+        const dl = options?.timeout ? mt + options.timeout : 0;
+        const timerPromise = dl && (!deadline || dl < deadline) ? new Promise<void>(f => setTimeout(f, dl - mt)) : null;
+        return Promise.race([...promises, ...(timerPromise ? [timerPromise] : []), this._forceAbortPromise]);
       },
       wait: async (timeout: number) => {
+        // Timeout = 0 here means nowait. Counter to what it typically is (wait forever).
         let timer: NodeJS.Timeout;
         const promise = new Promise<void>(f => timer = setTimeout(f, timeout));
         return progress.race(promise).finally(() => clearTimeout(timer));
@@ -70,15 +76,17 @@ export class ProgressController {
     };
 
     let timer: NodeJS.Timeout | undefined;
-    if (timeout) {
+    if (deadline) {
       const timeoutError = new TimeoutError(`Timeout ${timeout}ms exceeded.`);
       timer = setTimeout(() => {
+        if (this.metadata.pauseStartTime && !this.metadata.pauseEndTime)
+          return;
         if (this._state === 'running') {
           (timeoutError as any)[kAbortErrorSymbol] = true;
           this._state = { error: timeoutError };
           this._forceAbortPromise.reject(timeoutError);
         }
-      }, timeout);
+      }, deadline - monotonicTime());
     }
 
     try {

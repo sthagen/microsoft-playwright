@@ -76,11 +76,11 @@ export class Chromium extends BrowserType {
     return super.launchPersistentContext(progress, userDataDir, options);
   }
 
-  override async connectOverCDP(progress: Progress, endpointURL: string, options: { slowMo?: number, headers?: types.HeadersArray }) {
+  override async connectOverCDP(progress: Progress, endpointURL: string, options: { slowMo?: number, headers?: types.HeadersArray, isLocal?: boolean }) {
     return await this._connectOverCDPInternal(progress, endpointURL, options);
   }
 
-  async _connectOverCDPInternal(progress: Progress, endpointURL: string, options: types.LaunchOptions & { headers?: types.HeadersArray }, onClose?: () => Promise<void>) {
+  async _connectOverCDPInternal(progress: Progress, endpointURL: string, options: types.LaunchOptions & { headers?: types.HeadersArray, isLocal?: boolean }, onClose?: () => Promise<void>) {
     let headersMap: { [key: string]: string; } | undefined;
     if (options.headers)
       headersMap = headersArrayToObject(options.headers, false);
@@ -125,7 +125,8 @@ export class Chromium extends BrowserType {
       };
       validateBrowserContextOptions(persistent, browserOptions);
       const browser = await progress.race(CRBrowser.connect(this.attribution.playwright, chromeTransport, browserOptions));
-      browser._isCollocatedWithServer = false;
+      if (!options.isLocal)
+        browser._isCollocatedWithServer = false;
       browser.on(Browser.Events.Disconnected, doCleanup);
       return browser;
     } catch (error) {
@@ -141,13 +142,8 @@ export class Chromium extends BrowserType {
   }
 
   override async connectToTransport(transport: ConnectionTransport, options: BrowserOptions, browserLogsCollector: RecentLogsCollector): Promise<CRBrowser> {
-    let devtools = this._devtools;
-    if ((options as any).__testHookForDevTools) {
-      devtools = this._createDevTools();
-      await (options as any).__testHookForDevTools(devtools);
-    }
     try {
-      return await CRBrowser.connect(this.attribution.playwright, transport, options, devtools);
+      return await CRBrowser.connect(this.attribution.playwright, transport, options, this._devtools);
     } catch (e) {
       if (browserLogsCollector.recentLogs().some(log => log.includes('Failed to create a ProcessSingleton for your profile directory.'))) {
         throw new Error(
@@ -321,13 +317,9 @@ export class Chromium extends BrowserType {
       throw new Error('Arguments can not specify page to be opened');
     const chromeArguments = [...chromiumSwitches(options.assistantMode, options.channel)];
 
-    if (os.platform() === 'darwin') {
-      // See https://issues.chromium.org/issues/40277080
-      chromeArguments.push('--enable-unsafe-swiftshader');
-    }
+    // See https://issues.chromium.org/issues/40277080
+    chromeArguments.push('--enable-unsafe-swiftshader');
 
-    if (options.devtools)
-      chromeArguments.push('--auto-open-devtools-for-tabs');
     if (options.headless) {
       chromeArguments.push('--headless');
 
