@@ -606,7 +606,6 @@ scheme.BrowserTypeLaunchPersistentContextParams = tObject({
     api: tOptional(tString),
     apiKey: tOptional(tString),
     apiEndpoint: tOptional(tString),
-    apiVersion: tOptional(tString),
     model: tOptional(tString),
     cacheFile: tOptional(tString),
     cacheOutFile: tOptional(tString),
@@ -711,7 +710,6 @@ scheme.BrowserNewContextParams = tObject({
     api: tOptional(tString),
     apiKey: tOptional(tString),
     apiEndpoint: tOptional(tString),
-    apiVersion: tOptional(tString),
     model: tOptional(tString),
     cacheFile: tOptional(tString),
     cacheOutFile: tOptional(tString),
@@ -794,7 +792,6 @@ scheme.BrowserNewContextForReuseParams = tObject({
     api: tOptional(tString),
     apiKey: tOptional(tString),
     apiEndpoint: tOptional(tString),
-    apiVersion: tOptional(tString),
     model: tOptional(tString),
     cacheFile: tOptional(tString),
     cacheOutFile: tOptional(tString),
@@ -922,7 +919,6 @@ scheme.BrowserContextInitializer = tObject({
       api: tOptional(tString),
       apiKey: tOptional(tString),
       apiEndpoint: tOptional(tString),
-      apiVersion: tOptional(tString),
       model: tOptional(tString),
       cacheFile: tOptional(tString),
       cacheOutFile: tOptional(tString),
@@ -1116,6 +1112,8 @@ scheme.BrowserContextEnableRecorderParams = tObject({
 scheme.BrowserContextEnableRecorderResult = tOptional(tObject({}));
 scheme.BrowserContextDisableRecorderParams = tOptional(tObject({}));
 scheme.BrowserContextDisableRecorderResult = tOptional(tObject({}));
+scheme.BrowserContextExposeConsoleApiParams = tOptional(tObject({}));
+scheme.BrowserContextExposeConsoleApiResult = tOptional(tObject({}));
 scheme.BrowserContextNewCDPSessionParams = tObject({
   page: tOptional(tChannel(['Page'])),
   frame: tOptional(tChannel(['Frame'])),
@@ -1544,7 +1542,6 @@ scheme.PageAgentPerformParams = tObject({
   api: tOptional(tString),
   apiEndpoint: tOptional(tString),
   apiKey: tOptional(tString),
-  apiVersion: tOptional(tString),
   maxTurns: tOptional(tInt),
   maxTokens: tOptional(tInt),
   cacheKey: tOptional(tString),
@@ -1557,7 +1554,6 @@ scheme.PageAgentExpectParams = tObject({
   api: tOptional(tString),
   apiEndpoint: tOptional(tString),
   apiKey: tOptional(tString),
-  apiVersion: tOptional(tString),
   maxTurns: tOptional(tInt),
   maxTokens: tOptional(tInt),
   cacheKey: tOptional(tString),
@@ -1571,7 +1567,6 @@ scheme.PageAgentExtractParams = tObject({
   api: tOptional(tString),
   apiEndpoint: tOptional(tString),
   apiKey: tOptional(tString),
-  apiVersion: tOptional(tString),
   maxTurns: tOptional(tInt),
   maxTokens: tOptional(tInt),
   cacheKey: tOptional(tString),
@@ -2872,7 +2867,6 @@ scheme.AndroidDeviceLaunchBrowserParams = tObject({
     api: tOptional(tString),
     apiKey: tOptional(tString),
     apiEndpoint: tOptional(tString),
-    apiVersion: tOptional(tString),
     model: tOptional(tString),
     cacheFile: tOptional(tString),
     cacheOutFile: tOptional(tString),

@@ -1012,7 +1012,6 @@ export type BrowserTypeLaunchPersistentContextParams = {
     api?: string,
     apiKey?: string,
     apiEndpoint?: string,
-    apiVersion?: string,
     model?: string,
     cacheFile?: string,
     cacheOutFile?: string,
@@ -1106,7 +1105,6 @@ export type BrowserTypeLaunchPersistentContextOptions = {
     api?: string,
     apiKey?: string,
     apiEndpoint?: string,
-    apiVersion?: string,
     model?: string,
     cacheFile?: string,
     cacheOutFile?: string,
@@ -1241,7 +1239,6 @@ export type BrowserNewContextParams = {
     api?: string,
     apiKey?: string,
     apiEndpoint?: string,
-    apiVersion?: string,
     model?: string,
     cacheFile?: string,
     cacheOutFile?: string,
@@ -1321,7 +1318,6 @@ export type BrowserNewContextOptions = {
     api?: string,
     apiKey?: string,
     apiEndpoint?: string,
-    apiVersion?: string,
     model?: string,
     cacheFile?: string,
     cacheOutFile?: string,
@@ -1404,7 +1400,6 @@ export type BrowserNewContextForReuseParams = {
     api?: string,
     apiKey?: string,
     apiEndpoint?: string,
-    apiVersion?: string,
     model?: string,
     cacheFile?: string,
     cacheOutFile?: string,
@@ -1484,7 +1479,6 @@ export type BrowserNewContextForReuseOptions = {
     api?: string,
     apiKey?: string,
     apiEndpoint?: string,
-    apiVersion?: string,
     model?: string,
     cacheFile?: string,
     cacheOutFile?: string,
@@ -1631,7 +1625,6 @@ export type BrowserContextInitializer = {
       api?: string,
       apiKey?: string,
       apiEndpoint?: string,
-      apiVersion?: string,
       model?: string,
       cacheFile?: string,
       cacheOutFile?: string,
@@ -1681,6 +1674,7 @@ export interface BrowserContextChannel extends BrowserContextEventTarget, EventT
   pause(params?: BrowserContextPauseParams, progress?: Progress): Promise<BrowserContextPauseResult>;
   enableRecorder(params: BrowserContextEnableRecorderParams, progress?: Progress): Promise<BrowserContextEnableRecorderResult>;
   disableRecorder(params?: BrowserContextDisableRecorderParams, progress?: Progress): Promise<BrowserContextDisableRecorderResult>;
+  exposeConsoleApi(params?: BrowserContextExposeConsoleApiParams, progress?: Progress): Promise<BrowserContextExposeConsoleApiResult>;
   newCDPSession(params: BrowserContextNewCDPSessionParams, progress?: Progress): Promise<BrowserContextNewCDPSessionResult>;
   harStart(params: BrowserContextHarStartParams, progress?: Progress): Promise<BrowserContextHarStartResult>;
   harExport(params: BrowserContextHarExportParams, progress?: Progress): Promise<BrowserContextHarExportResult>;
@@ -1960,6 +1954,9 @@ export type BrowserContextEnableRecorderResult = void;
 export type BrowserContextDisableRecorderParams = {};
 export type BrowserContextDisableRecorderOptions = {};
 export type BrowserContextDisableRecorderResult = void;
+export type BrowserContextExposeConsoleApiParams = {};
+export type BrowserContextExposeConsoleApiOptions = {};
+export type BrowserContextExposeConsoleApiResult = void;
 export type BrowserContextNewCDPSessionParams = {
   page?: PageChannel,
   frame?: FrameChannel,
@@ -2675,7 +2672,6 @@ export type PageAgentPerformParams = {
   api?: string,
   apiEndpoint?: string,
   apiKey?: string,
-  apiVersion?: string,
   maxTurns?: number,
   maxTokens?: number,
   cacheKey?: string,
@@ -2684,7 +2680,6 @@ export type PageAgentPerformOptions = {
   api?: string,
   apiEndpoint?: string,
   apiKey?: string,
-  apiVersion?: string,
   maxTurns?: number,
   maxTokens?: number,
   cacheKey?: string,
@@ -2697,7 +2692,6 @@ export type PageAgentExpectParams = {
   api?: string,
   apiEndpoint?: string,
   apiKey?: string,
-  apiVersion?: string,
   maxTurns?: number,
   maxTokens?: number,
   cacheKey?: string,
@@ -2706,7 +2700,6 @@ export type PageAgentExpectOptions = {
   api?: string,
   apiEndpoint?: string,
   apiKey?: string,
-  apiVersion?: string,
   maxTurns?: number,
   maxTokens?: number,
   cacheKey?: string,
@@ -2720,7 +2713,6 @@ export type PageAgentExtractParams = {
   api?: string,
   apiEndpoint?: string,
   apiKey?: string,
-  apiVersion?: string,
   maxTurns?: number,
   maxTokens?: number,
   cacheKey?: string,
@@ -2729,7 +2721,6 @@ export type PageAgentExtractOptions = {
   api?: string,
   apiEndpoint?: string,
   apiKey?: string,
-  apiVersion?: string,
   maxTurns?: number,
   maxTokens?: number,
   cacheKey?: string,
@@ -5007,7 +4998,6 @@ export type AndroidDeviceLaunchBrowserParams = {
     api?: string,
     apiKey?: string,
     apiEndpoint?: string,
-    apiVersion?: string,
     model?: string,
     cacheFile?: string,
     cacheOutFile?: string,
@@ -5085,7 +5075,6 @@ export type AndroidDeviceLaunchBrowserOptions = {
     api?: string,
     apiKey?: string,
     apiEndpoint?: string,
-    apiVersion?: string,
     model?: string,
     cacheFile?: string,
     cacheOutFile?: string,

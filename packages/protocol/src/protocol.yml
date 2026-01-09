@@ -595,7 +595,6 @@ ContextOptions:
         api: string?
         apiKey: string?
         apiEndpoint: string?
-        apiVersion: string?
         model: string?
         cacheFile: string?
         cacheOutFile: string?
@@ -1352,6 +1351,9 @@ BrowserContext:
         omitCallTracking: boolean?
 
     disableRecorder:
+      internal: true
+
+    exposeConsoleApi:
       internal: true
 
     newCDPSession:
@@ -4349,7 +4351,6 @@ PageAgentOptions:
     api: string?
     apiEndpoint: string?
     apiKey: string?
-    apiVersion: string?
     maxTurns: int?
     maxTokens: int?
     cacheKey: string?
