@@ -24,22 +24,20 @@ import type * as actions from './actions';
 import type { Page } from '../page';
 import type { Progress } from '../progress';
 import type { Language } from '../../utils/isomorphic/locatorGenerators.ts';
-import type { ToolDefinition } from './tool';
 import type * as channels from '@protocol/channels';
 
 
 type HistoryItem = {
-  type: 'expect' | 'perform' | 'extract';
+  type: 'expect' | 'perform';
   description: string;
 };
 export class Context {
   readonly page: Page;
-  readonly actions: actions.ActionWithCode[] = [];
   readonly sdkLanguage: Language;
   readonly agentParams: channels.PageAgentParams;
   readonly events: loopTypes.LoopEvents;
-  private _currentCallIntent: string | undefined;
-  readonly history: HistoryItem[] = [];
+  private _actions: actions.ActionWithCode[] = [];
+  private _history: HistoryItem[] = [];
 
   constructor(page: Page, agentParms: channels.PageAgentParams, events: loopTypes.LoopEvents) {
     this.page = page;
@@ -48,32 +46,43 @@ export class Context {
     this.events = events;
   }
 
-  async callTool(progress: Progress, tool: ToolDefinition, params: any, options: { intent?: string }) {
-    this._currentCallIntent = options.intent;
-    try {
-      return await tool.handle(progress, this, params);
-    } finally {
-      this._currentCallIntent = undefined;
-    }
-  }
-
   async runActionAndWait(progress: Progress, action: actions.Action) {
     return await this.runActionsAndWait(progress, [action]);
   }
 
-  async runActionsAndWait(progress: Progress, action: actions.Action[]) {
+  async runActionsAndWait(progress: Progress, action: actions.Action[], options?: { noWait?: boolean }) {
     const error = await this.waitForCompletion(progress, async () => {
       for (const a of action) {
         await runAction(progress, 'generate', this.page, a, this.agentParams?.secrets ?? []);
         const code = await generateCode(this.sdkLanguage, a);
-        this.actions.push({ ...a, code, intent: this._currentCallIntent });
+        this._actions.push({ ...a, code });
       }
       return undefined;
-    }).catch((error: Error) => error);
+    }, options).catch((error: Error) => error);
     return await this.snapshotResult(progress, error);
   }
 
-  async waitForCompletion<R>(progress: Progress, callback: () => Promise<R>): Promise<R> {
+  async runActionNoWait(progress: Progress, action: actions.Action) {
+    return await this.runActionsAndWait(progress, [action], { noWait: true });
+  }
+
+  actions() {
+    return this._actions.slice();
+  }
+
+  history(): HistoryItem[] {
+    return this._history;
+  }
+
+  pushHistory(item: HistoryItem) {
+    this._history.push(item);
+    this._actions = [];
+  }
+
+  async waitForCompletion<R>(progress: Progress, callback: () => Promise<R>, options?: { noWait?: boolean }): Promise<R> {
+    if (options?.noWait)
+      return await callback();
+
     const requests: Request[] = [];
     const requestListener = (request: Request) => requests.push(request);
     const disposeListeners = () => {
