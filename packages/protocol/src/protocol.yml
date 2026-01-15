@@ -2019,6 +2019,7 @@ Page:
         api: string?
         apiKey: string?
         apiEndpoint: string?
+        apiCacheFile: string?
         cacheFile: string?
         cacheOutFile: string?
         maxTurns: int?
@@ -4351,6 +4352,12 @@ PageAgent:
     dispose:
       internal: true
 
+    usage:
+      title: 'Get agent usage'
+      group: configuration
+      returns:
+        usage: AgentUsage
+
   events:
 
     turn:
@@ -4370,6 +4377,7 @@ PageAgentOptions:
     maxTurns: int?
     maxTokens: int?
     cacheKey: string?
+    timeout: int?
 
 AgentUsage:
   type: object

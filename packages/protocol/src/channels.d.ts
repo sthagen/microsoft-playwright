@@ -2586,6 +2586,7 @@ export type PageAgentParams = {
   api?: string,
   apiKey?: string,
   apiEndpoint?: string,
+  apiCacheFile?: string,
   cacheFile?: string,
   cacheOutFile?: string,
   maxTurns?: number,
@@ -2598,6 +2599,7 @@ export type PageAgentOptions = {
   api?: string,
   apiKey?: string,
   apiEndpoint?: string,
+  apiCacheFile?: string,
   cacheFile?: string,
   cacheOutFile?: string,
   maxTurns?: number,
@@ -5101,6 +5103,7 @@ export interface PageAgentChannel extends PageAgentEventTarget, EventTargetChann
   expect(params: PageAgentExpectParams, progress?: Progress): Promise<PageAgentExpectResult>;
   extract(params: PageAgentExtractParams, progress?: Progress): Promise<PageAgentExtractResult>;
   dispose(params?: PageAgentDisposeParams, progress?: Progress): Promise<PageAgentDisposeResult>;
+  usage(params?: PageAgentUsageParams, progress?: Progress): Promise<PageAgentUsageResult>;
 }
 export type PageAgentTurnEvent = {
   role: string,
@@ -5115,11 +5118,13 @@ export type PageAgentPerformParams = {
   maxTurns?: number,
   maxTokens?: number,
   cacheKey?: string,
+  timeout?: number,
 };
 export type PageAgentPerformOptions = {
   maxTurns?: number,
   maxTokens?: number,
   cacheKey?: string,
+  timeout?: number,
 };
 export type PageAgentPerformResult = {
   usage: AgentUsage,
@@ -5129,11 +5134,13 @@ export type PageAgentExpectParams = {
   maxTurns?: number,
   maxTokens?: number,
   cacheKey?: string,
+  timeout?: number,
 };
 export type PageAgentExpectOptions = {
   maxTurns?: number,
   maxTokens?: number,
   cacheKey?: string,
+  timeout?: number,
 };
 export type PageAgentExpectResult = {
   usage: AgentUsage,
@@ -5144,11 +5151,13 @@ export type PageAgentExtractParams = {
   maxTurns?: number,
   maxTokens?: number,
   cacheKey?: string,
+  timeout?: number,
 };
 export type PageAgentExtractOptions = {
   maxTurns?: number,
   maxTokens?: number,
   cacheKey?: string,
+  timeout?: number,
 };
 export type PageAgentExtractResult = {
   result: any,
@@ -5157,6 +5166,11 @@ export type PageAgentExtractResult = {
 export type PageAgentDisposeParams = {};
 export type PageAgentDisposeOptions = {};
 export type PageAgentDisposeResult = void;
+export type PageAgentUsageParams = {};
+export type PageAgentUsageOptions = {};
+export type PageAgentUsageResult = {
+  usage: AgentUsage,
+};
 
 export interface PageAgentEvents {
   'turn': PageAgentTurnEvent;

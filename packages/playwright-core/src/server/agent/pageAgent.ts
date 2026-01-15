@@ -15,6 +15,7 @@
  */
 
 import fs from 'fs';
+import path from 'path';
 
 import { toolsForLoop } from './tool';
 import { debug } from '../../utilsBundle';
@@ -24,7 +25,7 @@ import { Context } from './context';
 import performTools from './performTools';
 import expectTools from './expectTools';
 
-import type * as actions from './actions';
+import * as actions from './actions';
 import type { ToolDefinition } from './tool';
 import type * as loopTypes from '@lowire/loop';
 import type { Progress } from '../progress';
@@ -67,7 +68,6 @@ export async function pageAgentExpect(progress: Progress, context: Context, expe
 ${expectation}
 `;
 
-  callParams.maxTurns = callParams.maxTurns ?? 3;
   await runLoop(progress, context, expectTools, task, undefined, callParams);
   await updateCache(context, cacheKey);
 }
@@ -97,6 +97,10 @@ async function runLoop(progress: Progress, context: Context, toolDefinitions: To
   const { tools, callTool, reportedResult } = toolsForLoop(progress, context, toolDefinitions, { resultSchema });
   const secrets = Object.fromEntries((context.agentParams.secrets || [])?.map(s => ([s.name, s.value])));
 
+  const apiCacheTextBefore = context.agentParams.apiCacheFile ?
+    await fs.promises.readFile(context.agentParams.apiCacheFile, 'utf-8').catch(() => '{}') : '{}';
+  const apiCacheBefore = JSON.parse(apiCacheTextBefore);
+
   const loop = new Loop({
     api: context.agentParams.api as any,
     apiEndpoint: context.agentParams.apiEndpoint,
@@ -109,6 +113,7 @@ async function runLoop(progress: Progress, context: Context, toolDefinitions: To
     callTool,
     tools,
     secrets,
+    cache: apiCacheBefore,
     ...context.events,
   });
 
@@ -130,14 +135,21 @@ async function runLoop(progress: Progress, context: Context, toolDefinitions: To
   task.push('### Page snapshot');
   task.push(full);
   task.push('');
-  await loop.run(task.join('\n'));
+
+  await loop.run(task.join('\n'), { signal: progress.signal });
+
+  if (context.agentParams.apiCacheFile) {
+    const apiCacheAfter = { ...apiCacheBefore, ...loop.cache() };
+    const sortedCache = Object.fromEntries(Object.entries(apiCacheAfter).sort(([a], [b]) => a.localeCompare(b)));
+    const apiCacheTextAfter = JSON.stringify(sortedCache, undefined, 2);
+    if (apiCacheTextAfter !== apiCacheTextBefore) {
+      await fs.promises.mkdir(path.dirname(context.agentParams.apiCacheFile), { recursive: true });
+      await fs.promises.writeFile(context.agentParams.apiCacheFile, apiCacheTextAfter);
+    }
+  }
 
   return { result: resultSchema ? reportedResult() : undefined };
 }
-
-type CachedActions = Record<string, {
-  actions: actions.ActionWithCode[],
-}>;
 
 async function cachedPerform(progress: Progress, context: Context, cacheKey: string): Promise<actions.ActionWithCode[] | undefined> {
   if (!context.agentParams?.cacheFile)
@@ -175,8 +187,8 @@ async function updateCache(context: Context, cacheKey: string) {
 }
 
 type Cache = {
-  actions: CachedActions;
-  newActions: CachedActions;
+  actions: actions.CachedActions;
+  newActions: actions.CachedActions;
 };
 
 const allCaches = new Map<string, Cache>();
@@ -184,8 +196,11 @@ const allCaches = new Map<string, Cache>();
 async function cachedActions(cacheFile: string): Promise<Cache> {
   let cache = allCaches.get(cacheFile);
   if (!cache) {
-    const actions = await fs.promises.readFile(cacheFile, 'utf-8').then(text => JSON.parse(text)).catch(() => ({})) as CachedActions;
-    cache = { actions, newActions: {} };
+    const text = await fs.promises.readFile(cacheFile, 'utf-8').catch(() => '{}');
+    const parsed = actions.cachedActionsSchema.safeParse(JSON.parse(text));
+    if (parsed.error)
+      throw new Error(`Failed to parse cache file ${cacheFile}: ${parsed.error.issues.map(issue => issue.message).join(', ')}`);
+    cache = { actions: parsed.data, newActions: {} };
     allCaches.set(cacheFile, cache);
   }
   return cache;

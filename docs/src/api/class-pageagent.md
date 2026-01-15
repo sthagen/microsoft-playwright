@@ -1,5 +1,6 @@
 # class: PageAgent
 * since: v1.58
+* langs: js
 
 ## event: PageAgent.turn
 * since: v1.58
@@ -95,3 +96,19 @@ Task to perform using agentic loop.
 
 ### option: PageAgent.perform.-inline- = %%-page-agent-call-options-v1.58-%%
 * since: v1.58
+
+## async method: PageAgent.usage
+* since: v1.58
+- returns: <[Object]>
+  - `turns` <[int]>
+  - `inputTokens` <[int]>
+  - `outputTokens` <[int]>
+
+Returns the current token usage for this agent.
+
+**Usage**
+
+```js
+const usage = await agent.usage();
+console.log(`Tokens used: ${usage.inputTokens} in, ${usage.outputTokens} out`);
+```

@@ -5411,6 +5411,11 @@ export interface PageAgent {
      * Maximum number of agentic turns during this call, defaults to context-wide value specified in `agent` property.
      */
     maxTurns?: number;
+
+    /**
+     * Request timeout in milliseconds. Defaults to action timeout. Pass `0` to disable timeout.
+     */
+    timeout?: number;
   }): Promise<void>;
 
   /**
@@ -5442,6 +5447,11 @@ export interface PageAgent {
      * Maximum number of agentic turns during this call, defaults to context-wide value specified in `agent` property.
      */
     maxTurns?: number;
+
+    /**
+     * Request timeout in milliseconds. Defaults to action timeout. Pass `0` to disable timeout.
+     */
+    timeout?: number;
   }): Promise<{
     usage: {
       turns: number;
@@ -5450,6 +5460,25 @@ export interface PageAgent {
 
       outputTokens: number;
     };
+  }>;
+
+  /**
+   * Returns the current token usage for this agent.
+   *
+   * **Usage**
+   *
+   * ```js
+   * const usage = await agent.usage();
+   * console.log(`Tokens used: ${usage.inputTokens} in, ${usage.outputTokens} out`);
+   * ```
+   *
+   */
+  usage(): Promise<{
+    turns: number;
+
+    inputTokens: number;
+
+    outputTokens: number;
   }>;
 
   [Symbol.asyncDispose](): Promise<void>;

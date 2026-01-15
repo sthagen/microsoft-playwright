@@ -1491,6 +1491,7 @@ scheme.PageAgentParams = tObject({
   api: tOptional(tString),
   apiKey: tOptional(tString),
   apiEndpoint: tOptional(tString),
+  apiCacheFile: tOptional(tString),
   cacheFile: tOptional(tString),
   cacheOutFile: tOptional(tString),
   maxTurns: tOptional(tInt),
@@ -2909,6 +2910,7 @@ scheme.PageAgentPerformParams = tObject({
   maxTurns: tOptional(tInt),
   maxTokens: tOptional(tInt),
   cacheKey: tOptional(tString),
+  timeout: tOptional(tInt),
 });
 scheme.PageAgentPerformResult = tObject({
   usage: tType('AgentUsage'),
@@ -2918,6 +2920,7 @@ scheme.PageAgentExpectParams = tObject({
   maxTurns: tOptional(tInt),
   maxTokens: tOptional(tInt),
   cacheKey: tOptional(tString),
+  timeout: tOptional(tInt),
 });
 scheme.PageAgentExpectResult = tObject({
   usage: tType('AgentUsage'),
@@ -2928,6 +2931,7 @@ scheme.PageAgentExtractParams = tObject({
   maxTurns: tOptional(tInt),
   maxTokens: tOptional(tInt),
   cacheKey: tOptional(tString),
+  timeout: tOptional(tInt),
 });
 scheme.PageAgentExtractResult = tObject({
   result: tAny,
@@ -2935,6 +2939,10 @@ scheme.PageAgentExtractResult = tObject({
 });
 scheme.PageAgentDisposeParams = tOptional(tObject({}));
 scheme.PageAgentDisposeResult = tOptional(tObject({}));
+scheme.PageAgentUsageParams = tOptional(tObject({}));
+scheme.PageAgentUsageResult = tObject({
+  usage: tType('AgentUsage'),
+});
 scheme.AgentUsage = tObject({
   turns: tInt,
   inputTokens: tInt,
