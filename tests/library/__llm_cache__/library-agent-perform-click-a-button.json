@@ -1,5 +1,5 @@
 {
-  "0706eb777330056e04cc3abb4715ed3fa1c9d4d5": {
+  "e0bdb1971bebcc365635eea52b2b53f570aebbe1": {
     "result": {
       "role": "assistant",
       "content": [
@@ -15,12 +15,15 @@
             "ref": "e2",
             "_is_done": true
           },
-          "id": "toolu_01W54FxjcWYV856RHP3V2xdj"
+          "id": "toolu_015RTvi8GMkgiz5Y52MB5zSB"
         }
-      ]
+      ],
+      "stopReason": {
+        "code": "ok"
+      }
     },
     "usage": {
-      "input": 2893,
+      "input": 2913,
       "output": 101
     }
   }

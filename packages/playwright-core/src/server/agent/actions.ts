@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-import { zod } from '../../utilsBundle';
-import type z from 'zod';
+import { z as zod } from '../../mcpBundle';
+import type * as z from 'zod';
 
 const modifiersSchema = zod.array(
     zod.enum(['Alt', 'Control', 'ControlOrMeta', 'Meta', 'Shift'])
@@ -109,6 +109,14 @@ const expectAriaSchema = zod.object({
 });
 export type ExpectAria = z.infer<typeof expectAriaSchema>;
 
+const expectURLSchema = zod.object({
+  method: zod.literal('expectURL'),
+  value: zod.string().optional(),
+  regex: zod.string().optional(),
+  isNot: zod.boolean().optional(),
+});
+export type ExpectURL = z.infer<typeof expectURLSchema>;
+
 const actionSchema = zod.discriminatedUnion('method', [
   navigateActionSchema,
   clickActionSchema,
@@ -122,6 +130,7 @@ const actionSchema = zod.discriminatedUnion('method', [
   expectVisibleSchema,
   expectValueSchema,
   expectAriaSchema,
+  expectURLSchema,
 ]);
 export type Action = z.infer<typeof actionSchema>;
 
@@ -130,7 +139,7 @@ const actionWithCodeSchema = actionSchema.and(zod.object({
 }));
 export type ActionWithCode = z.infer<typeof actionWithCodeSchema>;
 
-export const cachedActionsSchema = zod.record(zod.object({
+export const cachedActionsSchema = zod.record(zod.string(), zod.object({
   actions: zod.array(actionWithCodeSchema),
 }));
 export type CachedActions = z.infer<typeof cachedActionsSchema>;
