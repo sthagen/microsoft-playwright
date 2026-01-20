@@ -42,22 +42,25 @@ export async function generateAgent(context: BrowserContext, options: AgentOptio
     provider: {
       api: 'anthropic' as const,
       apiKey: process.env.AZURE_SONNET_API_KEY ?? 'dummy',
-      apiEndpoint: process.env.AZURE_SONNET_ENDPOINT ?? 'dummy',
+      apiEndpoint: process.env.AZURE_SONNET_ENDPOINT,
       model: 'claude-sonnet-4-5',
       ...{ _apiCacheFile: apiCacheFile }
     },
     ...options,
     cache: {
       cacheFile: cacheFile(),
-    }
+    },
+    ...{ _doNotRenderActive: true },
   });
   return { page, agent };
 }
 
-export async function runAgent(context: BrowserContext, options: { secrets?: Record<string, string> } = {}) {
+export async function runAgent(context: BrowserContext, options: AgentOptions = {}) {
   const page = await context.newPage();
   const agent = await page.agent({
-    cache: { cacheFile: cacheFile() }
+    ...options,
+    cache: { cacheFile: cacheFile() },
+    ...{ _doNotRenderActive: true },
   });
   return { page, agent };
 }

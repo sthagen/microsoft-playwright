@@ -41,9 +41,14 @@ function addCommand(name: string, description: string, action: (...args: any[]) 
       .action(action);
 }
 
-addCommand('navigate <url>', 'open url in the browser', async url => {
-  await runMcpCommand('browser_navigate', { url });
-});
+program
+    .command('navigate <url>')
+    .aliases(['open', 'goto'])
+    .description('open url in the browser')
+    .option('--headed', 'run browser in headed mode')
+    .action(async (url, options) => {
+      await runMcpCommand('browser_navigate', { url }, { headless: !options.headed });
+    });
 
 addCommand('close', 'close the browser', async () => {
   await runMcpCommand('browser_close', {});
@@ -141,8 +146,8 @@ addCommand('tab-select <index>', 'select a browser tab', async index => {
 });
 
 
-async function runMcpCommand(name: string, args: mcp.CallToolRequest['params']['arguments']) {
-  const session = await connectToDaemon();
+async function runMcpCommand(name: string, args: mcp.CallToolRequest['params']['arguments'], options: { headless?: boolean } = {}) {
+  const session = await connectToDaemon(options);
   const result = await session.callTool(name, args);
   printResult(result);
   session.dispose();
@@ -222,12 +227,28 @@ class SocketSession {
 }
 
 function daemonSocketPath(): string {
-  if (os.platform() === 'win32')
-    return path.join('\\\\.\\pipe', 'pw-daemon.sock');
-  return path.join(os.homedir(), '.playwright', 'pw-daemon.sock');
+  const socketPath = path.resolve('.playwright.sock');
+  return normalizeSocketPath(socketPath);
 }
 
-async function connectToDaemon(): Promise<SocketSession> {
+/**
+ * Normalize socket path for the current platform.
+ * On Windows, converts Unix-style paths to named pipe format.
+ * On Unix, returns the path as-is.
+ */
+function normalizeSocketPath(path: string): string {
+  if (os.platform() === 'win32') {
+    // Windows named pipes use \\.\pipe\name format
+    if (path.startsWith('\\\\.\\pipe\\'))
+      return path;
+    // Convert Unix-style path to Windows named pipe
+    const name = path.replace(/[^a-zA-Z0-9]/g, '-');
+    return `\\\\.\\pipe\\${name}`;
+  }
+  return path;
+}
+
+async function connectToDaemon(options: { headless?: boolean }): Promise<SocketSession> {
   const socketPath = daemonSocketPath();
   debugCli(`Connecting to daemon at ${socketPath}`);
 
@@ -243,9 +264,10 @@ async function connectToDaemon(): Promise<SocketSession> {
 
   const cliPath = path.join(__dirname, '../../../cli.js');
   debugCli(`Will launch daemon process: ${cliPath}`);
-  const child = spawn(process.execPath, [cliPath, 'run-mcp-server', `--daemon=${socketPath}`], {
+  const child = spawn(process.execPath, [cliPath, 'run-mcp-server', `--daemon=${socketPath}`, ...(options.headless ? ['--headless'] : [])], {
     detached: true,
     stdio: 'ignore',
+    cwd: process.cwd(), // Will be used as root.
   });
   child.unref();
 

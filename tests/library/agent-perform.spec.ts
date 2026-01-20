@@ -16,9 +16,10 @@
 
 import { z as zod3 } from 'zod/v3';
 import * as zod4 from 'zod';
+import fs from 'fs';
 
 import { browserTest as test, expect } from '../config/browserTest';
-import { run, generateAgent, cacheObject, runAgent, setCacheObject } from './agent-helpers';
+import { run, generateAgent, cacheObject, runAgent, setCacheObject, cacheFile } from './agent-helpers';
 
 // LOWIRE_NO_CACHE=1 to generate api caches
 // LOWIRE_FORCE_CACHE=1 to force api caches
@@ -173,6 +174,28 @@ test('perform run timeout', async ({ context }) => {
   }
 });
 
+test('perform run timeout inherited from page', async ({ context }) => {
+  {
+    const { page, agent } = await generateAgent(context);
+    await page.setContent(`
+      <button>Wolf</button>
+      <button>Fox</button>
+    `);
+    await agent.perform('click the Fox button');
+  }
+  {
+    const { page, agent } = await runAgent(context);
+    await page.setContent(`
+      <button>Wolf</button>
+      <button>Rabbit</button>
+    `);
+    page.setDefaultTimeout(3000);
+    const error = await agent.perform('click the Fox button').catch(e => e);
+    expect(error.message).toContain('Timeout 3000ms exceeded.');
+    expect(error.message).toContain(`waiting for getByRole('button', { name: 'Fox' })`);
+  }
+});
+
 test('invalid cache file throws error', async ({ context }) => {
   await setCacheObject({
     'some key': {
@@ -189,6 +212,33 @@ Failed to parse cache file ${test.info().outputPath('agent-cache.json')}:
 ✖ Invalid input: expected string, received undefined
   → at [\"some key\"].actions[0].code
     `.trim());
+});
+
+test('non-json cache file throws a nice error', async ({ context }) => {
+  await fs.promises.writeFile(cacheFile(), 'bogus', 'utf8');
+  const { agent } = await runAgent(context);
+  const error = await agent.perform('click the Test button').catch(e => e);
+  expect(error.message).toContain(`Failed to parse cache file ${test.info().outputPath('agent-cache.json')}:`);
+  expect(error.message.toLowerCase()).toContain(`valid json`);
+});
+
+test('empty cache file works', async ({ context }) => {
+  await fs.promises.writeFile(cacheFile(), '', 'utf8');
+  const { page, agent } = await generateAgent(context);
+  await page.setContent(`<button>Test</button>`);
+  await agent.perform('click the Test button');
+});
+
+test('missing apiKey throws a nice error', async ({ page }) => {
+  const agent = await page.agent({ provider: { api: 'anthropic', model: 'some model' } as any });
+  const error = await agent.perform('click the Test button').catch(e => e);
+  expect(error.message).toContain(`This action requires API key to be set on the page agent`);
+});
+
+test('malformed apiEndpoint throws a nice error', async ({ page }) => {
+  const agent = await page.agent({ provider: { api: 'anthropic', model: 'some model', apiKey: 'some key', apiEndpoint: 'foobar' } });
+  const error = await agent.perform('click the Test button').catch(e => e);
+  expect(error.message).toContain(`Agent API endpoint "foobar" is not a valid URL`);
 });
 
 test('perform reports error', async ({ context }) => {
