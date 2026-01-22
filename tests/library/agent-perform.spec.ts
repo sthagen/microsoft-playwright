@@ -56,10 +56,10 @@ test('retrieve a secret', async ({ context }) => {
   expect(await cacheObject()).toEqual({
     'Enter x-secret-email into the email field': {
       actions: [{
-        code: `await page.getByRole('textbox', { name: 'Email Address' }).fill('secret-email@at-microsoft.com');`,
+        code: `await page.getByRole('textbox', { name: 'Email Address' }).fill('x-secret-email');`,
         method: 'fill',
         selector: `internal:role=textbox[name=\"Email Address\"i]`,
-        text: 'secret-email@at-microsoft.com',
+        text: 'x-secret-email',
       }],
     },
   });
@@ -230,12 +230,14 @@ test('empty cache file works', async ({ context }) => {
 });
 
 test('missing apiKey throws a nice error', async ({ page }) => {
+  // @ts-expect-error
   const agent = await page.agent({ provider: { api: 'anthropic', model: 'some model' } as any });
   const error = await agent.perform('click the Test button').catch(e => e);
   expect(error.message).toContain(`This action requires API key to be set on the page agent`);
 });
 
 test('malformed apiEndpoint throws a nice error', async ({ page }) => {
+  // @ts-expect-error
   const agent = await page.agent({ provider: { api: 'anthropic', model: 'some model', apiKey: 'some key', apiEndpoint: 'foobar' } });
   const error = await agent.perform('click the Test button').catch(e => e);
   expect(error.message).toContain(`Agent API endpoint "foobar" is not a valid URL`);
@@ -249,4 +251,49 @@ test('perform reports error', async ({ context }) => {
   `);
   const e = await agent.perform('click the Rabbit button').catch(e => e);
   expect(e.message).toContain('Agent refused to perform action:');
+});
+
+test('should dispatch event and respect dispose()', async ({ context, server }) => {
+  let apiResponse;
+  server.setRoute('/api', (req, res) => {
+    apiResponse = res;
+    // stall
+  });
+
+  const apiRequestPromise = server.waitForRequest('/api');
+  const { page, agent } = await generateAgent(context, {
+    provider: {
+      api: 'anthropic',
+      apiKey: 'not a real key',
+      apiEndpoint: server.PREFIX + '/api',
+      model: 'no such model',
+    },
+  });
+  await page.setContent(`<button>Wolf</button>`);
+
+  const promiseCanceledByDispose = agent.perform('click the Wolf button').catch(e => e);
+  let promiseAfterDispose;
+  let eventCounter = 0;
+
+  agent.on('turn', async () => {
+    ++eventCounter;
+    if (eventCounter > 1)
+      return;
+
+    await apiRequestPromise;
+    void agent.dispose();
+    promiseAfterDispose = agent.perform('click the Wolf button again').catch(e => e);
+    apiResponse.end();
+  });
+
+  const errorCanceledByDispose = await promiseCanceledByDispose;
+  expect(errorCanceledByDispose.message).toContain('The agent is disposed');
+  expect(errorCanceledByDispose.message).not.toContain('after being disposed');
+
+  const errorAfterDispose = await promiseAfterDispose;
+  expect(errorAfterDispose.message).toContain('Target page, context or browser has been closed');
+
+  // no more events after dispose
+  await page.waitForTimeout(1000);
+  expect(eventCounter).toBe(1);
 });

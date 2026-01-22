@@ -15,12 +15,8 @@
  * limitations under the License.
  */
 
-import type { APIRequestContext, Browser, BrowserContext, BrowserContextOptions, Page, PageAgent, LaunchOptions, ViewportSize, Geolocation, HTTPCredentials, Locator, APIResponse, PageScreenshotOptions } from 'playwright-core';
+import type { APIRequestContext, Browser, BrowserContext, BrowserContextOptions, Page, LaunchOptions, ViewportSize, Geolocation, HTTPCredentials, Locator, APIResponse, PageScreenshotOptions } from 'playwright-core';
 export * from 'playwright-core';
-
-// @ts-ignore ReactCSSProperties will be any if react is not installed
-type ReactCSSProperties = import('react').CSSProperties;
-export type CSSProperties = keyof ReactCSSProperties extends string ? ReactCSSProperties : never;
 
 export type BlobReporterOptions = { outputDir?: string, fileName?: string };
 export type ListReporterOptions = { printSteps?: boolean };
@@ -1616,14 +1612,6 @@ interface TestConfig<TestArgs = {}, WorkerArgs = {}> {
   retries?: number;
 
   /**
-   * Whether to run LLM agent for [PageAgent](https://playwright.dev/docs/api/class-pageagent):
-   * - "all" disregards existing cache and performs all actions via LLM
-   * - "missing" only performs actions that don't have generated cache actions
-   * - "none" does not talk to LLM at all, relies on the cached actions (default)
-   */
-  runAgents?: "all"|"missing"|"none";
-
-  /**
    * Shard tests and execute only the selected shard. Specify in the one-based form like `{ total: 5, current: 2 }`.
    *
    * Learn more about [parallelism and sharding](https://playwright.dev/docs/test-parallel) with Playwright Test.
@@ -2078,14 +2066,6 @@ export interface FullConfig<TestArgs = {}, WorkerArgs = {}> {
    * Base directory for all relative paths used in the reporters.
    */
   rootDir: string;
-
-  /**
-   * Whether to run LLM agent for [PageAgent](https://playwright.dev/docs/api/class-pageagent):
-   * - "all" disregards existing cache and performs all actions via LLM
-   * - "missing" only performs actions that don't have generated cache actions
-   * - "none" does not talk to LLM at all, relies on the cached actions (default)
-   */
-  runAgents: "all"|"missing"|"none";
 
   /**
    * See [testConfig.shard](https://playwright.dev/docs/api/class-testconfig#test-config-shard).
@@ -6954,24 +6934,6 @@ export interface PlaywrightWorkerOptions {
 export type ScreenshotMode = 'off' | 'on' | 'only-on-failure' | 'on-first-failure';
 export type TraceMode = 'off' | 'on' | 'retain-on-failure' | 'on-first-retry' | 'on-all-retries' | 'retain-on-first-failure';
 export type VideoMode = 'off' | 'on' | 'retain-on-failure' | 'on-first-retry';
-export type AgentOptions = {
-  provider?: {
-    api: 'openai' | 'openai-compatible' | 'anthropic' | 'google';
-    apiEndpoint?: string;
-    apiKey: string;
-    apiTimeout?: number;
-    model: string;
-  },
-  limits?: {
-    maxTokens?: number;
-    maxActions?: number;
-    maxActionRetries?: number;
-  };
-  cachePathTemplate?: string;
-  runAgents?: 'all' | 'missing' | 'none';
-  secrets?: { [key: string]: string };
-  systemPrompt?: string;
-};
 
 /**
  * Playwright Test provides many options to configure test environment,
@@ -7012,7 +6974,6 @@ export type AgentOptions = {
  *
  */
 export interface PlaywrightTestOptions {
-  agentOptions: AgentOptions | undefined;
   /**
    * Whether to automatically download all the attachments. Defaults to `true` where all the downloads are accepted.
    *
@@ -7722,7 +7683,6 @@ export interface PlaywrightTestArgs {
    *
    */
   request: APIRequestContext;
-  agent: PageAgent;
 }
 
 type ExcludeProps<A, B> = {
@@ -9178,32 +9138,6 @@ interface LocatorAssertions {
    * @param options
    */
   toHaveCSS(name: string, value: string|RegExp, options?: {
-    /**
-     * Time to retry the assertion for in milliseconds. Defaults to `timeout` in `TestConfig.expect`.
-     */
-    timeout?: number;
-  }): Promise<void>;
-
-  /**
-   * Ensures the [Locator](https://playwright.dev/docs/api/class-locator) resolves to an element with the given computed
-   * CSS properties.
-   *
-   * **NOTE** The `CSSProperties` object parameter for toHaveCSS requires `react` to be installed for type checking.
-   *
-   * **Usage**
-   *
-   * ```js
-   * const locator = page.getByRole('button');
-   * await expect(locator).toHaveCSS({
-   *   display: 'flex',
-   *   backgroundColor: 'rgb(255, 0, 0)'
-   * });
-   * ```
-   *
-   * @param styles CSS properties object.
-   * @param options
-   */
-  toHaveCSS(styles: CSSProperties, options?: {
     /**
      * Time to retry the assertion for in milliseconds. Defaults to `timeout` in `TestConfig.expect`.
      */

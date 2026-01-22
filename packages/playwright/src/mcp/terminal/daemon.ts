@@ -22,8 +22,11 @@ import url from 'url';
 
 import { debug } from 'playwright-core/lib/utilsBundle';
 import { SocketConnection } from './socketConnection';
+import { commands } from './commands';
+import { parseCommand } from './command';
 
 import type { ServerBackendFactory } from '../sdk/server';
+import type * as mcp from '../sdk/exports';
 
 const daemonDebug = debug('pw:daemon');
 
@@ -79,14 +82,16 @@ export async function startMcpDaemonServer(
       const { id, method, params } = message;
       try {
         daemonDebug('received command', method);
-        const response = await backend.callTool(method, params, () => {});
-        daemonDebug('sending response', !!response);
-        if (response)
-          await connection.send({ id, result: response });
+        if (method === 'runCliCommand') {
+          const { toolName, toolParams } = parseCliCommand(params.args);
+          const response = await backend.callTool(toolName, toolParams, () => {});
+          await connection.send({ id, result: formatResult(response) });
+        } else {
+          throw new Error(`Unknown method: ${method}`);
+        }
       } catch (e) {
         daemonDebug('command failed', e);
         await connection.send({ id, error: (e as Error).message });
-        daemonDebug('error handling message', e);
       }
     };
   });
@@ -102,4 +107,22 @@ export async function startMcpDaemonServer(
       resolve(socketPath);
     });
   });
+}
+
+function formatResult(result: mcp.CallToolResult) {
+  const lines = [];
+  for (const content of result.content) {
+    if (content.type === 'text')
+      lines.push(content.text);
+    else
+      lines.push(`<${content.type} content>`);
+  }
+  return lines.join('\n');
+}
+
+function parseCliCommand(args: Record<string, string> & { _: string[] }): { toolName: string, toolParams: mcp.CallToolRequest['params']['arguments'] } {
+  const command = commands[args._[0]];
+  if (!command)
+    throw new Error('Command is required');
+  return parseCommand(command, args);
 }

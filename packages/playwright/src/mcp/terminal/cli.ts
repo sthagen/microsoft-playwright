@@ -15,13 +15,15 @@
  */
 
 /* eslint-disable no-console */
+/* eslint-disable no-restricted-properties */
 
 import { spawn } from 'child_process';
+import crypto from 'crypto';
 import fs from 'fs';
 import net from 'net';
 import os from 'os';
 import path from 'path';
-import { program, debug } from 'playwright-core/lib/utilsBundle';
+import { debug } from 'playwright-core/lib/utilsBundle';
 import { SocketConnection } from './socketConnection';
 
 import type * as mcp from '../sdk/exports';
@@ -30,136 +32,11 @@ const debugCli = debug('pw:cli');
 
 const packageJSON = require('../../../package.json');
 
-program
-    .version('Version ' + (process.env.PW_CLI_DISPLAY_VERSION || packageJSON.version))
-    .name('playwright-command');
-
-function addCommand(name: string, description: string, action: (...args: any[]) => Promise<void>) {
-  program
-      .command(name)
-      .description(description)
-      .action(action);
-}
-
-program
-    .command('navigate <url>')
-    .aliases(['open', 'goto'])
-    .description('open url in the browser')
-    .option('--headed', 'run browser in headed mode')
-    .action(async (url, options) => {
-      await runMcpCommand('browser_navigate', { url }, { headless: !options.headed });
-    });
-
-addCommand('close', 'close the browser', async () => {
-  await runMcpCommand('browser_close', {});
-});
-
-// snapshot.ts
-addCommand('click <ref>', 'click an element using a ref from a snapshot, e.g. e67', async ref => {
-  await runMcpCommand('browser_click', { ref });
-});
-
-addCommand('snapshot', 'get accessible snapshot of the current page', async () => {
-  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-  await runMcpCommand('browser_snapshot', { filename: `snapshot-${timestamp}.md` });
-});
-
-addCommand('drag <startRef> <endRef>', 'drag from one element to another', async (startRef, endRef) => {
-  await runMcpCommand('browser_drag', { startRef, endRef });
-});
-
-addCommand('hover <ref>', 'hover over an element', async ref => {
-  await runMcpCommand('browser_hover', { ref });
-});
-
-addCommand('select <ref> <values...>', 'select option(s) in a dropdown', async (ref, values) => {
-  await runMcpCommand('browser_select_option', { ref, values });
-});
-
-// TODO: remove?
-addCommand('locator <ref>', 'generate a locator for an element', async ref => {
-  await runMcpCommand('browser_generate_locator', { ref });
-});
-
-// keyboard.ts
-addCommand('press <key>', 'press a key on the keyboard', async key => {
-  await runMcpCommand('browser_press_key', { key });
-});
-
-addCommand('type <ref> <text>', 'type text into an element', async (ref, text) => {
-  await runMcpCommand('browser_type', { ref, text });
-});
-
-// navigate.ts
-addCommand('back', 'go back to the previous page', async () => {
-  await runMcpCommand('browser_navigate_back', {});
-});
-
-// wait.ts
-addCommand('wait <time>', 'wait for a specified time in seconds', async time => {
-  await runMcpCommand('browser_wait_for', { time: parseFloat(time) });
-});
-
-addCommand('wait-for-text <text>', 'wait for text to appear', async text => {
-  await runMcpCommand('browser_wait_for', { text });
-});
-
-// dialogs.ts
-addCommand('dialog-accept [promptText]', 'accept a dialog', async promptText => {
-  await runMcpCommand('browser_handle_dialog', { accept: true, promptText });
-});
-
-addCommand('dialog-dismiss', 'dismiss a dialog', async () => {
-  await runMcpCommand('browser_handle_dialog', { accept: false });
-});
-
-// screenshot.ts
-addCommand('screenshot [filename]', 'take a screenshot of the current page', async filename => {
-  await runMcpCommand('browser_take_screenshot', { filename });
-});
-
-// common.ts (resize)
-addCommand('resize <width> <height>', 'resize the browser window', async (width, height) => {
-  await runMcpCommand('browser_resize', { width: parseInt(width, 10), height: parseInt(height, 10) });
-});
-
-// files.ts
-addCommand('upload <paths...>', 'upload files', async paths => {
-  await runMcpCommand('browser_file_upload', { paths });
-});
-
-// tabs.ts
-addCommand('tabs', 'list all browser tabs', async () => {
-  await runMcpCommand('browser_tabs', { action: 'list' });
-});
-
-addCommand('tab-new', 'create a new browser tab', async () => {
-  await runMcpCommand('browser_tabs', { action: 'new' });
-});
-
-addCommand('tab-close [index]', 'close a browser tab', async index => {
-  await runMcpCommand('browser_tabs', { action: 'close', index: index !== undefined ? parseInt(index, 10) : undefined });
-});
-
-addCommand('tab-select <index>', 'select a browser tab', async index => {
-  await runMcpCommand('browser_tabs', { action: 'select', index: parseInt(index, 10) });
-});
-
-
-async function runMcpCommand(name: string, args: mcp.CallToolRequest['params']['arguments'], options: { headless?: boolean } = {}) {
-  const session = await connectToDaemon(options);
-  const result = await session.callTool(name, args);
-  printResult(result);
+async function runCliCommand(sessionName: string, args: any) {
+  const session = await connectToDaemon(sessionName);
+  const result = await session.runCliCommand(args);
+  console.log(result);
   session.dispose();
-}
-
-function printResult(result: mcp.CallToolResult) {
-  for (const content of result.content) {
-    if (content.type === 'text')
-      console.log(content.text);
-    else
-      console.log(`<${content.type} content>`);
-  }
 }
 
 async function socketExists(socketPath: string): Promise<boolean> {
@@ -175,7 +52,7 @@ async function socketExists(socketPath: string): Promise<boolean> {
 class SocketSession {
   private _connection: SocketConnection;
   private _nextMessageId = 1;
-  private _callbacks = new Map<number, { resolve: (o: any) => void, reject: (e: Error) => void, error: Error }>();
+  private _callbacks = new Map<number, { resolve: (o: any) => void, reject: (e: Error) => void }>();
 
   constructor(connection: SocketConnection) {
     this._connection = connection;
@@ -183,9 +60,12 @@ class SocketSession {
     this._connection.onclose = () => this.dispose();
   }
 
-
   async callTool(name: string, args: mcp.CallToolRequest['params']['arguments']): Promise<mcp.CallToolResult> {
     return this._send(name, args);
+  }
+
+  async runCliCommand(args: any): Promise<string> {
+    return await this._send('runCliCommand', { args });
   }
 
   private async _send(method: string, params: any = {}): Promise<any> {
@@ -197,13 +77,13 @@ class SocketSession {
     };
     await this._connection.send(message);
     return new Promise<any>((resolve, reject) => {
-      this._callbacks.set(messageId, { resolve, reject, error: new Error(`Error in method: ${method}`) });
+      this._callbacks.set(messageId, { resolve, reject });
     });
   }
 
   dispose() {
     for (const callback of this._callbacks.values())
-      callback.reject(callback.error);
+      callback.reject(new Error('Disposed'));
     this._callbacks.clear();
     this._connection.close();
   }
@@ -212,12 +92,10 @@ class SocketSession {
     if (object.id && this._callbacks.has(object.id)) {
       const callback = this._callbacks.get(object.id)!;
       this._callbacks.delete(object.id);
-      if (object.error) {
-        callback.error.cause = new Error(object.error);
-        callback.reject(callback.error);
-      } else {
+      if (object.error)
+        callback.reject(new Error(object.error));
+      else
         callback.resolve(object.result);
-      }
     } else if (object.id) {
       throw new Error(`Unexpected message id: ${object.id}`);
     } else {
@@ -226,30 +104,43 @@ class SocketSession {
   }
 }
 
-function daemonSocketPath(): string {
-  const socketPath = path.resolve('.playwright.sock');
-  return normalizeSocketPath(socketPath);
+function localCacheDir(): string {
+  if (process.platform === 'linux')
+    return process.env.XDG_CACHE_HOME || path.join(os.homedir(), '.cache');
+  if (process.platform === 'darwin')
+    return path.join(os.homedir(), 'Library', 'Caches');
+  if (process.platform === 'win32')
+    return process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local');
+  throw new Error('Unsupported platform: ' + process.platform);
 }
 
-/**
- * Normalize socket path for the current platform.
- * On Windows, converts Unix-style paths to named pipe format.
- * On Unix, returns the path as-is.
- */
-function normalizeSocketPath(path: string): string {
-  if (os.platform() === 'win32') {
-    // Windows named pipes use \\.\pipe\name format
-    if (path.startsWith('\\\\.\\pipe\\'))
-      return path;
-    // Convert Unix-style path to Windows named pipe
-    const name = path.replace(/[^a-zA-Z0-9]/g, '-');
-    return `\\\\.\\pipe\\${name}`;
-  }
-  return path;
+function playwrightCacheDir(): string {
+  return path.join(localCacheDir(), 'ms-playwright');
 }
 
-async function connectToDaemon(options: { headless?: boolean }): Promise<SocketSession> {
-  const socketPath = daemonSocketPath();
+function calculateSha1(buffer: Buffer | string): string {
+  const hash = crypto.createHash('sha1');
+  hash.update(buffer);
+  return hash.digest('hex');
+}
+
+function socketDirHash(): string {
+  return calculateSha1(__dirname);
+}
+
+function daemonSocketDir(): string {
+  return path.resolve(playwrightCacheDir(), 'daemon', socketDirHash());
+}
+
+function daemonSocketPath(sessionName: string): string {
+  const socketName = `${sessionName}.sock`;
+  if (os.platform() === 'win32')
+    return `\\\\.\\pipe\\${socketDirHash()}-${socketName}`;
+  return path.resolve(daemonSocketDir(), socketName);
+}
+
+async function connectToDaemon(sessionName: string): Promise<SocketSession> {
+  const socketPath = daemonSocketPath(sessionName);
   debugCli(`Connecting to daemon at ${socketPath}`);
 
   if (await socketExists(socketPath)) {
@@ -258,13 +149,16 @@ async function connectToDaemon(options: { headless?: boolean }): Promise<SocketS
       return await connectToSocket(socketPath);
     } catch (e) {
       // Connection failed, delete the stale socket file.
-      fs.unlinkSync(socketPath);
+      if (os.platform() !== 'win32')
+        await fs.promises.unlink(socketPath).catch(() => {});
     }
   }
 
   const cliPath = path.join(__dirname, '../../../cli.js');
   debugCli(`Will launch daemon process: ${cliPath}`);
-  const child = spawn(process.execPath, [cliPath, 'run-mcp-server', `--daemon=${socketPath}`, ...(options.headless ? ['--headless'] : [])], {
+
+  const userDataDir = path.resolve(daemonSocketDir(), `${sessionName}-user-data`);
+  const child = spawn(process.execPath, [cliPath, 'run-mcp-server', `--daemon=${socketPath}`, `--user-data-dir=${userDataDir}`], {
     detached: true,
     stdio: 'ignore',
     cwd: process.cwd(), // Will be used as root.
@@ -298,4 +192,147 @@ async function connectToSocket(socketPath: string): Promise<SocketSession> {
   return new SocketSession(new SocketConnection(socket));
 }
 
-void program.parseAsync(process.argv);
+function currentSessionPath(): string {
+  return path.resolve(daemonSocketDir(), 'current-session');
+}
+
+async function getCurrentSession(): Promise<string> {
+  try {
+    const session = await fs.promises.readFile(currentSessionPath(), 'utf-8');
+    return session.trim() || 'default';
+  } catch {
+    return 'default';
+  }
+}
+
+async function setCurrentSession(sessionName: string): Promise<void> {
+  await fs.promises.mkdir(daemonSocketDir(), { recursive: true });
+  await fs.promises.writeFile(currentSessionPath(), sessionName);
+}
+
+async function canConnectToSocket(socketPath: string): Promise<boolean> {
+  return new Promise<boolean>(resolve => {
+    const socket = net.createConnection(socketPath, () => {
+      socket.destroy();
+      resolve(true);
+    });
+    socket.on('error', () => {
+      resolve(false);
+    });
+  });
+}
+
+async function listSessions(): Promise<{ name: string, live: boolean }[]> {
+  const dir = daemonSocketDir();
+  try {
+    const files = await fs.promises.readdir(dir);
+    const sessions: { name: string, live: boolean }[] = [];
+    for (const file of files) {
+      if (file.endsWith('-user-data')) {
+        const sessionName = file.slice(0, -'-user-data'.length);
+        const socketPath = daemonSocketPath(sessionName);
+        const live = await canConnectToSocket(socketPath);
+        sessions.push({ name: sessionName, live });
+      }
+    }
+    return sessions;
+  } catch {
+    return [];
+  }
+}
+
+function resolveSessionName(args: any): string {
+  if (args.session)
+    return args.session;
+  if (process.env.PLAYWRIGHT_CLI_SESSION)
+    return process.env.PLAYWRIGHT_CLI_SESSION;
+  return 'default';
+}
+
+async function handleSessionCommand(args: any): Promise<void> {
+  const subcommand = args._[1];
+
+  if (!subcommand) {
+    // Show current session
+    const current = await getCurrentSession();
+    console.log(current);
+    return;
+  }
+
+  if (subcommand === 'list') {
+    const sessions = await listSessions();
+    const current = await getCurrentSession();
+    console.log('Sessions:');
+    for (const session of sessions) {
+      const marker = session.name === current ? '->' : '  ';
+      const liveMarker = session.live ? ' (live)' : '';
+      console.log(`${marker} ${session.name}${liveMarker}`);
+    }
+    if (sessions.length === 0)
+      console.log('   (no sessions)');
+    return;
+  }
+
+  if (subcommand === 'set') {
+    const sessionName = args._[2];
+    if (!sessionName) {
+      console.error('Usage: playwright-cli session set <session-name>');
+      process.exit(1);
+    }
+    await setCurrentSession(sessionName);
+    console.log(`Current session set to: ${sessionName}`);
+    return;
+  }
+
+  console.error(`Unknown session subcommand: ${subcommand}`);
+  process.exit(1);
+}
+
+async function main() {
+  const argv = process.argv.slice(2);
+  const args = require('minimist')(argv);
+  const help = require('./help.json');
+  const commandName = args._[0];
+
+  if (args.version || args.v) {
+    console.log(packageJSON.version);
+    process.exit(0);
+  }
+
+  // Handle 'session' command specially - it doesn't need daemon connection
+  if (commandName === 'session') {
+    await handleSessionCommand(args);
+    return;
+  }
+
+  const command = help.commands[commandName];
+  if (args.help || args.h) {
+    if (command) {
+      console.log(command);
+    } else {
+      console.log('playwright-cli - run playwright mcp commands from terminal\n');
+      console.log(help.global);
+    }
+    process.exit(0);
+  }
+  if (!command) {
+    console.error(`Unknown command: ${commandName}\n`);
+    console.log(help.global);
+    process.exit(1);
+  }
+
+  // Resolve session name: --session flag > PLAYWRIGHT_CLI_SESSION env > current session > 'default'
+  let sessionName = resolveSessionName(args);
+  if (sessionName === 'default' && !args.session && !process.env.PLAYWRIGHT_CLI_SESSION)
+    sessionName = await getCurrentSession();
+
+  runCliCommand(sessionName, args).catch(e => {
+    console.error(e.message);
+    process.exit(1);
+  });
+}
+
+main().catch(e => {
+  console.error(e.message);
+  process.exit(1);
+});
