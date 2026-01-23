@@ -32,10 +32,26 @@ const console = defineTabTool({
   handle: async (tab, params, response) => {
     const messages = await tab.consoleMessages(params.level);
     const text = messages.map(message => message.toString()).join('\n');
-    await response.addResult({ text, suggestedFilename: params.filename });
+    await response.addResult('Console', text, { prefix: 'console', ext: 'log', suggestedFilename: params.filename });
+  },
+});
+
+const consoleClear = defineTabTool({
+  capability: 'core',
+  skillOnly: true,
+  schema: {
+    name: 'browser_console_clear',
+    title: 'Clear console messages',
+    description: 'Clear all console messages',
+    inputSchema: z.object({}),
+    type: 'readOnly',
+  },
+  handle: async tab => {
+    await tab.clearConsoleMessages();
   },
 });
 
 export default [
   console,
+  consoleClear,
 ];

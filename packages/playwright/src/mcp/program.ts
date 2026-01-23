@@ -112,17 +112,17 @@ export function decorateCommand(command: Command, version: string) {
         }
 
         if (options.daemon) {
+          config.skillMode = true;
           config.outputDir = path.join(process.cwd(), '.playwright-cli');
           config.outputMode = 'file';
           config.codegen = 'none';
           config.snapshot.mode = 'full';
-          config.capabilities = ['core', 'internal', 'tracing', 'pdf', 'vision'];
 
           const serverBackendFactory: mcpServer.ServerBackendFactory = {
             name: 'Playwright',
             nameInConfig: 'playwright-daemon',
             version,
-            create: () => new BrowserServerBackend(config, browserContextFactory)
+            create: () => new BrowserServerBackend(config, browserContextFactory, { allTools: true })
           };
           const socketPath = await startMcpDaemonServer(options.daemon, serverBackendFactory);
           console.error(`Daemon server listening on ${socketPath}`);

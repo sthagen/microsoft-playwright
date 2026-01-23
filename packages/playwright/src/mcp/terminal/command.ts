@@ -17,13 +17,16 @@
 
 import type zodType from 'zod';
 
+export type Category = 'core' | 'navigation' | 'keyboard' | 'mouse' | 'export' | 'storage' | 'tabs' | 'devtools' | 'session';
+
 export type CommandSchema<Args extends zodType.ZodTypeAny, Options extends zodType.ZodTypeAny> = {
   name: string;
+  category: Category;
   description: string;
   args?: Args;
   options?: Options;
-  toolName: string | ((args: zodType.infer<Args>, options: zodType.infer<Options>) => string);
-  toolParams: (args: zodType.infer<Args>, options: zodType.infer<Options>) => any;
+  toolName: string | ((args: zodType.infer<Args> & zodType.infer<Options>) => string);
+  toolParams: (args: zodType.infer<Args> & zodType.infer<Options>) => any;
 };
 
 export type AnyCommandSchema = CommandSchema<any, any>;
@@ -48,8 +51,8 @@ export function parseCommand(command: AnyCommandSchema, args: Record<string, str
     throw new Error(formatZodError(e as zodType.ZodError));
   }
 
-  const toolName = typeof command.toolName === 'function' ? command.toolName(parsedArgsObject, options) : command.toolName;
-  const toolParams = command.toolParams(parsedArgsObject, options);
+  const toolName = typeof command.toolName === 'function' ? command.toolName({ ...parsedArgsObject, ...options }) : command.toolName;
+  const toolParams = command.toolParams({ ...parsedArgsObject, ...options });
   return { toolName, toolParams };
 }
 

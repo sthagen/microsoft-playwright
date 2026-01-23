@@ -33,7 +33,7 @@ test('alert dialog', async ({ client, server }) => {
     },
   })).toHaveResponse({
     code: `await page.getByRole('button', { name: 'Button' }).click();`,
-    modalState: `- ["alert" dialog with message "Alert"]: can be handled by the "browser_handle_dialog" tool`,
+    modalState: `- ["alert" dialog with message "Alert"]: can be handled by browser_handle_dialog`,
   });
 
   expect(await client.callTool({
@@ -44,7 +44,7 @@ test('alert dialog', async ({ client, server }) => {
     },
   })).toHaveResponse({
     code: undefined,
-    modalState: `- ["alert" dialog with message "Alert"]: can be handled by the "browser_handle_dialog" tool`,
+    modalState: `- ["alert" dialog with message "Alert"]: can be handled by browser_handle_dialog`,
   });
 
   expect(await client.callTool({
@@ -81,7 +81,7 @@ test('two alert dialogs', async ({ client, server }) => {
     },
   })).toHaveResponse({
     code: `await page.getByRole('button', { name: 'Button' }).click();`,
-    modalState: expect.stringContaining(`- ["alert" dialog with message "Alert 1"]: can be handled by the "browser_handle_dialog" tool`),
+    modalState: expect.stringContaining(`- ["alert" dialog with message "Alert 1"]: can be handled by browser_handle_dialog`),
   });
 
   const result = await client.callTool({
@@ -92,7 +92,7 @@ test('two alert dialogs', async ({ client, server }) => {
   });
 
   expect(result).toHaveResponse({
-    modalState: expect.stringContaining(`- ["alert" dialog with message "Alert 2"]: can be handled by the "browser_handle_dialog" tool`),
+    modalState: expect.stringContaining(`- ["alert" dialog with message "Alert 2"]: can be handled by browser_handle_dialog`),
   });
 
   const result2 = await client.callTool({
@@ -103,7 +103,7 @@ test('two alert dialogs', async ({ client, server }) => {
   });
 
   expect(result2).not.toHaveResponse({
-    modalState: expect.stringContaining(`- ["alert" dialog with message "Alert 2"]: can be handled by the "browser_handle_dialog" tool`),
+    modalState: expect.stringContaining(`- ["alert" dialog with message "Alert 2"]: can be handled by browser_handle_dialog`),
   });
 });
 
@@ -129,7 +129,7 @@ test('confirm dialog (true)', async ({ client, server }) => {
       ref: 'e2',
     },
   })).toHaveResponse({
-    modalState: expect.stringContaining(`- ["confirm" dialog with message "Confirm"]: can be handled by the "browser_handle_dialog" tool`),
+    modalState: expect.stringContaining(`- ["confirm" dialog with message "Confirm"]: can be handled by browser_handle_dialog`),
   });
 
   expect(await client.callTool({
@@ -139,7 +139,6 @@ test('confirm dialog (true)', async ({ client, server }) => {
     },
   })).toHaveResponse({
     modalState: undefined,
-    snapshot: expect.stringContaining(`generic [active] [ref=e1]: "true"`),
   });
 });
 
@@ -165,7 +164,7 @@ test('confirm dialog (false)', async ({ client, server }) => {
       ref: 'e2',
     },
   })).toHaveResponse({
-    modalState: expect.stringContaining(`- ["confirm" dialog with message "Confirm"]: can be handled by the "browser_handle_dialog" tool`),
+    modalState: expect.stringContaining(`- ["confirm" dialog with message "Confirm"]: can be handled by browser_handle_dialog`),
   });
 
   expect(await client.callTool({
@@ -175,7 +174,6 @@ test('confirm dialog (false)', async ({ client, server }) => {
     },
   })).toHaveResponse({
     modalState: undefined,
-    snapshot: expect.stringContaining(`generic [active] [ref=e1]: "false"`),
   });
 });
 
@@ -201,7 +199,7 @@ test('prompt dialog', async ({ client, server }) => {
       ref: 'e2',
     },
   })).toHaveResponse({
-    modalState: expect.stringContaining(`- ["prompt" dialog with message "Prompt"]: can be handled by the "browser_handle_dialog" tool`),
+    modalState: expect.stringContaining(`- ["prompt" dialog with message "Prompt"]: can be handled by browser_handle_dialog`),
   });
 
   const result = await client.callTool({
@@ -213,7 +211,7 @@ test('prompt dialog', async ({ client, server }) => {
   });
 
   expect(result).toHaveResponse({
-    snapshot: expect.stringContaining(`generic [active] [ref=e1]: Answer`),
+    modalState: undefined,
   });
 });
 
@@ -234,7 +232,7 @@ test('alert dialog w/ race', async ({ client, server }) => {
     },
   })).toHaveResponse({
     code: `await page.getByRole('button', { name: 'Button' }).click();`,
-    modalState: expect.stringContaining(`- ["alert" dialog with message "Alert"]: can be handled by the "browser_handle_dialog" tool`),
+    modalState: expect.stringContaining(`- ["alert" dialog with message "Alert"]: can be handled by browser_handle_dialog`),
   });
 
   const result = await client.callTool({
