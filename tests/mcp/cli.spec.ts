@@ -42,7 +42,7 @@ test.describe('core', () => {
   test('close', async ({ cli, server }) => {
     await cli('open', server.HELLO_WORLD);
     const { output } = await cli('close');
-    expect(output).toContain(`No open tabs. Navigate to a URL to create one.`);
+    expect(output).toContain(`Session 'default' stopped.`);
   });
 
   test('click button', async ({ cli, server }) => {
@@ -110,7 +110,7 @@ test.describe('core', () => {
   });
 
   test('check', async ({ cli, server, mcpBrowser }) => {
-    const active = mcpBrowser === 'webkit' && process.platform === 'darwin' ? '' : '[active] ';
+    const active = mcpBrowser === 'webkit' && process.platform !== 'linux' ? '' : '[active] ';
     server.setContent('/', `<input type="checkbox">`, 'text/html');
     await cli('open', server.PREFIX);
     await cli('check', 'e2');
@@ -119,7 +119,7 @@ test.describe('core', () => {
   });
 
   test('uncheck', async ({ cli, server, mcpBrowser }) => {
-    const active = mcpBrowser === 'webkit' && process.platform === 'darwin' ? '' : '[active] ';
+    const active = mcpBrowser === 'webkit' && process.platform !== 'linux' ? '' : '[active] ';
     server.setContent('/', `<input type="checkbox" checked>`, 'text/html');
     await cli('open', server.PREFIX);
     await cli('uncheck', 'e2');
@@ -255,8 +255,8 @@ test.describe('mouse', () => {
     await cli('mouseup');
 
     await cli('mousewheel', '10', '5');
-    const { snapshot } = await cli('snapshot');
-    expect(snapshot).toContain('wheel 5 10');
+
+    await expect.poll(() => cli('snapshot').then(result => result.snapshot)).toContain('wheel 5 10');
   });
 });
 
@@ -404,7 +404,7 @@ test.describe('session', () => {
   test('session-list', async ({ cli, server }) => {
     const { output: emptyOutput } = await cli('session-list');
     expect(emptyOutput).toContain('Sessions:');
-    expect(emptyOutput).toContain('(no sessions)');
+    expect(emptyOutput).toContain('  default');
 
     await cli('open', server.HELLO_WORLD);
 
@@ -476,5 +476,43 @@ test.describe('session', () => {
   test('session-delete non-existent session', async ({ cli }) => {
     const { output } = await cli('session-delete', 'nonexistent');
     expect(output).toContain(`No user data found for session 'nonexistent'.`);
+  });
+
+  test('session stops when browser exits', async ({ cli, server }) => {
+    await cli('open', server.HELLO_WORLD);
+
+    const { output: listBefore } = await cli('session-list');
+    expect(listBefore).toContain('default (live)');
+
+    // Close the browser - this will cause the daemon to exit so the command may fail
+    await cli('run-code', '() => page.context().browser().close()').catch(() => {});
+
+    await expect.poll(() => cli('session-list').then(r => r.output)).not.toContain('(live)');
+  });
+});
+
+test.describe('config', () => {
+  test('should work', async ({ cli, server }, testInfo) => {
+    // Start a session with default config
+    await cli('open', server.PREFIX);
+    const { output: beforeOutput } = await cli('eval', 'window.innerWidth + "x" + window.innerHeight');
+    expect(beforeOutput).toContain('1280x720');
+
+    const config = {
+      browser: {
+        contextOptions: {
+          viewport: { width: 700, height: 500 },
+        },
+      },
+    };
+    const configPath = testInfo.outputPath('session-config.json');
+    await fs.promises.writeFile(configPath, JSON.stringify(config, null, 2));
+
+    const { output: configureOutput } = await cli('config', configPath);
+    expect(configureOutput).toContain(`- Using config file at \`session-config.json\`.`);
+
+    await cli('open', server.PREFIX);
+    const { output: afterOutput } = await cli('eval', 'window.innerWidth + "x" + window.innerHeight');
+    expect(afterOutput).toContain('700x500');
   });
 });

@@ -4802,9 +4802,12 @@ export interface Page {
   url(): string;
 
   /**
-   * Video object associated with this page.
+   * Video object associated with this page. Can be used to control video recording with
+   * [video.start([options])](https://playwright.dev/docs/api/class-video#video-start) and
+   * [video.stop([options])](https://playwright.dev/docs/api/class-video#video-stop), or to access the video file when
+   * using the `recordVideo` context option.
    */
-  video(): null|Video;
+  video(): Video;
 
   viewportSize(): null|{
     /**
@@ -9610,6 +9613,71 @@ export interface BrowserContext {
    * @param offline Whether to emulate network being offline for the browser context.
    */
   setOffline(offline: boolean): Promise<void>;
+
+  /**
+   * Clears the existing cookies, local storage and IndexedDB entries for all origins and sets the new storage state.
+   *
+   * **Usage**
+   *
+   * ```js
+   * // Load storage state from a file and apply it to the context.
+   * await context.setStorageState('state.json');
+   * ```
+   *
+   * @param storageState Learn more about [storage state and auth](https://playwright.dev/docs/auth).
+   *
+   * Populates context with given storage state. This option can be used to initialize context with logged-in
+   * information obtained via
+   * [browserContext.storageState([options])](https://playwright.dev/docs/api/class-browsercontext#browser-context-storage-state).
+   */
+  setStorageState(storageState: string|{
+    /**
+     * Cookies to set for context
+     */
+    cookies: Array<{
+      name: string;
+
+      value: string;
+
+      /**
+       * Domain and path are required. For the cookie to apply to all subdomains as well, prefix domain with a dot, like
+       * this: ".example.com"
+       */
+      domain: string;
+
+      /**
+       * Domain and path are required
+       */
+      path: string;
+
+      /**
+       * Unix time in seconds.
+       */
+      expires: number;
+
+      httpOnly: boolean;
+
+      secure: boolean;
+
+      /**
+       * sameSite flag
+       */
+      sameSite: "Strict"|"Lax"|"None";
+    }>;
+
+    origins: Array<{
+      origin: string;
+
+      /**
+       * localStorage to set for context
+       */
+      localStorage: Array<{
+        name: string;
+
+        value: string;
+      }>;
+    }>;
+  }): Promise<void>;
 
   /**
    * Returns storage state for this browser context, contains current cookies, local storage snapshot and IndexedDB
@@ -19567,6 +19635,11 @@ export interface Electron {
     bypassCSP?: boolean;
 
     /**
+     * Enable Chromium sandboxing. Defaults to `false`.
+     */
+    chromiumSandbox?: boolean;
+
+    /**
      * Emulates [prefers-colors-scheme](https://developer.mozilla.org/en-US/docs/Web/CSS/@media/prefers-color-scheme)
      * media feature, supported values are `'light'` and `'dark'`. See
      * [page.emulateMedia([options])](https://playwright.dev/docs/api/class-page#page-emulate-media) for more details.
@@ -21757,6 +21830,16 @@ export interface Tracing {
  * console.log(await page.video().path());
  * ```
  *
+ * Alternatively, you can use [video.start([options])](https://playwright.dev/docs/api/class-video#video-start) and
+ * [video.stop([options])](https://playwright.dev/docs/api/class-video#video-stop) to record video manually. This
+ * approach is mutually exclusive with the `recordVideo` option.
+ *
+ * ```js
+ * await page.video().start();
+ * // ... perform actions ...
+ * await page.video().stop({ path: 'video.webm' });
+ * ```
+ *
  */
 export interface Video {
   /**
@@ -21776,6 +21859,50 @@ export interface Video {
    * @param path Path where the video should be saved.
    */
   saveAs(path: string): Promise<void>;
+
+  /**
+   * Starts video recording. This method is mutually exclusive with the `recordVideo` context option.
+   *
+   * **Usage**
+   *
+   * ```js
+   * await page.video().start();
+   * // ... perform actions ...
+   * await page.video().stop({ path: 'video.webm' });
+   * ```
+   *
+   * @param options
+   */
+  start(options?: {
+    /**
+     * Optional dimensions of the recorded video. If not specified the size will be equal to page viewport scaled down to
+     * fit into 800x800. Actual picture of the page will be scaled down if necessary to fit the specified size.
+     */
+    size?: {
+      /**
+       * Video frame width.
+       */
+      width: number;
+
+      /**
+       * Video frame height.
+       */
+      height: number;
+    };
+  }): Promise<void>;
+
+  /**
+   * Stops video recording started with
+   * [video.start([options])](https://playwright.dev/docs/api/class-video#video-start) and either saves or discards the
+   * video file.
+   * @param options
+   */
+  stop(options?: {
+    /**
+     * Path where the video should be saved.
+     */
+    path?: string;
+  }): Promise<void>;
 }
 
 /**

@@ -311,7 +311,6 @@ test('should not fail on internal page logs', async ({ runUITest, server }) => {
     /Create context/,
     /Create page/,
     /Navigate to "\/empty.html"/,
-    /Get storage state/,
     /After Hooks/,
   ]);
 });
@@ -451,11 +450,11 @@ test('should work behind reverse proxy', { annotation: { type: 'issue', descript
 
   await expect(page.getByTestId('actions-tree')).toMatchAriaSnapshot(`
     - tree:
-      - treeitem /Before Hooks \\d+[hmsp]+/
-      - treeitem /Set content \\d+[hmsp]+/
+      - treeitem /Before Hooks/
+      - treeitem /Set content/
       - treeitem /Click.*getByRole/
       - treeitem /Expect "toBe"/
-      - treeitem /After Hooks \\d+[hmsp]+/
+      - treeitem /After Hooks/
   `);
 
   await expect(

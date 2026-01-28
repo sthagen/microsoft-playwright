@@ -23,13 +23,11 @@ import { generateAriaTree, getAllElementsMatchingExpectAriaTemplate, matchesExpe
 import { beginDOMCaches, enclosingShadowRootOrDocument, endDOMCaches, isElementVisible, isInsideScope, parentElementOrShadowHost, setGlobalOptions } from './domUtils';
 import { Highlight } from './highlight';
 import { kLayoutSelectorNames, layoutSelectorScore } from './layoutSelectorUtils';
-import { createReactEngine } from './reactSelectorEngine';
 import { createRoleEngine } from './roleSelectorEngine';
 import { beginAriaCaches, endAriaCaches, getAriaDisabled, getAriaRole, getCheckedAllowMixed, getCheckedWithoutMixed, getElementAccessibleDescription, getElementAccessibleErrorMessage, getElementAccessibleName, getReadonly } from './roleUtils';
 import { SelectorEvaluatorImpl, sortInDOMOrder } from './selectorEvaluator';
 import { generateSelector } from './selectorGenerator';
 import { elementMatchesText, elementText, getElementLabels } from './selectorUtils';
-import { createVueEngine } from './vueSelectorEngine';
 import { XPathEngine } from './xpathSelectorEngine';
 import { ConsoleAPI } from './consoleApi';
 import { UtilityScript } from './utilityScript';
@@ -204,8 +202,6 @@ export class InjectedScript {
     this._engines = new Map();
     this._engines.set('xpath', XPathEngine);
     this._engines.set('xpath:light', XPathEngine);
-    this._engines.set('_react', createReactEngine());
-    this._engines.set('_vue', createVueEngine());
     this._engines.set('role', createRoleEngine(false));
     this._engines.set('text', this._createTextEngine(true, false));
     this._engines.set('text:light', this._createTextEngine(false, false));
@@ -1427,7 +1423,7 @@ export class InjectedScript {
       // Element state / boolean values.
       let result: ElementStateQueryResult | undefined;
       if (expression === 'to.have.attribute') {
-        const hasAttribute = element.hasAttribute(options.expressionArg);
+        const hasAttribute = element.hasAttribute(options.expressionArg || '');
         result = {
           matches: hasAttribute,
           received: hasAttribute ? 'attribute present' : 'attribute not present',
@@ -1491,7 +1487,7 @@ export class InjectedScript {
       // JS property
       if (expression === 'to.have.property') {
         let target = element;
-        const properties = options.expressionArg.split('.');
+        const properties = (options.expressionArg || '').split('.');
         for (let i = 0; i < properties.length - 1; i++) {
           if (typeof target !== 'object' || !(properties[i] in target))
             return { received: undefined, matches: false };
@@ -1502,6 +1498,26 @@ export class InjectedScript {
         return { received, matches };
       }
     }
+
+    {
+      // Computed style object
+      if (expression === 'to.have.css.object') {
+        const expected = (options.expectedValue ?? {}) as Record<string, string>;
+        const received: Record<string, string> = {};
+        let matches = true;
+        const style = this.window.getComputedStyle(element);
+        for (const [prop, value] of Object.entries(expected)) {
+          let computed = style[prop as any];
+          if (typeof computed !== 'string')
+            computed = '';
+          if (computed !== value)
+            matches = false;
+          received[prop] = computed;
+        }
+        return { received, matches };
+      }
+    }
+
     {
       // Viewport intersection
       if (expression === 'to.be.in.viewport') {
@@ -1538,7 +1554,7 @@ export class InjectedScript {
       // Single text value.
       let received: string | undefined;
       if (expression === 'to.have.attribute.value') {
-        const value = element.getAttribute(options.expressionArg);
+        const value = element.getAttribute(options.expressionArg || '');
         if (value === null)
           return { received: null, matches: false };
         received = value;
@@ -1550,7 +1566,7 @@ export class InjectedScript {
           matches: new ExpectedTextMatcher(options.expectedText[0]).matchesClassList(this, element.classList, /* partial */ expression === 'to.contain.class'),
         };
       } else if (expression === 'to.have.css') {
-        received = this.window.getComputedStyle(element).getPropertyValue(options.expressionArg);
+        received = this.window.getComputedStyle(element).getPropertyValue(options.expressionArg || '');
       } else if (expression === 'to.have.id') {
         received = element.id;
       } else if (expression === 'to.have.text') {

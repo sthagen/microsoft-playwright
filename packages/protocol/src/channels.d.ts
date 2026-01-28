@@ -1597,6 +1597,7 @@ export interface BrowserContextChannel extends BrowserContextEventTarget, EventT
   setWebSocketInterceptionPatterns(params: BrowserContextSetWebSocketInterceptionPatternsParams, progress?: Progress): Promise<BrowserContextSetWebSocketInterceptionPatternsResult>;
   setOffline(params: BrowserContextSetOfflineParams, progress?: Progress): Promise<BrowserContextSetOfflineResult>;
   storageState(params: BrowserContextStorageStateParams, progress?: Progress): Promise<BrowserContextStorageStateResult>;
+  setStorageState(params: BrowserContextSetStorageStateParams, progress?: Progress): Promise<BrowserContextSetStorageStateResult>;
   pause(params?: BrowserContextPauseParams, progress?: Progress): Promise<BrowserContextPauseResult>;
   enableRecorder(params: BrowserContextEnableRecorderParams, progress?: Progress): Promise<BrowserContextEnableRecorderResult>;
   disableRecorder(params?: BrowserContextDisableRecorderParams, progress?: Progress): Promise<BrowserContextDisableRecorderResult>;
@@ -1845,6 +1846,19 @@ export type BrowserContextStorageStateResult = {
   cookies: NetworkCookie[],
   origins: OriginStorage[],
 };
+export type BrowserContextSetStorageStateParams = {
+  storageState?: {
+    cookies?: SetNetworkCookie[],
+    origins?: SetOriginStorage[],
+  },
+};
+export type BrowserContextSetStorageStateOptions = {
+  storageState?: {
+    cookies?: SetNetworkCookie[],
+    origins?: SetOriginStorage[],
+  },
+};
+export type BrowserContextSetStorageStateResult = void;
 export type BrowserContextPauseParams = {};
 export type BrowserContextPauseOptions = {};
 export type BrowserContextPauseResult = void;
@@ -2077,6 +2091,8 @@ export interface PageChannel extends PageEventTarget, EventTargetChannel {
   startCSSCoverage(params: PageStartCSSCoverageParams, progress?: Progress): Promise<PageStartCSSCoverageResult>;
   stopCSSCoverage(params?: PageStopCSSCoverageParams, progress?: Progress): Promise<PageStopCSSCoverageResult>;
   bringToFront(params?: PageBringToFrontParams, progress?: Progress): Promise<PageBringToFrontResult>;
+  videoStart(params: PageVideoStartParams, progress?: Progress): Promise<PageVideoStartResult>;
+  videoStop(params?: PageVideoStopParams, progress?: Progress): Promise<PageVideoStopResult>;
   updateSubscription(params: PageUpdateSubscriptionParams, progress?: Progress): Promise<PageUpdateSubscriptionResult>;
   agent(params: PageAgentParams, progress?: Progress): Promise<PageAgentResult>;
 }
@@ -2574,6 +2590,22 @@ export type PageStopCSSCoverageResult = {
 export type PageBringToFrontParams = {};
 export type PageBringToFrontOptions = {};
 export type PageBringToFrontResult = void;
+export type PageVideoStartParams = {
+  size?: {
+    width: number,
+    height: number,
+  },
+};
+export type PageVideoStartOptions = {
+  size?: {
+    width: number,
+    height: number,
+  },
+};
+export type PageVideoStartResult = void;
+export type PageVideoStopParams = {};
+export type PageVideoStopOptions = {};
+export type PageVideoStopResult = void;
 export type PageUpdateSubscriptionParams = {
   event: 'console' | 'dialog' | 'fileChooser' | 'request' | 'response' | 'requestFinished' | 'requestFailed',
   enabled: boolean,
@@ -3285,7 +3317,7 @@ export type FrameWaitForSelectorResult = {
 export type FrameExpectParams = {
   selector?: string,
   expression: string,
-  expressionArg?: any,
+  expressionArg?: string,
   expectedText?: ExpectedTextValue[],
   expectedNumber?: number,
   expectedValue?: SerializedArgument,
@@ -3295,7 +3327,7 @@ export type FrameExpectParams = {
 };
 export type FrameExpectOptions = {
   selector?: string,
-  expressionArg?: any,
+  expressionArg?: string,
   expectedText?: ExpectedTextValue[],
   expectedNumber?: number,
   expectedValue?: SerializedArgument,
@@ -4429,6 +4461,7 @@ export interface ElectronChannel extends ElectronEventTarget, Channel {
 export type ElectronLaunchParams = {
   executablePath?: string,
   args?: string[],
+  chromiumSandbox?: boolean,
   cwd?: string,
   env?: NameValue[],
   timeout: number,
@@ -4465,6 +4498,7 @@ export type ElectronLaunchParams = {
 export type ElectronLaunchOptions = {
   executablePath?: string,
   args?: string[],
+  chromiumSandbox?: boolean,
   cwd?: string,
   env?: NameValue[],
   acceptDownloads?: 'accept' | 'deny' | 'internal-browser-default',
