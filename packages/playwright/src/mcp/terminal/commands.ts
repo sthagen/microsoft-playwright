@@ -205,9 +205,6 @@ const drag = declareCommand({
     startRef: z.string().describe('Exact source element reference from the page snapshot'),
     endRef: z.string().describe('Exact target element reference from the page snapshot'),
   }),
-  options: z.object({
-    headed: z.boolean().default(false).describe('Run browser in headed mode'),
-  }),
   toolName: 'browser_drag',
   toolParams: ({ startRef, endRef }) => ({ startRef, endRef }),
 });
@@ -535,8 +532,11 @@ const config = declareCommand({
   name: 'config',
   description: 'Restart session with new config, defaults to `playwright-cli.json`',
   category: 'config',
-  args: z.object({
+  options: z.object({
+    browser: z.string().optional().describe('Browser or chrome channel to use, possible values: chrome, firefox, webkit, msedge.'),
     config: z.string().optional().describe('Path to the configuration file'),
+    isolated: z.boolean().optional().describe('Keep the browser profile in memory, do not save it to disk.'),
+    headed: z.boolean().optional().describe('Run browser in headed mode'),
   }),
   toolName: '',
   toolParams: () => ({}),

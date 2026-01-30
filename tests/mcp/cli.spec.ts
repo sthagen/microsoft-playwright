@@ -377,10 +377,10 @@ test.describe('devtools', () => {
   test('tracing-start-stop', async ({ cli, server }) => {
     await cli('open', server.HELLO_WORLD);
     const { output } = await cli('tracing-start');
-    expect(output).toContain('Tracing started, saving to');
+    expect(output).toContain('Trace recording started');
     await cli('eval', '() => fetch("/hello-world")');
     const { output: tracingStopOutput } = await cli('tracing-stop');
-    expect(tracingStopOutput).toContain('Tracing stopped.');
+    expect(tracingStopOutput).toContain('Trace recording stopped');
   });
 
   test('video-start-stop', async ({ cli, server }) => {
@@ -388,9 +388,15 @@ test.describe('devtools', () => {
     const { output: videoStartOutput } = await cli('video-start');
     expect(videoStartOutput).toContain('Video recording started.');
     await cli('open', server.HELLO_WORLD);
+    await cli('eval', `
+      async () => {
+        document.body.style.backgroundColor = "red";
+        for (let i = 0; i < 100; i++)
+          await new Promise(f => requestAnimationFrame(() => requestAnimationFrame(f)));
+      }
+    `);
     const { output: videoStopOutput } = await cli('video-stop', '--filename=video.webm');
-    expect(videoStopOutput).toContain('Video recording stopped:');
-    expect(videoStopOutput).toContain('.playwright-cli' + path.sep + 'video.webm');
+    expect(videoStopOutput).toContain(`### Result\n- [Video](.playwright-cli${path.sep}video.webm)`);
   });
 });
 
@@ -540,7 +546,7 @@ test.describe('config', () => {
     const configPath = testInfo.outputPath('session-config.json');
     await fs.promises.writeFile(configPath, JSON.stringify(config, null, 2));
 
-    const { output: configureOutput } = await cli('config', configPath);
+    const { output: configureOutput } = await cli('config', '--config=' + configPath);
     expect(configureOutput).toContain(`- Using config file at \`session-config.json\`.`);
 
     await cli('open', server.PREFIX);
@@ -565,8 +571,10 @@ test.describe('versions', () => {
       expect(error).toMatch(/Daemon is too old: daemon is 1.*, client is 2\.0\.0. Stopping it/);
     }
     {
-      const { output } = await cli('open', server.PREFIX, '--daemonVersion=2.0.0');
+      const { output, exitCode } = await cli('open', server.PREFIX, '--daemonVersion=2.0.0');
+      expect(exitCode).toBe(0);
       expect(output).toContain('Daemon for `default` session started with pid');
+      await cli('session-stop', '--daemonVersion=2.0.0');
     }
   });
 
@@ -584,6 +592,38 @@ test.describe('versions', () => {
   });
 });
 
+test.describe('parsing', () => {
+  test('unknown option', async ({ cli, server }) => {
+    const { error, exitCode } = await cli('open', '--some-option', 'value', 'about:blank');
+    expect(exitCode).toBe(1);
+    expect(error).toContain(`error: unknown '--some-option' option`);
+  });
+
+  test('too many arguments', async ({ cli, server }) => {
+    const { error, exitCode } = await cli('open', 'foo', 'bar');
+    expect(exitCode).toBe(1);
+    expect(error).toContain(`error: too many arguments: expected 1, received 2`);
+  });
+
+  test('wrong option type', async ({ cli, server }) => {
+    const { error, exitCode } = await cli('type', 'foo', '--submit=bar');
+    expect(exitCode).toBe(1);
+    expect(error).toContain(`error: '--submit' option: expected boolean, received string`);
+  });
+
+  test('missing argument', async ({ cli, server }) => {
+    const { error, exitCode } = await cli('open');
+    expect(exitCode).toBe(1);
+    expect(error).toContain(`error: 'url' argument: expected string, received undefined`);
+  });
+
+  test('wrong argument type', async ({ cli, server }) => {
+    const { error, exitCode } = await cli('mousemove', '12', 'foo');
+    expect(exitCode).toBe(1);
+    expect(error).toContain(`error: 'y' argument: expected number, received string`);
+  });
+});
+
 test.describe('folders', () => {
   test('snapshot', async ({ cli, server }, testInfo) => {
     {
@@ -596,5 +636,34 @@ test.describe('folders', () => {
       const { output } = await cli('open', server.HELLO_WORLD, { cwd: nested });
       expect(output).toContain('..' + path.sep + '.playwright-cli' + path.sep + 'page-');
     }
+  });
+});
+
+test.describe('isolated', () => {
+  test('should not save user data', async ({ cli, server, mcpBrowser }, testInfo) => {
+    await cli('open', server.HELLO_WORLD, '--isolated');
+    const dataDir = testInfo.outputPath('daemon', 'ud-default-' + mcpBrowser);
+    expect(fs.existsSync(dataDir)).toBe(false);
+    const sessionFile = testInfo.outputPath('daemon', 'default.session');
+    expect(fs.existsSync(sessionFile)).toBe(true);
+    const sessionOptions = JSON.parse(await fs.promises.readFile(sessionFile, 'utf-8'));
+    expect(sessionOptions).toEqual(expect.objectContaining({
+      isolated: true,
+    }));
+
+    const { output: listOutput } = await cli('session-list');
+    expect(listOutput).toContain('Sessions:');
+    expect(listOutput).toContain('default (live)');
+  });
+});
+
+test.describe('browser launch failure', () => {
+  test('daemon shuts down on browser launch failure', async ({ cli, server }) => {
+    const first = await cli('open', server.PREFIX, { env: { PLAYWRIGHT_MCP_EXECUTABLE_PATH: '/nonexistent/browser/path' } });
+    expect(first.output).toContain('Failed to launch');
+
+    const second = await cli('open', server.PREFIX);
+    expect(second.exitCode).toBe(0);
+    expect(second.output).toContain('Page URL');
   });
 });

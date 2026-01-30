@@ -34,7 +34,14 @@ export type StructuredResponse = {
   sections: Section[];
 };
 
-type SessionOptions = { config?: string, headed?: boolean, extension?: boolean, daemonVersion: string };
+type SessionOptions = {
+  config?: string;
+  headed?: boolean;
+  extension?: boolean;
+  daemonVersion: string;
+  browser?: string;
+  isolated?: boolean;
+};
 
 class Session {
   readonly name: string;
@@ -108,12 +115,13 @@ class Session {
     await this.stop();
 
     const dataDirs = await fs.promises.readdir(daemonProfilesDir).catch(() => []);
-    const matchingDirs = dataDirs.filter(dir => dir.startsWith(`ud-${this.name}-`));
-    if (matchingDirs.length === 0) {
+    const matchingEntries = dataDirs.filter(file => file === `${this.name}.session` || file.startsWith(`ud-${this.name}-`));
+    if (matchingEntries.length === 0) {
       console.log(`No user data found for session '${this.name}'.`);
       return;
     }
-    for (const dir of matchingDirs) {
+
+    for (const dir of matchingEntries) {
       const userDataDir = path.resolve(daemonProfilesDir, dir);
       for (let i = 0; i < 5; i++) {
         try {
@@ -205,6 +213,11 @@ class Session {
     const configArg = configFile !== undefined ? [`--config=${configFile}`] : [];
     const headedArg = this._options.headed ? [`--daemon-headed`] : [];
     const extensionArg = this._options.extension ? [`--extension`] : [];
+    const isolatedArg = this._options.isolated ? [`--isolated`] : [];
+    const browserArg = this._options.browser ? [`--browser=${this._options.browser}`] : [];
+
+    const sessionOptionsFile = path.resolve(daemonProfilesDir, `${this.name}.session`);
+    await fs.promises.writeFile(sessionOptionsFile, JSON.stringify({ ...this._options, _: undefined }, null, 2));
 
     const outLog = path.join(daemonProfilesDir, 'out.log');
     const errLog = path.join(daemonProfilesDir, 'err.log');
@@ -221,6 +234,8 @@ class Session {
       ...configArg,
       ...headedArg,
       ...extensionArg,
+      ...isolatedArg,
+      ...browserArg,
     ], {
       detached: true,
       stdio: ['ignore', out, err],
@@ -285,16 +300,24 @@ class SessionManager {
     const sessions = new Map<string, Session>([
       ['default', new Session('default', options)],
     ]);
-    try {
-      const files = await fs.promises.readdir(dir);
-      for (const file of files) {
+    const files = await fs.promises.readdir(dir).catch(() => []);
+    for (const file of files) {
+      try {
+        if (file.endsWith('.session')) {
+          const sessionName = path.basename(file, '.session');
+          sessions.set(sessionName, new Session(sessionName, options));
+          continue;
+        }
+
+        // Legacy session support.
         if (file.startsWith('ud-')) {
           // Session is like ud-<sessionName>-browserName
           const sessionName = file.split('-')[1];
-          sessions.set(sessionName, new Session(sessionName, options));
+          if (!sessions.has(sessionName))
+            sessions.set(sessionName, new Session(sessionName, options));
         }
+      } catch {
       }
-    } catch {
     }
     return new SessionManager(sessions, options);
   }
@@ -307,7 +330,9 @@ class SessionManager {
       this.sessions.set(sessionName, session);
     }
 
-    const result = await session.run({ ...args, outputDir });
+    for (const globalOption of ['browser', 'config', 'daemonVersion', 'extension', 'headed', 'help', 'isolated', 'session', 'version'])
+      delete args[globalOption];
+    const result = await session.run(args);
     console.log(result.text);
     session.close();
   }
@@ -341,7 +366,7 @@ class SessionManager {
       session = new Session(sessionName, this.options);
       this.sessions.set(sessionName, session);
     }
-    await session.restart({ ...this.options, ...args, config: args._[1] });
+    await session.restart({ ...this.options, ...args });
     session.close();
   }
 
@@ -415,15 +440,21 @@ const daemonProfilesDir = (() => {
   return path.join(localCacheDir, 'ms-playwright', 'daemon', installationDirHash);
 })();
 
+const booleanOptions = [
+  'extension',
+  'headed',
+  'help',
+  'isolated',
+  'version',
+];
+
 export async function program(options: { version: string }) {
   const argv = process.argv.slice(2);
-  const args = require('minimist')(argv, {
-    boolean: ['help', 'version', 'headed', 'extension'],
-  });
-  if (!argv.includes('--headed') && !argv.includes('--no-headed'))
-    delete args.headed;
-  if (!argv.includes('--extension'))
-    delete args.extension;
+  const args = require('minimist')(argv, { boolean: booleanOptions });
+  for (const option of booleanOptions) {
+    if (!argv.includes(`--${option}`) && !argv.includes(`--no-${option}`))
+      delete args[option];
+  }
 
   const help = require('./help.json');
   const commandName = args._[0];
