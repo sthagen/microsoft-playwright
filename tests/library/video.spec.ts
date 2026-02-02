@@ -37,7 +37,7 @@ export class VideoPlayer {
     const ffmpeg = registry.findExecutable('ffmpeg')!.executablePathOrDie('javascript');
     // Force output frame rate to 25 fps as otherwise it would produce one image per timebase unit
     // which is 1 / (25 * 1000).
-    this.output = spawnSync(ffmpeg, ['-i', this.fileName, '-r', '25', `${this.fileName}-%03d.png`]).stderr.toString();
+    this.output = spawnSync(ffmpeg, ['-i', this.fileName, '-r', '25', `${this.fileName}-%04d.png`]).stderr.toString();
 
     const lines = this.output.split('\n');
     let framesLine = lines.find(l => l.startsWith('frame='))!;
@@ -68,7 +68,7 @@ export class VideoPlayer {
 
   frame(frame: number, offset = { x: 10, y: 10 }): any {
     if (!this.cache.has(frame)) {
-      const gap = '0'.repeat(3 - String(frame).length);
+      const gap = '0'.repeat(4 - String(frame).length);
       const buffer = fs.readFileSync(`${this.fileName}-${gap}${frame}.png`);
       this.cache.set(frame, PNG.sync.read(buffer));
     }
@@ -153,7 +153,7 @@ function expectFrames(videoFile: string, size: { width: number, height: number }
     expectAll(pixels, pixelPredicate);
   }
   {
-    const pixels = videoPlayer.seekLastFrame({ x: size.width - 20, y: 0 }).data;
+    const pixels = videoPlayer.seekLastFrame({ x: size.width - 20, y: 10 }).data;
     expectAll(pixels, pixelPredicate);
   }
 }
@@ -481,15 +481,15 @@ it.describe('screencast', () => {
     expect(duration).toBeGreaterThan(0);
 
     {
-      const pixels = videoPlayer.seekLastFrame({ x: 0, y: 0 }).data;
+      const pixels = videoPlayer.seekLastFrame({ x: 10, y: 10 }).data;
       expectAll(pixels, isAlmostRed);
     }
     {
-      const pixels = videoPlayer.seekLastFrame({ x: 300, y: 0 }).data;
+      const pixels = videoPlayer.seekLastFrame({ x: 300, y: 10 }).data;
       expectAll(pixels, isAlmostGray);
     }
     {
-      const pixels = videoPlayer.seekLastFrame({ x: 0, y: 200 }).data;
+      const pixels = videoPlayer.seekLastFrame({ x: 10, y: 200 }).data;
       expectAll(pixels, isAlmostGray);
     }
     {
@@ -830,14 +830,12 @@ it.describe('screencast', () => {
     const videoPath2 = await page.video().path();
     expect(videoPath2).toBeDefined();
     expect(videoPath2).not.toEqual(videoPath1);
-    await page.video().stop();
-    expectFrames(videoPath2, size, isAlmostGray);
-
     const videoPath3 = testInfo.outputPath('video3.webm');
-    await page.video().saveAs(videoPath3);
+    await page.video().stop({ path: videoPath3 });
     const contents2 = fs.readFileSync(videoPath2).toString('base64');
     const contents3 = fs.readFileSync(videoPath3).toString('base64');
     expect(contents2 === contents3).toBeTruthy();
+    expectFrames(videoPath3, size, isAlmostGray);
 
     await context.close();
   });
@@ -851,8 +849,7 @@ it.describe('screencast', () => {
     const page = await context.newPage();
     const error = await page.video().start().catch(e => e);
     expect(error.message).toContain('Video is already being recorded');
-    await page.video().stop();
-    await page.video().saveAs(testInfo.outputPath('video.webm'));
+    await page.video().stop({ path: testInfo.outputPath('video.webm') });
     await context.close();
   });
 
@@ -895,9 +892,8 @@ it.describe('screencast', () => {
     const context = await browser.newContext({ viewport: size });
     const page = await context.newPage();
     await page.video().start({ size });
-    await page.video().stop();
     const videoPath = testInfo.outputPath('empty-video.webm');
-    await page.video().saveAs(videoPath);
+    await page.video().stop({ path: videoPath });
     await context.close();
     expectFrames(videoPath, size, isAlmostWhite);
   });
