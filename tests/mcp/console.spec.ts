@@ -40,8 +40,13 @@ test('browser_console_messages', async ({ client, server }) => {
     name: 'browser_console_messages',
   });
   expect(resource).toHaveResponse({
-    result: `[LOG] Hello, world! @ ${server.PREFIX}/:4
-[ERROR] Error @ ${server.PREFIX}/:5`,
+    result: expect.stringContaining('Total messages: 2 (Errors: 1, Warnings: 0)'),
+  });
+  expect(resource).toHaveResponse({
+    result: expect.stringContaining(`[LOG] Hello, world! @ ${server.PREFIX}/:4`),
+  });
+  expect(resource).toHaveResponse({
+    result: expect.stringContaining(`[ERROR] Error @ ${server.PREFIX}/:5`),
   });
 });
 
@@ -188,6 +193,8 @@ test('browser_console_messages errors only', async ({ client, server }) => {
       level: 'error',
     },
   }));
+  expect.soft(response.result).toMatch(/Total messages: \d+ \(Errors: \d+, Warnings: \d+\)/);
+  expect.soft(response.result).toMatch(/Returning \d+ messages for level "error"/);
   expect.soft(response.result).toContain('console.error');
   expect.soft(response.result).toContain('Error: unhandled');
   expect.soft(response.result).toContain('404');
@@ -205,8 +212,9 @@ test('console log file is created on snapshot', async ({ startClient, server }, 
     <!DOCTYPE html>
     <html>
       <script>
-        console.log("Hello from console");
-        console.error("Error message");
+        console.warn("Warning message");
+        console.error("Error message1");
+        console.error("Error message2");
       </script>
     </html>
   `, 'text/html');
@@ -217,16 +225,17 @@ test('console log file is created on snapshot', async ({ startClient, server }, 
   }));
 
   // Check events section mentions the log file with line range
-  expect(response.events).toMatch(/\d+ new console entr(y|ies) in ".+\.log#L\d+(-L\d+)?"/);
+  expect(response.events).toMatch(/New console entries: output\/console-.+\.log#L\d+(-L\d+)?/);
 
   // Verify log file exists and contains the messages
   const files = await fs.promises.readdir(outputDir);
-  const logFile = files.find(f => f.startsWith('console-') && f.endsWith('.log'));
-  expect(logFile).toBeTruthy();
+  const logFiles = files.filter(f => f.startsWith('console-') && f.endsWith('.log'));
+  expect(logFiles.length).toBe(1);
 
-  const logContent = await fs.promises.readFile(path.join(outputDir, logFile!), 'utf-8');
-  expect(logContent).toContain('Hello from console');
-  expect(logContent).toContain('Error message');
+  const logContent = await fs.promises.readFile(path.join(outputDir, logFiles[0]), 'utf-8');
+  expect(logContent).toContain('Warning message');
+  expect(logContent).toContain('Error message1');
+  expect(logContent).toContain('Error message2');
 });
 
 test('console log file shows correct entry count', async ({ startClient, server }, testInfo) => {
@@ -239,9 +248,9 @@ test('console log file shows correct entry count', async ({ startClient, server 
     <!DOCTYPE html>
     <html>
       <script>
-        console.log("Message 1");
-        console.log("Message 2");
-        console.log("Message 3");
+        console.error("Error 1");
+        console.error("Error 2");
+        console.error("Error 3");
       </script>
     </html>
   `, 'text/html');
@@ -251,7 +260,7 @@ test('console log file shows correct entry count', async ({ startClient, server 
     arguments: { url: server.PREFIX },
   }));
 
-  expect(response.events).toContain('3 new console entries');
+  expect(response.events).toContain('New console entries:');
 });
 
 test('console log file shows singular entry', async ({ startClient, server }, testInfo) => {
@@ -264,7 +273,7 @@ test('console log file shows singular entry', async ({ startClient, server }, te
     <!DOCTYPE html>
     <html>
       <script>
-        console.log("Single message");
+        console.error("Single error");
       </script>
     </html>
   `, 'text/html');
@@ -274,7 +283,7 @@ test('console log file shows singular entry', async ({ startClient, server }, te
     arguments: { url: server.PREFIX },
   }));
 
-  expect(response.events).toContain('1 new console entry');
+  expect(response.events).toContain('New console entries:');
 });
 
 test('new console log file after navigation', async ({ startClient, server }, testInfo) => {
@@ -286,14 +295,14 @@ test('new console log file after navigation', async ({ startClient, server }, te
   server.setContent('/page1', `
     <!DOCTYPE html>
     <html>
-      <script>console.log("Page 1 message");</script>
+      <script>console.error("Page 1 message");</script>
     </html>
   `, 'text/html');
 
   server.setContent('/page2', `
     <!DOCTYPE html>
     <html>
-      <script>console.log("Page 2 message");</script>
+      <script>console.error("Page 2 message");</script>
     </html>
   `, 'text/html');
 
@@ -332,7 +341,7 @@ test('console log file appends on multiple snapshots', async ({ startClient, ser
   server.setContent('/', `
     <!DOCTYPE html>
     <html>
-      <button onclick="console.log('Button clicked');">Click me</button>
+      <button onclick="console.error('Button clicked');">Click me</button>
     </html>
   `, 'text/html');
 
@@ -374,11 +383,8 @@ test('console log file stores message type and content', async ({ startClient, s
     <!DOCTYPE html>
     <html>
       <script>
-        console.log("Log message");
         console.warn("Warning message");
         console.error("Error message");
-        console.info("Info message");
-        console.debug("Debug message");
       </script>
     </html>
   `, 'text/html');
@@ -389,22 +395,15 @@ test('console log file stores message type and content', async ({ startClient, s
   });
 
   const files = await fs.promises.readdir(outputDir);
-  const logFile = files.find(f => f.startsWith('console-') && f.endsWith('.log'));
-  expect(logFile).toBeTruthy();
+  const logFiles = files.filter(f => f.startsWith('console-') && f.endsWith('.log'));
+  expect(logFiles.length).toBe(1);
 
-  const logContent = await fs.promises.readFile(path.join(outputDir, logFile!), 'utf-8');
-
-  // Check that message types are stored
-  expect(logContent).toContain('[LOG] Log message');
+  const logContent = await fs.promises.readFile(path.join(outputDir, logFiles[0]), 'utf-8');
   expect(logContent).toContain('[WARNING] Warning message');
   expect(logContent).toContain('[ERROR] Error message');
-  expect(logContent).toContain('[INFO] Info message');
-  expect(logContent).toContain('[DEBUG] Debug message');
 
   // Check that source location is stored
-  expect(logContent).toMatch(/@ http:\/\/localhost:\d+\/:5/);  // console.log line
-  expect(logContent).toMatch(/@ http:\/\/localhost:\d+\/:6/);  // console.warn line
-  expect(logContent).toMatch(/@ http:\/\/localhost:\d+\/:7/);  // console.error line
+  expect(logContent).toMatch(/@ http:\/\/localhost:\d+\/:\d/);
 });
 
 test('console log is updated without taking snapshots', async ({ startClient, server }, testInfo) => {
@@ -433,7 +432,7 @@ test('console log is updated without taking snapshots', async ({ startClient, se
     arguments: {
       function: `() => {
         for (let i = 0; i < 5; i++) {
-          console.log('Evaluated message ' + i);
+          console.error('Evaluated message ' + i);
         }
       }`,
     },

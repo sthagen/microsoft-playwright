@@ -14,13 +14,13 @@
  * limitations under the License.
  */
 
-import fs from 'fs';
 import { EventEmitter } from 'events';
 import * as playwright from 'playwright-core';
 import { asLocator, ManualPromise } from 'playwright-core/lib/utils';
 
-import { callOnPageNoTrace, waitForCompletion, eventWaiter, dateAsFileName } from './tools/utils';
+import { callOnPageNoTrace, waitForCompletion, eventWaiter } from './tools/utils';
 import { logUnhandledError } from '../log';
+import { LogFile } from './logFile';
 import { ModalState } from './tools/tool';
 import { handleDialog } from './tools/dialogs';
 import { uploadFile } from './tools/files';
@@ -31,11 +31,11 @@ import type { Page } from '../../../../playwright-core/src/client/page';
 import type { Locator } from '../../../../playwright-core/src/client/locator';
 import type { FullConfig } from './config';
 
-export const TabEvents = {
+const TabEvents = {
   modalState: 'modalState'
 };
 
-export type TabEventsInterface = {
+type TabEventsInterface = {
   [TabEvents.modalState]: [modalState: ModalState];
 };
 
@@ -76,96 +76,30 @@ export type TabHeader = {
   title: string;
   url: string;
   current: boolean;
+  console: { total: number, warnings: number, errors: number };
 };
 
-export type LogChunk = {
-  file: string;
-  fromLine: number;
-  toLine: number;
-  entryCount: number;
-};
-
-export type TabSnapshot = {
+type TabSnapshot = {
   ariaSnapshot: string;
   ariaSnapshotDiff?: string;
   modalStates: ModalState[];
   events: EventEntry[];
-  logChunk?: LogChunk;
+  consoleLink?: string;
 };
-
-class LogFile {
-  private _startTime: number = Date.now();
-  private _context: Context;
-  private _filePrefix: string;
-  private _title: string;
-
-  private _file: string | undefined;
-  private _stopped: boolean = false;
-
-  private _line: number = 0;
-  private _entries: number = 0;
-  private _lastLine: number = 0;
-  private _lastEntries: number = 0;
-
-  private _writeChain: Promise<void> = Promise.resolve();
-
-  constructor(context: Context, filePrefix: string, title: string) {
-    this._context = context;
-    this._filePrefix = filePrefix;
-    this._title = title;
-  }
-
-  appendLine(wallTime: number, text: string) {
-    this._writeChain = this._writeChain.then(() => this._write(wallTime, text)).catch(logUnhandledError);
-  }
-
-  stop() {
-    this._stopped = true;
-  }
-
-  async take(): Promise<LogChunk | undefined> {
-    await this._writeChain;
-    if (!this._file || this._entries === this._lastEntries)
-      return undefined;
-    const chunk: LogChunk = {
-      file: this._file,
-      fromLine: this._lastLine + 1,
-      toLine: this._line,
-      entryCount: this._entries - this._lastEntries,
-    };
-    this._lastLine = this._line;
-    this._lastEntries = this._entries;
-    return chunk;
-  }
-
-  private async _write(wallTime: number, text: string) {
-    if (this._stopped)
-      return;
-    this._file ??= await this._context.outputFile(dateAsFileName(this._filePrefix, 'log', new Date(this._startTime)), { origin: 'code', title: this._title });
-    const relativeTime = wallTime - this._startTime;
-
-    const logLine = `[${String(relativeTime).padStart(8, ' ')}ms] ${text}\n`;
-    await fs.promises.appendFile(this._file, logLine);
-
-    const lineCount = logLine.split('\n').length - 1;
-    this._line += lineCount;
-    this._entries++;
-  }
-}
 
 export class Tab extends EventEmitter<TabEventsInterface> {
   readonly context: Context;
   readonly page: Page;
-  private _lastHeader: TabHeader = { title: 'about:blank', url: 'about:blank', current: false };
+  private _lastHeader: TabHeader = { title: 'about:blank', url: 'about:blank', current: false, console: { total: 0, warnings: 0, errors: 0 } };
   private _consoleMessages: ConsoleMessage[] = [];
   private _downloads: Download[] = [];
-  private _requests: Set<playwright.Request> = new Set();
+  private _requests: playwright.Request[] = [];
   private _onPageClose: (tab: Tab) => void;
   private _modalStates: ModalState[] = [];
   private _initializedPromise: Promise<void>;
   private _needsFullSnapshot = false;
   private _recentEventEntries: EventEntry[] = [];
-  private _consoleLog: LogFile | undefined;
+  private _consoleLog: LogFile;
 
   constructor(context: Context, page: playwright.Page, onPageClose: (tab: Tab) => void) {
     super();
@@ -175,6 +109,8 @@ export class Tab extends EventEmitter<TabEventsInterface> {
     page.on('console', event => this._handleConsoleMessage(messageToConsoleMessage(event)));
     page.on('pageerror', error => this._handleConsoleMessage(pageErrorToConsoleMessage(error)));
     page.on('request', request => this._handleRequest(request));
+    page.on('response', response => this._handleResponse(response));
+    page.on('requestfailed', request => this._handleRequestFailed(request));
     page.on('close', () => this._onClose());
     page.on('filechooser', chooser => {
       this.setModalState({
@@ -191,7 +127,8 @@ export class Tab extends EventEmitter<TabEventsInterface> {
     page.setDefaultNavigationTimeout(this.context.config.timeouts.navigation);
     page.setDefaultTimeout(this.context.config.timeouts.action);
     (page as any)[tabSymbol] = this;
-    this._resetConsoleLogFile();
+    const wallTime = Date.now();
+    this._consoleLog = new LogFile(this.context, wallTime, 'console', 'Console');
     this._initializedPromise = this._initialize();
   }
 
@@ -214,8 +151,8 @@ export class Tab extends EventEmitter<TabEventsInterface> {
     for (const message of await Tab.collectConsoleMessages(this.page))
       this._handleConsoleMessage(message);
     const requests = await this.page.requests().catch(() => []);
-    for (const request of requests)
-      this._requests.add(request);
+    for (const request of requests.filter(r => r.existingResponse() || r.failure()))
+      this._requests.push(request);
     for (const initPage of this.context.config.browser.initPage || []) {
       try {
         const { default: func } = await requireOrImport(initPage);
@@ -249,10 +186,12 @@ export class Tab extends EventEmitter<TabEventsInterface> {
   }
 
   private async _downloadStarted(download: playwright.Download) {
+    // Do not trust web names.
+    const outputFile = await this.context.outputFile({ suggestedFilename: sanitizeForFilePath(download.suggestedFilename()), prefix: 'download', ext: 'bin' }, { origin: 'code' });
     const entry = {
       download,
       finished: false,
-      outputFile: await this.context.outputFile(download.suggestedFilename(), { origin: 'web', title: 'Saving download' })
+      outputFile,
     };
     this._downloads.push(entry);
     this._addLogEntry({ type: 'download-start', wallTime: Date.now(), download: entry });
@@ -264,28 +203,45 @@ export class Tab extends EventEmitter<TabEventsInterface> {
   private _clearCollectedArtifacts() {
     this._consoleMessages.length = 0;
     this._downloads.length = 0;
-    this._requests.clear();
+    this._requests.length = 0;
     this._recentEventEntries.length = 0;
-    this._resetConsoleLogFile();
+    this._resetLogs();
   }
 
-  private _resetConsoleLogFile() {
-    if (this.context.config.outputMode !== 'file')
-      return;
-    this._consoleLog?.stop();
-    this._consoleLog = new LogFile(this.context, 'console', 'Console');
+  private _resetLogs() {
+    const wallTime = Date.now();
+    this._consoleLog.stop();
+    this._consoleLog = new LogFile(this.context, wallTime, 'console', 'Console');
   }
 
   private _handleRequest(request: playwright.Request) {
-    this._requests.add(request);
-    this._addLogEntry({ type: 'request', wallTime: Date.now(), request });
+    this._requests.push(request);
+    // TODO: request start time is not available for fetch() before the
+    // response is received, so we use Date.now() as a fallback.
+    const wallTime = request.timing().startTime || Date.now();
+    this._addLogEntry({ type: 'request', wallTime, request });
+  }
+
+  private _handleResponse(response: playwright.Response) {
+    const timing = response.request().timing();
+    const wallTime = timing.responseStart + timing.startTime;
+    this._addLogEntry({ type: 'request', wallTime, request: response.request() });
+  }
+
+  private _handleRequestFailed(request: playwright.Request) {
+    this._requests.push(request);
+    const timing = request.timing();
+    const wallTime = timing.responseEnd + timing.startTime;
+    this._addLogEntry({ type: 'request', wallTime, request });
   }
 
   private _handleConsoleMessage(message: ConsoleMessage) {
     this._consoleMessages.push(message);
     const wallTime = Date.now();
     this._addLogEntry({ type: 'console', wallTime, message });
-    this._consoleLog?.appendLine(wallTime, message.toString());
+    const level = consoleLevelForMessageType(message.type);
+    if (level === 'error' || level === 'warning')
+      this._consoleLog.appendLine(wallTime, () => message.toString());
   }
 
   private _addLogEntry(entry: EventEntry) {
@@ -302,13 +258,19 @@ export class Tab extends EventEmitter<TabEventsInterface> {
     await this._raceAgainstModalStates(async () => {
       title = await callOnPageNoTrace(this.page, page => page.title());
     });
-    if (this._lastHeader.title !== title || this._lastHeader.url !== this.page.url() || this._lastHeader.current !== this.isCurrentTab()) {
-      this._lastHeader = { title: title ?? '', url: this.page.url(), current: this.isCurrentTab() };
+    const newHeader: TabHeader = {
+      title: title ?? '',
+      url: this.page.url(),
+      current: this.isCurrentTab(),
+      console: await this.consoleMessageCount()
+    };
+
+    if (!tabHeaderEquals(this._lastHeader, newHeader)) {
+      this._lastHeader = newHeader;
       return { ...this._lastHeader, changed: true };
     }
     return { ...this._lastHeader, changed: false };
   }
-
 
   isCurrentTab(): boolean {
     return this === this.context.currentTab();
@@ -347,6 +309,19 @@ export class Tab extends EventEmitter<TabEventsInterface> {
     await this.waitForLoadState('load', { timeout: 5000 });
   }
 
+  async consoleMessageCount(): Promise<{ total: number, errors: number, warnings: number }> {
+    await this._initializedPromise;
+    let errors = 0;
+    let warnings = 0;
+    for (const message of this._consoleMessages) {
+      if (message.type === 'error')
+        errors++;
+      else if (message.type === 'warning')
+        warnings++;
+    }
+    return { total: this._consoleMessages.length, errors, warnings };
+  }
+
   async consoleMessages(level: ConsoleMessageLevel): Promise<ConsoleMessage[]> {
     await this._initializedPromise;
     return this._consoleMessages.filter(message => shouldIncludeMessage(level, message.type));
@@ -357,17 +332,17 @@ export class Tab extends EventEmitter<TabEventsInterface> {
     this._consoleMessages.length = 0;
   }
 
-  async requests(): Promise<Set<playwright.Request>> {
+  async requests(): Promise<playwright.Request[]> {
     await this._initializedPromise;
     return this._requests;
   }
 
   async clearRequests() {
     await this._initializedPromise;
-    this._requests.clear();
+    this._requests.length = 0;
   }
 
-  async captureSnapshot(): Promise<TabSnapshot> {
+  async captureSnapshot(relativeTo: string | undefined): Promise<TabSnapshot> {
     await this._initializedPromise;
     let tabSnapshot: TabSnapshot | undefined;
     const modalStates = await this._raceAgainstModalStates(async () => {
@@ -376,11 +351,11 @@ export class Tab extends EventEmitter<TabEventsInterface> {
         ariaSnapshot: snapshot.full,
         ariaSnapshotDiff: this._needsFullSnapshot ? undefined : snapshot.incremental,
         modalStates: [],
-        events: []
+        events: [],
       };
     });
     if (tabSnapshot) {
-      tabSnapshot.logChunk = await this._consoleLog?.take();
+      tabSnapshot.consoleLink = await this._consoleLog.take(relativeTo);
       tabSnapshot.events = this._recentEventEntries;
       this._recentEventEntries = [];
     }
@@ -532,3 +507,20 @@ function consoleLevelForMessageType(type: ConsoleMessageType): ConsoleMessageLev
 }
 
 const tabSymbol = Symbol('tabSymbol');
+
+function sanitizeForFilePath(s: string) {
+  const sanitize = (s: string) => s.replace(/[\x00-\x2C\x2E-\x2F\x3A-\x40\x5B-\x60\x7B-\x7F]+/g, '-');
+  const separator = s.lastIndexOf('.');
+  if (separator === -1)
+    return sanitize(s);
+  return sanitize(s.substring(0, separator)) + '.' + sanitize(s.substring(separator + 1));
+}
+
+function tabHeaderEquals(a: TabHeader, b: TabHeader): boolean {
+  return a.title === b.title &&
+      a.url === b.url &&
+      a.current === b.current &&
+      a.console.errors === b.console.errors &&
+      a.console.warnings === b.console.warnings &&
+      a.console.total === b.console.total;
+}

@@ -19,20 +19,13 @@ import path from 'path';
 
 import { debug } from 'playwright-core/lib/utilsBundle';
 import { renderModalStates, shouldIncludeMessage } from './tab';
-import { dateAsFileName } from './tools/utils';
 import { scaleImageToFitMessage } from './tools/screenshot';
 
-import type { LogChunk, TabHeader } from './tab';
+import type { TabHeader } from './tab';
 import type { CallToolResult, ImageContent, TextContent } from '@modelcontextprotocol/sdk/types.js';
-import type { Context } from './context';
+import type { Context, FilenameTemplate } from './context';
 
 export const requestDebug = debug('pw:mcp:request');
-
-type FilenameTemplate = {
-  prefix: string;
-  ext: string;
-  suggestedFilename?: string;
-};
 
 type ResolvedFile = {
   fileName: string;
@@ -40,7 +33,7 @@ type ResolvedFile = {
   printableLink: string;
 };
 
-export type Section = {
+type Section = {
   title: string;
   content: string[];
   isError?: boolean;
@@ -57,28 +50,28 @@ export class Response {
 
   readonly toolName: string;
   readonly toolArgs: Record<string, any>;
-  private _relativeTo: string | undefined;
+  private _clientWorkspace: string | undefined;
   private _imageResults: { data: Buffer, imageType: 'png' | 'jpeg' }[] = [];
 
   constructor(context: Context, toolName: string, toolArgs: Record<string, any>, relativeTo?: string) {
     this._context = context;
     this.toolName = toolName;
     this.toolArgs = toolArgs;
-    this._relativeTo = relativeTo ?? context.firstRootPath();
+    this._clientWorkspace = relativeTo ?? context.firstRootPath();
   }
 
   private _computRelativeTo(fileName: string): string {
-    if (this._relativeTo)
-      return path.relative(this._relativeTo, fileName);
+    if (this._clientWorkspace)
+      return path.relative(this._clientWorkspace, fileName);
     return fileName;
   }
 
-  async resolveFile(template: FilenameTemplate, title: string): Promise<ResolvedFile> {
+  async resolveClientFile(template: FilenameTemplate, title: string): Promise<ResolvedFile> {
     let fileName: string;
     if (template.suggestedFilename)
-      fileName = await this._context.outputFile(template.suggestedFilename, { origin: 'llm', title });
+      fileName = await this._context.workspaceFile(template.suggestedFilename, this._clientWorkspace);
     else
-      fileName = await this._context.outputFile(dateAsFileName(template.prefix, template.ext), { origin: 'code', title });
+      fileName = await this._context.outputFile(template, { origin: 'llm' });
     const relativeName = this._computRelativeTo(fileName);
     const printableLink = `- [${title}](${relativeName})`;
     return { fileName, relativeName, printableLink };
@@ -90,7 +83,7 @@ export class Response {
 
   async addResult(title: string, data: Buffer | string, file: FilenameTemplate) {
     if (this._context.config.outputMode === 'file' || file.suggestedFilename || typeof data !== 'string') {
-      const resolvedFile = await this.resolveFile(file, title);
+      const resolvedFile = await this.resolveClientFile(file, title);
       await this.addFileResult(resolvedFile, data);
     } else {
       this.addTextResult(data);
@@ -192,7 +185,7 @@ export class Response {
       addSection('Ran Playwright code', this._code, 'js');
 
     // Render tab titles upon changes or when more than one tab.
-    const tabSnapshot = this._context.currentTab() ? await this._context.currentTabOrDie().captureSnapshot() : undefined;
+    const tabSnapshot = this._context.currentTab() ? await this._context.currentTabOrDie().captureSnapshot(this._clientWorkspace) : undefined;
     const tabHeaders = await Promise.all(this._context.tabs().map(tab => tab.headerSnapshot()));
     if (this._includeSnapshot !== 'none' || tabHeaders.some(header => header.changed)) {
       if (tabHeaders.length !== 1)
@@ -208,7 +201,7 @@ export class Response {
     if (tabSnapshot && this._includeSnapshot !== 'none') {
       const snapshot = this._includeSnapshot === 'full' ? tabSnapshot.ariaSnapshot : tabSnapshot.ariaSnapshotDiff ?? tabSnapshot.ariaSnapshot;
       if (this._context.config.outputMode === 'file' || this._includeSnapshotFileName) {
-        const resolvedFile = await this.resolveFile({ prefix: 'page', ext: 'yml', suggestedFilename: this._includeSnapshotFileName }, 'Snapshot');
+        const resolvedFile = await this.resolveClientFile({ prefix: 'page', ext: 'yml', suggestedFilename: this._includeSnapshotFileName }, 'Snapshot');
         await fs.promises.writeFile(resolvedFile.fileName, snapshot, 'utf-8');
         addSection('Snapshot', [resolvedFile.printableLink]);
       } else {
@@ -217,21 +210,23 @@ export class Response {
     }
 
     // Handle tab log
-    const text: string[] = renderLogChunk(tabSnapshot?.logChunk, 'console', file => this._computRelativeTo(file));
+    const text: string[] = [];
+    if (tabSnapshot?.consoleLink)
+      text.push(`- New console entries: ${tabSnapshot.consoleLink}`);
     if (tabSnapshot?.events.filter(event => event.type !== 'request').length) {
       for (const event of tabSnapshot.events) {
-        if (event.type === 'console' && !tabSnapshot.logChunk) {
+        if (event.type === 'console' && this._context.config.outputMode !== 'file') {
           if (shouldIncludeMessage(this._context.config.console.level, event.message.type))
             text.push(`- ${trimMiddle(event.message.toString(), 100)}`);
         } else if (event.type === 'download-start') {
-
           text.push(`- Downloading file ${event.download.download.suggestedFilename()} ...`);
         } else if (event.type === 'download-finish') {
           text.push(`- Downloaded file ${event.download.download.suggestedFilename()} to "${this._computRelativeTo(event.download.outputFile)}"`);
         }
       }
     }
-    addSection('Events', text);
+    if (text.length)
+      addSection('Events', text);
     return sections;
   }
 }
@@ -240,6 +235,8 @@ export function renderTabMarkdown(tab: TabHeader): string[] {
   const lines = [`- Page URL: ${tab.url}`];
   if (tab.title)
     lines.push(`- Page Title: ${tab.title}`);
+  if (tab.console.errors || tab.console.warnings)
+    lines.push(`- Console: ${tab.console.errors} errors, ${tab.console.warnings} warnings`);
   return lines;
 }
 
@@ -253,19 +250,6 @@ export function renderTabsMarkdown(tabs: TabHeader[]): string[] {
     const current = tab.current ? ' (current)' : '';
     lines.push(`- ${i}:${current} [${tab.title}](${tab.url})`);
   }
-  return lines;
-}
-
-function renderLogChunk(logChunk: LogChunk | undefined, type: string, relativeTo: (fileName: string) => string): string[] {
-  if (!logChunk)
-    return [];
-  const lines: string[] = [];
-  const logFilePath = relativeTo(logChunk.file);
-  const entryWord = logChunk.entryCount === 1 ? 'entry' : 'entries';
-  const lineRange = logChunk.fromLine === logChunk.toLine
-    ? `#L${logChunk.fromLine}`
-    : `#L${logChunk.fromLine}-L${logChunk.toLine}`;
-  lines.push(`- ${logChunk.entryCount} new ${type} ${entryWord} in "${logFilePath}${lineRange}"`);
   return lines;
 }
 
