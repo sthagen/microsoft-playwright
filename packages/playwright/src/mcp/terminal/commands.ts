@@ -773,6 +773,14 @@ const sessionStopAll = declareCommand({
   toolParams: () => ({}),
 });
 
+const killAll = declareCommand({
+  name: 'kill-all',
+  description: 'Forcefully kill all daemon processes (for stale/zombie processes)',
+  category: 'session',
+  toolName: '',
+  toolParams: () => ({}),
+});
+
 const sessionDelete = declareCommand({
   name: 'session-delete',
   description: 'Delete session data',
@@ -791,10 +799,19 @@ const config = declareCommand({
   options: z.object({
     browser: z.string().optional().describe('Browser or chrome channel to use, possible values: chrome, firefox, webkit, msedge.'),
     config: z.string().optional().describe('Path to the configuration file'),
-    isolated: z.boolean().optional().describe('Keep the browser profile in memory, do not save it to disk.'),
     headed: z.boolean().optional().describe('Run browser in headed mode'),
+    ['in-memory']: z.boolean().optional().describe('Keep the browser profile in memory, do not save it to disk.'),
   }),
   toolName: '',
+  toolParams: () => ({}),
+});
+
+const configPrint = declareCommand({
+  name: 'config-print',
+  description: 'Print the final resolved config after merging CLI options, environment variables and config file.',
+  category: 'config',
+  hidden: true,
+  toolName: 'browser_get_config',
   toolParams: () => ({}),
 });
 
@@ -892,6 +909,7 @@ const commandsArray: AnyCommandSchema[] = [
 
   // config category
   config,
+  configPrint,
 
   // install category
   install,
@@ -910,6 +928,7 @@ const commandsArray: AnyCommandSchema[] = [
   sessionRestart,
   sessionStopAll,
   sessionDelete,
+  killAll,
 ];
 
 export const commands = Object.fromEntries(commandsArray.map(cmd => [cmd.name, cmd]));
