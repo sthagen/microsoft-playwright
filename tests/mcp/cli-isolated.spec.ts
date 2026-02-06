@@ -15,25 +15,63 @@
  */
 
 import fs from 'fs';
-import { test, expect } from './cli-fixtures';
+import path from 'path';
+import { test, expect, findDefaultSession, daemonFolder } from './cli-fixtures';
 
-test('should not save user data', async ({ cli, server, mcpBrowser }, testInfo) => {
-  await cli('open', server.HELLO_WORLD, '--in-memory');
-  const dataDir = testInfo.outputPath('daemon', 'ud-default-' + mcpBrowser);
+test('should not save user data by default (in-memory mode)', async ({ cli, server, mcpBrowser }, testInfo) => {
+  await cli('open', server.HELLO_WORLD);
+  const sessionOptions = await findDefaultSession();
+  const dataDir = path.resolve(await daemonFolder(), 'ud-default-' + mcpBrowser);
   expect(fs.existsSync(dataDir)).toBe(false);
-  const sessionFile = testInfo.outputPath('daemon', 'default.session');
-  expect(fs.existsSync(sessionFile)).toBe(true);
-  const sessionOptions = JSON.parse(await fs.promises.readFile(sessionFile, 'utf-8'));
+  expect(sessionOptions).toEqual({
+    cli: {},
+    socketPath: expect.any(String),
+    userDataDirPrefix: expect.any(String),
+    version: expect.any(String),
+    workspaceDir: testInfo.outputPath(),
+    resolvedConfig: expect.any(Object),
+  });
+
+  const { output: listOutput } = await cli('list');
+  expect(listOutput).toContain(`### Browsers
+- default:
+  - status: open
+  - browser-type: ${mcpBrowser}
+  - user-data-dir: <in-memory>
+  - headed: false`);
+});
+
+test('should save user data with --persistent flag', async ({ cli, server, mcpBrowser }, testInfo) => {
+  await cli('open', server.HELLO_WORLD, '--persistent');
+  const sessionOptions = await findDefaultSession();
+  const dataDir = path.resolve(await daemonFolder(), 'ud-default-' + mcpBrowser);
+  expect(fs.existsSync(dataDir)).toBe(true);
   expect(sessionOptions).toEqual({
     cli: {
-      isolated: true,
+      persistent: true,
     },
     socketPath: expect.any(String),
     userDataDirPrefix: expect.any(String),
     version: expect.any(String),
+    workspaceDir: testInfo.outputPath(),
+    resolvedConfig: expect.any(Object),
   });
+});
 
-  const { output: listOutput } = await cli('session-list');
-  expect(listOutput).toContain('Sessions:');
-  expect(listOutput).toContain('  [running] default');
+test('should use custom user data dir with --profile=<dir>', async ({ cli, server }, testInfo) => {
+  const customDir = testInfo.outputPath('custom-profile');
+  await cli('open', server.HELLO_WORLD, `--profile=${customDir}`);
+  expect(fs.existsSync(customDir)).toBe(true);
+  const sessionOptions = await findDefaultSession();
+  expect(sessionOptions).toEqual({
+    cli: {
+      persistent: true,
+      profile: customDir,
+    },
+    socketPath: expect.any(String),
+    userDataDirPrefix: expect.any(String),
+    version: expect.any(String),
+    workspaceDir: testInfo.outputPath(),
+    resolvedConfig: expect.any(Object),
+  });
 });

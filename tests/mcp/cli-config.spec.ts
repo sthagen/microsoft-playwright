@@ -24,7 +24,7 @@ test('user-data-dir', async ({ cli, server }, testInfo) => {
     },
   };
   await fs.promises.writeFile(testInfo.outputPath('config.json'), JSON.stringify(config, null, 2));
-  await cli('open', `--config=config.json`, server.PREFIX);
+  await cli('open', '--persistent', `--config=config.json`, server.PREFIX);
   expect(fs.existsSync(testInfo.outputPath('my-data-dir'))).toBe(true);
 });
 
@@ -36,27 +36,16 @@ test('context options', async ({ cli, server }, testInfo) => {
       },
     },
   };
-  await fs.promises.writeFile(testInfo.outputPath('playwright-cli.json'), JSON.stringify(config, null, 2));
+  await fs.promises.writeFile(testInfo.outputPath('.playwright', 'cli.config.json'), JSON.stringify(config, null, 2));
   await cli('open', server.PREFIX);
   const { output } = await cli('eval', 'window.innerWidth + "x" + window.innerHeight');
   expect(output).toContain('800x600');
 });
 
-test('headless options from config is respected', async ({ cli, server, mcpBrowser }, testInfo) => {
-  test.skip(mcpBrowser !== 'chrome', 'HeadlessChrome detection only works in Chromium');
-  const config = {
-    browser: {
-      launchOptions: {
-        headless: false,
-      },
-    },
-  };
-  await fs.promises.writeFile(testInfo.outputPath('playwright-cli.json'), JSON.stringify(config, null, 2));
-  const options = { env: { PLAYWRIGHT_MCP_HEADLESS: undefined } };
-  await cli('open', server.PREFIX, options);
-  const { output } = await cli('eval', 'navigator.userAgent', options);
-  expect(output).not.toContain('HeadlessChrome');
-  expect(output).toContain(' Chrome/');
+test('config-print prints merged config', async ({ cli }) => {
+  await cli('open');
+  const { output } = await cli('config-print');
+  expect(output).toContain('"browser"');
 });
 
 test('config-print prints merged config from file, env and cli', async ({ cli, server }, testInfo) => {
@@ -72,7 +61,7 @@ test('config-print prints merged config from file, env and cli', async ({ cli, s
       navigation: 30000,
     },
   };
-  await fs.promises.writeFile(testInfo.outputPath('playwright-cli.json'), JSON.stringify(fileConfig, null, 2));
+  await fs.promises.writeFile(testInfo.outputPath('.playwright', 'cli.config.json'), JSON.stringify(fileConfig, null, 2));
 
   // Env var overrides navigation timeout (30000 from file → 45000 from env).
   const env = { PLAYWRIGHT_MCP_TIMEOUT_NAVIGATION: '45000' };
@@ -85,6 +74,9 @@ test('config-print prints merged config from file, env and cli', async ({ cli, s
   const configBegin = output.indexOf('{');
   expect(configBegin).not.toBe(-1);
   const config = JSON.parse(output.slice(configBegin));
+
+  // From Playwright cli defaults.
+  expect(config.browser.launchOptions.headless).toBe(true);
 
   // From config file.
   expect(config.browser.contextOptions.viewport).toEqual({ width: 800, height: 600 });
@@ -103,7 +95,7 @@ test('isolated', async ({ cli, server }, testInfo) => {
       isolated: true,
     },
   };
-  await fs.promises.writeFile(testInfo.outputPath('playwright-cli.json'), JSON.stringify(config, null, 2));
+  await fs.promises.writeFile(testInfo.outputPath('.playwright', 'cli.config.json'), JSON.stringify(config, null, 2));
   await cli('open', server.PREFIX);
   expect(fs.existsSync(testInfo.outputPath('daemon', 'default-user-data'))).toBe(false);
 });

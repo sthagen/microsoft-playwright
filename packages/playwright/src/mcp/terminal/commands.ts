@@ -19,14 +19,34 @@ import { declareCommand } from './command';
 
 import type { AnyCommandSchema } from './command';
 
+const numberArg = z.preprocess((val, ctx) => {
+  const number = Number(val);
+  if (Number.isNaN(number)) {
+    ctx.issues.push({
+      code: 'custom',
+      message: `expected number, received '${val}'`,
+      input: val,
+    });
+  }
+  return number;
+}, z.number());
+
 // Navigation commands
 
 const open = declareCommand({
   name: 'open',
-  description: 'Open URL',
+  description: 'Open the browser',
   category: 'core',
   args: z.object({
     url: z.string().optional().describe('The URL to navigate to'),
+  }),
+  options: z.object({
+    browser: z.string().optional().describe('Browser or chrome channel to use, possible values: chrome, firefox, webkit, msedge.'),
+    config: z.string().optional().describe('Path to the configuration file, defaults to .playwright/cli.config.json'),
+    extension: z.boolean().optional().describe('Connect to browser extension'),
+    headed: z.boolean().optional().describe('Run browser in headed mode'),
+    persistent: z.boolean().optional().describe('Use persistent browser profile'),
+    profile: z.string().optional().describe('Use persistent browser profile, store profile in specified directory.'),
   }),
   toolName: 'browser_navigate',
   toolParams: ({ url }) => ({ url: url || 'about:blank' }),
@@ -34,11 +54,22 @@ const open = declareCommand({
 
 const close = declareCommand({
   name: 'close',
-  description: 'Close the page',
+  description: 'Close the browser',
   category: 'core',
   args: z.object({}),
   toolName: '',
   toolParams: () => ({}),
+});
+
+const goto = declareCommand({
+  name: 'goto',
+  description: 'Navigate to a URL',
+  category: 'core',
+  args: z.object({
+    url: z.string().describe('The URL to navigate to'),
+  }),
+  toolName: 'browser_navigate',
+  toolParams: ({ url }) => ({ url }),
 });
 
 const goBack = declareCommand({
@@ -124,8 +155,8 @@ const mouseMove = declareCommand({
   description: 'Move mouse to a given position',
   category: 'mouse',
   args: z.object({
-    x: z.number().describe('X coordinate'),
-    y: z.number().describe('Y coordinate'),
+    x: numberArg.describe('X coordinate'),
+    y: numberArg.describe('Y coordinate'),
   }),
   toolName: 'browser_mouse_move_xy',
   toolParams: ({ x, y }) => ({ x, y }),
@@ -158,8 +189,8 @@ const mouseWheel = declareCommand({
   description: 'Scroll mouse wheel',
   category: 'mouse',
   args: z.object({
-    dx: z.number().describe('Y delta'),
-    dy: z.number().describe('X delta'),
+    dx: numberArg.describe('Y delta'),
+    dy: numberArg.describe('X delta'),
   }),
   toolName: 'browser_mouse_wheel',
   toolParams: ({ dx: deltaY, dy: deltaX }) => ({ deltaY, deltaX }),
@@ -329,8 +360,8 @@ const resize = declareCommand({
   description: 'Resize the browser window',
   category: 'core',
   args: z.object({
-    w: z.number().describe('Width of the browser window'),
-    h: z.number().describe('Height of the browser window'),
+    w: numberArg.describe('Width of the browser window'),
+    h: numberArg.describe('Height of the browser window'),
   }),
   toolName: 'browser_resize',
   toolParams: ({ w: width, h: height }) => ({ width, height }),
@@ -374,7 +405,7 @@ const tabClose = declareCommand({
   description: 'Close a browser tab',
   category: 'tabs',
   args: z.object({
-    index: z.number().optional().describe('Tab index. If omitted, current tab is closed.'),
+    index: numberArg.optional().describe('Tab index. If omitted, current tab is closed.'),
   }),
   toolName: 'browser_tabs',
   toolParams: ({ index }) => ({ action: 'close', index }),
@@ -385,7 +416,7 @@ const tabSelect = declareCommand({
   description: 'Select a browser tab',
   category: 'tabs',
   args: z.object({
-    index: z.number().describe('Tab index'),
+    index: numberArg.describe('Tab index'),
   }),
   toolName: 'browser_tabs',
   toolParams: ({ index }) => ({ action: 'select', index }),
@@ -452,7 +483,7 @@ const cookieSet = declareCommand({
   options: z.object({
     domain: z.string().optional().describe('Cookie domain'),
     path: z.string().optional().describe('Cookie path'),
-    expires: z.number().optional().describe('Cookie expiration as Unix timestamp'),
+    expires: numberArg.optional().describe('Cookie expiration as Unix timestamp'),
     httpOnly: z.boolean().optional().describe('Whether the cookie is HTTP only'),
     secure: z.boolean().optional().describe('Whether the cookie is secure'),
     sameSite: z.enum(['Strict', 'Lax', 'None']).optional().describe('Cookie SameSite attribute'),
@@ -599,7 +630,7 @@ const routeMock = declareCommand({
     pattern: z.string().describe('URL pattern to match (e.g., "**/api/users")'),
   }),
   options: z.object({
-    status: z.number().optional().describe('HTTP status code (default: 200)'),
+    status: numberArg.optional().describe('HTTP status code (default: 200)'),
     body: z.string().optional().describe('Response body (text or JSON string)'),
     ['content-type']: z.string().optional().describe('Content-Type header'),
     header: z.union([z.string(), z.array(z.string())]).optional().transform(v => v ? (Array.isArray(v) ? v : [v]) : undefined).describe('Header to add in "Name: Value" format (repeatable)'),
@@ -735,73 +766,37 @@ const videoStop = declareCommand({
 // Sessions
 
 const sessionList = declareCommand({
-  name: 'session-list',
-  description: 'List all sessions',
-  category: 'session',
+  name: 'list',
+  description: 'List browser sessions',
+  category: 'browsers',
   args: z.object({}),
-  toolName: '',
-  toolParams: () => ({}),
-});
-
-const sessionRestart = declareCommand({
-  name: 'session-restart',
-  description: 'Restart session',
-  category: 'session',
-  args: z.object({
-    name: z.string().optional().describe('Name of the session to restart. If omitted, current session is restarted.'),
+  options: z.object({
+    all: z.boolean().optional().describe('List all browser sessions across all workspaces'),
   }),
   toolName: '',
   toolParams: () => ({}),
 });
 
-const sessionStop = declareCommand({
-  name: 'session-stop',
-  description: 'Stop session',
-  category: 'session',
-  args: z.object({
-    name: z.string().optional().describe('Name of the session to stop. If omitted, current session is stopped.'),
-  }),
-  toolName: '',
-  toolParams: () => ({}),
-});
-
-const sessionStopAll = declareCommand({
-  name: 'session-stop-all',
-  description: 'Stop all sessions',
-  category: 'session',
+const sessionCloseAll = declareCommand({
+  name: 'close-all',
+  description: 'Close all browser sessions',
+  category: 'browsers',
   toolName: '',
   toolParams: () => ({}),
 });
 
 const killAll = declareCommand({
   name: 'kill-all',
-  description: 'Forcefully kill all daemon processes (for stale/zombie processes)',
-  category: 'session',
+  description: 'Forcefully kill all browser sessions (for stale/zombie processes)',
+  category: 'browsers',
   toolName: '',
   toolParams: () => ({}),
 });
 
-const sessionDelete = declareCommand({
-  name: 'session-delete',
+const deleteData = declareCommand({
+  name: 'delete-data',
   description: 'Delete session data',
-  category: 'session',
-  args: z.object({
-    name: z.string().optional().describe('Name of the session to delete. If omitted, current session is deleted.'),
-  }),
-  toolName: '',
-  toolParams: ({ name }) => ({ name }),
-});
-
-const config = declareCommand({
-  name: 'config',
-  description: 'Restart session with new config, defaults to `playwright-cli.json`',
-  category: 'config',
-  options: z.object({
-    browser: z.string().optional().describe('Browser or chrome channel to use, possible values: chrome, firefox, webkit, msedge.'),
-    config: z.string().optional().describe('Path to the configuration file'),
-    headed: z.boolean().optional().describe('Run browser in headed mode'),
-    ['in-memory']: z.boolean().optional().describe('Keep the browser profile in memory, do not save it to disk.'),
-  }),
+  category: 'core',
   toolName: '',
   toolParams: () => ({}),
 });
@@ -816,6 +811,18 @@ const configPrint = declareCommand({
 });
 
 const install = declareCommand({
+  name: 'install',
+  description: 'Initialize workspace',
+  category: 'install',
+  args: z.object({}),
+  options: z.object({
+    skills: z.boolean().optional().describe('Install skills for Claude / GitHub Copilot'),
+  }),
+  toolName: '',
+  toolParams: () => ({}),
+});
+
+const installBrowser = declareCommand({
   name: 'install-browser',
   description: 'Install browser',
   category: 'install',
@@ -826,19 +833,11 @@ const install = declareCommand({
   toolParams: () => ({}),
 });
 
-const installSkills = declareCommand({
-  name: 'install-skills',
-  description: 'Install Claude / GitGub Copilot skills to the local workspace',
-  category: 'install',
-  args: z.object({}),
-  toolName: '',
-  toolParams: () => ({}),
-});
-
 const commandsArray: AnyCommandSchema[] = [
   // core category
   open,
   close,
+  goto,
   type,
   click,
   doubleClick,
@@ -856,6 +855,7 @@ const commandsArray: AnyCommandSchema[] = [
   dialogDismiss,
   resize,
   runCode,
+  deleteData,
 
   // navigation category
   goBack,
@@ -908,12 +908,11 @@ const commandsArray: AnyCommandSchema[] = [
   unroute,
 
   // config category
-  config,
   configPrint,
 
   // install category
   install,
-  installSkills,
+  installBrowser,
 
   // devtools category
   networkRequests,
@@ -924,10 +923,7 @@ const commandsArray: AnyCommandSchema[] = [
 
   // session category
   sessionList,
-  sessionStop,
-  sessionRestart,
-  sessionStopAll,
-  sessionDelete,
+  sessionCloseAll,
   killAll,
 ];
 

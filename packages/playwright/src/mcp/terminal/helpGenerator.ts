@@ -14,6 +14,8 @@
  * limitations under the License.
  */
 
+import { z } from 'playwright-core/lib/mcpBundle';
+
 import { commands } from './commands';
 
 import type zodType from 'zod';
@@ -75,12 +77,13 @@ const categories: { name: Category, title: string }[] = [
   { name: 'devtools', title: 'DevTools' },
   { name: 'install', title: 'Install' },
   { name: 'config', title: 'Configuration' },
-  { name: 'session', title: 'Sessions' },
+  { name: 'browsers', title: 'Browser sessions' },
 ] as const;
 
 export function generateHelp() {
   const lines: string[] = [];
   lines.push('Usage: playwright-cli <command> [args] [options]');
+  lines.push('Usage: playwright-cli -s=<session> <command> [args] [options]');
 
   const commandsByCategory = new Map<string, AnyCommandSchema[]>();
   for (const c of categories)
@@ -101,13 +104,7 @@ export function generateHelp() {
   }
 
   lines.push('\nGlobal options:');
-  lines.push(formatWithGap('  --browser <browser>', 'browser or chrome channel to use, possible values: chrome, firefox, webkit, msedge'));
-  lines.push(formatWithGap('  --config <path>', 'create a session with custom config, defaults to `playwright-cli.json`'));
-  lines.push(formatWithGap('  --extension', 'connect to a running browser instance using Playwright MCP Bridge extension'));
-  lines.push(formatWithGap('  --headed', 'create a headed session'));
   lines.push(formatWithGap('  --help [command]', 'print help'));
-  lines.push(formatWithGap('  --in-memory', 'keep the browser profile in memory, do not save it to disk'));
-  lines.push(formatWithGap('  --session', 'run command in the scope of a specific session'));
   lines.push(formatWithGap('  --version', 'print version'));
 
   return lines.join('\n');
@@ -151,12 +148,31 @@ function generateReadmeEntry(command: AnyCommandSchema): string {
   return formatWithGap(prefix, suffix, 40);
 }
 
+function unwrapZodType(schema: zodType.ZodTypeAny): zodType.ZodTypeAny {
+  if ('unwrap' in schema && typeof schema.unwrap === 'function')
+    return unwrapZodType(schema.unwrap());
+  return schema;
+}
+
 export function generateHelpJSON() {
+  const booleanOptions = new Set<string>();
+  for (const command of Object.values(commands)) {
+    if (!command.options)
+      continue;
+    const optionsShape = (command.options as zodType.ZodObject<any>).shape;
+    for (const [name, schema] of Object.entries(optionsShape)) {
+      const innerSchema = unwrapZodType(schema as zodType.ZodTypeAny);
+      if (innerSchema instanceof z.ZodBoolean)
+        booleanOptions.add(name);
+    }
+  }
+
   const help = {
     global: generateHelp(),
     commands: Object.fromEntries(
         Object.entries(commands).map(([name, command]) => [name, generateCommandHelp(command)])
     ),
+    booleanOptions: [...booleanOptions],
   };
   return help;
 }

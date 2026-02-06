@@ -34,6 +34,7 @@ export const test = baseTest.extend<{
 }>({
   cli: async ({ mcpBrowser, mcpHeadless, childProcess }, use) => {
     const sessions: { name: string, pid: number }[] = [];
+    await fs.promises.mkdir(test.info().outputPath('.playwright'), { recursive: true });
 
     await use(async (...args: string[]) => {
       const cliArgs = args.filter(arg => typeof arg === 'string');
@@ -42,7 +43,7 @@ export const test = baseTest.extend<{
     });
 
     for (const session of sessions) {
-      await runCli(childProcess, ['session-stop', session.name], {}, { mcpBrowser, mcpHeadless }, []).catch(e => {
+      await runCli(childProcess, ['--session=' + session.name, 'close'], {}, { mcpBrowser, mcpHeadless }, []).catch(e => {
         if (!e.message.includes('is not running'))
           throw e;
       });
@@ -66,7 +67,6 @@ async function runCli(childProcess: CommonFixtures['childProcess'], args: string
       env: {
         ...process.env,
         ...cliOptions.env,
-        PLAYWRIGHT_CLI_INSTALLATION_FOR_TEST: testInfo.outputPath(),
         PLAYWRIGHT_DAEMON_SESSION_DIR: testInfo.outputPath('daemon'),
         PLAYWRIGHT_DAEMON_SOCKETS_DIR: path.join(testInfo.project.outputDir, 'daemon-sockets'),
         PLAYWRIGHT_MCP_BROWSER: options.mcpBrowser,
@@ -83,7 +83,7 @@ async function runCli(childProcess: CommonFixtures['childProcess'], args: string
       snapshot = await loadSnapshot(cli.stdout);
     const attachments = loadAttachments(cli.stdout);
 
-    const matches = cli.stdout.includes('Daemon for') ? cli.stdout.match(/Daemon for `(.+)` session started with pid (\d+)\./) : undefined;
+    const matches = cli.stdout.includes('### Browser') ? cli.stdout.match(/Browser `(.+)` opened with pid (\d+)\./) : undefined;
     const [, sessionName, pid] = matches ?? [];
     if (sessionName && pid)
       sessions.push({ name: sessionName, pid: +pid });
@@ -162,3 +162,20 @@ export const eventsPage = `<!DOCTYPE html>
   </body>
 </html>
 `;
+
+export async function findDefaultSession() {
+  const daemonDir = await daemonFolder();
+  const fileName = path.join(daemonDir, 'default.session');
+  return await fs.promises.readFile(fileName, 'utf-8').then(JSON.parse).catch(() => null);
+}
+
+export async function daemonFolder() {
+  const daemonDir = test.info().outputPath('daemon');
+  const folders = await fs.promises.readdir(daemonDir);
+  for (const folder of folders) {
+    const fullName = path.join(daemonDir, folder);
+    if (fs.lstatSync(path.join(fullName)).isDirectory())
+      return fullName;
+  }
+  return null;
+}

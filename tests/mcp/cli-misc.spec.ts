@@ -20,36 +20,30 @@ import { test, expect } from './cli-fixtures';
 
 test('daemon shuts down on browser launch failure', async ({ cli, server }) => {
   const first = await cli('open', server.PREFIX, { env: { PLAYWRIGHT_MCP_EXECUTABLE_PATH: '/nonexistent/browser/path' } });
-  expect(first.output).toContain('Failed to launch');
+  expect(first.error).toContain(`executable doesn't exist`);
 
   const second = await cli('open', server.PREFIX);
   expect(second.exitCode).toBe(0);
   expect(second.output).toContain('Page URL');
 });
 
-test('old client', async ({ cli }) => {
-  await cli('open', { env: { PLAYWRIGHT_CLI_VERSION_FOR_TEST: '2.0.0' } });
-  const { output: output1 } = await cli('session-list');
-  expect(output1).toContain('  [running] default - v2.0.0, needs restart');
-
-  await cli('session-stop');
-  const { output: output2 } = await cli('session-list');
-  expect(output2).toContain('  [stopped] default - v2.0.0, needs restart');
-  await cli('session-delete');
-  const { output: output3 } = await cli('session-list');
-  expect(output3).toContain('  (no sessions)');
-});
-
-test('install', async ({ cli, server, mcpBrowser }) => {
+test('install-browser', async ({ cli, server, mcpBrowser }) => {
   test.skip(mcpBrowser !== 'chromium', 'Test only chromium');
   await cli('open', server.HELLO_WORLD);
   const { output } = await cli('install-browser');
   expect(output).toContain(`Browser ${mcpBrowser} installed.`);
 });
 
-test('install-skills', async ({ cli }, testInfo) => {
-  const { output } = await cli('install-skills');
-  expect(output).toContain(`Skills installed to .claude${path.sep}skills${path.sep}playwright-cli`);
+test('install workspace', async ({ cli }, testInfo) => {
+  const { output } = await cli('install');
+  expect(output).toContain(`Workspace initialized at`);
+  const playwrightDir = testInfo.outputPath('.playwright');
+  expect(fs.existsSync(playwrightDir)).toBe(true);
+});
+
+test('install workspace w/skills', async ({ cli }, testInfo) => {
+  const { output } = await cli('install', '--skills');
+  expect(output).toContain(`Skills installed to \`.claude${path.sep}skills${path.sep}playwright-cli\`.`);
 
   const skillFile = testInfo.outputPath('.claude', 'skills', 'playwright-cli', 'SKILL.md');
   expect(fs.existsSync(skillFile)).toBe(true);
@@ -57,4 +51,12 @@ test('install-skills', async ({ cli }, testInfo) => {
   const referencesDir = testInfo.outputPath('.claude', 'skills', 'playwright-cli', 'references');
   const references = await fs.promises.readdir(referencesDir);
   expect(references.length).toBeGreaterThan(0);
+});
+
+test('install handles browser detection', async ({ cli }) => {
+  const { output } = await cli('install');
+  // Verify that one of the browser detection outcomes occurred
+  const foundMatch = output.match(/Found ((?:chrome|msedge)[\w-]*), will use it as the default browser\./m);
+  if (foundMatch?.[1] !== 'chrome')
+    expect(output).toContain(`Created default config for ${foundMatch?.[1] ?? 'chromium'}.`);
 });
