@@ -400,6 +400,10 @@ export class Page extends SdkObject<PageEventMap> {
       this.emitOnContext(BrowserContext.Events.Console, message);
   }
 
+  clearConsoleMessages() {
+    this._consoleMessages.length = 0;
+  }
+
   consoleMessages() {
     return this._consoleMessages;
   }
@@ -413,6 +417,10 @@ export class Page extends SdkObject<PageEventMap> {
     // or on the "errored" Page.
     if (this._initialized)
       this.emitOnContext(BrowserContext.Events.PageError, pageError, this);
+  }
+
+  clearPageErrors() {
+    this._pageErrors.length = 0;
   }
 
   pageErrors() {

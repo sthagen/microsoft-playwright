@@ -887,6 +887,7 @@ export interface BrowserTypeChannel extends BrowserTypeEventTarget, Channel {
   launch(params: BrowserTypeLaunchParams, progress?: Progress): Promise<BrowserTypeLaunchResult>;
   launchPersistentContext(params: BrowserTypeLaunchPersistentContextParams, progress?: Progress): Promise<BrowserTypeLaunchPersistentContextResult>;
   connectOverCDP(params: BrowserTypeConnectOverCDPParams, progress?: Progress): Promise<BrowserTypeConnectOverCDPResult>;
+  connectOverCDPTransport(params: BrowserTypeConnectOverCDPTransportParams, progress?: Progress): Promise<BrowserTypeConnectOverCDPTransportResult>;
 }
 export type BrowserTypeLaunchParams = {
   channel?: string,
@@ -1123,6 +1124,16 @@ export type BrowserTypeConnectOverCDPOptions = {
   isLocal?: boolean,
 };
 export type BrowserTypeConnectOverCDPResult = {
+  browser: BrowserChannel,
+  defaultContext?: BrowserContextChannel,
+};
+export type BrowserTypeConnectOverCDPTransportParams = {
+  transport: Binary,
+};
+export type BrowserTypeConnectOverCDPTransportOptions = {
+
+};
+export type BrowserTypeConnectOverCDPTransportResult = {
   browser: BrowserChannel,
   defaultContext?: BrowserContextChannel,
 };
@@ -1624,8 +1635,7 @@ export interface BrowserContextChannel extends BrowserContextEventTarget, EventT
   clockRunFor(params: BrowserContextClockRunForParams, progress?: Progress): Promise<BrowserContextClockRunForResult>;
   clockSetFixedTime(params: BrowserContextClockSetFixedTimeParams, progress?: Progress): Promise<BrowserContextClockSetFixedTimeResult>;
   clockSetSystemTime(params: BrowserContextClockSetSystemTimeParams, progress?: Progress): Promise<BrowserContextClockSetSystemTimeResult>;
-  devtoolsStart(params: BrowserContextDevtoolsStartParams, progress?: Progress): Promise<BrowserContextDevtoolsStartResult>;
-  devtoolsStop(params?: BrowserContextDevtoolsStopParams, progress?: Progress): Promise<BrowserContextDevtoolsStopResult>;
+  devtoolsStart(params?: BrowserContextDevtoolsStartParams, progress?: Progress): Promise<BrowserContextDevtoolsStartResult>;
 }
 export type BrowserContextBindingCallEvent = {
   binding: BindingCallChannel,
@@ -2018,28 +2028,11 @@ export type BrowserContextClockSetSystemTimeOptions = {
   timeString?: string,
 };
 export type BrowserContextClockSetSystemTimeResult = void;
-export type BrowserContextDevtoolsStartParams = {
-  size?: {
-    width: number,
-    height: number,
-  },
-  port?: number,
-  host?: string,
-};
-export type BrowserContextDevtoolsStartOptions = {
-  size?: {
-    width: number,
-    height: number,
-  },
-  port?: number,
-  host?: string,
-};
+export type BrowserContextDevtoolsStartParams = {};
+export type BrowserContextDevtoolsStartOptions = {};
 export type BrowserContextDevtoolsStartResult = {
   url: string,
 };
-export type BrowserContextDevtoolsStopParams = {};
-export type BrowserContextDevtoolsStopOptions = {};
-export type BrowserContextDevtoolsStopResult = void;
 
 export interface BrowserContextEvents {
   'bindingCall': BrowserContextBindingCallEvent;
@@ -2088,6 +2081,7 @@ export interface PageChannel extends PageEventTarget, EventTargetChannel {
   _type_Page: boolean;
   addInitScript(params: PageAddInitScriptParams, progress?: Progress): Promise<PageAddInitScriptResult>;
   close(params: PageCloseParams, progress?: Progress): Promise<PageCloseResult>;
+  clearConsoleMessages(params?: PageClearConsoleMessagesParams, progress?: Progress): Promise<PageClearConsoleMessagesResult>;
   consoleMessages(params?: PageConsoleMessagesParams, progress?: Progress): Promise<PageConsoleMessagesResult>;
   emulateMedia(params: PageEmulateMediaParams, progress?: Progress): Promise<PageEmulateMediaResult>;
   exposeBinding(params: PageExposeBindingParams, progress?: Progress): Promise<PageExposeBindingResult>;
@@ -2115,6 +2109,7 @@ export interface PageChannel extends PageEventTarget, EventTargetChannel {
   mouseClick(params: PageMouseClickParams, progress?: Progress): Promise<PageMouseClickResult>;
   mouseWheel(params: PageMouseWheelParams, progress?: Progress): Promise<PageMouseWheelResult>;
   touchscreenTap(params: PageTouchscreenTapParams, progress?: Progress): Promise<PageTouchscreenTapResult>;
+  clearPageErrors(params?: PageClearPageErrorsParams, progress?: Progress): Promise<PageClearPageErrorsResult>;
   pageErrors(params?: PagePageErrorsParams, progress?: Progress): Promise<PagePageErrorsResult>;
   pdf(params: PagePdfParams, progress?: Progress): Promise<PagePdfResult>;
   requests(params?: PageRequestsParams, progress?: Progress): Promise<PageRequestsResult>;
@@ -2187,6 +2182,9 @@ export type PageCloseOptions = {
   reason?: string,
 };
 export type PageCloseResult = void;
+export type PageClearConsoleMessagesParams = {};
+export type PageClearConsoleMessagesOptions = {};
+export type PageClearConsoleMessagesResult = void;
 export type PageConsoleMessagesParams = {};
 export type PageConsoleMessagesOptions = {};
 export type PageConsoleMessagesResult = {
@@ -2509,6 +2507,9 @@ export type PageTouchscreenTapOptions = {
 
 };
 export type PageTouchscreenTapResult = void;
+export type PageClearPageErrorsParams = {};
+export type PageClearPageErrorsOptions = {};
+export type PageClearPageErrorsResult = void;
 export type PagePageErrorsParams = {};
 export type PagePageErrorsOptions = {};
 export type PagePageErrorsResult = {
