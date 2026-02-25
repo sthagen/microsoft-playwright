@@ -16,10 +16,14 @@
 
 import React from 'react';
 import * as ReactDOM from 'react-dom/client';
+import './colors.css';
 import './common.css';
+import { applyTheme } from '@web/theme';
 import { DevTools } from './devtools';
 import { Grid } from './grid';
 import { SessionModel } from './sessionModel';
+
+applyTheme();
 
 export function navigate(hash: string) {
   window.history.pushState(null, '', hash);
@@ -57,8 +61,7 @@ const App: React.FC = () => {
 
   if (socketPath) {
     const wsUrl = model.wsUrls.get(socketPath);
-    if (wsUrl)
-      return <DevTools wsUrl={wsUrl} />;
+    return <DevTools wsUrl={wsUrl || undefined} />;
   }
   return <Grid model={model} />;
 };

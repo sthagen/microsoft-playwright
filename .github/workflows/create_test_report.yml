@@ -57,7 +57,7 @@ jobs:
         AZCOPY_AUTO_LOGIN_TYPE: AZCLI
 
     - name: Publish Report URL as Commit Status
-      uses: actions/github-script@v7
+      uses: actions/github-script@v8
       with:
         script: |
           await github.rest.repos.createCommitStatus({
@@ -66,5 +66,5 @@ jobs:
             sha: '${{ github.event.workflow_run.head_sha }}',
             state: 'success',
             target_url: '${{ steps.upload-report.outputs.reportUrl }}',
-            context: 'HTML Report',
+            context: 'HTML Report (${{ github.event.workflow_run.name }})',
           });

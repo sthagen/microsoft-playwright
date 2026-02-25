@@ -19,8 +19,9 @@ import './grid.css';
 import { DevToolsClient } from './devtoolsClient';
 import { navigate } from './index';
 import { Screencast } from './screencast';
+import { SettingsButton } from './settingsView';
 
-import type { SessionConfig } from '../../playwright/src/cli/client/registry';
+import type { SessionFile } from '../../playwright/src/cli/client/registry';
 import type { Tab } from './devtoolsChannel';
 import type { SessionModel, SessionStatus } from './sessionModel';
 
@@ -43,7 +44,7 @@ export const Grid: React.FC<{ model: SessionModel }> = ({ model }) => {
   const workspaceGroups = React.useMemo(() => {
     const groups = new Map<string, SessionStatus[]>();
     for (const session of sessions) {
-      const key = session.config.workspaceDir || 'Global';
+      const key = session.file.config.workspaceDir || 'Global';
       let list = groups.get(key);
       if (!list) {
         list = [];
@@ -52,7 +53,7 @@ export const Grid: React.FC<{ model: SessionModel }> = ({ model }) => {
       list.push(session);
     }
     for (const list of groups.values())
-      list.sort((a, b) => a.config.name.localeCompare(b.config.name));
+      list.sort((a, b) => a.file.config.name.localeCompare(b.file.config.name));
 
     // Current workspace first, then alphabetical.
     const entries = [...groups.entries()];
@@ -62,41 +63,47 @@ export const Grid: React.FC<{ model: SessionModel }> = ({ model }) => {
   }, [sessions, clientInfo?.workspaceDir]);
 
   return (<div className='grid-view'>
-    {model.loading && sessions.length === 0 && <div className='grid-loading'>Loading sessions...</div>}
-    {model.error && <div className='grid-error'>Error: {model.error}</div>}
-    {!model.loading && !model.error && sessions.length === 0 && <div className='grid-empty'>No sessions found.</div>}
+    <div className='grid-toolbar'>
+      <SettingsButton />
+    </div>
+    <div className='grid-content'>
+      {model.loading && sessions.length === 0 && <div className='grid-loading'>Loading sessions...</div>}
+      {model.error && <div className='grid-error'>Error: {model.error}</div>}
+      {!model.loading && !model.error && sessions.length === 0 && <div className='grid-empty'>No sessions found.</div>}
 
-    <div className='workspace-list'>
-      {workspaceGroups.map(([workspace, entries], index) => {
-        const isFirst = index === 0;
-        const isExpanded = isFirst || expandedWorkspaces.has(workspace);
-        return (
-          <div key={workspace} className='workspace-group'>
-            <div
-              className={'workspace-header' + (isFirst ? '' : ' collapsible')}
-              onClick={isFirst ? undefined : () => toggleWorkspace(workspace)}
-            >
-              {!isFirst && (
-                <svg className={'workspace-chevron' + (isExpanded ? ' expanded' : '')} viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round'>
-                  <polyline points='9 18 15 12 9 6'/>
-                </svg>
-              )}
-              <span className='workspace-name'>{workspace.split('/').pop() || workspace}</span>
-              <span className='workspace-path'>&mdash; {workspace}</span>
-            </div>
-            {isExpanded && (
-              <div className='session-chips'>
-                {entries.map(({ config, canConnect }) => <SessionChip key={config.socketPath} config={config} canConnect={canConnect} visible={isExpanded} model={model} />)}
+      <div className='workspace-list'>
+        {workspaceGroups.map(([workspace, entries], index) => {
+          const isFirst = index === 0;
+          const isExpanded = isFirst || expandedWorkspaces.has(workspace);
+          return (
+            <div key={workspace} className='workspace-group'>
+              <div
+                className={'workspace-header' + (isFirst ? '' : ' collapsible')}
+                onClick={isFirst ? undefined : () => toggleWorkspace(workspace)}
+              >
+                {!isFirst && (
+                  <svg className={'workspace-chevron' + (isExpanded ? ' expanded' : '')} viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round'>
+                    <polyline points='9 18 15 12 9 6'/>
+                  </svg>
+                )}
+                <span className='workspace-name'>{workspace.split('/').pop() || workspace}</span>
+                <span className='workspace-path'>&mdash; {workspace}</span>
               </div>
-            )}
-          </div>
-        );
-      })}
+              {isExpanded && (
+                <div className='session-chips'>
+                  {entries.map(({ file, canConnect }) => <SessionChip key={file.config.socketPath} sessionFile={file} canConnect={canConnect} visible={isExpanded} model={model} />)}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
     </div>
   </div>);
 };
 
-const SessionChip: React.FC<{ config: SessionConfig; canConnect: boolean; visible: boolean; model: SessionModel }> = ({ config, canConnect, visible, model }) => {
+const SessionChip: React.FC<{ sessionFile: SessionFile; canConnect: boolean; visible: boolean; model: SessionModel }> = ({ sessionFile, canConnect, visible, model }) => {
+  const { config } = sessionFile;
   const href = '#session=' + encodeURIComponent(config.socketPath);
   const wsUrl = model.wsUrls.get(config.socketPath);
 
@@ -143,7 +150,7 @@ const SessionChip: React.FC<{ config: SessionConfig; canConnect: boolean; visibl
             onClick={e => {
               e.preventDefault();
               e.stopPropagation();
-              void model.closeSession(config);
+              void model.closeSession(sessionFile);
             }}
           >
             <svg viewBox='0 0 12 12' fill='none' stroke='currentColor' strokeWidth='1.5' strokeLinecap='round'>
@@ -159,7 +166,7 @@ const SessionChip: React.FC<{ config: SessionConfig; canConnect: boolean; visibl
             onClick={e => {
               e.preventDefault();
               e.stopPropagation();
-              void model.deleteSessionData(config);
+              void model.deleteSessionData(sessionFile);
             }}
           >
             <svg viewBox='0 0 16 16' fill='none' stroke='currentColor' strokeWidth='1.2' strokeLinecap='round' strokeLinejoin='round'>
@@ -173,7 +180,7 @@ const SessionChip: React.FC<{ config: SessionConfig; canConnect: boolean; visibl
       <div className='screencast-container'>
         {channel && <Screencast channel={channel} />}
         {!canConnect && <div className='screencast-placeholder'>Session closed</div>}
-        {canConnect && !channel && wsUrl === null && <div className='screencast-placeholder'>Not supported &mdash; v{config.version}</div>}
+        {canConnect && !channel && wsUrl === null && <div className='screencast-placeholder'>Not supported &mdash; v{sessionFile.config.version}</div>}
         {canConnect && !channel && wsUrl === undefined && <div className='screencast-placeholder'>Connecting</div>}
       </div>
     </a>

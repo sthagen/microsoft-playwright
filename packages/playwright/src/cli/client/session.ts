@@ -26,7 +26,7 @@ import path from 'path';
 import { compareSemver, SocketConnection } from './socketConnection';
 
 import type { FullConfig } from '../../mcp/browser/config';
-import type { SessionConfig, ClientInfo } from './registry';
+import type { SessionConfig, ClientInfo, SessionFile } from './registry';
 
 type MinimistArgs = {
   _: string[];
@@ -36,41 +36,31 @@ type MinimistArgs = {
 export class Session {
   readonly name: string;
   readonly config: SessionConfig;
-  private _connection: SocketConnection | undefined;
-  private _nextMessageId = 1;
-  private _callbacks = new Map<number, { resolve: (o: any) => void, reject: (e: Error) => void, method: string, params: any }>();
-  private _clientInfo: ClientInfo;
+  private _sessionFile: SessionFile;
 
-  constructor(clientInfo: ClientInfo, options: SessionConfig) {
-    this._clientInfo = clientInfo;
-    this.config = options;
-    this.name = options.name;
+  constructor(sessionFile: SessionFile) {
+    this.config = sessionFile.config;
+    this.name = this.config.name;
+    this._sessionFile = sessionFile;
   }
 
-  isCompatible(): boolean {
-    return compareSemver(this._clientInfo.version, this.config.version) >= 0;
+  isCompatible(clientInfo: ClientInfo): boolean {
+    return compareSemver(clientInfo.version, this.config.version) >= 0;
   }
 
-  checkCompatible() {
-    if (!this.isCompatible()) {
-      throw new Error(`Client is v${this._clientInfo.version}, session '${this.name}' is v${this.config.version}. Run
-
-  playwright-cli${this.name !== 'default' ? ` -s=${this.name}` : ''} open
-
-to restart the browser session.`);
-    }
+  async open(args: MinimistArgs, cwd?: string): Promise<{ text: string }> {
+    const socket = await this._startDaemon();
+    return await SocketConnectionClient.sendAndClose(socket, 'run', { args, cwd: cwd || process.cwd() });
   }
 
-  async open(): Promise<void> {
-    await this._startDaemonIfNeeded();
-    this.disconnect();
-  }
+  async run(clientInfo: ClientInfo, args: MinimistArgs, cwd?: string): Promise<{ text: string }> {
+    if (!this.isCompatible(clientInfo))
+      throw new Error(`Client is v${clientInfo.version}, session '${this.name}' is v${this.config.version}. Run\n\n  playwright-cli${this.name !== 'default' ? ` -s=${this.name}` : ''} open\n\nto restart the browser session.`);
 
-  async run(args: MinimistArgs, cwd?: string): Promise<{ text: string }> {
-    this.checkCompatible();
-    const result = await this._send('run', { args, cwd: cwd || process.cwd() });
-    this.disconnect();
-    return result;
+    const { socket } = await this._connect();
+    if (!socket)
+      throw new Error(`Browser '${this.name}' is not open. Run\n\n  playwright-cli${this.name !== 'default' ? ` -s=${this.name}` : ''} open\n\nto start the browser session.`);
+    return await SocketConnectionClient.sendAndClose(socket, 'run', { args, cwd: cwd || process.cwd() });
   }
 
   async stop(quiet: boolean = false): Promise<void> {
@@ -85,36 +75,10 @@ to restart the browser session.`);
       console.log(`Browser '${this.name}' closed\n`);
   }
 
-  private async _send(method: string, params: any = {}): Promise<any> {
-    const connection = await this._startDaemonIfNeeded();
-    const messageId = this._nextMessageId++;
-    const message = {
-      id: messageId,
-      method,
-      params,
-      version: this.config.version,
-    };
-    const responsePromise = new Promise<any>((resolve, reject) => {
-      this._callbacks.set(messageId, { resolve, reject, method, params });
-    });
-    const [result] = await Promise.all([responsePromise, connection.send(message)]);
-    return result;
-  }
-
-  disconnect() {
-    if (!this._connection)
-      return;
-    for (const callback of this._callbacks.values())
-      callback.reject(new Error('Session closed'));
-    this._callbacks.clear();
-    this._connection.close();
-    this._connection = undefined;
-  }
-
   async deleteData() {
     await this.stop();
 
-    const dataDirs = await fs.promises.readdir(this._clientInfo.daemonProfilesDir).catch(() => []);
+    const dataDirs = await fs.promises.readdir(this._sessionFile.daemonDir).catch(() => []);
     const matchingEntries = dataDirs.filter(file => file === `${this.name}.session` || file.startsWith(`ud-${this.name}-`));
     if (matchingEntries.length === 0) {
       console.log(`No user data found for browser '${this.name}'.`);
@@ -122,7 +86,7 @@ to restart the browser session.`);
     }
 
     for (const entry of matchingEntries) {
-      const userDataDir = path.resolve(this._clientInfo.daemonProfilesDir, entry);
+      const userDataDir = path.resolve(this._sessionFile.daemonDir, entry);
       for (let i = 0; i < 5; i++) {
         try {
           await fs.promises.rm(userDataDir, { recursive: true });
@@ -142,7 +106,7 @@ to restart the browser session.`);
     }
   }
 
-  async _connect(): Promise<{ socket?: net.Socket, error?: Error }> {
+  private async _connect(): Promise<{ socket?: net.Socket, error?: Error }> {
     return await new Promise(resolve => {
       const socket = net.createConnection(this.config.socketPath, () => {
         resolve({ socket });
@@ -165,55 +129,18 @@ to restart the browser session.`);
     return false;
   }
 
-  private async _startDaemonIfNeeded() {
-    if (this._connection)
-      return this._connection;
-
-    let { socket } = await this._connect();
-    if (!socket)
-      socket = await this._startDaemon();
-
-    this._connection = new SocketConnection(socket, this.config.version);
-    this._connection.onmessage = message => this._onMessage(message);
-    this._connection.onclose = () => this.disconnect();
-    return this._connection;
-  }
-
-  private _onMessage(object: { id: number, error?: string, result: any }) {
-    if (object.id && this._callbacks.has(object.id)) {
-      const callback = this._callbacks.get(object.id)!;
-      this._callbacks.delete(object.id);
-      if (object.error)
-        callback.reject(new Error(object.error));
-      else
-        callback.resolve(object.result);
-    } else if (object.id) {
-      throw new Error(`Unexpected message id: ${object.id}`);
-    } else {
-      throw new Error(`Unexpected message without id: ${JSON.stringify(object)}`);
-    }
-  }
-
-  private _sessionFile(suffix: string) {
-    return path.resolve(this._clientInfo.daemonProfilesDir, `${this.name}${suffix}`);
-  }
-
   private async _startDaemon(): Promise<net.Socket> {
-    await fs.promises.mkdir(this._clientInfo.daemonProfilesDir, { recursive: true });
+    await fs.promises.mkdir(this._sessionFile.daemonDir, { recursive: true });
     const cliPath = path.join(__dirname, '../../../cli.js');
+    await fs.promises.writeFile(this._sessionFile.file, JSON.stringify(this.config, null, 2));
 
-    const sessionConfigFile = this._sessionFile('.session');
-    this.config.version = this._clientInfo.version;
-    this.config.timestamp = Date.now();
-    await fs.promises.writeFile(sessionConfigFile, JSON.stringify(this.config, null, 2));
-
-    const errLog = this._sessionFile('.err');
+    const errLog = this._sessionFile.file.replace(/\.session$/, '.err');
     const err = fs.openSync(errLog, 'w');
 
     const args = [
       cliPath,
       'run-cli-server',
-      `--daemon-session=${sessionConfigFile}`,
+      `--daemon-session=${this._sessionFile.file}`,
     ];
 
     const child = spawn(process.execPath, args, {
@@ -275,7 +202,7 @@ to restart the browser session.`);
       console.log(`---`);
 
       this.config.timestamp = Date.now();
-      await fs.promises.writeFile(sessionConfigFile, JSON.stringify(this.config, null, 2));
+      await fs.promises.writeFile(this._sessionFile.file, JSON.stringify(this.config, null, 2));
       return socket;
     }
 
@@ -284,12 +211,16 @@ to restart the browser session.`);
   }
 
   private async _stopDaemon(): Promise<void> {
+    const { socket, error: socketError } = await this._connect();
+    if (!socket) {
+      console.log(`Browser '${this.name}' is not open.${socketError ? ' Error: ' + socketError.message : ''}`);
+      return;
+    }
+
     let error: Error | undefined;
-    await this._send('stop').catch(e => { error = e; });
+    await SocketConnectionClient.sendAndClose(socket, 'stop', {}).catch(e => error = e);
     if (os.platform() !== 'win32')
       await fs.promises.unlink(this.config.socketPath).catch(() => {});
-
-    this.disconnect();
     if (!this.config.cli.persistent)
       await this.deleteSessionConfig();
     if (error && !error?.message?.includes('Session closed'))
@@ -297,7 +228,7 @@ to restart the browser session.`);
   }
 
   async deleteSessionConfig() {
-    await fs.promises.rm(this._sessionFile('.session')).catch(() => {});
+    await fs.promises.rm(this._sessionFile.file).catch(() => {});
   }
 }
 
@@ -328,5 +259,65 @@ async function parseResolvedConfig(errLog: string): Promise<FullConfig | null> {
     return JSON.parse(jsonString) as FullConfig;
   } catch {
     return null;
+  }
+}
+
+class SocketConnectionClient {
+  private _connection: SocketConnection;
+  private _nextMessageId = 1;
+  private _callbacks = new Map<number, { resolve: (o: any) => void, reject: (e: Error) => void, method: string, params: any }>();
+
+  constructor(socket: net.Socket) {
+    this._connection = new SocketConnection(socket);
+    this._connection.onmessage = message => this._onMessage(message);
+    this._connection.onclose = () => this._rejectCallbacks();
+  }
+
+  async send(method: string, params: any = {}): Promise<any> {
+    const messageId = this._nextMessageId++;
+    const message = {
+      id: messageId,
+      method,
+      params,
+    };
+    const responsePromise = new Promise<any>((resolve, reject) => {
+      this._callbacks.set(messageId, { resolve, reject, method, params });
+    });
+    const [result] = await Promise.all([responsePromise, this._connection.send(message)]);
+    return result;
+  }
+
+  static async sendAndClose(socket: net.Socket, method: string, params: any = {}): Promise<any> {
+    const connection = new SocketConnectionClient(socket);
+    try {
+      return await connection.send(method, params);
+    } finally {
+      connection.close();
+    }
+  }
+
+  close() {
+    this._connection.close();
+  }
+
+  private _onMessage(object: { id: number, error?: string, result: any }) {
+    if (object.id && this._callbacks.has(object.id)) {
+      const callback = this._callbacks.get(object.id)!;
+      this._callbacks.delete(object.id);
+      if (object.error)
+        callback.reject(new Error(object.error));
+      else
+        callback.resolve(object.result);
+    } else if (object.id) {
+      throw new Error(`Unexpected message id: ${object.id}`);
+    } else {
+      throw new Error(`Unexpected message without id: ${JSON.stringify(object)}`);
+    }
+  }
+
+  private _rejectCallbacks() {
+    for (const callback of this._callbacks.values())
+      callback.reject(new Error('Session closed'));
+    this._callbacks.clear();
   }
 }

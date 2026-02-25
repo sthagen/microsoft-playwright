@@ -17,6 +17,7 @@
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
+import crypto from 'crypto';
 import net from 'net';
 
 import { chromium } from 'playwright-core';
@@ -28,7 +29,8 @@ import { Session } from './session';
 
 import type http from 'http';
 import type { Page } from 'playwright-core';
-import type { ClientInfo, SessionConfig } from './registry';
+import type { ClientInfo, SessionFile } from './registry';
+import type { SessionStatus } from '@devtools/sessionModel';
 
 function readBody(request: http.IncomingMessage): Promise<any> {
   return new Promise((resolve, reject) => {
@@ -46,6 +48,13 @@ function readBody(request: http.IncomingMessage): Promise<any> {
   });
 }
 
+async function parseRequest(request: http.IncomingMessage): Promise<{ sessionFile: SessionFile, args?: any }> {
+  const body = await readBody(request);
+  if (!body.sessionFile)
+    throw new Error('Dashboard app is too old, please close it and open again');
+  return { sessionFile: body.sessionFile };
+}
+
 function sendJSON(response: http.ServerResponse, data: any, statusCode = 200) {
   response.statusCode = statusCode;
   response.setHeader('Content-Type', 'application/json');
@@ -58,13 +67,13 @@ async function handleApiRequest(clientInfo: ClientInfo, request: http.IncomingMe
 
   if (apiPath === '/api/sessions/list' && request.method === 'GET') {
     const registry = await Registry.load();
-    const sessions: { config: SessionConfig, canConnect: boolean }[] = [];
-    for (const [, entries] of registry.entryMap()) {
-      for (const entry of entries) {
-        const session = new Session(clientInfo, entry.config);
+    const sessions: SessionStatus[] = [];
+    for (const [, files] of registry.entryMap()) {
+      for (const file of files) {
+        const session = new Session(file);
         const canConnect = await session.canConnect();
-        if (canConnect || entry.config.cli.persistent)
-          sessions.push({ config: entry.config, canConnect });
+        if (canConnect || file.config.cli.persistent)
+          sessions.push({ file: file, canConnect });
       }
     }
     sendJSON(response, { sessions, clientInfo });
@@ -72,39 +81,31 @@ async function handleApiRequest(clientInfo: ClientInfo, request: http.IncomingMe
   }
 
   if (apiPath === '/api/sessions/close' && request.method === 'POST') {
-    const body = await readBody(request);
-    if (!body.config)
-      throw new Error('Missing "config" parameter');
-    await new Session(clientInfo, body.config).stop();
+    const { sessionFile } = await parseRequest(request);
+    await new Session(sessionFile).stop();
     sendJSON(response, { success: true });
     return;
   }
 
   if (apiPath === '/api/sessions/delete-data' && request.method === 'POST') {
-    const body = await readBody(request);
-    if (!body.config)
-      throw new Error('Missing "config" parameter');
-    await new Session(clientInfo, body.config).deleteData();
+    const { sessionFile } = await parseRequest(request);
+    await new Session(sessionFile).deleteData();
     sendJSON(response, { success: true });
     return;
   }
 
   if (apiPath === '/api/sessions/run' && request.method === 'POST') {
-    const body = await readBody(request);
-    if (!body.config)
-      throw new Error('Missing "config" parameter');
-    if (!body.args)
+    const { sessionFile, args } = await parseRequest(request);
+    if (!args)
       throw new Error('Missing "args" parameter');
-    const result = await new Session(clientInfo, body.config).run(body.args);
+    const result = await new Session(sessionFile).run(clientInfo, args);
     sendJSON(response, { result });
     return;
   }
 
   if (apiPath === '/api/sessions/devtools-start' && request.method === 'POST') {
-    const body = await readBody(request);
-    if (!body.config)
-      throw new Error('Missing "config" parameter');
-    const result = await new Session(clientInfo, body.config).run({ _: ['devtools-start'] });
+    const { sessionFile } = await parseRequest(request);
+    const result = await new Session(sessionFile).run(clientInfo, { _: ['devtools-start'] });
     const match = result.text.match(/Server is listening on: (.+)/);
     if (!match)
       throw new Error('Failed to parse screencast URL from: ' + result.text);
@@ -116,7 +117,7 @@ async function handleApiRequest(clientInfo: ClientInfo, request: http.IncomingMe
   response.end(JSON.stringify({ error: 'Not found' }));
 }
 
-async function openDevToolsApp(): Promise<Page> {
+async function openDevToolsApp(): Promise<{ page: Page, url: string }> {
   const httpServer = new HttpServer();
   const libDir = require.resolve('playwright-core/package.json');
   const devtoolsDir = path.join(path.dirname(libDir), 'lib/vite/devtools');
@@ -143,7 +144,7 @@ async function openDevToolsApp(): Promise<Page> {
 
   const { page } = await launchApp('devtools');
   await page.goto(url);
-  return page;
+  return { page, url };
 }
 
 async function launchApp(appName: string) {
@@ -212,13 +213,15 @@ function socketsDirectory() {
 }
 
 function devtoolsSocketPath() {
+  const suffix = process.env.PLAYWRIGHT_DAEMON_SESSION_DIR ? crypto.createHash('sha256').update(process.env.PLAYWRIGHT_DAEMON_SESSION_DIR).digest('hex').substring(0, 8) : '';
   return process.platform === 'win32'
-    ? `\\\\.\\pipe\\playwright-devtools-${process.env.USERNAME || 'default'}`
-    : path.join(socketsDirectory(), 'devtools.sock');
+    ? `\\\\.\\pipe\\playwright-devtools-${process.env.USERNAME || 'default'}${suffix}`
+    : path.join(socketsDirectory(), `devtools${suffix}.sock`);
 }
 
-async function acquireSingleton(): Promise<net.Server> {
+async function acquireSingleton(): Promise<net.Server | string> {
   const socketPath = devtoolsSocketPath();
+  await fs.promises.mkdir(path.dirname(socketPath), { recursive: true });
 
   return await new Promise((resolve, reject) => {
     const server = net.createServer();
@@ -228,8 +231,11 @@ async function acquireSingleton(): Promise<net.Server> {
         return reject(err);
       const client = net.connect(socketPath, () => {
         client.write('bringToFront');
-        client.end();
-        reject(new Error('already running'));
+      });
+      let data = '';
+      client.on('data', chunk => { data += chunk.toString(); });
+      client.on('end', () => {
+        resolve(data);
       });
       client.on('error', () => {
         if (process.platform !== 'win32')
@@ -241,20 +247,36 @@ async function acquireSingleton(): Promise<net.Server> {
 }
 
 async function main() {
-  let server: net.Server | undefined;
-  process.on('exit', () => server?.close());
-  try {
-    server = await acquireSingleton();
-  } catch {
-    return;
-  }
-  const page = await openDevToolsApp();
-  server.on('connection', socket => {
-    socket.on('data', data => {
-      if (data.toString() === 'bringToFront')
-        page?.bringToFront().catch(() => {});
+  const result = await acquireSingleton();
+  let status = typeof result === 'string' ? result : 'Starting';
+
+  if (typeof result !== 'string') {
+    const server = result;
+    process.on('exit', () => server.close());
+
+    let page: Page | undefined = undefined;
+    server.on('connection', socket => {
+      socket.on('data', data => {
+        if (data.toString() === 'bringToFront')
+          page?.bringToFront().catch(() => {});
+        socket.end(status);
+      });
     });
-  });
+
+    const app = await openDevToolsApp();
+    page = app.page;
+    status = `DevTools pid ${process.pid} listening on ${app.url}`;
+  }
+
+
+  // eslint-disable-next-line no-console
+  console.log(status);
+  // eslint-disable-next-line no-console
+  console.log('<EOF>');
 }
 
-void main();
+void main().catch(e => {
+  // eslint-disable-next-line no-console
+  console.log(e);
+  throw e;
+});

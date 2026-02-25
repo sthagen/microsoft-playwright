@@ -14,43 +14,10 @@
  * limitations under the License.
  */
 
-*,
-*::before,
-*::after {
-  box-sizing: border-box;
-  margin: 0;
-  padding: 0;
-}
+import { test, expect } from './cli-fixtures';
 
-html,
-body {
-  height: 100%;
-}
-
-body {
-  background: var(--color-canvas-default);
-  color: var(--color-fg-default);
-}
-
-body * {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-}
-
-#root {
-  height: 100%;
-}
-
-button {
-  background: none;
-  border: none;
-  color: var(--color-fg-muted);
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-}
-
-button:hover {
-  color: var(--color-fg-default);
-}
+test('running show twice gets same PID', async ({ cli }) => {
+  const one = await cli('show', { env: { PWTEST_UNDER_TEST: '1' } });
+  const two = await cli('show', { env: { PWTEST_UNDER_TEST: '1' } });
+  expect(one.output).toEqual(two.output);
+});
