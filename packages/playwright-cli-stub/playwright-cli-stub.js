@@ -1,7 +1,8 @@
+#!/usr/bin/env node
 /**
  * Copyright (c) Microsoft Corporation.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
+ * Licensed under the Apache License, Version 2.0 (the 'License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
@@ -14,10 +15,9 @@
  * limitations under the License.
  */
 
-import { test, expect } from './cli-fixtures';
+const { program } = require('playwright/lib/cli/client/program');
 
-test('running show twice gets same PID', async ({ cli }) => {
-  const one = await cli('show', { env: { PWTEST_UNDER_TEST: '1' } });
-  const two = await cli('show', { env: { PWTEST_UNDER_TEST: '1' } });
-  expect(one.output).toEqual(two.output);
+program().catch(e => {
+  console.error(e.message);
+  process.exit(1);
 });

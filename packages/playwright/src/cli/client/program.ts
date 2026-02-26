@@ -193,29 +193,9 @@ export async function program(options?: { embedderVersion?: string}) {
       const daemonScript = path.join(__dirname, 'devtoolsApp.js');
       const child = spawn(process.execPath, [daemonScript], {
         detached: true,
-        stdio: ['ignore', 'pipe', 'ignore'],
+        stdio: 'ignore',
       });
-
-      const status = await new Promise<string>((resolve, reject) => {
-        let outLog = '';
-        child.stdout!.on('data', (data: Buffer) => {
-          outLog += data.toString();
-          if (outLog.includes('<EOF>'))
-            resolve(outLog.split('<EOF>')[0]);
-        });
-        child.on('close', code => {
-          process.exitCode = code || 1;
-          reject(new Error(outLog));
-        });
-      });
-
-      child.stdout!.destroy();
       child.unref();
-
-      // TODO: update check-deps to allow importing isUnderTest()
-      if (process.env.PWTEST_UNDER_TEST)
-        console.log(status);
-
       return;
     }
     default: {
@@ -264,7 +244,8 @@ async function ensureConfiguredBrowserInstalled() {
   if (fs.existsSync(defaultConfigFile())) {
     const { registry } = await import('playwright-core/lib/server/registry/index');
     // Config exists, ensure configured browser is installed
-    const config = JSON.parse(await fs.promises.readFile(defaultConfigFile(), 'utf-8')) as Config;
+    const data = await fs.promises.readFile(defaultConfigFile(), 'utf-8');
+    const config = JSON.parse(data.charCodeAt(0) === 0xFEFF ? data.slice(1) : data) as Config;
     const browserName = config.browser?.browserName ?? 'chromium';
     const channel = config.browser?.launchOptions?.channel;
     if (!channel || channel.startsWith('chromium')) {
