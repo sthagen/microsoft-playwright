@@ -2146,6 +2146,7 @@ export interface PageChannel extends PageEventTarget, EventTargetChannel {
   startCSSCoverage(params: PageStartCSSCoverageParams, progress?: Progress): Promise<PageStartCSSCoverageResult>;
   stopCSSCoverage(params?: PageStopCSSCoverageParams, progress?: Progress): Promise<PageStopCSSCoverageResult>;
   bringToFront(params?: PageBringToFrontParams, progress?: Progress): Promise<PageBringToFrontResult>;
+  pickLocator(params?: PagePickLocatorParams, progress?: Progress): Promise<PagePickLocatorResult>;
   videoStart(params: PageVideoStartParams, progress?: Progress): Promise<PageVideoStartResult>;
   videoStop(params?: PageVideoStopParams, progress?: Progress): Promise<PageVideoStopResult>;
   updateSubscription(params: PageUpdateSubscriptionParams, progress?: Progress): Promise<PageUpdateSubscriptionResult>;
@@ -2652,6 +2653,11 @@ export type PageStopCSSCoverageResult = {
 export type PageBringToFrontParams = {};
 export type PageBringToFrontOptions = {};
 export type PageBringToFrontResult = void;
+export type PagePickLocatorParams = {};
+export type PagePickLocatorOptions = {};
+export type PagePickLocatorResult = {
+  selector: string,
+};
 export type PageVideoStartParams = {
   size?: {
     width: number,
@@ -4163,6 +4169,7 @@ export interface ResponseChannel extends ResponseEventTarget, Channel {
   securityDetails(params?: ResponseSecurityDetailsParams, progress?: Progress): Promise<ResponseSecurityDetailsResult>;
   serverAddr(params?: ResponseServerAddrParams, progress?: Progress): Promise<ResponseServerAddrResult>;
   rawResponseHeaders(params?: ResponseRawResponseHeadersParams, progress?: Progress): Promise<ResponseRawResponseHeadersResult>;
+  httpVersion(params?: ResponseHttpVersionParams, progress?: Progress): Promise<ResponseHttpVersionResult>;
   sizes(params?: ResponseSizesParams, progress?: Progress): Promise<ResponseSizesResult>;
 }
 export type ResponseBodyParams = {};
@@ -4184,6 +4191,11 @@ export type ResponseRawResponseHeadersParams = {};
 export type ResponseRawResponseHeadersOptions = {};
 export type ResponseRawResponseHeadersResult = {
   headers: NameValue[],
+};
+export type ResponseHttpVersionParams = {};
+export type ResponseHttpVersionOptions = {};
+export type ResponseHttpVersionResult = {
+  value: string,
 };
 export type ResponseSizesParams = {};
 export type ResponseSizesOptions = {};

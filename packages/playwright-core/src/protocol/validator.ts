@@ -1530,6 +1530,10 @@ scheme.PageStopCSSCoverageResult = tObject({
 });
 scheme.PageBringToFrontParams = tOptional(tObject({}));
 scheme.PageBringToFrontResult = tOptional(tObject({}));
+scheme.PagePickLocatorParams = tOptional(tObject({}));
+scheme.PagePickLocatorResult = tObject({
+  selector: tString,
+});
 scheme.PageVideoStartParams = tObject({
   size: tOptional(tObject({
     width: tInt,
@@ -2430,6 +2434,10 @@ scheme.ResponseServerAddrResult = tObject({
 scheme.ResponseRawResponseHeadersParams = tOptional(tObject({}));
 scheme.ResponseRawResponseHeadersResult = tObject({
   headers: tArray(tType('NameValue')),
+});
+scheme.ResponseHttpVersionParams = tOptional(tObject({}));
+scheme.ResponseHttpVersionResult = tObject({
+  value: tString,
 });
 scheme.ResponseSizesParams = tOptional(tObject({}));
 scheme.ResponseSizesResult = tObject({

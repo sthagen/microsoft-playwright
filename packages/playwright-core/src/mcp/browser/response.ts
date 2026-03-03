@@ -20,6 +20,7 @@ import path from 'path';
 import { debug } from '../../utilsBundle';
 import { renderModalStates, shouldIncludeMessage } from './tab';
 import { scaleImageToFitMessage } from './tools/screenshot';
+import { firstRootPath } from '../sdk/server';
 
 import type { TabHeader } from './tab';
 import type { CallToolResult, ImageContent, TextContent } from '@modelcontextprotocol/sdk/types.js';
@@ -47,23 +48,22 @@ export class Response {
   private _context: Context;
   private _includeSnapshot: 'none' | 'full' | 'incremental' = 'none';
   private _includeSnapshotFileName: string | undefined;
+  private _isClose: boolean = false;
 
   readonly toolName: string;
   readonly toolArgs: Record<string, any>;
-  private _clientWorkspace: string | undefined;
+  private _clientWorkspace: string;
   private _imageResults: { data: Buffer, imageType: 'png' | 'jpeg' }[] = [];
 
   constructor(context: Context, toolName: string, toolArgs: Record<string, any>, relativeTo?: string) {
     this._context = context;
     this.toolName = toolName;
     this.toolArgs = toolArgs;
-    this._clientWorkspace = relativeTo ?? context.firstRootPath();
+    this._clientWorkspace = relativeTo ?? firstRootPath(context.options.clientInfo);
   }
 
   private _computRelativeTo(fileName: string): string {
-    if (this._clientWorkspace)
-      return path.relative(this._clientWorkspace, fileName);
-    return fileName;
+    return path.relative(this._clientWorkspace, fileName);
   }
 
   async resolveClientFile(template: FilenameTemplate, title: string): Promise<ResolvedFile> {
@@ -105,6 +105,10 @@ export class Response {
 
   async registerImageResult(data: Buffer, imageType: 'png' | 'jpeg') {
     this._imageResults.push({ data, imageType });
+  }
+
+  setClose() {
+    this._isClose = true;
   }
 
   addError(error: string) {
@@ -162,6 +166,7 @@ export class Response {
 
     return {
       content,
+      ...(this._isClose ? { isClose: true } : {}),
       ...(sections.some(section => section.isError) ? { isError: true } : {}),
     };
   }
@@ -192,6 +197,8 @@ export class Response {
         addSection('Open tabs', renderTabsMarkdown(tabHeaders));
       addSection('Page', renderTabMarkdown(tabHeaders.find(h => h.current) ?? tabHeaders[0]));
     }
+    if (this._context.tabs().length === 0)
+      this._isClose = true;
 
     // Handle modal states.
     if (tabSnapshot?.modalStates.length)

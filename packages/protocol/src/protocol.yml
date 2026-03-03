@@ -2064,6 +2064,11 @@ Page:
     bringToFront:
       title: Bring to front
 
+    pickLocator:
+      title: Pick locator
+      returns:
+        selector: string
+
     videoStart:
       title: Start video recording
       group: configuration
@@ -3673,6 +3678,11 @@ Response:
         headers:
           type: array
           items: NameValue
+
+    httpVersion:
+      internal: true
+      returns:
+        value: string
 
     sizes:
       internal: true
