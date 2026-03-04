@@ -315,7 +315,7 @@ export interface Page {
    * [`script`](https://playwright.dev/docs/api/class-page#page-add-init-script-option-script) (only supported when
    * passing a function).
    */
-  addInitScript<Arg>(script: PageFunction<Arg, any> | { path?: string, content?: string }, arg?: Arg): Promise<void>;
+  addInitScript<Arg>(script: PageFunction<Arg, any> | { path?: string, content?: string }, arg?: Arg): Promise<Disposable>;
 
   /**
    * **NOTE** Use locator-based [page.locator(selector[, options])](https://playwright.dev/docs/api/class-page#page-locator)
@@ -920,7 +920,7 @@ export interface Page {
    * @param callback Callback function that will be called in the Playwright's context.
    * @param options
    */
-  exposeBinding(name: string, playwrightBinding: (source: BindingSource, arg: JSHandle) => any, options: { handle: true }): Promise<void>;
+  exposeBinding(name: string, playwrightBinding: (source: BindingSource, arg: JSHandle) => any, options: { handle: true }): Promise<Disposable>;
   /**
    * The method adds a function called
    * [`name`](https://playwright.dev/docs/api/class-page#page-expose-binding-option-name) on the `window` object of
@@ -972,7 +972,7 @@ export interface Page {
    * @param callback Callback function that will be called in the Playwright's context.
    * @param options
    */
-  exposeBinding(name: string, playwrightBinding: (source: BindingSource, ...args: any[]) => any, options?: { handle?: boolean }): Promise<void>;
+  exposeBinding(name: string, playwrightBinding: (source: BindingSource, ...args: any[]) => any, options?: { handle?: boolean }): Promise<Disposable>;
 
   /**
    * Removes all the listeners of the given type (or all registered listeners if no type given). Allows to wait for
@@ -2758,7 +2758,7 @@ export interface Page {
    * @param name Name of the function on the window object
    * @param callback Callback function which will be called in Playwright's context.
    */
-  exposeFunction(name: string, callback: Function): Promise<void>;
+  exposeFunction(name: string, callback: Function): Promise<Disposable>;
 
   /**
    * **NOTE** Use locator-based [locator.fill(value[, options])](https://playwright.dev/docs/api/class-locator#locator-fill)
@@ -3503,6 +3503,24 @@ export interface Page {
   }): Promise<string>;
 
   /**
+   * Returns the [Inspector](https://playwright.dev/docs/api/class-inspector) object associated with this page.
+   *
+   * **Usage**
+   *
+   * ```js
+   * const inspector = page.inspector();
+   * inspector.on('screencastFrame', data => {
+   *   console.log('received frame, jpeg size:', data.length);
+   * });
+   * await inspector.startScreencast();
+   * // ... perform actions ...
+   * await inspector.stopScreencast();
+   * ```
+   *
+   */
+  inspector(): Inspector;
+
+  /**
    * **NOTE** Use locator-based [locator.isChecked([options])](https://playwright.dev/docs/api/class-locator#locator-is-checked)
    * instead. Read more about [locators](https://playwright.dev/docs/locators).
    *
@@ -3903,23 +3921,6 @@ export interface Page {
      */
     width?: string|number;
   }): Promise<Buffer>;
-
-  /**
-   * Enters pick locator mode where hovering over page elements highlights them and shows the corresponding locator.
-   * Once the user clicks an element, the mode is deactivated and the
-   * [Locator](https://playwright.dev/docs/api/class-locator) for the picked element is returned.
-   *
-   * **NOTE** This method requires Playwright to be started in a headed mode.
-   *
-   * **Usage**
-   *
-   * ```js
-   * const locator = await page.pickLocator();
-   * console.log(locator);
-   * ```
-   *
-   */
-  pickLocator(): Promise<Locator>;
 
   /**
    * **NOTE** Use locator-based [locator.press(key[, options])](https://playwright.dev/docs/api/class-locator#locator-press)
@@ -8470,7 +8471,7 @@ export interface BrowserContext {
    * @param callback Callback function that will be called in the Playwright's context.
    * @param options
    */
-  exposeBinding(name: string, playwrightBinding: (source: BindingSource, arg: JSHandle) => any, options: { handle: true }): Promise<void>;
+  exposeBinding(name: string, playwrightBinding: (source: BindingSource, arg: JSHandle) => any, options: { handle: true }): Promise<Disposable>;
   /**
    * The method adds a function called
    * [`name`](https://playwright.dev/docs/api/class-browsercontext#browser-context-expose-binding-option-name) on the
@@ -8518,7 +8519,7 @@ export interface BrowserContext {
    * @param callback Callback function that will be called in the Playwright's context.
    * @param options
    */
-  exposeBinding(name: string, playwrightBinding: (source: BindingSource, ...args: any[]) => any, options?: { handle?: boolean }): Promise<void>;
+  exposeBinding(name: string, playwrightBinding: (source: BindingSource, ...args: any[]) => any, options?: { handle?: boolean }): Promise<Disposable>;
 
   /**
    * Adds a script which would be evaluated in one of the following scenarios:
@@ -8555,7 +8556,7 @@ export interface BrowserContext {
    * [`script`](https://playwright.dev/docs/api/class-browsercontext#browser-context-add-init-script-option-script)
    * (only supported when passing a function).
    */
-  addInitScript<Arg>(script: PageFunction<Arg, any> | { path?: string, content?: string }, arg?: Arg): Promise<void>;
+  addInitScript<Arg>(script: PageFunction<Arg, any> | { path?: string, content?: string }, arg?: Arg): Promise<Disposable>;
 
   /**
    * Removes all the listeners of the given type (or all registered listeners if no type given). Allows to wait for
@@ -9344,7 +9345,7 @@ export interface BrowserContext {
    * @param name Name of the function on the window object.
    * @param callback Callback function that will be called in the Playwright's context.
    */
-  exposeFunction(name: string, callback: Function): Promise<void>;
+  exposeFunction(name: string, callback: Function): Promise<Disposable>;
 
   /**
    * Grants specified permissions to the browser context. Only grants corresponding permissions to the given origin if
@@ -19531,6 +19532,23 @@ export interface Dialog {
 }
 
 /**
+ * [Disposable](https://playwright.dev/docs/api/class-disposable) is returned from various methods to allow undoing
+ * the corresponding action. For example,
+ * [page.addInitScript(script[, arg])](https://playwright.dev/docs/api/class-page#page-add-init-script) returns a
+ * [Disposable](https://playwright.dev/docs/api/class-disposable) that can be used to remove the init script.
+ */
+export interface Disposable {
+  /**
+   * Removes the associated resource. For example, removes the init script installed via
+   * [page.addInitScript(script[, arg])](https://playwright.dev/docs/api/class-page#page-add-init-script) or
+   * [browserContext.addInitScript(script[, arg])](https://playwright.dev/docs/api/class-browsercontext#browser-context-add-init-script).
+   */
+  dispose(): Promise<void>;
+
+  [Symbol.asyncDispose](): Promise<void>;
+}
+
+/**
  * [Download](https://playwright.dev/docs/api/class-download) objects are dispatched by page via the
  * [page.on('download')](https://playwright.dev/docs/api/class-page#page-event-download) event.
  *
@@ -20410,6 +20428,246 @@ export interface FrameLocator {
    *
    */
   owner(): Locator;
+}
+
+/**
+ * Interface to the Playwright inspector.
+ */
+export interface Inspector {
+  /**
+   * Emitted for each captured JPEG screencast frame while the screencast is running.
+   *
+   * **Usage**
+   *
+   * ```js
+   * const inspector = page.inspector();
+   * inspector.on('screencastframe', ({ data, width, height }) => {
+   *   console.log(`frame ${width}x${height}, jpeg size: ${data.length}`);
+   *   require('fs').writeFileSync('frame.jpg', data);
+   * });
+   * await inspector.startScreencast({ size: { width: 1280, height: 720 } });
+   * // ... perform actions ...
+   * await inspector.stopScreencast();
+   * ```
+   *
+   */
+  on(event: 'screencastframe', listener: (data: {
+    /**
+     * JPEG-encoded frame data.
+     */
+    data: Buffer;
+
+    /**
+     * Frame width in pixels.
+     */
+    width: number;
+
+    /**
+     * Frame height in pixels.
+     */
+    height: number;
+  }) => any): this;
+
+  /**
+   * Adds an event listener that will be automatically removed after it is triggered once. See `addListener` for more information about this event.
+   */
+  once(event: 'screencastframe', listener: (data: {
+    /**
+     * JPEG-encoded frame data.
+     */
+    data: Buffer;
+
+    /**
+     * Frame width in pixels.
+     */
+    width: number;
+
+    /**
+     * Frame height in pixels.
+     */
+    height: number;
+  }) => any): this;
+
+  /**
+   * Emitted for each captured JPEG screencast frame while the screencast is running.
+   *
+   * **Usage**
+   *
+   * ```js
+   * const inspector = page.inspector();
+   * inspector.on('screencastframe', ({ data, width, height }) => {
+   *   console.log(`frame ${width}x${height}, jpeg size: ${data.length}`);
+   *   require('fs').writeFileSync('frame.jpg', data);
+   * });
+   * await inspector.startScreencast({ size: { width: 1280, height: 720 } });
+   * // ... perform actions ...
+   * await inspector.stopScreencast();
+   * ```
+   *
+   */
+  addListener(event: 'screencastframe', listener: (data: {
+    /**
+     * JPEG-encoded frame data.
+     */
+    data: Buffer;
+
+    /**
+     * Frame width in pixels.
+     */
+    width: number;
+
+    /**
+     * Frame height in pixels.
+     */
+    height: number;
+  }) => any): this;
+
+  /**
+   * Removes an event listener added by `on` or `addListener`.
+   */
+  removeListener(event: 'screencastframe', listener: (data: {
+    /**
+     * JPEG-encoded frame data.
+     */
+    data: Buffer;
+
+    /**
+     * Frame width in pixels.
+     */
+    width: number;
+
+    /**
+     * Frame height in pixels.
+     */
+    height: number;
+  }) => any): this;
+
+  /**
+   * Removes an event listener added by `on` or `addListener`.
+   */
+  off(event: 'screencastframe', listener: (data: {
+    /**
+     * JPEG-encoded frame data.
+     */
+    data: Buffer;
+
+    /**
+     * Frame width in pixels.
+     */
+    width: number;
+
+    /**
+     * Frame height in pixels.
+     */
+    height: number;
+  }) => any): this;
+
+  /**
+   * Emitted for each captured JPEG screencast frame while the screencast is running.
+   *
+   * **Usage**
+   *
+   * ```js
+   * const inspector = page.inspector();
+   * inspector.on('screencastframe', ({ data, width, height }) => {
+   *   console.log(`frame ${width}x${height}, jpeg size: ${data.length}`);
+   *   require('fs').writeFileSync('frame.jpg', data);
+   * });
+   * await inspector.startScreencast({ size: { width: 1280, height: 720 } });
+   * // ... perform actions ...
+   * await inspector.stopScreencast();
+   * ```
+   *
+   */
+  prependListener(event: 'screencastframe', listener: (data: {
+    /**
+     * JPEG-encoded frame data.
+     */
+    data: Buffer;
+
+    /**
+     * Frame width in pixels.
+     */
+    width: number;
+
+    /**
+     * Frame height in pixels.
+     */
+    height: number;
+  }) => any): this;
+
+  /**
+   * Cancels an ongoing
+   * [inspector.pickLocator()](https://playwright.dev/docs/api/class-inspector#inspector-pick-locator) call by
+   * deactivating pick locator mode. If no pick locator mode is active, this method is a no-op.
+   */
+  cancelPickLocator(): Promise<void>;
+
+  /**
+   * Enters pick locator mode where hovering over page elements highlights them and shows the corresponding locator.
+   * Once the user clicks an element, the mode is deactivated and the
+   * [Locator](https://playwright.dev/docs/api/class-locator) for the picked element is returned.
+   *
+   * **Usage**
+   *
+   * ```js
+   * const locator = await page.inspector().pickLocator();
+   * console.log(locator);
+   * ```
+   *
+   */
+  pickLocator(): Promise<Locator>;
+
+  /**
+   * Starts capturing screencast frames. Frames are emitted as
+   * [inspector.on('screencastframe')](https://playwright.dev/docs/api/class-inspector#inspector-event-screencast-frame)
+   * events.
+   *
+   * **Usage**
+   *
+   * ```js
+   * const inspector = page.inspector();
+   * inspector.on('screencastframe', ({ data, width, height }) => {
+   *   console.log(`frame ${width}x${height}, size: ${data.length}`);
+   * });
+   * await inspector.startScreencast({ size: { width: 800, height: 600 } });
+   * // ... perform actions ...
+   * await inspector.stopScreencast();
+   * ```
+   *
+   * @param options
+   */
+  startScreencast(options?: {
+    /**
+     * Optional dimensions for the screencast frames. If not specified, the current page viewport size is used.
+     */
+    size?: {
+      /**
+       * Frame width in pixels.
+       */
+      width: number;
+
+      /**
+       * Frame height in pixels.
+       */
+      height: number;
+    };
+  }): Promise<void>;
+
+  /**
+   * Stops the screencast started with
+   * [inspector.startScreencast([options])](https://playwright.dev/docs/api/class-inspector#inspector-start-screencast).
+   *
+   * **Usage**
+   *
+   * ```js
+   * await inspector.startScreencast();
+   * // ... perform actions ...
+   * await inspector.stopScreencast();
+   * ```
+   *
+   */
+  stopScreencast(): Promise<void>;
 }
 
 /**

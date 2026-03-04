@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { scaleImageToSize } from '../../../server/utils/imageUtils';
+import { scaleImageToSize } from '../../../utils/isomorphic/imageUtils';
 import { jpegjs, PNG } from '../../../utilsBundle';
 import { formatObject } from '../../../utils/isomorphic/stringUtils';
 
@@ -50,6 +50,7 @@ const screenshot = defineTabTool({
       type: fileType,
       quality: fileType === 'png' ? undefined : 90,
       scale: 'css',
+      ...tab.actionTimeoutOptions,
       ...(params.fullPage !== undefined && { fullPage: params.fullPage })
     };
 

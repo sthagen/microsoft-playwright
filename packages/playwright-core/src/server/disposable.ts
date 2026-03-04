@@ -1,8 +1,7 @@
-#!/usr/bin/env node
 /**
  * Copyright (c) Microsoft Corporation.
  *
- * Licensed under the Apache License, Version 2.0 (the 'License");
+ * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
@@ -15,9 +14,18 @@
  * limitations under the License.
  */
 
-const { program } = require('playwright-core/lib/cli/client/program');
+import { SdkObject } from './instrumentation';
 
-program().catch(e => {
-  console.error(e.message);
-  process.exit(1);
-});
+import type { Page } from './page';
+import type { BrowserContext } from './browserContext';
+
+export abstract class Disposable extends SdkObject {
+  readonly parent: Page | BrowserContext;
+
+  constructor(parent: Page | BrowserContext) {
+    super(parent, 'disposable');
+    this.parent = parent;
+  }
+
+  abstract dispose(): Promise<void>;
+}

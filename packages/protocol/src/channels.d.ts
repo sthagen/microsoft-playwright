@@ -47,6 +47,7 @@ export type InitializerTraits<T> =
     T extends RequestChannel ? RequestInitializer :
     T extends ElementHandleChannel ? ElementHandleInitializer :
     T extends JSHandleChannel ? JSHandleInitializer :
+    T extends DisposableChannel ? DisposableInitializer :
     T extends WorkerChannel ? WorkerInitializer :
     T extends FrameChannel ? FrameInitializer :
     T extends PageChannel ? PageInitializer :
@@ -85,6 +86,7 @@ export type EventsTraits<T> =
     T extends RequestChannel ? RequestEvents :
     T extends ElementHandleChannel ? ElementHandleEvents :
     T extends JSHandleChannel ? JSHandleEvents :
+    T extends DisposableChannel ? DisposableEvents :
     T extends WorkerChannel ? WorkerEvents :
     T extends FrameChannel ? FrameEvents :
     T extends PageChannel ? PageEvents :
@@ -123,6 +125,7 @@ export type EventTargetTraits<T> =
     T extends RequestChannel ? RequestEventTarget :
     T extends ElementHandleChannel ? ElementHandleEventTarget :
     T extends JSHandleChannel ? JSHandleEventTarget :
+    T extends DisposableChannel ? DisposableEventTarget :
     T extends WorkerChannel ? WorkerEventTarget :
     T extends FrameChannel ? FrameEventTarget :
     T extends PageChannel ? PageEventTarget :
@@ -1739,7 +1742,9 @@ export type BrowserContextAddInitScriptParams = {
 export type BrowserContextAddInitScriptOptions = {
 
 };
-export type BrowserContextAddInitScriptResult = void;
+export type BrowserContextAddInitScriptResult = {
+  disposable: DisposableChannel,
+};
 export type BrowserContextClearCookiesParams = {
   name?: string,
   nameRegexSource?: string,
@@ -1789,7 +1794,9 @@ export type BrowserContextExposeBindingParams = {
 export type BrowserContextExposeBindingOptions = {
   needsHandle?: boolean,
 };
-export type BrowserContextExposeBindingResult = void;
+export type BrowserContextExposeBindingResult = {
+  disposable: DisposableChannel,
+};
 export type BrowserContextGrantPermissionsParams = {
   permissions: string[],
   origin?: string,
@@ -2100,6 +2107,7 @@ export interface PageEventTarget {
   on(event: 'frameDetached', callback: (params: PageFrameDetachedEvent) => void): this;
   on(event: 'locatorHandlerTriggered', callback: (params: PageLocatorHandlerTriggeredEvent) => void): this;
   on(event: 'route', callback: (params: PageRouteEvent) => void): this;
+  on(event: 'screencastFrame', callback: (params: PageScreencastFrameEvent) => void): this;
   on(event: 'webSocketRoute', callback: (params: PageWebSocketRouteEvent) => void): this;
   on(event: 'webSocket', callback: (params: PageWebSocketEvent) => void): this;
   on(event: 'worker', callback: (params: PageWorkerEvent) => void): this;
@@ -2147,6 +2155,9 @@ export interface PageChannel extends PageEventTarget, EventTargetChannel {
   stopCSSCoverage(params?: PageStopCSSCoverageParams, progress?: Progress): Promise<PageStopCSSCoverageResult>;
   bringToFront(params?: PageBringToFrontParams, progress?: Progress): Promise<PageBringToFrontResult>;
   pickLocator(params?: PagePickLocatorParams, progress?: Progress): Promise<PagePickLocatorResult>;
+  cancelPickLocator(params?: PageCancelPickLocatorParams, progress?: Progress): Promise<PageCancelPickLocatorResult>;
+  startScreencast(params: PageStartScreencastParams, progress?: Progress): Promise<PageStartScreencastResult>;
+  stopScreencast(params?: PageStopScreencastParams, progress?: Progress): Promise<PageStopScreencastResult>;
   videoStart(params: PageVideoStartParams, progress?: Progress): Promise<PageVideoStartResult>;
   videoStop(params?: PageVideoStopParams, progress?: Progress): Promise<PageVideoStopResult>;
   updateSubscription(params: PageUpdateSubscriptionParams, progress?: Progress): Promise<PageUpdateSubscriptionResult>;
@@ -2185,6 +2196,11 @@ export type PageLocatorHandlerTriggeredEvent = {
 export type PageRouteEvent = {
   route: RouteChannel,
 };
+export type PageScreencastFrameEvent = {
+  data: Binary,
+  width: number,
+  height: number,
+};
 export type PageWebSocketRouteEvent = {
   webSocketRoute: WebSocketRouteChannel,
 };
@@ -2200,7 +2216,9 @@ export type PageAddInitScriptParams = {
 export type PageAddInitScriptOptions = {
 
 };
-export type PageAddInitScriptResult = void;
+export type PageAddInitScriptResult = {
+  disposable: DisposableChannel,
+};
 export type PageCloseParams = {
   runBeforeUnload?: boolean,
   reason?: string,
@@ -2250,7 +2268,9 @@ export type PageExposeBindingParams = {
 export type PageExposeBindingOptions = {
   needsHandle?: boolean,
 };
-export type PageExposeBindingResult = void;
+export type PageExposeBindingResult = {
+  disposable: DisposableChannel,
+};
 export type PageGoBackParams = {
   timeout: number,
   waitUntil?: LifecycleEvent,
@@ -2658,6 +2678,25 @@ export type PagePickLocatorOptions = {};
 export type PagePickLocatorResult = {
   selector: string,
 };
+export type PageCancelPickLocatorParams = {};
+export type PageCancelPickLocatorOptions = {};
+export type PageCancelPickLocatorResult = void;
+export type PageStartScreencastParams = {
+  size?: {
+    width: number,
+    height: number,
+  },
+};
+export type PageStartScreencastOptions = {
+  size?: {
+    width: number,
+    height: number,
+  },
+};
+export type PageStartScreencastResult = void;
+export type PageStopScreencastParams = {};
+export type PageStopScreencastOptions = {};
+export type PageStopScreencastResult = void;
 export type PageVideoStartParams = {
   size?: {
     width: number,
@@ -2738,6 +2777,7 @@ export interface PageEvents {
   'frameDetached': PageFrameDetachedEvent;
   'locatorHandlerTriggered': PageLocatorHandlerTriggeredEvent;
   'route': PageRouteEvent;
+  'screencastFrame': PageScreencastFrameEvent;
   'webSocketRoute': PageWebSocketRouteEvent;
   'webSocket': PageWebSocketEvent;
   'worker': PageWorkerEvent;
@@ -3469,6 +3509,21 @@ export type WorkerUpdateSubscriptionResult = void;
 
 export interface WorkerEvents {
   'close': WorkerCloseEvent;
+}
+
+// ----------- Disposable -----------
+export type DisposableInitializer = {};
+export interface DisposableEventTarget {
+}
+export interface DisposableChannel extends DisposableEventTarget, Channel {
+  _type_Disposable: boolean;
+  dispose(params?: DisposableDisposeParams, progress?: Progress): Promise<DisposableDisposeResult>;
+}
+export type DisposableDisposeParams = {};
+export type DisposableDisposeOptions = {};
+export type DisposableDisposeResult = void;
+
+export interface DisposableEvents {
 }
 
 // ----------- JSHandle -----------

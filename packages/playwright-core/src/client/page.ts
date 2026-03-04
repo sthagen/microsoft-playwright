@@ -19,6 +19,7 @@ import { Artifact } from './artifact';
 import { ChannelOwner } from './channelOwner';
 import { evaluationScript } from './clientHelper';
 import { Coverage } from './coverage';
+import { Disposable } from './disposable';
 import { Download } from './download';
 import { ElementHandle, determineScreenshotType } from './elementHandle';
 import { TargetClosedError, isTargetClosedError, parseError, serializeError } from './errors';
@@ -30,6 +31,7 @@ import { Keyboard, Mouse, Touchscreen } from './input';
 import { JSHandle, assertMaxArguments, parseResult, serializeArgument } from './jsHandle';
 import { Request, Response, Route, RouteHandler, WebSocket,  WebSocketRoute, WebSocketRouteHandler, validateHeaders } from './network';
 import { Video } from './video';
+import { Inspector } from './inspector';
 import { Waiter } from './waiter';
 import { Worker } from './worker';
 import { TimeoutSettings } from './timeoutSettings';
@@ -100,6 +102,7 @@ export class Page extends ChannelOwner<channels.PageChannel> implements api.Page
   readonly _bindings = new Map<string, (source: structs.BindingSource, ...args: any[]) => any>();
   readonly _timeoutSettings: TimeoutSettings;
   private _video: Video;
+  private _inspector: Inspector;
   readonly _opener: Page | null;
   private _closeReason: string | undefined;
   _closeWasCalled: boolean = false;
@@ -134,6 +137,7 @@ export class Page extends ChannelOwner<channels.PageChannel> implements api.Page
     this._closed = initializer.isClosed;
     this._opener = Page.fromNullable(initializer.opener);
     this._video = new Video(this, this._connection, initializer.video ? Artifact.from(initializer.video) : undefined);
+    this._inspector = new Inspector(this);
 
     this._channel.on('bindingCall', ({ binding }) => this._onBinding(BindingCall.from(binding)));
     this._channel.on('close', () => this._onClose());
@@ -283,6 +287,10 @@ export class Page extends ChannelOwner<channels.PageChannel> implements api.Page
     return this._video;
   }
 
+  inspector(): Inspector {
+    return this._inspector;
+  }
+
   async $(selector: string, options?: { strict?: boolean }): Promise<ElementHandle<SVGElement | HTMLElement> | null> {
     return await this._mainFrame.$(selector, options);
   }
@@ -325,14 +333,16 @@ export class Page extends ChannelOwner<channels.PageChannel> implements api.Page
   }
 
   async exposeFunction(name: string, callback: Function) {
-    await this._channel.exposeBinding({ name });
+    const result = await this._channel.exposeBinding({ name });
     const binding = (source: structs.BindingSource, ...args: any[]) => callback(...args);
     this._bindings.set(name, binding);
+    return Disposable.from(result.disposable);
   }
 
   async exposeBinding(name: string, callback: (source: structs.BindingSource, ...args: any[]) => any, options: { handle?: boolean } = {}) {
-    await this._channel.exposeBinding({ name, needsHandle: options.handle });
+    const result = await this._channel.exposeBinding({ name, needsHandle: options.handle });
     this._bindings.set(name, callback);
+    return Disposable.from(result.disposable);
   }
 
   async setExtraHTTPHeaders(headers: Headers) {
@@ -500,7 +510,7 @@ export class Page extends ChannelOwner<channels.PageChannel> implements api.Page
 
   async addInitScript(script: Function | string | { path?: string, content?: string }, arg?: any) {
     const source = await evaluationScript(this._platform, script, arg);
-    await this._channel.addInitScript({ source });
+    return Disposable.from((await this._channel.addInitScript({ source })).disposable);
   }
 
   async route(url: URLMatch, handler: RouteHandlerCallback, options: { times?: number } = {}): Promise<void> {
@@ -817,11 +827,6 @@ export class Page extends ChannelOwner<channels.PageChannel> implements api.Page
     await this._closedOrCrashedScope.safeRace(this.context()._channel.pause());
     this._browserContext.setDefaultNavigationTimeout(defaultNavigationTimeout);
     this._browserContext.setDefaultTimeout(defaultTimeout);
-  }
-
-  async pickLocator(): Promise<Locator> {
-    const { selector } = await this._channel.pickLocator({});
-    return this.locator(selector);
   }
 
   async pdf(options: PDFOptions = {}): Promise<Buffer> {

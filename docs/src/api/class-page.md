@@ -559,6 +559,7 @@ page.
 
 ## async method: Page.addInitScript
 * since: v1.8
+- returns: <[Disposable]>
 
 Adds a script which would be evaluated in one of the following scenarios:
 * Whenever the page is navigated.
@@ -1717,6 +1718,7 @@ Optional argument to pass to [`param: expression`].
 
 ## async method: Page.exposeBinding
 * since: v1.8
+- returns: <[Disposable]>
 
 The method adds a function called [`param: name`] on the `window` object of every frame in this page. When called, the
 function executes [`param: callback`] and returns a [Promise] which resolves to the return value of [`param: callback`].
@@ -1882,6 +1884,7 @@ supported. When passing by value, multiple arguments are supported.
 
 ## async method: Page.exposeFunction
 * since: v1.8
+- returns: <[Disposable]>
 
 The method adds a function called [`param: name`] on the `window` object of every frame in the page. When called, the
 function executes [`param: callback`] and returns a [Promise] which resolves to the return value of [`param: callback`].
@@ -2597,6 +2600,25 @@ Throws for non-input elements. However, if the element is inside the `<label>` e
 ### option: Page.inputValue.timeout = %%-input-timeout-js-%%
 * since: v1.13
 
+## method: Page.inspector
+* since: v1.59
+* langs: js
+- returns: <[Inspector]>
+
+Returns the [Inspector] object associated with this page.
+
+**Usage**
+
+```js
+const inspector = page.inspector();
+inspector.on('screencastFrame', data => {
+  console.log('received frame, jpeg size:', data.length);
+});
+await inspector.startScreencast();
+// ... perform actions ...
+await inspector.stopScreencast();
+```
+
 ## async method: Page.isChecked
 * since: v1.8
 * discouraged: Use locator-based [`method: Locator.isChecked`] instead. Read more about [locators](../locators.md).
@@ -2844,24 +2866,6 @@ the place it was paused.
 :::note
 This method requires Playwright to be started in a headed mode, with a falsy [`option: BrowserType.launch.headless`] option.
 :::
-
-## async method: Page.pickLocator
-* since: v1.59
-- returns: <[Locator]>
-
-Enters pick locator mode where hovering over page elements highlights them and shows the corresponding locator.
-Once the user clicks an element, the mode is deactivated and the [Locator] for the picked element is returned.
-
-:::note
-This method requires Playwright to be started in a headed mode.
-:::
-
-**Usage**
-
-```js
-const locator = await page.pickLocator();
-console.log(locator);
-```
 
 ## async method: Page.pdf
 * since: v1.8
