@@ -19,8 +19,12 @@ import { isTargetClosedError } from './errors';
 
 import type * as channels from '@protocol/channels';
 
-export class Disposable<T extends channels.DisposableChannel = channels.DisposableChannel> extends ChannelOwner<T> {
-  static from(channel: channels.DisposableChannel): Disposable {
+export interface Disposable {
+  dispose: () => Promise<void>;
+}
+
+export class DisposableObject<T extends channels.DisposableChannel = channels.DisposableChannel> extends ChannelOwner<T> implements Disposable {
+  static from(channel: channels.DisposableChannel): DisposableObject {
     return (channel as any)._object;
   }
 
@@ -37,4 +41,36 @@ export class Disposable<T extends channels.DisposableChannel = channels.Disposab
       throw e;
     }
   }
+}
+
+export class DisposableStub implements Disposable {
+  private _dispose: (() => Promise<void>) | undefined;
+
+  constructor(dispose: () => Promise<void>) {
+    this._dispose = dispose;
+  }
+
+  async [Symbol.asyncDispose]() {
+    await this.dispose();
+  }
+
+  async dispose() {
+    if (!this._dispose)
+      return;
+    try {
+      const dispose = this._dispose;
+      this._dispose = undefined;
+      await dispose();
+    } catch (e) {
+      if (isTargetClosedError(e))
+        return;
+      throw e;
+    }
+  }
+}
+
+export async function disposeAll(disposables: Disposable[]) {
+  const copy = [...disposables];
+  disposables.length = 0;
+  await Promise.all(copy.map(d => d.dispose()));
 }

@@ -490,11 +490,11 @@ export class FFPage implements PageDelegate {
     });
 
     const buffer = Buffer.from(event.data, 'base64');
-    this._page.emit(Page.Events.ScreencastFrame, {
+    this._page.screencast.onScreencastFrame({
       buffer,
       frameSwapWallTime: event.timestamp * 1000, // timestamp is in seconds, we need to convert to milliseconds.
-      width: event.deviceWidth,
-      height: event.deviceHeight,
+      viewportWidth: event.deviceWidth,
+      viewportHeight: event.deviceHeight,
     });
   }
 

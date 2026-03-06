@@ -14,32 +14,35 @@
  * limitations under the License.
  */
 
-import fs from 'fs/promises';
+import fs from 'fs';
 import net from 'net';
 import os from 'os';
 import path from 'path';
-import url from 'url';
 
+import { calculateSha1 } from '../../utils';
 import { debug } from '../../utilsBundle';
+
 import { decorateServer } from '../../server/utils/network';
 import { gracefullyProcessExitDoNotHang } from '../../server/utils/processLauncher';
 
-import { BrowserServerBackend } from '../../mcp/browser/browserServerBackend';
-import { browserTools } from '../../mcp/browser/tools';
-import { SocketConnection } from '../client/socketConnection';
-import { commands } from './commands';
+import { BrowserServerBackend } from '../../tools/browserServerBackend';
+import { browserTools } from '../../tools/tools';
 import { parseCommand } from './command';
+import { commands } from './commands';
 
-import type * as mcp from '../../mcp/exports';
-import type { FullConfig } from '../../mcp/browser/config';
-import type { BrowserContextFactory } from '../../mcp/browser/browserContextFactory';
-import type { SessionConfig } from '../client/registry';
+import { SocketConnection } from '../client/socketConnection';
+import { createClientInfo } from '../client/registry';
+
+import type * as playwright from '../../..';
+import type * as tools from '../../tools/exports';
+import type { SessionConfig, ClientInfo } from '../client/registry';
+import type { BrowserContext } from '../../client/browserContext';
 
 const daemonDebug = debug('pw:daemon');
 
 async function socketExists(socketPath: string): Promise<boolean> {
   try {
-    const stat = await fs.stat(socketPath);
+    const stat = await fs.promises.stat(socketPath);
     if (stat?.isSocket())
       return true;
   } catch (e) {
@@ -47,53 +50,37 @@ async function socketExists(socketPath: string): Promise<boolean> {
   return false;
 }
 
-export async function startMcpDaemonServer(
-  mcpConfig: FullConfig,
-  sessionConfig: SessionConfig,
-  contextFactory: BrowserContextFactory,
-  noShutdown?: boolean,
-): Promise<() => Promise<void>> {
+export async function startCliDaemonServer(
+  sessionName: string,
+  browserContext: playwright.BrowserContext,
+  contextConfig: tools.ContextConfig = {},
+  clientInfo = createClientInfo(),
+  options?: {
+    persistent?: boolean,
+    exitOnClose?: boolean,
+  }
+): Promise<string> {
+  const sessionConfig = createSessionConfig(clientInfo, sessionName, browserContext, options);
   const { socketPath } = sessionConfig;
+
   // Clean up existing socket file on Unix
-  if (os.platform() !== 'win32' && await socketExists(socketPath)) {
+  if (process.platform !== 'win32' && await socketExists(socketPath)) {
     daemonDebug(`Socket already exists, removing: ${socketPath}`);
     try {
-      await fs.unlink(socketPath);
+      await fs.promises.unlink(socketPath);
     } catch (error) {
       daemonDebug(`Failed to remove existing socket: ${error}`);
       throw error;
     }
   }
 
-  const cwd = url.pathToFileURL(process.cwd()).href;
-  const clientInfo = {
-    name: 'playwright-cli',
-    version: sessionConfig.version,
-    roots: [{
-      uri: cwd,
-      name: 'cwd'
-    }],
-    timestamp: Date.now(),
-  };
+  const backend = new BrowserServerBackend(contextConfig, browserContext, browserTools);
+  await backend.initialize({ cwd: process.cwd() });
 
-  const browserContext = mcpConfig.browser.isolated ? await contextFactory.createContext(clientInfo) : (await contextFactory.contexts(clientInfo))[0];
-  if (!noShutdown) {
-    browserContext.on('close', () => {
-      daemonDebug('browser closed, shutting down daemon');
-      shutdown(0);
-    });
-  }
+  await fs.promises.mkdir(path.dirname(socketPath), { recursive: true });
 
-  const backend = new BrowserServerBackend(mcpConfig, browserContext, browserTools);
-  await backend.initialize(clientInfo);
-
-  await fs.mkdir(path.dirname(socketPath), { recursive: true });
-
-  const shutdown = (exitCode: number) => {
-    daemonDebug(`shutting down daemon with exit code ${exitCode}`);
-    server.close();
-    gracefullyProcessExitDoNotHang(exitCode);
-  };
+  if ((browserContext as BrowserContext)._closingStatus !== 'none')
+    throw new Error('Browser context was closed before the daemon could start');
 
   const server = net.createServer(socket => {
     daemonDebug('new client connection');
@@ -107,10 +94,12 @@ export async function startMcpDaemonServer(
         daemonDebug('received command', method);
         if (method === 'stop') {
           daemonDebug('stop command received, shutting down');
-          gracefullyProcessExitDoNotHang(0, async () => {
-            await connection.send({ id, result: 'ok' }).catch(() => {});
-            server.close();
-          });
+          await deleteSessionFile(clientInfo, sessionConfig);
+          const sendAck = async () => connection.send({ id, result: 'ok' }).catch(() => {});
+          if (options?.exitOnClose)
+            gracefullyProcessExitDoNotHang(0, () => sendAck());
+          else
+            await sendAck();
         } else if (method === 'run') {
           const { toolName, toolParams } = parseCliCommand(params.args);
           if (params.cwd)
@@ -127,33 +116,78 @@ export async function startMcpDaemonServer(
       }
     };
   });
-  decorateServer(server);
 
-  return new Promise((resolve, reject) => {
+  decorateServer(server);
+  browserContext.on('close', () => Promise.resolve().then(async () => {
+    await deleteSessionFile(clientInfo, sessionConfig);
+    if (options?.exitOnClose)
+      gracefullyProcessExitDoNotHang(0);
+  }));
+
+  await new Promise<void>((resolve, reject) => {
     server.on('error', (error: NodeJS.ErrnoException) => {
       daemonDebug(`server error: ${error.message}`);
       reject(error);
     });
-
-    server.listen(socketPath, () => {
-      daemonDebug(`daemon server listening on ${socketPath}`);
-      resolve(async () => {
-        await backend.dispose();
-        await new Promise(cb => server.close(cb));
-      });
-    });
+    server.listen(socketPath, () => resolve());
   });
+
+  await saveSessionFile(clientInfo, sessionConfig);
+  return socketPath;
 }
 
-function formatResult(result: mcp.CallToolResult) {
+async function saveSessionFile(clientInfo: ClientInfo, sessionConfig: SessionConfig) {
+  await fs.promises.mkdir(clientInfo.daemonProfilesDir, { recursive: true });
+  const sessionFile = path.join(clientInfo.daemonProfilesDir, `${sessionConfig.name}.session`);
+  await fs.promises.writeFile(sessionFile, JSON.stringify(sessionConfig, null, 2));
+}
+
+async function deleteSessionFile(clientInfo: ClientInfo, sessionConfig: SessionConfig) {
+  await fs.promises.unlink(sessionConfig.socketPath).catch(() => {});
+  if (!sessionConfig.cli.persistent) {
+    const sessionFile = path.join(clientInfo.daemonProfilesDir, `${sessionConfig.name}.session`);
+    await fs.promises.rm(sessionFile).catch(() => {});
+  }
+}
+
+function formatResult(result: tools.CallToolResult) {
   const isError = result.isError;
   const text = result.content[0].type === 'text' ? result.content[0].text : undefined;
   return { isError, text };
 }
 
-function parseCliCommand(args: Record<string, string> & { _: string[] }): { toolName: string, toolParams: NonNullable<mcp.CallToolRequest['params']['arguments']> } {
+function parseCliCommand(args: Record<string, string> & { _: string[] }): { toolName: string, toolParams: NonNullable<tools.CallToolRequest['params']['arguments']> } {
   const command = commands[args._[0]];
   if (!command)
     throw new Error('Command is required');
   return parseCommand(command, args);
+}
+
+function daemonSocketPath(clientInfo: ClientInfo, sessionName: string): string {
+  const userNameHash = calculateSha1(process.env.USERNAME || 'default').slice(0, 8);
+  const socketName = `${sessionName}-${userNameHash}.sock`;
+  if (process.platform === 'win32')
+    return `\\\\.\\pipe\\${clientInfo.workspaceDirHash}-${socketName}`;
+  const socketsDir = process.env.PLAYWRIGHT_DAEMON_SOCKETS_DIR || path.join(os.tmpdir(), 'playwright-cli');
+  return path.join(socketsDir, clientInfo.workspaceDirHash, socketName);
+}
+
+function createSessionConfig(clientInfo: ClientInfo, sessionName: string, browserContext: playwright.BrowserContext, options: {
+  persistent?: boolean,
+  exitOnStop?: boolean,
+} = {}): SessionConfig {
+  const bc = browserContext as BrowserContext;
+  return {
+    name: sessionName,
+    version: clientInfo.version,
+    timestamp: Date.now(),
+    socketPath: daemonSocketPath(clientInfo, sessionName),
+    workspaceDir: clientInfo.workspaceDir,
+    cli: { persistent: options.persistent },
+    browser: {
+      browserName: bc.browser()!.browserType().name(),
+      launchOptions: bc.browser()!._options,
+      userDataDir: bc.browser()?._userDataDir,
+    },
+  };
 }

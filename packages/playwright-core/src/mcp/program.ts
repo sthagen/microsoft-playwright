@@ -17,12 +17,12 @@
 import { ProgramOption } from '../utilsBundle';
 
 import * as mcpServer from './sdk/server';
-import { commaSeparatedList, dotenvFileLoader, enumParser, headerParser, numberParser, resolutionParser, resolveCLIConfig, semicolonSeparatedList } from './browser/config';
-import { setupExitWatchdog } from './browser/watchdog';
-import { contextFactory } from './browser/browserContextFactory';
-import { BrowserServerBackend } from './browser/browserServerBackend';
-import { ExtensionContextFactory } from './extension/extensionContextFactory';
-import { filteredTools } from './browser/tools';
+import { commaSeparatedList, dotenvFileLoader, enumParser, headerParser, numberParser, resolutionParser, resolveCLIConfig, semicolonSeparatedList } from './config';
+import { setupExitWatchdog } from './watchdog';
+import { contextFactory } from './browserContextFactory';
+import { BrowserServerBackend } from '../tools/browserServerBackend';
+import { ExtensionContextFactory } from './extensionContextFactory';
+import { filteredTools } from '../tools/tools';
 import { testDebug } from './log';
 
 import type { Command } from '../utilsBundle';
@@ -138,5 +138,21 @@ export function decorateMCPCommand(command: Command, version: string) {
           }
         };
         await mcpServer.start(factory, config.server);
+      });
+}
+
+export function decorateMCPInstallBrowserCommand(command: Command, version: string) {
+  command
+      .description('ensure browsers necessary for this version of Playwright are installed')
+      .option('--with-deps', 'install system dependencies for browsers')
+      .option('--dry-run', 'do not execute installation, only print information')
+      .option('--list', 'prints list of browsers from all playwright installations')
+      .option('--force', 'force reinstall of already installed browsers')
+      .option('--only-shell', 'only install headless shell when installing chromium')
+      .option('--no-shell', 'do not install chromium headless shell')
+      .action(async options => {
+        const { program } = require('../program');
+        const argv = process.argv.map(arg => arg === 'install-browser' ? 'install' : arg);
+        program.parse(argv);
       });
 }

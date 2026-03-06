@@ -16,7 +16,7 @@
  */
 
 import { BrowserContext } from './browserContext';
-import { Disposable } from './disposable';
+import { DisposableObject } from './disposable';
 import { ConsoleMessage } from './console';
 import { TargetClosedError, TimeoutError } from './errors';
 import { FileChooser } from './fileChooser';
@@ -131,7 +131,6 @@ const PageEvent = {
   FrameDetached: 'framedetached',
   InternalFrameNavigatedToNewDocument: 'internalframenavigatedtonewdocument',
   LocatorHandlerTriggered: 'locatorhandlertriggered',
-  ScreencastFrame: 'screencastframe',
   WebSocket: 'websocket',
   Worker: 'worker',
 } as const;
@@ -146,7 +145,6 @@ export type PageEventMap = {
   [PageEvent.FrameDetached]: [frame: frames.Frame];
   [PageEvent.InternalFrameNavigatedToNewDocument]: [frame: frames.Frame];
   [PageEvent.LocatorHandlerTriggered]: [uid: number];
-  [PageEvent.ScreencastFrame]: [frame: types.ScreencastFrame];
   [PageEvent.WebSocket]: [webSocket: network.WebSocket];
   [PageEvent.Worker]: [worker: Worker];
 };
@@ -933,7 +931,7 @@ export class Worker extends SdkObject<WorkerEventMap> {
   }
 }
 
-export class PageBinding extends Disposable {
+export class PageBinding extends DisposableObject {
   private static kController = '__playwright__binding__controller__';
   static kBindingName = '__playwright__binding__';
 
@@ -993,7 +991,7 @@ export class PageBinding extends Disposable {
   }
 }
 
-export class InitScript extends Disposable {
+export class InitScript extends DisposableObject {
   readonly source: string;
 
   constructor(owner: BrowserContext | Page, source: string) {

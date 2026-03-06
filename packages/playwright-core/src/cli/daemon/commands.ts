@@ -754,15 +754,6 @@ const tracingStop = declareCommand({
   toolParams: () => ({}),
 });
 
-const tracingShow = declareCommand({
-  name: 'tracing-show',
-  description: 'Open trace viewer for the recorded trace',
-  category: 'devtools',
-  args: z.object({}),
-  toolName: 'browser_show_tracing',
-  toolParams: () => ({}),
-});
-
 const videoStart = declareCommand({
   name: 'video-start',
   description: 'Start video recording',
@@ -875,7 +866,7 @@ const installBrowser = declareCommand({
     ['only-shell']: z.boolean().optional().describe('Only install headless shell when installing Chromium'),
     ['no-shell']: z.boolean().optional().describe('Do not install Chromium headless shell'),
   }),
-  toolName: 'browser_install',
+  toolName: '',
   toolParams: () => ({}),
 });
 
@@ -974,7 +965,6 @@ const commandsArray: AnyCommandSchema[] = [
   networkRequests,
   tracingStart,
   tracingStop,
-  tracingShow,
   videoStart,
   videoStop,
   devtoolsShow,

@@ -28,10 +28,9 @@ test('should not save user data by default (in-memory mode)', async ({ cli, serv
     cli: {},
     socketPath: expect.any(String),
     timestamp: expect.any(Number),
-    userDataDirPrefix: expect.any(String),
     version: expect.any(String),
     workspaceDir: testInfo.outputPath(),
-    resolvedConfig: expect.any(Object),
+    browser: expect.any(Object),
   });
 
   const { output: listOutput } = await cli('list');
@@ -55,10 +54,9 @@ test('should save user data with --persistent flag', async ({ cli, server, mcpBr
     },
     socketPath: expect.any(String),
     timestamp: expect.any(Number),
-    userDataDirPrefix: expect.any(String),
     version: expect.any(String),
     workspaceDir: testInfo.outputPath(),
-    resolvedConfig: expect.any(Object),
+    browser: expect.any(Object),
   });
 });
 
@@ -71,13 +69,11 @@ test('should use custom user data dir with --profile=<dir>', async ({ cli, serve
     name: 'default',
     cli: {
       persistent: true,
-      profile: customDir,
     },
     socketPath: expect.any(String),
     timestamp: expect.any(Number),
-    userDataDirPrefix: expect.any(String),
     version: expect.any(String),
     workspaceDir: testInfo.outputPath(),
-    resolvedConfig: expect.any(Object),
+    browser: expect.any(Object),
   });
 });

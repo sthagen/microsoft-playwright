@@ -947,7 +947,7 @@ export class WKPage implements PageDelegate {
       this._pageProxySession.sendMayFail('Screencast.screencastFrameAck', { generation });
     });
     const buffer = Buffer.from(event.data, 'base64');
-    this._page.emit(Page.Events.ScreencastFrame, {
+    this._page.screencast.onScreencastFrame({
       buffer,
       frameSwapWallTime: event.timestamp
         // timestamp is in seconds, we need to convert to milliseconds.
@@ -956,8 +956,8 @@ export class WKPage implements PageDelegate {
         // version that did not send timestamp.
         // TODO: remove this fallback when Debian 11 and Ubuntu 20.04 are EOL.
         : Date.now(),
-      width: event.deviceWidth,
-      height: event.deviceHeight,
+      viewportWidth: event.deviceWidth,
+      viewportHeight: event.deviceHeight,
     });
   }
 
