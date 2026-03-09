@@ -1024,6 +1024,12 @@ Browser:
   initializer:
     version: string
     name: string
+    browserName:
+      type: enum
+      literals:
+        - chromium
+        - firefox
+        - webkit
 
   commands:
 
@@ -1182,7 +1188,6 @@ BrowserContext:
   extends: EventTarget
 
   initializer:
-    isChromium: boolean
     requestContext: APIRequestContext
     tracing: Tracing
     options:
@@ -3983,6 +3988,8 @@ CDPSession:
       parameters:
         method: string
         params: json?
+
+    close:
 
 
 Electron:

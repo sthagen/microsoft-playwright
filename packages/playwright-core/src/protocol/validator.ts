@@ -643,6 +643,7 @@ scheme.BrowserTypeConnectOverCDPTransportResult = tObject({
 scheme.BrowserInitializer = tObject({
   version: tString,
   name: tString,
+  browserName: tEnum(['chromium', 'firefox', 'webkit']),
 });
 scheme.BrowserContextEvent = tObject({
   context: tChannel(['BrowserContext']),
@@ -855,7 +856,6 @@ scheme.ElectronApplicationWaitForEventInfoResult = tType('EventTargetWaitForEven
 scheme.AndroidDeviceWaitForEventInfoResult = tType('EventTargetWaitForEventInfoResult');
 scheme.PageAgentWaitForEventInfoResult = tType('EventTargetWaitForEventInfoResult');
 scheme.BrowserContextInitializer = tObject({
-  isChromium: tBoolean,
   requestContext: tChannel(['APIRequestContext']),
   tracing: tChannel(['Tracing']),
   options: tObject({
@@ -2609,6 +2609,7 @@ scheme.CDPSessionEventEvent = tObject({
   method: tString,
   params: tOptional(tAny),
 });
+scheme.CDPSessionCloseEvent = tOptional(tObject({}));
 scheme.CDPSessionSendParams = tObject({
   method: tString,
   params: tOptional(tAny),
