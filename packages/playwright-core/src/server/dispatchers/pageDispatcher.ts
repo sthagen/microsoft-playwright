@@ -28,7 +28,6 @@ import { WebSocketRouteDispatcher } from './webSocketRouteDispatcher';
 import { DisposableDispatcher } from './disposableDispatcher';
 import { SdkObject } from '../instrumentation';
 import { deserializeURLMatch, urlMatches } from '../../utils/isomorphic/urlMatch';
-import { PageAgentDispatcher } from './pageAgentDispatcher';
 import { Recorder } from '../recorder';
 import { disposeAll } from '../disposable';
 
@@ -290,7 +289,7 @@ export class PageDispatcher extends Dispatcher<Page, channels.PageChannel, Brows
     // Otherwise, if subscription is added in a different task from this call (either before or after),
     // there is a chance for a duplicate or a lost console message.
     this._subscriptions.add('console');
-    return { messages: this._page.consoleMessages().map(message => this.parentScope().serializeConsoleMessage(message, this)) };
+    return { messages: this._page.consoleMessages(params.filter).map(message => this.parentScope().serializeConsoleMessage(message, this)) };
   }
 
   async clearPageErrors(params: channels.PageClearPageErrorsParams, progress: Progress): Promise<channels.PageClearPageErrorsResult> {
@@ -298,7 +297,7 @@ export class PageDispatcher extends Dispatcher<Page, channels.PageChannel, Brows
   }
 
   async pageErrors(params: channels.PagePageErrorsParams, progress: Progress): Promise<channels.PagePageErrorsResult> {
-    return { errors: this._page.pageErrors().map(error => serializeError(error)) };
+    return { errors: this._page.pageErrors(params.filter).map(error => serializeError(error)) };
   }
 
   async mouseMove(params: channels.PageMouseMoveParams, progress: Progress): Promise<void> {
@@ -355,7 +354,7 @@ export class PageDispatcher extends Dispatcher<Page, channels.PageChannel, Brows
 
   async pickLocator(params: channels.PagePickLocatorParams, progress: Progress): Promise<channels.PagePickLocatorResult> {
     const recorder = await Recorder.forContext(this._page.browserContext, { omitCallTracking: true, hideToolbar: true });
-    const selector = await recorder.pickLocator(progress);
+    const selector = await recorder.pickLocator(progress, this._page);
     return { selector };
   }
 
@@ -416,10 +415,6 @@ export class PageDispatcher extends Dispatcher<Page, channels.PageChannel, Brows
     this._cssCoverageActive = false;
     const coverage = this._page.coverage as CRCoverage;
     return await coverage.stopCSSCoverage();
-  }
-
-  async agent(params: channels.PageAgentParams, progress: Progress): Promise<channels.PageAgentResult> {
-    return { agent: new PageAgentDispatcher(this, params) };
   }
 
   _onFrameAttached(frame: Frame) {

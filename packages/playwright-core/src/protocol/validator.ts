@@ -252,6 +252,7 @@ scheme.APIResponse = tObject({
   headers: tArray(tType('NameValue')),
 });
 scheme.LifecycleEvent = tEnum(['load', 'domcontentloaded', 'networkidle', 'commit']);
+scheme.ConsoleMessagesFilter = tEnum(['all', 'sinceNavigation']);
 scheme.LocalUtilsInitializer = tObject({
   deviceDescriptors: tArray(tObject({
     name: tString,
@@ -651,8 +652,11 @@ scheme.BrowserContextEvent = tObject({
 scheme.BrowserCloseEvent = tOptional(tObject({}));
 scheme.BrowserStartServerParams = tObject({
   title: tString,
+  host: tOptional(tString),
+  port: tOptional(tInt),
   wsPath: tOptional(tString),
   workspaceDir: tOptional(tString),
+  metadata: tOptional(tAny),
 });
 scheme.BrowserStartServerResult = tObject({
   wsEndpoint: tOptional(tString),
@@ -846,7 +850,6 @@ scheme.WorkerWaitForEventInfoParams = tType('EventTargetWaitForEventInfoParams')
 scheme.WebSocketWaitForEventInfoParams = tType('EventTargetWaitForEventInfoParams');
 scheme.ElectronApplicationWaitForEventInfoParams = tType('EventTargetWaitForEventInfoParams');
 scheme.AndroidDeviceWaitForEventInfoParams = tType('EventTargetWaitForEventInfoParams');
-scheme.PageAgentWaitForEventInfoParams = tType('EventTargetWaitForEventInfoParams');
 scheme.EventTargetWaitForEventInfoResult = tOptional(tObject({}));
 scheme.BrowserContextWaitForEventInfoResult = tType('EventTargetWaitForEventInfoResult');
 scheme.PageWaitForEventInfoResult = tType('EventTargetWaitForEventInfoResult');
@@ -854,7 +857,6 @@ scheme.WorkerWaitForEventInfoResult = tType('EventTargetWaitForEventInfoResult')
 scheme.WebSocketWaitForEventInfoResult = tType('EventTargetWaitForEventInfoResult');
 scheme.ElectronApplicationWaitForEventInfoResult = tType('EventTargetWaitForEventInfoResult');
 scheme.AndroidDeviceWaitForEventInfoResult = tType('EventTargetWaitForEventInfoResult');
-scheme.PageAgentWaitForEventInfoResult = tType('EventTargetWaitForEventInfoResult');
 scheme.BrowserContextInitializer = tObject({
   requestContext: tChannel(['APIRequestContext']),
   tracing: tChannel(['Tracing']),
@@ -1182,10 +1184,6 @@ scheme.BrowserContextClockSetSystemTimeParams = tObject({
   timeString: tOptional(tString),
 });
 scheme.BrowserContextClockSetSystemTimeResult = tOptional(tObject({}));
-scheme.BrowserContextDevtoolsStartParams = tOptional(tObject({}));
-scheme.BrowserContextDevtoolsStartResult = tObject({
-  url: tString,
-});
 scheme.PageInitializer = tObject({
   mainFrame: tChannel(['Frame']),
   viewportSize: tOptional(tObject({
@@ -1253,7 +1251,9 @@ scheme.PageCloseParams = tObject({
 scheme.PageCloseResult = tOptional(tObject({}));
 scheme.PageClearConsoleMessagesParams = tOptional(tObject({}));
 scheme.PageClearConsoleMessagesResult = tOptional(tObject({}));
-scheme.PageConsoleMessagesParams = tOptional(tObject({}));
+scheme.PageConsoleMessagesParams = tObject({
+  filter: tOptional(tType('ConsoleMessagesFilter')),
+});
 scheme.PageConsoleMessagesResult = tObject({
   messages: tArray(tObject({
     type: tString,
@@ -1461,7 +1461,9 @@ scheme.PageTouchscreenTapParams = tObject({
 scheme.PageTouchscreenTapResult = tOptional(tObject({}));
 scheme.PageClearPageErrorsParams = tOptional(tObject({}));
 scheme.PageClearPageErrorsResult = tOptional(tObject({}));
-scheme.PagePageErrorsParams = tOptional(tObject({}));
+scheme.PagePageErrorsParams = tObject({
+  filter: tOptional(tType('ConsoleMessagesFilter')),
+});
 scheme.PagePageErrorsResult = tObject({
   errors: tArray(tType('SerializedError')),
 });
@@ -1571,25 +1573,6 @@ scheme.PageUpdateSubscriptionParams = tObject({
   enabled: tBoolean,
 });
 scheme.PageUpdateSubscriptionResult = tOptional(tObject({}));
-scheme.PageAgentParams = tObject({
-  api: tOptional(tString),
-  apiKey: tOptional(tString),
-  apiEndpoint: tOptional(tString),
-  apiTimeout: tOptional(tInt),
-  apiCacheFile: tOptional(tString),
-  cacheFile: tOptional(tString),
-  cacheOutFile: tOptional(tString),
-  doNotRenderActive: tOptional(tBoolean),
-  maxActions: tOptional(tInt),
-  maxActionRetries: tOptional(tInt),
-  maxTokens: tOptional(tInt),
-  model: tOptional(tString),
-  secrets: tOptional(tArray(tType('NameValue'))),
-  systemPrompt: tOptional(tString),
-});
-scheme.PageAgentResult = tObject({
-  agent: tChannel(['PageAgent']),
-});
 scheme.PageSetDockTileParams = tObject({
   image: tBinary,
 });
@@ -1993,7 +1976,7 @@ scheme.FrameWaitForSelectorResult = tObject({
 scheme.FrameExpectParams = tObject({
   selector: tOptional(tString),
   expression: tString,
-  expressionArg: tOptional(tString),
+  expressionArg: tOptional(tAny),
   expectedText: tOptional(tArray(tType('ExpectedTextValue'))),
   expectedNumber: tOptional(tFloat),
   expectedValue: tOptional(tType('SerializedArgument')),
@@ -2993,60 +2976,3 @@ scheme.JsonPipeSendParams = tObject({
 scheme.JsonPipeSendResult = tOptional(tObject({}));
 scheme.JsonPipeCloseParams = tOptional(tObject({}));
 scheme.JsonPipeCloseResult = tOptional(tObject({}));
-scheme.PageAgentInitializer = tObject({
-  page: tChannel(['Page']),
-});
-scheme.PageAgentTurnEvent = tObject({
-  role: tString,
-  message: tString,
-  usage: tOptional(tObject({
-    inputTokens: tInt,
-    outputTokens: tInt,
-  })),
-});
-scheme.PageAgentPerformParams = tObject({
-  task: tString,
-  maxActions: tOptional(tInt),
-  maxActionRetries: tOptional(tInt),
-  maxTokens: tOptional(tInt),
-  cacheKey: tOptional(tString),
-  timeout: tOptional(tInt),
-});
-scheme.PageAgentPerformResult = tObject({
-  usage: tType('AgentUsage'),
-});
-scheme.PageAgentExpectParams = tObject({
-  expectation: tString,
-  maxActions: tOptional(tInt),
-  maxActionRetries: tOptional(tInt),
-  maxTokens: tOptional(tInt),
-  cacheKey: tOptional(tString),
-  timeout: tOptional(tInt),
-});
-scheme.PageAgentExpectResult = tObject({
-  usage: tType('AgentUsage'),
-});
-scheme.PageAgentExtractParams = tObject({
-  query: tString,
-  schema: tAny,
-  maxActions: tOptional(tInt),
-  maxActionRetries: tOptional(tInt),
-  maxTokens: tOptional(tInt),
-  cacheKey: tOptional(tString),
-  timeout: tOptional(tInt),
-});
-scheme.PageAgentExtractResult = tObject({
-  result: tAny,
-  usage: tType('AgentUsage'),
-});
-scheme.PageAgentDisposeParams = tOptional(tObject({}));
-scheme.PageAgentDisposeResult = tOptional(tObject({}));
-scheme.PageAgentUsageParams = tOptional(tObject({}));
-scheme.PageAgentUsageResult = tObject({
-  usage: tType('AgentUsage'),
-});
-scheme.AgentUsage = tObject({
-  turns: tInt,
-  inputTokens: tInt,
-  outputTokens: tInt,
-});

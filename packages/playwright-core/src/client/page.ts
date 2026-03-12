@@ -31,7 +31,7 @@ import { Keyboard, Mouse, Touchscreen } from './input';
 import { JSHandle, assertMaxArguments, parseResult, serializeArgument } from './jsHandle';
 import { Request, Response, Route, RouteHandler, WebSocket,  WebSocketRoute, WebSocketRouteHandler, validateHeaders } from './network';
 import { Video } from './video';
-import { Inspector } from './inspector';
+import { Screencast } from './screencast';
 import { Waiter } from './waiter';
 import { Worker } from './worker';
 import { TimeoutSettings } from './timeoutSettings';
@@ -43,8 +43,6 @@ import { urlMatches, urlMatchesEqual } from '../utils/isomorphic/urlMatch';
 import { LongStandingScope } from '../utils/isomorphic/manualPromise';
 import { isObject, isRegExp, isString } from '../utils/isomorphic/rtti';
 import { ConsoleMessage } from './consoleMessage';
-import { PageAgent } from './pageAgent';
-
 import type { BrowserContext } from './browserContext';
 import type { Clock } from './clock';
 import type { APIRequestContext } from './fetch';
@@ -102,7 +100,7 @@ export class Page extends ChannelOwner<channels.PageChannel> implements api.Page
   readonly _bindings = new Map<string, (source: structs.BindingSource, ...args: any[]) => any>();
   readonly _timeoutSettings: TimeoutSettings;
   private _video: Video;
-  private _inspector: Inspector;
+  private _screencast: Screencast;
   readonly _opener: Page | null;
   private _closeReason: string | undefined;
   _closeWasCalled: boolean = false;
@@ -137,7 +135,7 @@ export class Page extends ChannelOwner<channels.PageChannel> implements api.Page
     this._closed = initializer.isClosed;
     this._opener = Page.fromNullable(initializer.opener);
     this._video = new Video(this, this._connection, initializer.video ? Artifact.from(initializer.video) : undefined);
-    this._inspector = new Inspector(this);
+    this._screencast = new Screencast(this);
 
     this._channel.on('bindingCall', ({ binding }) => this._onBinding(BindingCall.from(binding)));
     this._channel.on('close', () => this._onClose());
@@ -287,8 +285,17 @@ export class Page extends ChannelOwner<channels.PageChannel> implements api.Page
     return this._video;
   }
 
-  inspector(): Inspector {
-    return this._inspector;
+  screencast(): Screencast {
+    return this._screencast;
+  }
+
+  async pickLocator(): Promise<Locator> {
+    const { selector } = await this._channel.pickLocator({});
+    return this.locator(selector);
+  }
+
+  async cancelPickLocator(): Promise<void> {
+    await this._channel.cancelPickLocator({});
   }
 
   async $(selector: string, options?: { strict?: boolean }): Promise<ElementHandle<SVGElement | HTMLElement> | null> {
@@ -670,8 +677,8 @@ export class Page extends ChannelOwner<channels.PageChannel> implements api.Page
     await this._channel.clearConsoleMessages();
   }
 
-  async consoleMessages(): Promise<ConsoleMessage[]> {
-    const { messages } = await this._channel.consoleMessages();
+  async consoleMessages(options?: { filter?: 'all' | 'sinceNavigation' }): Promise<ConsoleMessage[]> {
+    const { messages } = await this._channel.consoleMessages({ filter: options?.filter });
     return messages.map(message => new ConsoleMessage(this._platform, message, this, null));
   }
 
@@ -679,8 +686,8 @@ export class Page extends ChannelOwner<channels.PageChannel> implements api.Page
     await this._channel.clearPageErrors();
   }
 
-  async pageErrors(): Promise<Error[]> {
-    const { errors } = await this._channel.pageErrors();
+  async pageErrors(options?: { filter?: 'all' | 'sinceNavigation' }): Promise<Error[]> {
+    const { errors } = await this._channel.pageErrors({ filter: options?.filter });
     return errors.map(error => parseError(error));
   }
 
@@ -850,29 +857,6 @@ export class Page extends ChannelOwner<channels.PageChannel> implements api.Page
       await platform.fs().promises.writeFile(options.path, result.pdf);
     }
     return result.pdf;
-  }
-
-  async agent(options: Parameters<api.Page['agent']>[0] = {}) {
-    const params: channels.PageAgentParams = {
-      api: options.provider?.api,
-      apiEndpoint: options.provider?.apiEndpoint,
-      apiKey: options.provider?.apiKey,
-      apiTimeout: options.provider?.apiTimeout,
-      apiCacheFile: (options.provider as any)?._apiCacheFile,
-      doNotRenderActive: (options as any)._doNotRenderActive,
-      model: options.provider?.model,
-      cacheFile: options.cache?.cacheFile,
-      cacheOutFile: options.cache?.cacheOutFile,
-      maxTokens: options.limits?.maxTokens,
-      maxActions: options.limits?.maxActions,
-      maxActionRetries: options.limits?.maxActionRetries,
-      secrets: options.secrets ? Object.entries(options.secrets).map(([name, value]) => ({ name, value })) : undefined,
-      systemPrompt: options.systemPrompt,
-    };
-    const { agent } = await this._channel.agent(params);
-    const pageAgent = PageAgent.from(agent);
-    pageAgent._expectTimeout = options?.expect?.timeout;
-    return pageAgent;
   }
 
   async _snapshotForAI(options: TimeoutOptions & { track?: string } = {}): Promise<{ full: string, incremental?: string }> {

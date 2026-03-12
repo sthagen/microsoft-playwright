@@ -64,8 +64,9 @@ export const test = baseTest.extend<{
 
 function cliEnv() {
   return {
+    PLAYWRIGHT_SERVER_REGISTRY: test.info().outputPath('registry'),
     PLAYWRIGHT_DAEMON_SESSION_DIR: test.info().outputPath('daemon'),
-    PLAYWRIGHT_DAEMON_SOCKETS_DIR: path.join(test.info().project.outputDir, 'daemon-sockets'),
+    PLAYWRIGHT_DAEMON_SOCKETS_DIR: path.join(test.info().project.outputDir, 'ds'),
   };
 }
 
@@ -74,7 +75,7 @@ async function runCli(childProcess: CommonFixtures['childProcess'], args: string
   return await test.step(stepTitle, async () => {
     const testInfo = test.info();
     const cli = childProcess({
-      command: [process.execPath, require.resolve('../../packages/playwright-core/lib/cli/client/cli.js'), ...args],
+      command: [process.execPath, require.resolve('../../packages/playwright-core/lib/tools/cli-client/cli.js'), ...args],
       cwd: cliOptions.cwd ?? testInfo.outputPath(),
       env: {
         ...process.env,

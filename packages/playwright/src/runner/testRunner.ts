@@ -56,6 +56,7 @@ export type ListTestsParams = {
   locations?: string[];
   grep?: string;
   grepInvert?: string;
+  onlyChanged?: string;
 };
 
 export type RunTestsParams = {
@@ -68,7 +69,6 @@ export type RunTestsParams = {
   workers?: number | string;
   updateSnapshots?: 'all' | 'changed' | 'missing' | 'none';
   updateSourceMethod?: 'overwrite' | 'patch' | '3way';
-  runAgents?: 'all' | 'missing' | 'none';
   reporters?: string[],
   trace?: 'on' | 'off';
   video?: 'on' | 'off';
@@ -271,6 +271,7 @@ export class TestRunner extends EventEmitter<TestRunnerEventMap> {
     config.cliGrep = params.grep;
     config.cliGrepInvert = params.grepInvert;
     config.cliProjectFilter = params.projects?.length ? params.projects : undefined;
+    config.cliOnlyChanged = params.onlyChanged;
     config.cliListOnly = true;
 
     const status = await runTasks(new TestRun(config, reporter), [
@@ -332,7 +333,6 @@ export class TestRunner extends EventEmitter<TestRunnerEventMap> {
       },
       ...(params.updateSnapshots ? { updateSnapshots: params.updateSnapshots } : {}),
       ...(params.updateSourceMethod ? { updateSourceMethod: params.updateSourceMethod } : {}),
-      ...(params.runAgents ? { runAgents: params.runAgents } : {}),
       ...(params.workers ? { workers: params.workers } : {}),
     };
 

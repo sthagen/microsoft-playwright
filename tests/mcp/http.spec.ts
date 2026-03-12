@@ -23,7 +23,7 @@ import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { test as baseTest, expect, mcpServerPath, formatLog } from './fixtures';
 
-import type { Config } from '../../packages/playwright-core/src/mcp/config.d';
+import type { Config } from '../../packages/playwright-core/src/tools/mcp/config.d';
 import { ListRootsRequestSchema } from 'playwright-core/lib/mcpBundle';
 
 const test = baseTest.extend<{ serverEndpoint: (options?: { args?: string[], noPort?: boolean }) => Promise<{ url: URL, stderr: () => string }> }>({
@@ -37,7 +37,7 @@ const test = baseTest.extend<{ serverEndpoint: (options?: { args?: string[], noP
       cp = spawn('node', [
         ...mcpServerPath,
         ...(options?.noPort ? [] : ['--port=0']),
-        '--user-data-dir=' + userDataDir,
+        ...(!options?.args?.includes('--isolated') ? ['--user-data-dir=' + userDataDir] : []),
         ...(mcpHeadless ? ['--headless'] : []),
         ...(options?.args || []),
       ], {
@@ -199,8 +199,8 @@ test('http transport browser lifecycle (isolated, multiclient)', async ({ server
     'create http session': 3,
     'delete http session': 3,
     'create context': 3,
-    'create browser (isolated)': 3,
-    'close browser': 3,
+    'create browser (isolated)': 1,
+    'close browser': 1,
   });
 });
 

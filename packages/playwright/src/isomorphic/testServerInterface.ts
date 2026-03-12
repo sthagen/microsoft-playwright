@@ -83,6 +83,7 @@ export interface TestServerInterface {
     locations?: string[];
     grep?: string;
     grepInvert?: string;
+    onlyChanged?: string;
   }): Promise<{
     report: ReportEntry[],
     status: reporterTypes.FullResult['status']
@@ -97,7 +98,6 @@ export interface TestServerInterface {
     workers?: number | string;
     updateSnapshots?: 'all' | 'changed' | 'missing' | 'none';
     updateSourceMethod?: 'overwrite' | 'patch' | '3way';
-    runAgents?: 'all' | 'missing' | 'none';
     reporters?: string[],
     trace?: 'on' | 'off';
     video?: 'on' | 'off';

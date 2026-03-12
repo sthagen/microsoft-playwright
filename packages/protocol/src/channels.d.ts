@@ -26,7 +26,6 @@ export interface Channel {
 
 // ----------- Initializer Traits -----------
 export type InitializerTraits<T> =
-    T extends PageAgentChannel ? PageAgentInitializer :
     T extends JsonPipeChannel ? JsonPipeInitializer :
     T extends AndroidDeviceChannel ? AndroidDeviceInitializer :
     T extends AndroidSocketChannel ? AndroidSocketInitializer :
@@ -65,7 +64,6 @@ export type InitializerTraits<T> =
 
 // ----------- Event Traits -----------
 export type EventsTraits<T> =
-    T extends PageAgentChannel ? PageAgentEvents :
     T extends JsonPipeChannel ? JsonPipeEvents :
     T extends AndroidDeviceChannel ? AndroidDeviceEvents :
     T extends AndroidSocketChannel ? AndroidSocketEvents :
@@ -104,7 +102,6 @@ export type EventsTraits<T> =
 
 // ----------- EventTarget Traits -----------
 export type EventTargetTraits<T> =
-    T extends PageAgentChannel ? PageAgentEventTarget :
     T extends JsonPipeChannel ? JsonPipeEventTarget :
     T extends AndroidDeviceChannel ? AndroidDeviceEventTarget :
     T extends AndroidSocketChannel ? AndroidSocketEventTarget :
@@ -438,6 +435,7 @@ export type APIResponse = {
 };
 
 export type LifecycleEvent = 'load' | 'domcontentloaded' | 'networkidle' | 'commit';
+export type ConsoleMessagesFilter = 'all' | 'sinceNavigation';
 // ----------- LocalUtils -----------
 export type LocalUtilsInitializer = {
   deviceDescriptors: {
@@ -1180,12 +1178,18 @@ export type BrowserContextEvent = {
 export type BrowserCloseEvent = {};
 export type BrowserStartServerParams = {
   title: string,
+  host?: string,
+  port?: number,
   wsPath?: string,
   workspaceDir?: string,
+  metadata?: any,
 };
 export type BrowserStartServerOptions = {
+  host?: string,
+  port?: number,
   wsPath?: string,
   workspaceDir?: string,
+  metadata?: any,
 };
 export type BrowserStartServerResult = {
   wsEndpoint?: string,
@@ -1662,7 +1666,6 @@ export interface BrowserContextChannel extends BrowserContextEventTarget, EventT
   clockRunFor(params: BrowserContextClockRunForParams, progress?: Progress): Promise<BrowserContextClockRunForResult>;
   clockSetFixedTime(params: BrowserContextClockSetFixedTimeParams, progress?: Progress): Promise<BrowserContextClockSetFixedTimeResult>;
   clockSetSystemTime(params: BrowserContextClockSetSystemTimeParams, progress?: Progress): Promise<BrowserContextClockSetSystemTimeResult>;
-  devtoolsStart(params?: BrowserContextDevtoolsStartParams, progress?: Progress): Promise<BrowserContextDevtoolsStartResult>;
 }
 export type BrowserContextBindingCallEvent = {
   binding: BindingCallChannel,
@@ -2059,11 +2062,6 @@ export type BrowserContextClockSetSystemTimeOptions = {
   timeString?: string,
 };
 export type BrowserContextClockSetSystemTimeResult = void;
-export type BrowserContextDevtoolsStartParams = {};
-export type BrowserContextDevtoolsStartOptions = {};
-export type BrowserContextDevtoolsStartResult = {
-  url: string,
-};
 
 export interface BrowserContextEvents {
   'bindingCall': BrowserContextBindingCallEvent;
@@ -2114,7 +2112,7 @@ export interface PageChannel extends PageEventTarget, EventTargetChannel {
   addInitScript(params: PageAddInitScriptParams, progress?: Progress): Promise<PageAddInitScriptResult>;
   close(params: PageCloseParams, progress?: Progress): Promise<PageCloseResult>;
   clearConsoleMessages(params?: PageClearConsoleMessagesParams, progress?: Progress): Promise<PageClearConsoleMessagesResult>;
-  consoleMessages(params?: PageConsoleMessagesParams, progress?: Progress): Promise<PageConsoleMessagesResult>;
+  consoleMessages(params: PageConsoleMessagesParams, progress?: Progress): Promise<PageConsoleMessagesResult>;
   emulateMedia(params: PageEmulateMediaParams, progress?: Progress): Promise<PageEmulateMediaResult>;
   exposeBinding(params: PageExposeBindingParams, progress?: Progress): Promise<PageExposeBindingResult>;
   goBack(params: PageGoBackParams, progress?: Progress): Promise<PageGoBackResult>;
@@ -2142,7 +2140,7 @@ export interface PageChannel extends PageEventTarget, EventTargetChannel {
   mouseWheel(params: PageMouseWheelParams, progress?: Progress): Promise<PageMouseWheelResult>;
   touchscreenTap(params: PageTouchscreenTapParams, progress?: Progress): Promise<PageTouchscreenTapResult>;
   clearPageErrors(params?: PageClearPageErrorsParams, progress?: Progress): Promise<PageClearPageErrorsResult>;
-  pageErrors(params?: PagePageErrorsParams, progress?: Progress): Promise<PagePageErrorsResult>;
+  pageErrors(params: PagePageErrorsParams, progress?: Progress): Promise<PagePageErrorsResult>;
   pdf(params: PagePdfParams, progress?: Progress): Promise<PagePdfResult>;
   requests(params?: PageRequestsParams, progress?: Progress): Promise<PageRequestsResult>;
   snapshotForAI(params: PageSnapshotForAIParams, progress?: Progress): Promise<PageSnapshotForAIResult>;
@@ -2158,7 +2156,6 @@ export interface PageChannel extends PageEventTarget, EventTargetChannel {
   videoStart(params: PageVideoStartParams, progress?: Progress): Promise<PageVideoStartResult>;
   videoStop(params?: PageVideoStopParams, progress?: Progress): Promise<PageVideoStopResult>;
   updateSubscription(params: PageUpdateSubscriptionParams, progress?: Progress): Promise<PageUpdateSubscriptionResult>;
-  agent(params: PageAgentParams, progress?: Progress): Promise<PageAgentResult>;
   setDockTile(params: PageSetDockTileParams, progress?: Progress): Promise<PageSetDockTileResult>;
 }
 export type PageBindingCallEvent = {
@@ -2226,8 +2223,12 @@ export type PageCloseResult = void;
 export type PageClearConsoleMessagesParams = {};
 export type PageClearConsoleMessagesOptions = {};
 export type PageClearConsoleMessagesResult = void;
-export type PageConsoleMessagesParams = {};
-export type PageConsoleMessagesOptions = {};
+export type PageConsoleMessagesParams = {
+  filter?: ConsoleMessagesFilter,
+};
+export type PageConsoleMessagesOptions = {
+  filter?: ConsoleMessagesFilter,
+};
 export type PageConsoleMessagesResult = {
   messages: {
     type: string,
@@ -2553,8 +2554,12 @@ export type PageTouchscreenTapResult = void;
 export type PageClearPageErrorsParams = {};
 export type PageClearPageErrorsOptions = {};
 export type PageClearPageErrorsResult = void;
-export type PagePageErrorsParams = {};
-export type PagePageErrorsOptions = {};
+export type PagePageErrorsParams = {
+  filter?: ConsoleMessagesFilter,
+};
+export type PagePageErrorsOptions = {
+  filter?: ConsoleMessagesFilter,
+};
 export type PagePageErrorsResult = {
   errors: SerializedError[],
 };
@@ -2718,41 +2723,6 @@ export type PageUpdateSubscriptionOptions = {
 
 };
 export type PageUpdateSubscriptionResult = void;
-export type PageAgentParams = {
-  api?: string,
-  apiKey?: string,
-  apiEndpoint?: string,
-  apiTimeout?: number,
-  apiCacheFile?: string,
-  cacheFile?: string,
-  cacheOutFile?: string,
-  doNotRenderActive?: boolean,
-  maxActions?: number,
-  maxActionRetries?: number,
-  maxTokens?: number,
-  model?: string,
-  secrets?: NameValue[],
-  systemPrompt?: string,
-};
-export type PageAgentOptions = {
-  api?: string,
-  apiKey?: string,
-  apiEndpoint?: string,
-  apiTimeout?: number,
-  apiCacheFile?: string,
-  cacheFile?: string,
-  cacheOutFile?: string,
-  doNotRenderActive?: boolean,
-  maxActions?: number,
-  maxActionRetries?: number,
-  maxTokens?: number,
-  model?: string,
-  secrets?: NameValue[],
-  systemPrompt?: string,
-};
-export type PageAgentResult = {
-  agent: PageAgentChannel,
-};
 export type PageSetDockTileParams = {
   image: Binary,
 };
@@ -3428,7 +3398,7 @@ export type FrameWaitForSelectorResult = {
 export type FrameExpectParams = {
   selector?: string,
   expression: string,
-  expressionArg?: string,
+  expressionArg?: any,
   expectedText?: ExpectedTextValue[],
   expectedNumber?: number,
   expectedValue?: SerializedArgument,
@@ -3438,7 +3408,7 @@ export type FrameExpectParams = {
 };
 export type FrameExpectOptions = {
   selector?: string,
-  expressionArg?: string,
+  expressionArg?: any,
   expectedText?: ExpectedTextValue[],
   expectedNumber?: number,
   expectedValue?: SerializedArgument,
@@ -5261,102 +5231,4 @@ export interface JsonPipeEvents {
   'message': JsonPipeMessageEvent;
   'closed': JsonPipeClosedEvent;
 }
-
-// ----------- PageAgent -----------
-export type PageAgentInitializer = {
-  page: PageChannel,
-};
-export interface PageAgentEventTarget {
-  on(event: 'turn', callback: (params: PageAgentTurnEvent) => void): this;
-}
-export interface PageAgentChannel extends PageAgentEventTarget, EventTargetChannel {
-  _type_PageAgent: boolean;
-  perform(params: PageAgentPerformParams, progress?: Progress): Promise<PageAgentPerformResult>;
-  expect(params: PageAgentExpectParams, progress?: Progress): Promise<PageAgentExpectResult>;
-  extract(params: PageAgentExtractParams, progress?: Progress): Promise<PageAgentExtractResult>;
-  dispose(params?: PageAgentDisposeParams, progress?: Progress): Promise<PageAgentDisposeResult>;
-  usage(params?: PageAgentUsageParams, progress?: Progress): Promise<PageAgentUsageResult>;
-}
-export type PageAgentTurnEvent = {
-  role: string,
-  message: string,
-  usage?: {
-    inputTokens: number,
-    outputTokens: number,
-  },
-};
-export type PageAgentPerformParams = {
-  task: string,
-  maxActions?: number,
-  maxActionRetries?: number,
-  maxTokens?: number,
-  cacheKey?: string,
-  timeout?: number,
-};
-export type PageAgentPerformOptions = {
-  maxActions?: number,
-  maxActionRetries?: number,
-  maxTokens?: number,
-  cacheKey?: string,
-  timeout?: number,
-};
-export type PageAgentPerformResult = {
-  usage: AgentUsage,
-};
-export type PageAgentExpectParams = {
-  expectation: string,
-  maxActions?: number,
-  maxActionRetries?: number,
-  maxTokens?: number,
-  cacheKey?: string,
-  timeout?: number,
-};
-export type PageAgentExpectOptions = {
-  maxActions?: number,
-  maxActionRetries?: number,
-  maxTokens?: number,
-  cacheKey?: string,
-  timeout?: number,
-};
-export type PageAgentExpectResult = {
-  usage: AgentUsage,
-};
-export type PageAgentExtractParams = {
-  query: string,
-  schema: any,
-  maxActions?: number,
-  maxActionRetries?: number,
-  maxTokens?: number,
-  cacheKey?: string,
-  timeout?: number,
-};
-export type PageAgentExtractOptions = {
-  maxActions?: number,
-  maxActionRetries?: number,
-  maxTokens?: number,
-  cacheKey?: string,
-  timeout?: number,
-};
-export type PageAgentExtractResult = {
-  result: any,
-  usage: AgentUsage,
-};
-export type PageAgentDisposeParams = {};
-export type PageAgentDisposeOptions = {};
-export type PageAgentDisposeResult = void;
-export type PageAgentUsageParams = {};
-export type PageAgentUsageOptions = {};
-export type PageAgentUsageResult = {
-  usage: AgentUsage,
-};
-
-export interface PageAgentEvents {
-  'turn': PageAgentTurnEvent;
-}
-
-export type AgentUsage = {
-  turns: number,
-  inputTokens: number,
-  outputTokens: number,
-};
 

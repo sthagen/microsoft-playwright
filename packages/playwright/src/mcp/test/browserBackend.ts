@@ -14,33 +14,31 @@
  * limitations under the License.
  */
 
-import path from 'path';
 import { createGuid } from 'playwright-core/lib/utils';
-import * as mcp from 'playwright-core/lib/mcp/exports';
 import * as tools from 'playwright-core/lib/tools/exports';
 
 import { stripAnsiEscapes } from '../../util';
 
 import type * as playwright from '../../../index';
 import type { Page } from '../../../../playwright-core/src/client/page';
+import type { Browser } from '../../../../playwright-core/src/client/browser';
 import type { TestInfoImpl } from '../../worker/testInfo';
 
 export type BrowserMCPRequest = {
-  initialize?: { clientInfo: mcp.ClientInfo },
+  initialize?: { clientInfo: tools.ClientInfo },
   listTools?: {},
-  callTool?: { name: string, arguments: mcp.CallToolRequest['params']['arguments'] },
+  callTool?: { name: string, arguments: tools.CallToolRequest['params']['arguments'] },
   close?: {},
 };
 
 export type BrowserMCPResponse = {
   initialize?: { pausedMessage: string },
-  listTools?: mcp.Tool[],
-  callTool?: mcp.CallToolResult,
+  callTool?: tools.CallToolResult,
   close?: {},
 };
 
 export function createCustomMessageHandler(testInfo: TestInfoImpl, context: playwright.BrowserContext) {
-  let backend: tools.BrowserServerBackend | undefined;
+  let backend: tools.BrowserBackend | undefined;
   const config: tools.ContextConfig = { capabilities: ['testing'] };
   const toolList = tools.filteredTools(config);
 
@@ -48,16 +46,10 @@ export function createCustomMessageHandler(testInfo: TestInfoImpl, context: play
     if (data.initialize) {
       if (backend)
         throw new Error('MCP backend is already initialized');
-      backend = new tools.BrowserServerBackend(config, context, toolList);
+      backend = new tools.BrowserBackend(config, context, toolList);
       await backend.initialize(data.initialize.clientInfo);
       const pausedMessage = await generatePausedMessage(testInfo, context);
       return { initialize: { pausedMessage } };
-    }
-
-    if (data.listTools) {
-      if (!backend)
-        throw new Error('MCP backend is not initialized');
-      return { listTools: toolList.map(t => mcp.toMcpTool(t.schema)) };
     }
 
     if (data.callTool) {
@@ -119,17 +111,12 @@ async function generatePausedMessage(testInfo: TestInfoImpl, context: playwright
   return lines.join('\n');
 }
 
-export async function runDaemonForContext(testInfo: TestInfoImpl, context: playwright.BrowserContext): Promise<void> {
+export async function runDaemonForBrowser(testInfo: TestInfoImpl, browser: playwright.Browser): Promise<void> {
   if (process.env.PWPAUSE !== 'cli')
     return;
 
-  const outputDir = path.join(testInfo.artifactsDir(), '.playwright-mcp');
-  const sessionName = `test-worker-${createGuid().slice(0, 6)}`;
-  await mcp.startCliDaemonServer(sessionName, context, {
-    outputMode: 'file',
-    snapshot: { mode: 'full' },
-    outputDir,
-  });
+  const browserTitle = `test-worker-${createGuid().slice(0, 6)}`;
+  await (browser as Browser)._startServer(browserTitle, { workspaceDir: testInfo.project.testDir });
 
   const lines = [''];
   if (testInfo.errors.length) {
@@ -141,7 +128,9 @@ export async function runDaemonForContext(testInfo: TestInfoImpl, context: playw
   }
   lines.push(
       `### Debugging Instructions`,
-      `- Use "playwright-cli --session=${sessionName}" to explore the page and fix the problem.`,
+      `- Pick a session name, e.g. "test"`,
+      `- Run "playwright-cli --session=<name> open --attach=${browserTitle}" to attach to this page`,
+      `- Use "playwright-cli --session=<name>" to explore the page and fix the problem`,
       `- Stop this test run when finished. Restart if needed.`,
       ``,
   );

@@ -22,7 +22,7 @@ import { setBoxedStackPrefixes, createGuid, currentZone, debugMode, jsonStringif
 
 import { currentTestInfo } from './common/globals';
 import { rootTestType } from './common/testType';
-import { createCustomMessageHandler, runDaemonForContext } from './mcp/test/browserBackend';
+import { createCustomMessageHandler, runDaemonForBrowser } from './mcp/test/browserBackend';
 
 import type { Fixtures, PlaywrightTestArgs, PlaywrightTestOptions, PlaywrightWorkerArgs, PlaywrightWorkerOptions, ScreenshotMode, TestInfo, TestType, VideoMode } from '../types/test';
 import type { ContextReuseMode } from './common/config';
@@ -153,8 +153,6 @@ const playwrightFixtures: Fixtures<TestFixtures, WorkerFixtures> = ({
   }, { option: true, box: true }],
   serviceWorkers: [({ contextOptions }, use) => use(contextOptions.serviceWorkers ?? 'allow'), { option: true, box: true }],
   contextOptions: [{}, { option: true, box: true }],
-  agentOptions: [({}, use) => use(undefined), { option: true, box: true }],
-
   _combinedContextOptions: [async ({
     acceptDownloads,
     bypassCSP,
@@ -434,7 +432,7 @@ const playwrightFixtures: Fixtures<TestFixtures, WorkerFixtures> = ({
     if (!_reuseContext) {
       const { context, close } = await _contextFactory();
       testInfo._onCustomMessageCallback = createCustomMessageHandler(testInfo, context);
-      testInfo._onDidFinishTestFunctionCallbacks.add(() => runDaemonForContext(testInfo, context));
+      testInfo._onDidFinishTestFunctionCallbacks.add(() => runDaemonForBrowser(testInfo, browser));
       await use(context);
       await close();
       return;
@@ -442,7 +440,7 @@ const playwrightFixtures: Fixtures<TestFixtures, WorkerFixtures> = ({
 
     const context = await browserImpl._wrapApiCall(() => browserImpl._newContextForReuse(), { internal: true });
     testInfo._onCustomMessageCallback = createCustomMessageHandler(testInfo, context);
-    testInfo._onDidFinishTestFunctionCallbacks.add(() => runDaemonForContext(testInfo, context));
+    testInfo._onDidFinishTestFunctionCallbacks.add(() => runDaemonForBrowser(testInfo, browser));
     await use(context);
     const closeReason = testInfo.status === 'timedOut' ? 'Test timeout of ' + testInfo.timeout + 'ms exceeded.' : 'Test ended.';
     await browserImpl._wrapApiCall(() => browserImpl._disconnectFromReusedContext(closeReason), { internal: true });
@@ -459,47 +457,6 @@ const playwrightFixtures: Fixtures<TestFixtures, WorkerFixtures> = ({
     if (!page)
       page = await context.newPage();
     await use(page);
-  },
-
-  agent: async ({ page, agentOptions }, use, testInfo) => {
-    const testInfoImpl = testInfo as TestInfoImpl;
-    const cachePathTemplate = agentOptions?.cachePathTemplate ?? '{testDir}/{testFilePath}-cache.json';
-    const resolvedCacheFile = testInfoImpl._applyPathTemplate(cachePathTemplate, '', '.json');
-    const cacheFile = testInfoImpl.config.runAgents === 'all' ? undefined : await testInfoImpl._cloneStorage(resolvedCacheFile);
-    const cacheOutFile = path.join(testInfoImpl.artifactsDir(), 'agent-cache-' + createGuid() + '.json');
-
-    const provider = agentOptions?.provider && testInfo.config.runAgents !== 'none' ? agentOptions.provider : undefined;
-    if (provider)
-      testInfo.setTimeout(0);
-
-    const cache = {
-      cacheFile,
-      cacheOutFile,
-    };
-
-    const agent = await page.agent({
-      provider,
-      cache,
-      limits: agentOptions?.limits,
-      secrets: agentOptions?.secrets,
-      systemPrompt: agentOptions?.systemPrompt,
-      expect: {
-        timeout: testInfoImpl._projectInternal.expect?.timeout,
-      },
-    });
-
-    await use(agent);
-
-    const usage = await agent.usage();
-    if (usage.turns > 0)
-      await testInfoImpl.attach('agent-usage', { contentType: 'application/json', body: Buffer.from(JSON.stringify(usage, null, 2)) });
-
-    if (!resolvedCacheFile || !cacheOutFile)
-      return;
-    if (testInfo.status !== 'passed')
-      return;
-
-    await testInfoImpl._upstreamStorage(resolvedCacheFile, cacheOutFile);
   },
 
   request: async ({ playwright }, use) => {
