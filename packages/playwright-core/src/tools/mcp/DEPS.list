@@ -10,5 +10,8 @@
 ../../server/
 ../../server/registry/
 ../../server/utils/
-../../client/
 ../../serverRegistry.ts
+
+[browserFactory.ts]
+../../client/connect.ts
+../utils/connect.ts

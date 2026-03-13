@@ -17,19 +17,17 @@
 import fs from 'fs';
 import path from 'path';
 
-import { disposeAll } from '../../client/disposable';
-import { eventsHelper } from '../../client/eventEmitter';
 import { debug } from '../../utilsBundle';
 import { escapeWithQuotes } from '../../utils/isomorphic/stringUtils';
 import { selectors } from '../../..';
 
 import { Tab } from './tab';
+import { disposeAll } from '../../server/utils/disposable';
+import { eventsHelper } from '../../server/utils/eventsHelper';
 
 import type * as playwright from '../../..';
 import type { SessionLog } from './sessionLog';
-import type { Tracing } from '../../client/tracing';
-import type { Disposable } from '../../client/disposable';
-import type { BrowserContext } from '../../client/browserContext';
+import type { Disposable } from '../../server/utils/disposable';
 import type { ToolCapability } from './tool';
 
 const testDebug = debug('pw:mcp:test');
@@ -286,22 +284,18 @@ export class Context {
     if (this.config.testIdAttribute)
       selectors.setTestIdAttribute(this.config.testIdAttribute);
     const browserContext = this._rawBrowserContext;
-    if (!this.config.allowUnrestrictedFileAccess) {
-      (browserContext as any)._setDisallowedProtocols(['file:']);
-      (browserContext as any)._setAllowedDirectories([this.options.cwd]);
-    }
     await this._setupRequestInterception(browserContext);
 
     if (this.config.saveTrace) {
-      await (browserContext.tracing as Tracing).start({
+      await browserContext.tracing.start({
         name: 'trace-' + Date.now(),
         screenshots: true,
         snapshots: true,
-        _live: true,
+        live: true,
       });
       this._disposables.push({
         dispose: async () => {
-          await (browserContext.tracing as Tracing).stop();
+          await browserContext.tracing.stop();
         },
       });
     }
@@ -310,9 +304,18 @@ export class Context {
 
     for (const page of browserContext.pages())
       this._onPageCreated(page);
-    this._disposables.push(eventsHelper.addEventListener(browserContext as BrowserContext, 'page', page => this._onPageCreated(page)));
+    this._disposables.push(eventsHelper.addEventListener(browserContext, 'page', page => this._onPageCreated(page)));
 
     return browserContext;
+  }
+
+  checkUrlAllowed(url: string) {
+    if (this.config.allowUnrestrictedFileAccess)
+      return;
+    if (!URL.canParse(url))
+      return;
+    if (new URL(url).protocol === 'file:')
+      throw new Error(`Access to "file:" protocol is blocked. Attempted URL: "${url}"`);
   }
 
   lookupSecret(secretName: string): { value: string, code: string } {
@@ -345,7 +348,7 @@ function originOrHostGlob(originOrHost: string) {
 export async function workspaceFile(options: ContextOptions, fileName: string, perCallWorkspaceDir?: string): Promise<string> {
   const workspace = perCallWorkspaceDir ?? options.cwd;
   const resolvedName = path.resolve(workspace, fileName);
-  await checkFile(options, resolvedName, { origin: 'code' });
+  await checkFile(options, resolvedName, { origin: 'llm' });
   return resolvedName;
 }
 
@@ -364,13 +367,13 @@ export async function outputFile(options: ContextOptions, fileName: string, flag
 }
 
 async function checkFile(options: ContextOptions, resolvedFilename: string, flags: { origin: 'code' | 'llm' }) {
-  // Trust code.
-  if (flags.origin === 'code')
+  // Trust code and unrestricted file access.
+  if (flags.origin === 'code' || options.config.allowUnrestrictedFileAccess)
     return;
 
   // Trust llm to use valid characters in file names.
   const output = outputDir(options);
   const workspace = options.cwd;
   if (!resolvedFilename.startsWith(output) && !resolvedFilename.startsWith(workspace))
-    throw new Error(`Resolved file path ${resolvedFilename} is outside of the output directory ${output} and workspace directory ${workspace}. Use relative file names to stay within the output directory.`);
+    throw new Error(`File access denied: ${resolvedFilename} is outside allowed roots. Allowed roots: ${output}, ${workspace}`);
 }

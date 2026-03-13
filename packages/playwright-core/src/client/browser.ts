@@ -24,7 +24,7 @@ import { mkdirIfNeeded } from './fileUtils';
 
 import type { BrowserType } from './browserType';
 import type { Page } from './page';
-import type { BrowserContextOptions, LaunchOptions, Logger, StartServerOptions } from './types';
+import type { BrowserContextOptions, LaunchOptions, Logger } from './types';
 import type * as api from '../../types/types';
 import type * as channels from '@protocol/channels';
 
@@ -34,8 +34,8 @@ export class Browser extends ChannelOwner<channels.BrowserChannel> implements ap
   private _closedPromise: Promise<void>;
   _shouldCloseConnectionOnClose = false;
   _browserType!: BrowserType;
-  _options: LaunchOptions = {};
-  _userDataDir: string | undefined;
+  private _options: LaunchOptions = {};
+  private _userDataDir: string | undefined;
   readonly _name: string;
   readonly _browserName: 'chromium' | 'webkit' | 'firefox';
   private _path: string | undefined;
@@ -130,11 +130,12 @@ export class Browser extends ChannelOwner<channels.BrowserChannel> implements ap
     return this._initializer.version;
   }
 
-  async _startServer(title: string, options: StartServerOptions = {}): Promise<{ wsEndpoint?: string, pipeName?: string }> {
-    return await this._channel.startServer({ title, ...options });
+  async _register(title: string, options: { workspaceDir?: string, metadata?: Record<string, any>, wsPath?: string } = {}): Promise<{ pipeName: string }> {
+    const { pipeName } = await this._channel.startServer({ title, ...options });
+    return { pipeName };
   }
 
-  async _stopServer(): Promise<void> {
+  async _unregister(): Promise<void> {
     await this._channel.stopServer();
   }
 
@@ -150,6 +151,14 @@ export class Browser extends ChannelOwner<channels.BrowserChannel> implements ap
 
   isConnected(): boolean {
     return this._isConnected;
+  }
+
+  launchOptions(): LaunchOptions {
+    return this._options;
+  }
+
+  userDataDir(): string | null {
+    return this._userDataDir ?? null;
   }
 
   async newBrowserCDPSession(): Promise<api.CDPSession> {

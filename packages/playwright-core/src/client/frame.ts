@@ -110,7 +110,6 @@ export class Frame extends ChannelOwner<channels.FrameChannel> implements api.Fr
 
   async goto(url: string, options: channels.FrameGotoOptions & TimeoutOptions = {}): Promise<network.Response | null> {
     const waitUntil = verifyLoadState('waitUntil', options.waitUntil === undefined ? 'load' : options.waitUntil);
-    this.page().context()._checkUrlAllowed(url);
     return network.Response.fromNullable((await this._channel.goto({ url, ...options, waitUntil, timeout: this._navigationTimeout(options) })).response);
   }
 
@@ -197,11 +196,6 @@ export class Frame extends ChannelOwner<channels.FrameChannel> implements api.Fr
   async evaluate<R, Arg>(pageFunction: structs.PageFunction<Arg, R>, arg?: Arg): Promise<R> {
     assertMaxArguments(arguments.length, 2);
     const result = await this._channel.evaluateExpression({ expression: String(pageFunction), isFunction: typeof pageFunction === 'function', arg: serializeArgument(arg) });
-    return parseResult(result.value);
-  }
-
-  async _evaluateFunction(functionDeclaration: string) {
-    const result = await this._channel.evaluateExpression({ expression: functionDeclaration, isFunction: true, arg: serializeArgument(undefined) });
     return parseResult(result.value);
   }
 
