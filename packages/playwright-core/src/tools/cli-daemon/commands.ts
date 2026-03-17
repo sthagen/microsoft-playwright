@@ -55,10 +55,24 @@ const open = declareCommand({
     headed: z.boolean().optional().describe('Run browser in headed mode'),
     persistent: z.boolean().optional().describe('Use persistent browser profile'),
     profile: z.string().optional().describe('Use persistent browser profile, store profile in specified directory.'),
-    attach: z.string().optional().describe('Attach to a running Playwright browser by name or endpoint'),
   }),
   toolName: ({ url }) => url ? 'browser_navigate' : 'browser_snapshot',
   toolParams: ({ url }) => ({ url: url || 'about:blank' }),
+});
+
+const attach = declareCommand({
+  name: 'attach',
+  description: 'Attach to a running Playwright browser',
+  category: 'core',
+  args: z.object({
+    name: z.string().describe('Name or endpoint of the browser to attach to'),
+  }),
+  options: z.object({
+    config: z.string().optional().describe('Path to the configuration file, defaults to .playwright/cli.config.json'),
+    session: z.string().optional().describe('Session name alias (defaults to the attach target name)'),
+  }),
+  toolName: 'browser_snapshot',
+  toolParams: () => ({}),
 });
 
 const close = declareCommand({
@@ -198,11 +212,11 @@ const mouseWheel = declareCommand({
   description: 'Scroll mouse wheel',
   category: 'mouse',
   args: z.object({
-    dx: numberArg.describe('Y delta'),
-    dy: numberArg.describe('X delta'),
+    dx: numberArg.describe('X delta'),
+    dy: numberArg.describe('Y delta'),
   }),
   toolName: 'browser_mouse_wheel',
-  toolParams: ({ dx: deltaY, dy: deltaX }) => ({ deltaY, deltaX }),
+  toolParams: ({ dx: deltaX, dy: deltaY }) => ({ deltaX, deltaY }),
 });
 
 // Core
@@ -888,6 +902,7 @@ const tray = declareCommand({
 const commandsArray: AnyCommandSchema[] = [
   // core category
   open,
+  attach,
   close,
   goto,
   type,
