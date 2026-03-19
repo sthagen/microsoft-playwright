@@ -4521,6 +4521,18 @@ export interface Page {
    */
   snapshotForAI(options?: {
     /**
+     * When specified, limits the depth of the snapshot.
+     */
+    depth?: number;
+
+    /**
+     * When set to `"incremental"` and
+     * [`track`](https://playwright.dev/docs/api/class-page#page-snapshot-for-ai-option-track) is specified, returns an
+     * incremental snapshot containing only changes since the last call with the same track name. Defaults to `"full"`.
+     */
+    mode?: string;
+
+    /**
      * Maximum time in milliseconds. Defaults to `0` - no timeout. The default value can be changed via `actionTimeout`
      * option in the config, or by using the
      * [browserContext.setDefaultTimeout(timeout)](https://playwright.dev/docs/api/class-browsercontext#browser-context-set-default-timeout)
@@ -4529,22 +4541,11 @@ export interface Page {
     timeout?: number;
 
     /**
-     * When specified, enables incremental snapshots. Subsequent calls with the same track name will return an incremental
-     * snapshot containing only changes since the last call.
+     * When specified, enables incremental snapshots. Subsequent calls with the same track name will track changes between
+     * calls.
      */
     track?: string;
-  }): Promise<{
-    /**
-     * Full accessibility snapshot of the page.
-     */
-    full: string;
-
-    /**
-     * Incremental snapshot containing only changes since the last tracked snapshot, when using the
-     * [`track`](https://playwright.dev/docs/api/class-page#page-snapshot-for-ai-option-track) option.
-     */
-    incremental?: string;
-  }>;
+  }): Promise<string>;
 
   /**
    * **NOTE** Use locator-based [locator.tap([options])](https://playwright.dev/docs/api/class-locator#locator-tap) instead. Read
@@ -8323,6 +8324,12 @@ export interface BrowserContext {
      */
     behavior?: 'wait'|'ignoreErrors'|'default'
   }): Promise<void>;
+
+  /**
+   * Returns the context options that were used to create this browser context. The return type matches the options
+   * accepted by [browser.newContext([options])](https://playwright.dev/docs/api/class-browser#browser-new-context).
+   */
+  contextOptions(): BrowserContextOptions;
   /**
    * This event is not emitted.
    */
@@ -9129,7 +9136,7 @@ export interface BrowserContext {
   /**
    * Indicates that the browser context is in the process of closing or has already been closed.
    */
-  isClosedOrClosing(): boolean;
+  isClosed(): boolean;
 
   /**
    * **NOTE** CDP sessions are only supported on Chromium-based browsers.
@@ -9842,12 +9849,6 @@ export interface Browser {
   isConnected(): boolean;
 
   /**
-   * Returns the launch options that were used to launch this browser. The return type matches the options accepted by
-   * [browserType.launch([options])](https://playwright.dev/docs/api/class-browsertype#browser-type-launch).
-   */
-  launchOptions(): Object;
-
-  /**
    * **NOTE** CDP Sessions are only supported on Chromium-based browsers.
    *
    * Returns the newly created browser session.
@@ -10403,12 +10404,6 @@ export interface Browser {
    * Returns the buffer with trace data.
    */
   stopTracing(): Promise<Buffer>;
-
-  /**
-   * Returns the user data directory that the browser was launched with, or `null` if the browser was launched without a
-   * persistent context.
-   */
-  userDataDir(): null|string;
 
   /**
    * Returns the browser version.
@@ -14203,6 +14198,13 @@ export interface Locator {
   }): Locator;
 
   /**
+   * Returns a new locator that uses best practices for referencing the matched element, prioritizing test ids, aria
+   * roles, and other user-facing attributes over CSS selectors. This is useful for converting implementation-detail
+   * selectors into more resilient, human-readable locators.
+   */
+  normalize(): Promise<Locator>;
+
+  /**
    * Returns locator to the n-th matching element. It's zero based, `nth(0)` selects the first element.
    *
    * **Usage**
@@ -14684,18 +14686,18 @@ export interface Locator {
    */
   snapshotForAI(options?: {
     /**
+     * When specified, limits the depth of the snapshot.
+     */
+    depth?: number;
+
+    /**
      * Maximum time in milliseconds. Defaults to `0` - no timeout. The default value can be changed via `actionTimeout`
      * option in the config, or by using the
      * [browserContext.setDefaultTimeout(timeout)](https://playwright.dev/docs/api/class-browsercontext#browser-context-set-default-timeout)
      * or [page.setDefaultTimeout(timeout)](https://playwright.dev/docs/api/class-page#page-set-default-timeout) methods.
      */
     timeout?: number;
-  }): Promise<{
-    /**
-     * Accessibility snapshot of the element matching this locator.
-     */
-    full: string;
-  }>;
+  }): Promise<string>;
 
   /**
    * Perform a tap gesture on the element matching the locator. For examples of emulating other gestures by manually
@@ -14785,12 +14787,6 @@ export interface Locator {
      */
     timeout?: number;
   }): Promise<null|string>;
-
-  /**
-   * Returns a code string for a locator that uses best practices for referencing the matched element, prioritizing test
-   * ids, aria roles, and other user-facing attributes over CSS selectors.
-   */
-  toCode(): Promise<string>;
 
   /**
    * Focuses the element, and then sends a `keydown`, `keypress`/`input`, and `keyup` event for each character in the
@@ -19412,9 +19408,6 @@ export interface Coverage {
  * API for controlling the Playwright debugger. The debugger allows pausing script execution and inspecting the page.
  * Obtain the debugger instance via
  * [browserContext.debugger](https://playwright.dev/docs/api/class-browsercontext#browser-context-debugger).
- *
- * See also [page.pause()](https://playwright.dev/docs/api/class-page#page-pause) for a simple way to pause script
- * execution.
  */
 export interface Debugger {
   /**
@@ -19448,6 +19441,25 @@ export interface Debugger {
   prependListener(event: 'pausedstatechanged', listener: () => any): this;
 
   /**
+   * Resumes script execution and pauses again before the next action. Throws if the debugger is not paused.
+   */
+  next(): Promise<void>;
+
+  /**
+   * Configures the debugger to pause before the next action is executed.
+   *
+   * Throws if the debugger is already paused. Use
+   * [debugger.next()](https://playwright.dev/docs/api/class-debugger#debugger-next) or
+   * [debugger.runTo(location)](https://playwright.dev/docs/api/class-debugger#debugger-run-to) to step while paused.
+   *
+   * Note that [page.pause()](https://playwright.dev/docs/api/class-page#page-pause) is equivalent to a "debugger"
+   * statement — it pauses execution at the call site immediately. On the contrary,
+   * [debugger.pause()](https://playwright.dev/docs/api/class-debugger#debugger-pause) is equivalent to "pause on next
+   * statement" — it configures the debugger to pause before the next action is executed.
+   */
+  pause(): Promise<void>;
+
+  /**
    * Returns details about the currently paused calls. Returns an empty array if the debugger is not paused.
    */
   pausedDetails(): Array<{
@@ -19463,31 +19475,21 @@ export interface Debugger {
   }>;
 
   /**
-   * Resumes script execution if the debugger is paused.
+   * Resumes script execution. Throws if the debugger is not paused.
    */
   resume(): Promise<void>;
 
   /**
-   * Configures the debugger to pause at the next action or at a specific source location. Call without arguments to
-   * reset the pausing behavior.
-   * @param options
+   * Resumes script execution and pauses when an action originates from the given source location. Throws if the
+   * debugger is not paused.
+   * @param location The source location to pause at.
    */
-  setPauseAt(options?: {
-    /**
-     * When specified, the debugger will pause when the action originates from the given source location.
-     */
-    location?: {
-      file: string;
+  runTo(location: {
+    file: string;
 
-      line?: number;
+    line?: number;
 
-      column?: number;
-    };
-
-    /**
-     * When `true`, the debugger will pause before the next action.
-     */
-    next?: boolean;
+    column?: number;
   }): Promise<void>;
 }
 
@@ -21642,127 +21644,22 @@ export interface Route {
  */
 export interface Screencast {
   /**
-   * Emitted for each captured JPEG screencast frame while the screencast is running.
+   * Starts capturing screencast frames.
    *
    * **Usage**
    *
    * ```js
-   * const screencast = page.screencast;
-   * screencast.on('screencastframe', ({ data, width, height }) => {
-   *   console.log(`frame ${width}x${height}, jpeg size: ${data.length}`);
-   *   require('fs').writeFileSync('frame.jpg', data);
-   * });
-   * await screencast.start({ maxSize: { width: 1200, height: 800 } });
+   * await page.screencast.start(buffer => {
+   *   console.log(`frame size: ${buffer.length}`);
+   * }, { maxSize: { width: 800, height: 600 } });
    * // ... perform actions ...
-   * await screencast.stop();
+   * await page.screencast.stop();
    * ```
    *
-   */
-  on(event: 'screencastframe', listener: (data: {
-    /**
-     * JPEG-encoded frame data.
-     */
-    data: Buffer;
-  }) => any): this;
-
-  /**
-   * Adds an event listener that will be automatically removed after it is triggered once. See `addListener` for more information about this event.
-   */
-  once(event: 'screencastframe', listener: (data: {
-    /**
-     * JPEG-encoded frame data.
-     */
-    data: Buffer;
-  }) => any): this;
-
-  /**
-   * Emitted for each captured JPEG screencast frame while the screencast is running.
-   *
-   * **Usage**
-   *
-   * ```js
-   * const screencast = page.screencast;
-   * screencast.on('screencastframe', ({ data, width, height }) => {
-   *   console.log(`frame ${width}x${height}, jpeg size: ${data.length}`);
-   *   require('fs').writeFileSync('frame.jpg', data);
-   * });
-   * await screencast.start({ maxSize: { width: 1200, height: 800 } });
-   * // ... perform actions ...
-   * await screencast.stop();
-   * ```
-   *
-   */
-  addListener(event: 'screencastframe', listener: (data: {
-    /**
-     * JPEG-encoded frame data.
-     */
-    data: Buffer;
-  }) => any): this;
-
-  /**
-   * Removes an event listener added by `on` or `addListener`.
-   */
-  removeListener(event: 'screencastframe', listener: (data: {
-    /**
-     * JPEG-encoded frame data.
-     */
-    data: Buffer;
-  }) => any): this;
-
-  /**
-   * Removes an event listener added by `on` or `addListener`.
-   */
-  off(event: 'screencastframe', listener: (data: {
-    /**
-     * JPEG-encoded frame data.
-     */
-    data: Buffer;
-  }) => any): this;
-
-  /**
-   * Emitted for each captured JPEG screencast frame while the screencast is running.
-   *
-   * **Usage**
-   *
-   * ```js
-   * const screencast = page.screencast;
-   * screencast.on('screencastframe', ({ data, width, height }) => {
-   *   console.log(`frame ${width}x${height}, jpeg size: ${data.length}`);
-   *   require('fs').writeFileSync('frame.jpg', data);
-   * });
-   * await screencast.start({ maxSize: { width: 1200, height: 800 } });
-   * // ... perform actions ...
-   * await screencast.stop();
-   * ```
-   *
-   */
-  prependListener(event: 'screencastframe', listener: (data: {
-    /**
-     * JPEG-encoded frame data.
-     */
-    data: Buffer;
-  }) => any): this;
-
-  /**
-   * Starts capturing screencast frames. Frames are emitted as
-   * [screencast.on('screencastframe')](https://playwright.dev/docs/api/class-screencast#screencast-event-screencast-frame)
-   * events.
-   *
-   * **Usage**
-   *
-   * ```js
-   * const screencast = page.screencast;
-   * screencast.on('screencastframe', ({ data, width, height }) => {
-   *   console.log(`frame ${width}x${height}, size: ${data.length}`);
-   * });
-   * await screencast.start({ maxSize: { width: 800, height: 600 } });
-   * // ... perform actions ...
-   * await screencast.stop();
-   * ```
-   *
+   * @param onFrame Callback that receives JPEG-encoded frame data.
    * @param options
    */
-  start(options?: {
+  start(onFrame: ((buffer: Buffer) => Promise<any>|any), options?: {
     /**
      * Maximum screencast frame dimensions. The output frame may be smaller to preserve the page aspect ratio. Defaults to
      * 800×800.
@@ -21782,12 +21679,12 @@ export interface Screencast {
 
   /**
    * Stops the screencast started with
-   * [screencast.start([options])](https://playwright.dev/docs/api/class-screencast#screencast-start).
+   * [screencast.start(onFrame[, options])](https://playwright.dev/docs/api/class-screencast#screencast-start).
    *
    * **Usage**
    *
    * ```js
-   * await screencast.start();
+   * await screencast.start(buffer => { /* handle frame *\/ });
    * // ... perform actions ...
    * await screencast.stop();
    * ```

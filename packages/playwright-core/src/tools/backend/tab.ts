@@ -18,6 +18,7 @@ import url from 'url';
 
 import { EventEmitter } from 'events';
 import { asLocator } from '../../utils/isomorphic/locatorGenerators';
+import { locatorOrSelectorAsSelector } from '../../utils/isomorphic/locatorParser';
 import { ManualPromise } from '../../utils/isomorphic/manualPromise';
 import { debug } from '../../utilsBundle';
 
@@ -83,7 +84,6 @@ export type TabHeader = {
 
 type TabSnapshot = {
   ariaSnapshot: string;
-  ariaSnapshotDiff?: string;
   modalStates: ModalState[];
   events: EventEntry[];
   consoleLink?: string;
@@ -374,14 +374,15 @@ export class Tab extends EventEmitter<TabEventsInterface> {
     this._requests.length = 0;
   }
 
-  async captureSnapshot(selector: string | undefined, relativeTo: string | undefined): Promise<TabSnapshot> {
+  async captureSnapshot(selector: string | undefined, depth: number | undefined, relativeTo: string | undefined, mode: 'full' | 'incremental'): Promise<TabSnapshot> {
     await this._initializedPromise;
     let tabSnapshot: TabSnapshot | undefined;
     const modalStates = await this._raceAgainstModalStates(async () => {
-      const snapshot: { full: string, incremental?: string } = selector ? await this.page.locator(selector).snapshotForAI() : await this.page.snapshotForAI({ track: 'response' });
+      const ariaSnapshot = selector
+        ? await this.page.locator(selector).snapshotForAI({ depth })
+        : await this.page.snapshotForAI({ track: 'response', mode: this._needsFullSnapshot ? 'full' : mode, depth });
       tabSnapshot = {
-        ariaSnapshot: snapshot.full,
-        ariaSnapshotDiff: this._needsFullSnapshot ? undefined : snapshot.incremental,
+        ariaSnapshot,
         modalStates: [],
         events: [],
       };
@@ -397,7 +398,6 @@ export class Tab extends EventEmitter<TabEventsInterface> {
     this._needsFullSnapshot = !tabSnapshot;
     return tabSnapshot ?? {
       ariaSnapshot: '',
-      ariaSnapshotDiff: '',
       modalStates,
       events: [],
     };
@@ -438,17 +438,19 @@ export class Tab extends EventEmitter<TabEventsInterface> {
     await this._initializedPromise;
     return Promise.all(params.map(async param => {
       if (param.selector) {
-        const locator = this.page.locator(param.selector);
-        if (!await locator.isVisible())
-          throw new Error(`Selector ${param.selector} does not match any elements.`);
-        return { locator, resolved: asLocator('javascript', param.selector) };
+        const selector = locatorOrSelectorAsSelector('javascript', param.selector, this.context.config.testIdAttribute || 'data-testid');
+        const handle = await this.page.$(selector);
+        if (!handle)
+          throw new Error(`"${param.selector}" does not match any elements.`);
+        handle.dispose().catch(() => {});
+        return { locator: this.page.locator(selector), resolved: asLocator('javascript', selector) };
       } else {
         try {
           let locator = this.page.locator(`aria-ref=${param.ref}`);
           if (param.element)
             locator = locator.describe(param.element);
-          const resolved = await locator.toCode();
-          return { locator, resolved };
+          const resolved = await locator.normalize();
+          return { locator, resolved: resolved.toString() };
         } catch (e) {
           throw new Error(`Ref ${param.ref} not found in the current page snapshot. Try capturing new snapshot.`);
         }

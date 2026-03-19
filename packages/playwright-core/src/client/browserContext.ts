@@ -38,7 +38,7 @@ import { WebError } from './webError';
 import { Worker } from './worker';
 import { TimeoutSettings } from './timeoutSettings';
 import { mkdirIfNeeded } from './fileUtils';
-import { headersObjectToArray } from '../utils/isomorphic/headers';
+import { headersArrayToObject, headersObjectToArray } from '../utils/isomorphic/headers';
 import { urlMatchesEqual } from '../utils/isomorphic/urlMatch';
 import { isRegExp, isString } from '../utils/isomorphic/rtti';
 import { rewriteErrorMessage } from '../utils/isomorphic/stackTrace';
@@ -232,7 +232,7 @@ export class BrowserContext extends ChannelOwner<channels.BrowserContextChannel>
     const routeHandlers = this._routes.slice();
     for (const routeHandler of routeHandlers) {
       // If the page or the context was closed we stall all requests right away.
-      if (page?._closeWasCalled || this.isClosedOrClosing())
+      if (page?._closeWasCalled || this.isClosed())
         return;
       if (!routeHandler.matches(route.request().url()))
         continue;
@@ -290,11 +290,15 @@ export class BrowserContext extends ChannelOwner<channels.BrowserContextChannel>
     return this._browser;
   }
 
+  contextOptions() {
+    return contextParamsToPublicOptions(this._options);
+  }
+
   pages(): Page[] {
     return [...this._pages];
   }
 
-  isClosedOrClosing(): boolean {
+  isClosed(): boolean {
     return this._closingStatus !== 'none';
   }
 
@@ -516,7 +520,7 @@ export class BrowserContext extends ChannelOwner<channels.BrowserContextChannel>
   }
 
   async close(options: { reason?: string } = {}): Promise<void> {
-    if (this.isClosedOrClosing())
+    if (this.isClosed())
       return;
     this._closeReason = options.reason;
     this._closingStatus = 'closing';
@@ -601,6 +605,24 @@ export async function prepareBrowserContextParams(platform: Platform, options: B
   if (contextParams.recordVideo && contextParams.recordVideo.dir)
     contextParams.recordVideo.dir = platform.path().resolve(contextParams.recordVideo.dir);
   return contextParams;
+}
+
+function contextParamsToPublicOptions(params: channels.BrowserNewContextParams): api.BrowserContextOptions {
+  const result = {
+    ...params,
+    viewport: params.noDefaultViewport ? null : params.viewport,
+    extraHTTPHeaders: params.extraHTTPHeaders ? headersArrayToObject(params.extraHTTPHeaders, false) : undefined,
+    colorScheme: params.colorScheme === 'no-override' ? null : params.colorScheme,
+    reducedMotion: params.reducedMotion === 'no-override' ? null : params.reducedMotion,
+    forcedColors: params.forcedColors === 'no-override' ? null : params.forcedColors,
+    contrast: params.contrast === 'no-override' ? null : params.contrast,
+    acceptDownloads: params.acceptDownloads === 'accept' ? true : params.acceptDownloads === 'deny' ? false : undefined,
+    storageState: undefined,
+  };
+  delete result.clientCertificates;
+  delete result.noDefaultViewport;
+  delete result.selectorEngines;
+  return result;
 }
 
 function toAcceptDownloadsProtocol(acceptDownloads?: boolean) {

@@ -347,9 +347,10 @@ const snapshot = declareCommand({
   }),
   options: z.object({
     filename: z.string().optional().describe('Save snapshot to markdown file instead of returning it in the response.'),
+    depth: numberArg.optional().describe('Limit snapshot depth, unlimited by default.'),
   }),
   toolName: 'browser_snapshot',
-  toolParams: ({ filename, element }) => ({ filename, selector: element }),
+  toolParams: ({ filename, element, depth }) => ({ filename, selector: element, depth }),
 });
 
 const evaluate = declareCommand({
@@ -759,10 +760,13 @@ const networkRequests = declareCommand({
   args: z.object({}),
   options: z.object({
     static: z.boolean().optional().describe('Whether to include successful static resources like images, fonts, scripts, etc. Defaults to false.'),
+    ['request-body']: z.boolean().optional().describe('Whether to include request body. Defaults to false.'),
+    ['request-headers']: z.boolean().optional().describe('Whether to include request headers. Defaults to false.'),
+    filter: z.string().optional().describe('Only return requests whose URL matches this regexp (e.g. "/api/.*user").'),
     clear: z.boolean().optional().describe('Whether to clear the network list'),
   }),
   toolName: ({ clear }) => clear ? 'browser_network_clear' : 'browser_network_requests',
-  toolParams: ({ static: includeStatic, clear }) => clear ? ({}) : ({ includeStatic }),
+  toolParams: ({ static: s, 'request-body': requestBody, 'request-headers': requestHeaders, filter, clear }) => clear ? ({}) : ({ static: s, requestBody, requestHeaders, filter }),
 });
 
 const tracingStart = declareCommand({
@@ -810,6 +814,35 @@ const devtoolsShow = declareCommand({
   args: z.object({}),
   toolName: '',
   toolParams: () => ({}),
+});
+
+const resume = declareCommand({
+  name: 'resume',
+  description: 'Resume the test execution',
+  category: 'devtools',
+  args: z.object({}),
+  toolName: 'browser_resume',
+  toolParams: ({ step }) => ({ step }),
+});
+
+const stepOver = declareCommand({
+  name: 'step-over',
+  description: 'Step over the next call in the test',
+  category: 'devtools',
+  args: z.object({}),
+  toolName: 'browser_resume',
+  toolParams: ({}) => ({ step: true }),
+});
+
+const pauseAt = declareCommand({
+  name: 'pause-at',
+  description: 'Run the test up to a specific location and pause there',
+  category: 'devtools',
+  args: z.object({
+    location: z.string().describe('Location to pause at. Format is <file>:<line>, e.g. "example.spec.ts:42".'),
+  }),
+  toolName: 'browser_resume',
+  toolParams: ({ location }) => ({ location }),
 });
 
 // Sessions
@@ -989,6 +1022,9 @@ const commandsArray: AnyCommandSchema[] = [
   videoStart,
   videoStop,
   devtoolsShow,
+  pauseAt,
+  resume,
+  stepOver,
 
   // session category
   sessionList,

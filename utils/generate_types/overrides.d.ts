@@ -133,6 +133,8 @@ export interface BrowserContext {
      */
     behavior?: 'wait'|'ignoreErrors'|'default'
   }): Promise<void>;
+
+  contextOptions(): BrowserContextOptions;
 }
 
 export interface Browser {

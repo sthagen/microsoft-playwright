@@ -22,7 +22,7 @@ import { setBoxedStackPrefixes, createGuid, currentZone, debugMode, jsonStringif
 import { buildErrorContext } from './errorContext';
 import { currentTestInfo } from './common/globals';
 import { rootTestType } from './common/testType';
-import { createCustomMessageHandler, runDaemonForBrowser } from './mcp/test/browserBackend';
+import { createCustomMessageHandler, runDaemonForContext } from './mcp/test/browserBackend';
 
 import type { Fixtures, PlaywrightTestArgs, PlaywrightTestOptions, PlaywrightWorkerArgs, PlaywrightWorkerOptions, ScreenshotMode, TestInfo, TestType, VideoMode } from '../types/test';
 import type { ContextReuseMode } from './common/config';
@@ -444,7 +444,7 @@ const playwrightFixtures: Fixtures<TestFixtures, WorkerFixtures> = ({
     if (!_reuseContext) {
       const { context, close } = await _contextFactory();
       testInfo._onCustomMessageCallback = createCustomMessageHandler(testInfo, context);
-      testInfo._onDidFinishTestFunctionCallbacks.add(() => runDaemonForBrowser(testInfo, browser));
+      await runDaemonForContext(testInfo, context);
       await use(context);
       await close();
       return;
@@ -452,7 +452,7 @@ const playwrightFixtures: Fixtures<TestFixtures, WorkerFixtures> = ({
 
     const context = await browserImpl._wrapApiCall(() => browserImpl._newContextForReuse(), { internal: true });
     testInfo._onCustomMessageCallback = createCustomMessageHandler(testInfo, context);
-    testInfo._onDidFinishTestFunctionCallbacks.add(() => runDaemonForBrowser(testInfo, browser));
+    await runDaemonForContext(testInfo, context);
     await use(context);
     const closeReason = testInfo.status === 'timedOut' ? 'Test timeout of ' + testInfo.timeout + 'ms exceeded.' : 'Test ended.';
     await browserImpl._wrapApiCall(() => browserImpl._disconnectFromReusedContext(closeReason), { internal: true });
@@ -709,7 +709,7 @@ class ArtifactsRecorder {
     try {
       // TODO: maybe capture snapshot when the error is created, so it's from the right page and right time
       await page._wrapApiCall(async () => {
-        this._pageSnapshot = (await page.snapshotForAI({ timeout: 5000 })).full;
+        this._pageSnapshot = await page.snapshotForAI({ timeout: 5000 });
       }, { internal: true });
     } catch {}
   }

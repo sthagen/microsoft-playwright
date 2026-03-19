@@ -17,10 +17,10 @@
 
 import { test as it, expect } from './pageTest';
 import { unshift } from '../config/utils';
+import type { Page } from 'playwright-core';
 
-async function snapshotForAI(page: any, options?: { timeout?: number, mode?: 'full' | 'incremental', track?: string }): Promise<string> {
-  const snapshot = await page.snapshotForAI(options);
-  return options?.mode === 'incremental' ? snapshot.incremental : snapshot.full;
+async function snapshotForAI(page: Page, options?: Parameters<Page['snapshotForAI']>[0]): Promise<string> {
+  return await page.snapshotForAI(options);
 }
 
 it('should generate refs', async ({ page }) => {
@@ -92,20 +92,20 @@ it('should stitch all frame snapshots', async ({ page, server }) => {
   expect(href3).toBe(server.PREFIX + '/frames/frame.html');
 
   {
-    const resolved = await page.locator('aria-ref=e1').toCode();
-    expect(resolved).toBe(`locator('body')`);
+    const resolved = await page.locator('aria-ref=e1').normalize();
+    expect(resolved.toString()).toBe(`locator('body')`);
   }
   {
-    const resolved = await page.locator('aria-ref=f4e2').toCode();
-    expect(resolved).toBe(`locator('iframe[name="2frames"]').contentFrame().locator('iframe[name="dos"]').contentFrame().getByText('Hi, I\\'m frame')`);
+    const resolved = await page.locator('aria-ref=f4e2').normalize();
+    expect(resolved.toString()).toBe(`locator('iframe[name="2frames"]').contentFrame().locator('iframe[name="dos"]').contentFrame().getByText('Hi, I\\'m frame')`);
   }
   {
     // Should tolerate .describe().
-    const resolved = await page.locator('aria-ref=f3e2').describe('foo bar').toCode();
-    expect(resolved).toBe(`locator('iframe[name=\"2frames\"]').contentFrame().locator('iframe[name=\"uno\"]').contentFrame().getByText('Hi, I\\'m frame')`);
+    const resolved = await page.locator('aria-ref=f3e2').describe('foo bar').normalize();
+    expect(resolved.toString()).toBe(`locator('iframe[name=\"2frames\"]').contentFrame().locator('iframe[name=\"uno\"]').contentFrame().getByText('Hi, I\\'m frame')`);
   }
   {
-    const error = await page.locator('aria-ref=e1000').toCode().catch(e => e);
+    const error = await page.locator('aria-ref=e1000').normalize().catch(e => e);
     expect(error.message).toContain(`No element matching aria-ref=e1000`);
   }
 });
@@ -716,7 +716,13 @@ it('should not create incremental snapshots without tracks', async ({ page }) =>
         - button "a button" [ref=e4]
       - listitem [ref=e5]: a span
   `);
-  expect(await snapshotForAI(page, { mode: 'incremental' })).toBe(undefined);
+  // Without a track, mode: 'incremental' falls back to full snapshot.
+  expect(await snapshotForAI(page, { mode: 'incremental' })).toContainYaml(`
+    - list [ref=e2]:
+      - listitem [ref=e3]:
+        - button "a button" [ref=e4]
+      - listitem [ref=e5]: a span
+  `);
 });
 
 it('should create incremental snapshot for children swap', async ({ page }) => {
@@ -737,5 +743,66 @@ it('should create incremental snapshot for children swap', async ({ page }) => {
     - <changed> list [ref=e2]:
       - ref=e4 [unchanged]
       - ref=e3 [unchanged]
+  `);
+});
+
+it('should limit depth', async ({ page }) => {
+  await page.setContent(`
+    <ul>
+      <li>item1</li>
+      <a href="about:blank" style="cursor:pointer">link</a>
+      <li>
+        <ul id=target>
+          <li>item2</li>
+          <li>
+            <ul>
+              <li>item3</li>
+            </ul>
+          </li>
+        </ul>
+      </li>
+    </ul>
+  `);
+
+  const snapshot1 = await snapshotForAI(page, { depth: 1 });
+  expect(snapshot1).toContainYaml(`
+    - list [ref=e2]:
+      - listitem [ref=e3]: item1
+      - link "link" [ref=e4] [cursor=pointer]:
+        - /url: about:blank
+      - listitem [ref=e5]
+  `);
+
+  const snapshot2 = await snapshotForAI(page, { depth: 3 });
+  expect(snapshot2).toContainYaml(`
+    - list [ref=e2]:
+      - listitem [ref=e3]: item1
+      - link "link" [ref=e4] [cursor=pointer]:
+        - /url: about:blank
+      - listitem [ref=e5]:
+        - list [ref=e6]:
+          - listitem [ref=e7]: item2
+          - listitem [ref=e8]
+  `);
+
+  const snapshot3 = await snapshotForAI(page, { depth: 100 });
+  expect(snapshot3).toContainYaml(`
+    - list [ref=e2]:
+      - listitem [ref=e3]: item1
+      - link "link" [ref=e4] [cursor=pointer]:
+        - /url: about:blank
+      - listitem [ref=e5]:
+        - list [ref=e6]:
+          - listitem [ref=e7]: item2
+          - listitem [ref=e8]:
+            - list [ref=e9]:
+              - listitem [ref=e10]: item3
+  `);
+
+  const snapshot4 = await page.locator('#target').snapshotForAI({ depth: 1 });
+  expect(snapshot4).toContainYaml(`
+    - list [ref=e6]:
+      - listitem [ref=e7]: item2
+      - listitem [ref=e8]
   `);
 });

@@ -306,7 +306,7 @@ workspace1:
     await page.setContent('<title>My Page</title>');
     const { output: openOutput } = await cli('attach', 'foobar');
     expect(openOutput).toContain('### Session `foobar` created, attached to `foobar`.');
-    expect(openOutput).toContain('Run commands with: playwright --session=foobar <command>');
+    expect(openOutput).toContain('Run commands with: playwright-cli --session=foobar <command>');
     const { output: listOutput } = await cli('list', '--all');
     expect(listOutput).toBe(`### Browsers
 /:
@@ -314,7 +314,7 @@ workspace1:
   - status: open
   - browser-type: ${/* FIX browser._options */ mcpBrowser.replace('chrome', 'chromium')}
   - user-data-dir: <in-memory>
-  - headed: true`);
+  - headed: false`);
   });
 
   test('fail to attach to browser server without contexts', async ({ cli, mcpBrowser }) => {
@@ -342,7 +342,7 @@ workspace1:
   - status: open
   - browser-type: ${mcpBrowser.replace('chrome', 'chromium')}
   - user-data-dir: <in-memory>
-  - headed: true`);
+  - headed: false`);
   });
 
   test('attach with session alias', async ({ cli, mcpBrowser }) => {
@@ -353,7 +353,7 @@ workspace1:
     await page.setContent('<title>Alias Page</title>');
     const { output: openOutput } = await cli('attach', 'foobar', '--session=mybrowser');
     expect(openOutput).toContain('### Session `mybrowser` created, attached to `foobar`.');
-    expect(openOutput).toContain('Run commands with: playwright --session=mybrowser <command>');
+    expect(openOutput).toContain('Run commands with: playwright-cli --session=mybrowser <command>');
     await cli('-s', 'mybrowser', 'close');
   });
 

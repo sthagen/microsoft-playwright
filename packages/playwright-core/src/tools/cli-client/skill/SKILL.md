@@ -43,9 +43,11 @@ playwright-cli upload ./document.pdf
 playwright-cli check e12
 playwright-cli uncheck e12
 playwright-cli snapshot
-playwright-cli snapshot --filename=after-click.yaml
 playwright-cli eval "document.title"
 playwright-cli eval "el => el.textContent" e5
+# get element id, class, or any attribute not visible in the snapshot
+playwright-cli eval "el => el.id" e5
+playwright-cli eval "el => el.getAttribute('data-testid')" e5
 playwright-cli dialog-accept
 playwright-cli dialog-accept "confirmation text"
 playwright-cli dialog-dismiss
@@ -192,9 +194,21 @@ After each command, playwright-cli provides a snapshot of the current browser st
 [Snapshot](.playwright-cli/page-2026-02-14T19-22-42-679Z.yml)
 ```
 
-You can also take a snapshot on demand using `playwright-cli snapshot` command.
+You can also take a snapshot on demand using `playwright-cli snapshot` command. All the options below can be combined as needed.
 
-If `--filename` is not provided, a new snapshot file is created with a timestamp. Default to automatic file naming, use `--filename=` when artifact is a part of the workflow result.
+```bash
+# default - save to a file with timestamp-based name
+playwright-cli snapshot
+
+# save to file, use when snapshot is a part of the workflow result
+playwright-cli snapshot --filename=after-click.yaml
+
+# snapshot an element instead of the whole page
+playwright-cli snapshot "#main"
+
+# limit snapshot depth for efficiency
+playwright-cli snapshot --depth=4
+```
 
 ## Targeting elements
 
@@ -208,17 +222,17 @@ playwright-cli snapshot
 playwright-cli click e15
 ```
 
-You can also use css or role selectors, for example when explicitly asked for it.
+You can also use css selectors or Playwright locators.
 
 ```bash
 # css selector
 playwright-cli click "#main > button.submit"
 
-# role selector
-playwright-cli click "role=button[name=Submit]"
+# role locator
+playwright-cli click "getByRole('button', { name: 'Submit' })"
 
-# chaining css and role selectors
-playwright-cli click "#footer >> role=button[name=Submit]"
+# test id
+playwright-cli click "getByTestId('submit-button')"
 ```
 
 ## Browser Sessions
@@ -307,3 +321,4 @@ playwright-cli close
 * **Test generation** [references/test-generation.md](references/test-generation.md)
 * **Tracing** [references/tracing.md](references/tracing.md)
 * **Video recording** [references/video-recording.md](references/video-recording.md)
+* **Inspecting element attributes** [references/element-attributes.md](references/element-attributes.md)

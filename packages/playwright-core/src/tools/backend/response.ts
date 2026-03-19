@@ -48,6 +48,7 @@ export class Response {
   private _includeSnapshot: 'none' | 'full' | 'incremental' = 'none';
   private _includeSnapshotFileName: string | undefined;
   private _includeSnapshotSelector: string | undefined;
+  private _includeSnapshotDepth: number | undefined;
   private _isClose: boolean = false;
 
   readonly toolName: string;
@@ -127,9 +128,10 @@ export class Response {
     this._includeSnapshot = this._context.config.snapshot?.mode || 'incremental';
   }
 
-  setIncludeFullSnapshot(includeSnapshotFileName?: string, selector?: string) {
+  setIncludeFullSnapshot(includeSnapshotFileName?: string, selector?: string, depth?: number) {
     this._includeSnapshot = 'full';
     this._includeSnapshotFileName = includeSnapshotFileName;
+    this._includeSnapshotDepth = depth;
     this._includeSnapshotSelector = selector;
   }
 
@@ -195,7 +197,7 @@ export class Response {
       addSection('Ran Playwright code', this._code, 'js');
 
     // Render tab titles upon changes or when more than one tab.
-    const tabSnapshot = this._context.currentTab() ? await this._context.currentTabOrDie().captureSnapshot(this._includeSnapshotSelector, this._clientWorkspace) : undefined;
+    const tabSnapshot = this._context.currentTab() ? await this._context.currentTabOrDie().captureSnapshot(this._includeSnapshotSelector, this._includeSnapshotDepth, this._clientWorkspace, this._includeSnapshot === 'incremental' ? 'incremental' : 'full') : undefined;
     const tabHeaders = await Promise.all(this._context.tabs().map(tab => tab.headerSnapshot()));
     if (this._includeSnapshot !== 'none' || tabHeaders.some(header => header.changed)) {
       if (tabHeaders.length !== 1)
@@ -211,7 +213,7 @@ export class Response {
 
     // Handle tab snapshot
     if (tabSnapshot && this._includeSnapshot !== 'none') {
-      const snapshot = this._includeSnapshot === 'full' ? tabSnapshot.ariaSnapshot : tabSnapshot.ariaSnapshotDiff ?? tabSnapshot.ariaSnapshot;
+      const snapshot = tabSnapshot.ariaSnapshot;
       if (this._context.config.outputMode === 'file' || this._includeSnapshotFileName) {
         const resolvedFile = await this.resolveClientFile({ prefix: 'page', ext: 'yml', suggestedFilename: this._includeSnapshotFileName }, 'Snapshot');
         await fs.promises.writeFile(resolvedFile.fileName, snapshot, 'utf-8');
@@ -239,6 +241,14 @@ export class Response {
     }
     if (text.length)
       addSection('Events', text);
+
+    const pausedDetails = this._context.debugger().pausedDetails();
+    if (pausedDetails.length) {
+      addSection('Paused', [
+        ...pausedDetails.map(call => `- ${call.title} at ${this._computRelativeTo(call.location.file)}${call.location.line ? ':' + call.location.line : ''}`),
+        '- Use any tools to explore and interact, resume by calling resume/step-over/pause-at',
+      ]);
+    }
     return sections;
   }
 }
@@ -310,6 +320,7 @@ export function parseResponse(response: CallToolResult) {
   const snapshot = sections.get('Snapshot');
   const events = sections.get('Events');
   const modalState = sections.get('Modal state');
+  const paused = sections.get('Paused');
   const codeNoFrame = code?.replace(/^```js\n/, '').replace(/\n```$/, '');
   const isError = response.isError;
   const attachments = response.content.length > 1 ? response.content.slice(1) : undefined;
@@ -323,6 +334,7 @@ export function parseResponse(response: CallToolResult) {
     snapshot,
     events,
     modalState,
+    paused,
     isError,
     attachments,
     text,

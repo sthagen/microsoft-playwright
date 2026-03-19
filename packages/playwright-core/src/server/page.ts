@@ -886,7 +886,7 @@ export class Page extends SdkObject<PageEventMap> {
     await Promise.all(this.frames().map(frame => frame.hideHighlight().catch(() => {})));
   }
 
-  async snapshotForAI(progress: Progress, options: { track?: string, doNotRenderActive?: boolean, selector?: string } = {}): Promise<{ full: string, incremental?: string }> {
+  async snapshotForAI(progress: Progress, options: { track?: string, mode?: 'full' | 'incremental', doNotRenderActive?: boolean, selector?: string, depth?: number } = {}): Promise<{ snapshot: string }> {
     if (options.selector && options.track)
       throw new Error('Cannot specify both selector and track options');
 
@@ -902,8 +902,9 @@ export class Page extends SdkObject<PageEventMap> {
       frame = this.mainFrame();
     }
 
-    const snapshot = await snapshotFrameForAI(progress, frame, { ...options, info });
-    return { full: snapshot.full.join('\n'), incremental: snapshot.incremental?.join('\n') };
+    const result = await snapshotFrameForAI(progress, frame, { ...options, info });
+    const snapshot = options.mode === 'incremental' && result.incremental !== undefined ? result.incremental.join('\n') : result.full.join('\n');
+    return { snapshot };
   }
 
   async setDockTile(image: Buffer) {
@@ -1047,7 +1048,7 @@ export class InitScript extends DisposableObject {
   }
 }
 
-async function snapshotFrameForAI(progress: Progress, frame: frames.Frame, options: { track?: string, doNotRenderActive?: boolean, info?: SelectorInfo } = {}): Promise<{ full: string[], incremental?: string[] }> {
+async function snapshotFrameForAI(progress: Progress, frame: frames.Frame, options: { track?: string, doNotRenderActive?: boolean, info?: SelectorInfo, depth?: number } = {}): Promise<{ full: string[], incremental?: string[] }> {
   // Only await the topmost navigations, inner frames will be empty when racing.
   const snapshot = await frame.retryWithProgressAndTimeouts(progress, [1000, 2000, 4000, 8000], async continuePolling => {
     try {
@@ -1069,6 +1070,7 @@ async function snapshotFrameForAI(progress: Progress, frame: frames.Frame, optio
         track: options.track,
         doNotRenderActive: options.doNotRenderActive,
         info: options.info,
+        depth: options.depth,
       }));
       if (snapshotOrRetry === true)
         return continuePolling;

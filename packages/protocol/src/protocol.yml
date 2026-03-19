@@ -2013,11 +2013,16 @@ Page:
       parameters:
         # When track is present, an incremental snapshot is returned when possible.
         track: string?
+        mode:
+          type: enum?
+          literals:
+            - full
+            - incremental
         selector: string?
+        depth: int?
         timeout: float
       returns:
-        full: string
-        incremental: string?
+        snapshot: string
 
     startJSCoverage:
       title: Start JS coverage
@@ -3803,21 +3808,28 @@ Debugger:
 
   commands:
 
-    setPauseAt:
-      title: Configure pause behavior
+    pause:
+      title: Pause on next call
       group: configuration
-      parameters:
-        next: boolean?
-        location:
-          type: object?
-          properties:
-            file: string
-            line: int?
-            column: int?
 
     resume:
       title: Resume
       group: configuration
+
+    next:
+      title: Step to next call
+      group: configuration
+
+    runTo:
+      title: Run to location
+      group: configuration
+      parameters:
+        location:
+          type: object
+          properties:
+            file: string
+            line: int?
+            column: int?
 
   events:
 
