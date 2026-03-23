@@ -6933,6 +6933,9 @@ export interface PlaywrightWorkerOptions {
    * down to fit into 800x800. If `viewport` is not configured explicitly the video size defaults to 800x450. Actual
    * picture of each page will be scaled down if necessary to fit the specified size.
    *
+   * To annotate actions in the video with element highlights and action title subtitles, pass `annotate` with an
+   * optional `delay` in milliseconds (defaults to `500`).
+   *
    * **Usage**
    *
    * ```js
@@ -6948,7 +6951,7 @@ export interface PlaywrightWorkerOptions {
    *
    * Learn more about [recording video](https://playwright.dev/docs/test-use-options#recording-options).
    */
-  video: VideoMode | /** deprecated */ 'retry-with-video' | { mode: VideoMode, size?: ViewportSize };
+  video: VideoMode | /** deprecated */ 'retry-with-video' | { mode: VideoMode, size?: ViewportSize, annotate?: { delay?: number } };
 }
 
 export type ScreenshotMode = 'off' | 'on' | 'only-on-failure' | 'on-first-failure';
@@ -7915,6 +7918,34 @@ interface GenericAssertions<R> {
    *
    */
   not: GenericAssertions<R>;
+  /**
+   * Use `resolves` to unwrap the value of a fulfilled promise so any other matcher can be chained. If the promise is
+   * rejected the assertion fails.
+   *
+   * For example, this code tests that the promise resolves and that the resulting value is `'lemon'`:
+   *
+   * ```js
+   * test('resolves to lemon', async () => {
+   *   await expect(Promise.resolve('lemon')).resolves.toBe('lemon');
+   * });
+   * ```
+   *
+   */
+  resolves: GenericAssertions<R>;
+  /**
+   * Use `.rejects` to unwrap the reason of a rejected promise so any other matcher can be chained. If the promise is
+   * fulfilled the assertion fails.
+   *
+   * For example, this code tests that the promise rejects with reason `'octopus'`:
+   *
+   * ```js
+   * test('rejects to octopus', async () => {
+   *   await expect(Promise.reject(new Error('octopus'))).rejects.toThrow('octopus');
+   * });
+   * ```
+   *
+   */
+  rejects: GenericAssertions<R>;
   /**
    * Compares value with
    * [`expected`](https://playwright.dev/docs/api/class-genericassertions#generic-assertions-to-be-option-expected) by

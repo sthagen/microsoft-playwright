@@ -376,6 +376,7 @@ const playwrightFixtures: Fixtures<TestFixtures, WorkerFixtures> = ({
         recordVideo: {
           dir: tracing().artifactsDir(),
           size: typeof video === 'string' ? undefined : video.size,
+          annotate: typeof video === 'string' ? undefined : video.annotate,
         }
       } : {};
       const context = await browser.newContext({ ...videoOptions, ...options }) as BrowserContextImpl;
@@ -709,7 +710,7 @@ class ArtifactsRecorder {
     try {
       // TODO: maybe capture snapshot when the error is created, so it's from the right page and right time
       await page._wrapApiCall(async () => {
-        this._pageSnapshot = await page.snapshotForAI({ timeout: 5000 });
+        this._pageSnapshot = await page.ariaSnapshot({ mode: 'ai', timeout: 5000 });
       }, { internal: true });
     } catch {}
   }

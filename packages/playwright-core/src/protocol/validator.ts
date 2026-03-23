@@ -611,6 +611,9 @@ scheme.BrowserTypeLaunchPersistentContextParams = tObject({
       width: tInt,
       height: tInt,
     })),
+    annotate: tOptional(tObject({
+      delay: tOptional(tInt),
+    })),
   })),
   strictSelectors: tOptional(tBoolean),
   serviceWorkers: tOptional(tEnum(['allow', 'block'])),
@@ -722,6 +725,9 @@ scheme.BrowserNewContextParams = tObject({
       width: tInt,
       height: tInt,
     })),
+    annotate: tOptional(tObject({
+      delay: tOptional(tInt),
+    })),
   })),
   strictSelectors: tOptional(tBoolean),
   serviceWorkers: tOptional(tEnum(['allow', 'block'])),
@@ -792,6 +798,9 @@ scheme.BrowserNewContextForReuseParams = tObject({
     size: tOptional(tObject({
       width: tInt,
       height: tInt,
+    })),
+    annotate: tOptional(tObject({
+      delay: tOptional(tInt),
     })),
   })),
   strictSelectors: tOptional(tBoolean),
@@ -910,6 +919,9 @@ scheme.BrowserContextInitializer = tObject({
       size: tOptional(tObject({
         width: tInt,
         height: tInt,
+      })),
+      annotate: tOptional(tObject({
+        delay: tOptional(tInt),
       })),
     })),
     strictSelectors: tOptional(tBoolean),
@@ -1494,16 +1506,6 @@ scheme.PageRequestsParams = tOptional(tObject({}));
 scheme.PageRequestsResult = tObject({
   requests: tArray(tChannel(['Request'])),
 });
-scheme.PageSnapshotForAIParams = tObject({
-  track: tOptional(tString),
-  mode: tOptional(tEnum(['full', 'incremental'])),
-  selector: tOptional(tString),
-  depth: tOptional(tInt),
-  timeout: tFloat,
-});
-scheme.PageSnapshotForAIResult = tObject({
-  snapshot: tString,
-});
 scheme.PageStartJSCoverageParams = tObject({
   resetOnNavigation: tOptional(tBoolean),
   reportAnonymousScripts: tOptional(tBoolean),
@@ -1550,9 +1552,12 @@ scheme.PagePickLocatorResult = tObject({
 scheme.PageCancelPickLocatorParams = tOptional(tObject({}));
 scheme.PageCancelPickLocatorResult = tOptional(tObject({}));
 scheme.PageStartScreencastParams = tObject({
-  maxSize: tOptional(tObject({
+  preferredSize: tOptional(tObject({
     width: tInt,
     height: tInt,
+  })),
+  annotate: tOptional(tObject({
+    delay: tOptional(tInt),
   })),
 });
 scheme.PageStartScreencastResult = tOptional(tObject({}));
@@ -1562,6 +1567,9 @@ scheme.PageVideoStartParams = tObject({
   size: tOptional(tObject({
     width: tInt,
     height: tInt,
+  })),
+  annotate: tOptional(tObject({
+    delay: tOptional(tInt),
   })),
 });
 scheme.PageVideoStartResult = tObject({
@@ -1631,7 +1639,10 @@ scheme.FrameAddStyleTagResult = tObject({
   element: tChannel(['ElementHandle']),
 });
 scheme.FrameAriaSnapshotParams = tObject({
-  selector: tString,
+  mode: tOptional(tEnum(['ai', 'default'])),
+  track: tOptional(tString),
+  selector: tOptional(tString),
+  depth: tOptional(tInt),
   timeout: tFloat,
 });
 scheme.FrameAriaSnapshotResult = tObject({
@@ -2659,6 +2670,9 @@ scheme.ElectronLaunchParams = tObject({
       width: tInt,
       height: tInt,
     })),
+    annotate: tOptional(tObject({
+      delay: tOptional(tInt),
+    })),
   })),
   strictSelectors: tOptional(tBoolean),
   timezoneId: tOptional(tString),
@@ -2893,6 +2907,9 @@ scheme.AndroidDeviceLaunchBrowserParams = tObject({
     size: tOptional(tObject({
       width: tInt,
       height: tInt,
+    })),
+    annotate: tOptional(tObject({
+      delay: tOptional(tInt),
     })),
   })),
   strictSelectors: tOptional(tBoolean),

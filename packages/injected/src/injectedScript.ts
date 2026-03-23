@@ -306,25 +306,25 @@ export class InjectedScript {
     return this.incrementalAriaSnapshot(node, options).full;
   }
 
-  incrementalAriaSnapshot(node: Node, options: AriaTreeOptions & { track?: string, depth?: number }): { full: string, incremental?: string, iframeRefs: string[] } {
+  incrementalAriaSnapshot(node: Node, options: AriaTreeOptions & { track?: string, depth?: number }): { full: string, incremental?: string, iframeRefs: string[], iframeDepths: Record<string, number> } {
     if (node.nodeType !== Node.ELEMENT_NODE)
       throw this.createStacklessError('Can only capture aria snapshot of Element nodes.');
     const ariaSnapshot = generateAriaTree(node as Element, options);
-    const full = renderAriaTree(ariaSnapshot, options);
+    const rendered = renderAriaTree(ariaSnapshot, options);
     let incremental: string | undefined;
     if (options.track) {
       const previousSnapshot = this._lastAriaSnapshotForTrack.get(options.track);
       if (previousSnapshot)
-        incremental = renderAriaTree(ariaSnapshot, options, previousSnapshot);
+        incremental = renderAriaTree(ariaSnapshot, options, previousSnapshot).text;
       this._lastAriaSnapshotForTrack.set(options.track, ariaSnapshot);
     }
     this._lastAriaSnapshotForQuery = ariaSnapshot;
-    return { full, incremental, iframeRefs: ariaSnapshot.iframeRefs };
+    return { full: rendered.text, incremental, iframeRefs: ariaSnapshot.iframeRefs, iframeDepths: rendered.iframeDepths };
   }
 
   ariaSnapshotForRecorder(): { ariaSnapshot: string, refs: Map<Element, string> } {
     const tree = generateAriaTree(this.document.body, { mode: 'ai' });
-    const ariaSnapshot = renderAriaTree(tree, { mode: 'ai' });
+    const { text: ariaSnapshot } = renderAriaTree(tree, { mode: 'ai' });
     return { ariaSnapshot, refs: tree.refs };
   }
 
@@ -1290,14 +1290,19 @@ export class InjectedScript {
   }
 
   maskSelectors(selectors: ParsedSelector[], color: string) {
+    const highlight = this._createHighlight();
+    const elements = [];
+    for (const selector of selectors)
+      elements.push(this.querySelectorAll(selector, this.document.documentElement));
+    highlight.maskElements(elements.flat(), color);
+  }
+
+  private _createHighlight() {
     if (this._highlight)
       this.hideHighlight();
     this._highlight = new Highlight(this);
     this._highlight.install();
-    const elements = [];
-    for (const selector of selectors)
-      elements.push(this.querySelectorAll(selector, this.document.documentElement));
-    this._highlight.maskElements(elements.flat(), color);
+    return this._highlight;
   }
 
   highlight(selector: ParsedSelector) {
@@ -1306,6 +1311,24 @@ export class InjectedScript {
       this._highlight.install();
     }
     this._highlight.runHighlightOnRaf(selector);
+  }
+
+  annotate(annotation: { point?: channels.Point, box?: channels.Rect, title?: string, delay?: number }) {
+    const highlight = this._createHighlight();
+    const fadeDuration = annotation.delay ?? 500;
+
+    if (annotation.box) {
+      highlight.updateHighlight([{
+        box: annotation.box,
+        color: 'rgba(0, 128, 255, 0.15)',
+        borderColor: 'rgba(0, 128, 255, 0.6)',
+        fadeDuration,
+      }]);
+    }
+    if (annotation.point)
+      highlight.showActionPoint(annotation.point.x, annotation.point.y, fadeDuration);
+    if (annotation.title)
+      highlight.showSubtitle(annotation.title, fadeDuration);
   }
 
   hideHighlight() {

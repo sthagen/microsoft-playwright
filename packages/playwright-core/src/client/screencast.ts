@@ -21,16 +21,18 @@ import type { Page } from './page';
 
 export class Screencast implements api.Screencast {
   private readonly _page: Page;
-  private _onFrame: ((buffer: Buffer) => any) | null = null;
+  private _onFrame: ((frame: { data: Buffer }) => Promise<any>) | null = null;
 
   constructor(page: Page) {
     this._page = page;
     this._page._channel.on('screencastFrame', ({ data }) => {
-      this._onFrame?.(data);
+      void this._onFrame?.({ data });
     });
   }
 
-  async start(onFrame: (buffer: Buffer) => any, options: { maxSize?: { width: number, height: number } } = {}): Promise<DisposableStub> {
+  async start(onFrame: (frame: { data: Buffer }) => Promise<any>|any, options: { preferredSize?: { width: number, height: number }, annotate?: { delay?: number } } = {}): Promise<DisposableStub> {
+    if (this._onFrame)
+      throw new Error('Screencast is already started');
     this._onFrame = onFrame;
     await this._page._channel.startScreencast(options);
     return new DisposableStub(() => this.stop());

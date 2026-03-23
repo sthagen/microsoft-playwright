@@ -261,23 +261,23 @@ export class PageDispatcher extends Dispatcher<Page, channels.PageChannel, Brows
   }
 
   async keyboardDown(params: channels.PageKeyboardDownParams, progress: Progress): Promise<void> {
-    await this._page.keyboard.down(progress, params.key);
+    await this._page.keyboard.apiDown(progress, params.key);
   }
 
   async keyboardUp(params: channels.PageKeyboardUpParams, progress: Progress): Promise<void> {
-    await this._page.keyboard.up(progress, params.key);
+    await this._page.keyboard.apiUp(progress, params.key);
   }
 
   async keyboardInsertText(params: channels.PageKeyboardInsertTextParams, progress: Progress): Promise<void> {
-    await this._page.keyboard.insertText(progress, params.text);
+    await this._page.keyboard.apiInsertText(progress, params.text);
   }
 
   async keyboardType(params: channels.PageKeyboardTypeParams, progress: Progress): Promise<void> {
-    await this._page.keyboard.type(progress, params.text, params);
+    await this._page.keyboard.apiType(progress, params.text, params);
   }
 
   async keyboardPress(params: channels.PageKeyboardPressParams, progress: Progress): Promise<void> {
-    await this._page.keyboard.press(progress, params.key, params);
+    await this._page.keyboard.apiPress(progress, params.key, params);
   }
 
   async clearConsoleMessages(params: channels.PageClearConsoleMessagesParams, progress: Progress): Promise<channels.PageClearConsoleMessagesResult> {
@@ -301,32 +301,28 @@ export class PageDispatcher extends Dispatcher<Page, channels.PageChannel, Brows
   }
 
   async mouseMove(params: channels.PageMouseMoveParams, progress: Progress): Promise<void> {
-    progress.metadata.point = { x: params.x, y: params.y };
-    await this._page.mouse.move(progress, params.x, params.y, params);
+    await this._page.mouse.apiMove(progress, params.x, params.y, params);
   }
 
   async mouseDown(params: channels.PageMouseDownParams, progress: Progress): Promise<void> {
-    progress.metadata.point = this._page.mouse.currentPoint();
-    await this._page.mouse.down(progress, params);
+    await this._page.mouse.apiDown(progress, params);
   }
 
   async mouseUp(params: channels.PageMouseUpParams, progress: Progress): Promise<void> {
-    progress.metadata.point = this._page.mouse.currentPoint();
-    await this._page.mouse.up(progress, params);
+    await this._page.mouse.apiUp(progress, params);
   }
 
   async mouseClick(params: channels.PageMouseClickParams, progress: Progress): Promise<void> {
-    progress.metadata.point = { x: params.x, y: params.y };
-    await this._page.mouse.click(progress, params.x, params.y, params);
+    await this._page.mouse.apiClick(progress, params.x, params.y, params);
   }
 
   async mouseWheel(params: channels.PageMouseWheelParams, progress: Progress): Promise<void> {
-    await this._page.mouse.wheel(progress, params.deltaX, params.deltaY);
+    await this._page.mouse.apiWheel(progress, params.deltaX, params.deltaY);
   }
 
   async touchscreenTap(params: channels.PageTouchscreenTapParams, progress: Progress): Promise<void> {
     progress.metadata.point = { x: params.x, y: params.y };
-    await this._page.touchscreen.tap(progress, params.x, params.y);
+    await this._page.touchscreen.apiTap(progress, params.x, params.y);
   }
 
   async pdf(params: channels.PagePdfParams, progress: Progress): Promise<channels.PagePdfResult> {
@@ -342,10 +338,6 @@ export class PageDispatcher extends Dispatcher<Page, channels.PageChannel, Brows
     // there is a chance for a duplicate or a lost request.
     this._subscriptions.add('request');
     return { requests: this._page.networkRequests().map(request => RequestDispatcher.from(this.parentScope(), request)) };
-  }
-
-  async snapshotForAI(params: channels.PageSnapshotForAIParams, progress: Progress): Promise<channels.PageSnapshotForAIResult> {
-    return await this._page.snapshotForAI(progress, params);
   }
 
   async bringToFront(params: channels.PageBringToFrontParams, progress: Progress): Promise<void> {
@@ -366,11 +358,11 @@ export class PageDispatcher extends Dispatcher<Page, channels.PageChannel, Brows
   async startScreencast(params: channels.PageStartScreencastParams, progress?: Progress): Promise<channels.PageStartScreencastResult> {
     if (this._screencastListener)
       throw new Error('Screencast is already running');
-    const size = params.maxSize || { width: 800, height: 800 };
+    const size = params.preferredSize || { width: 800, height: 800 };
     this._screencastListener = (frame: ScreencastFrame) => {
       this._dispatchEvent('screencastFrame', { data: frame.buffer });
     };
-    await this._page.screencast.startScreencast(this._screencastListener, { quality: 90, width: size.width, height: size.height });
+    await this._page.screencast.startScreencast(this._screencastListener, { quality: 90, width: size.width, height: size.height, annotate: params.annotate });
   }
 
   async stopScreencast(params: channels.PageStopScreencastParams, progress?: Progress): Promise<channels.PageStopScreencastResult> {

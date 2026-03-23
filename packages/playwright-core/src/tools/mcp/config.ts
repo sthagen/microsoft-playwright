@@ -58,14 +58,13 @@ export type CLIOptions = {
   imageResponses?: 'allow' | 'omit';
   sandbox?: boolean;
   outputDir?: string;
-  outputMode?: 'file' | 'stdout';
   port?: number;
   proxyBypass?: string;
   proxyServer?: string;
   saveSession?: boolean;
   secrets?: Record<string, string>;
   sharedBrowserContext?: boolean;
-  snapshotMode?: 'incremental' | 'full' | 'none';
+  snapshotMode?: 'full' | 'none';
   storageState?: string;
   testIdAttribute?: string;
   timeoutAction?: number;
@@ -255,7 +254,6 @@ export function configFromCLIOptions(cliOptions: CLIOptions): Config & { configF
     secrets: cliOptions.secrets,
     sharedBrowserContext: cliOptions.sharedBrowserContext,
     snapshot: cliOptions.snapshotMode ? { mode: cliOptions.snapshotMode } : undefined,
-    outputMode: cliOptions.outputMode,
     outputDir: cliOptions.outputDir,
     imageResponses: cliOptions.imageResponses,
     testIdAttribute: cliOptions.testIdAttribute,

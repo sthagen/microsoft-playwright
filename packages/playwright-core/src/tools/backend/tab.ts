@@ -98,7 +98,6 @@ export class Tab extends EventEmitter<TabEventsInterface> {
   private _onPageClose: (tab: Tab) => void;
   private _modalStates: ModalState[] = [];
   private _initializedPromise: Promise<void>;
-  private _needsFullSnapshot = false;
   private _recentEventEntries: EventEntry[] = [];
   private _consoleLog: LogFile;
   private _disposables: Disposable[];
@@ -253,9 +252,8 @@ export class Tab extends EventEmitter<TabEventsInterface> {
   private _handleConsoleMessage(message: ConsoleMessage) {
     const wallTime = message.timestamp;
     this._addLogEntry({ type: 'console', wallTime, message });
-    const level = consoleLevelForMessageType(message.type);
-    if (level === 'error' || level === 'warning')
-      this._consoleLog.appendLine(wallTime, () => message.toString());
+    if (shouldIncludeMessage(this.context.config.console?.level, message.type))
+      this._consoleLog.appendLine(wallTime, message.toString());
   }
 
   private _addLogEntry(entry: EventEntry) {
@@ -374,13 +372,13 @@ export class Tab extends EventEmitter<TabEventsInterface> {
     this._requests.length = 0;
   }
 
-  async captureSnapshot(selector: string | undefined, depth: number | undefined, relativeTo: string | undefined, mode: 'full' | 'incremental'): Promise<TabSnapshot> {
+  async captureSnapshot(selector: string | undefined, depth: number | undefined, relativeTo: string | undefined): Promise<TabSnapshot> {
     await this._initializedPromise;
     let tabSnapshot: TabSnapshot | undefined;
     const modalStates = await this._raceAgainstModalStates(async () => {
       const ariaSnapshot = selector
-        ? await this.page.locator(selector).snapshotForAI({ depth })
-        : await this.page.snapshotForAI({ track: 'response', mode: this._needsFullSnapshot ? 'full' : mode, depth });
+        ? await this.page.locator(selector).ariaSnapshot({ mode: 'ai', depth })
+        : await this.page.ariaSnapshot({ mode: 'ai', depth });
       tabSnapshot = {
         ariaSnapshot,
         modalStates: [],
@@ -393,9 +391,6 @@ export class Tab extends EventEmitter<TabEventsInterface> {
       this._recentEventEntries = [];
     }
 
-    // If we failed to capture a snapshot this time, make sure we do a full one next time,
-    // to avoid reporting deltas against un-reported snapshot.
-    this._needsFullSnapshot = !tabSnapshot;
     return tabSnapshot ?? {
       ariaSnapshot: '',
       modalStates,

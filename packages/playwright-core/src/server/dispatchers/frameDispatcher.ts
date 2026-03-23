@@ -136,6 +136,10 @@ export class FrameDispatcher extends Dispatcher<Frame, channels.FrameChannel, Br
     return { element: ElementHandleDispatcher.from(this, await progress.race(this._frame.addStyleTag(params))) };
   }
 
+  async ariaSnapshot(params: channels.FrameAriaSnapshotParams, progress: Progress): Promise<channels.FrameAriaSnapshotResult> {
+    return await this._frame.ariaSnapshot(progress, params);
+  }
+
   async click(params: channels.FrameClickParams, progress: Progress): Promise<void> {
     progress.metadata.potentiallyClosesScope = true;
     return await this._frame.click(progress, params.selector, params);
@@ -270,9 +274,5 @@ export class FrameDispatcher extends Dispatcher<Frame, channels.FrameChannel, Br
     if (result.received !== undefined)
       result.received = serializeResult(result.received);
     return result;
-  }
-
-  async ariaSnapshot(params: channels.FrameAriaSnapshotParams, progress: Progress): Promise<channels.FrameAriaSnapshotResult> {
-    return { snapshot: await this._frame.ariaSnapshot(progress, params.selector) };
   }
 }

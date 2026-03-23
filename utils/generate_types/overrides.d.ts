@@ -134,7 +134,6 @@ export interface BrowserContext {
     behavior?: 'wait'|'ignoreErrors'|'default'
   }): Promise<void>;
 
-  contextOptions(): BrowserContextOptions;
 }
 
 export interface Browser {
@@ -241,6 +240,15 @@ export interface CDPSession {
 export interface WebSocketRoute {
   onMessage(handler: (message: string | Buffer) => any): void;
   onClose(handler: (code: number | undefined, reason: string | undefined) => any): void;
+}
+
+export interface Screencast {
+  start(onFrame: ((frame: { data: Buffer }) => Promise<any>|any), options?: {
+    preferredSize?: {
+      width: number;
+      height: number;
+    };
+  }): Promise<Disposable>;
 }
 
 type DeviceDescriptor = {

@@ -2100,6 +2100,31 @@ export interface Page {
   }): Promise<ElementHandle>;
 
   /**
+   * Captures the aria snapshot of the page. Read more about [aria snapshots](https://playwright.dev/docs/aria-snapshots).
+   * @param options
+   */
+  ariaSnapshot(options?: {
+    /**
+     * When specified, limits the depth of the snapshot.
+     */
+    depth?: number;
+
+    /**
+     * When set to `"ai"`, returns a snapshot optimized for AI consumption with element references. Defaults to
+     * `"default"`.
+     */
+    mode?: "ai"|"default";
+
+    /**
+     * Maximum time in milliseconds. Defaults to `0` - no timeout. The default value can be changed via `actionTimeout`
+     * option in the config, or by using the
+     * [browserContext.setDefaultTimeout(timeout)](https://playwright.dev/docs/api/class-browsercontext#browser-context-set-default-timeout)
+     * or [page.setDefaultTimeout(timeout)](https://playwright.dev/docs/api/class-page#page-set-default-timeout) methods.
+     */
+    timeout?: number;
+  }): Promise<string>;
+
+  /**
    * Brings page to front (activates tab).
    */
   bringToFront(): Promise<void>;
@@ -4514,38 +4539,6 @@ export interface Page {
      */
     height: number;
   }): Promise<void>;
-
-  /**
-   * Returns an accessibility snapshot of the page optimized for AI consumption.
-   * @param options
-   */
-  snapshotForAI(options?: {
-    /**
-     * When specified, limits the depth of the snapshot.
-     */
-    depth?: number;
-
-    /**
-     * When set to `"incremental"` and
-     * [`track`](https://playwright.dev/docs/api/class-page#page-snapshot-for-ai-option-track) is specified, returns an
-     * incremental snapshot containing only changes since the last call with the same track name. Defaults to `"full"`.
-     */
-    mode?: string;
-
-    /**
-     * Maximum time in milliseconds. Defaults to `0` - no timeout. The default value can be changed via `actionTimeout`
-     * option in the config, or by using the
-     * [browserContext.setDefaultTimeout(timeout)](https://playwright.dev/docs/api/class-browsercontext#browser-context-set-default-timeout)
-     * or [page.setDefaultTimeout(timeout)](https://playwright.dev/docs/api/class-page#page-set-default-timeout) methods.
-     */
-    timeout?: number;
-
-    /**
-     * When specified, enables incremental snapshots. Subsequent calls with the same track name will track changes between
-     * calls.
-     */
-    track?: string;
-  }): Promise<string>;
 
   /**
    * **NOTE** Use locator-based [locator.tap([options])](https://playwright.dev/docs/api/class-locator#locator-tap) instead. Read
@@ -8326,11 +8319,6 @@ export interface BrowserContext {
   }): Promise<void>;
 
   /**
-   * Returns the context options that were used to create this browser context. The return type matches the options
-   * accepted by [browser.newContext([options])](https://playwright.dev/docs/api/class-browser#browser-new-context).
-   */
-  contextOptions(): BrowserContextOptions;
-  /**
    * This event is not emitted.
    */
   on(event: 'backgroundpage', listener: (page: Page) => any): this;
@@ -10205,6 +10193,16 @@ export interface Browser {
          * Video frame height.
          */
         height: number;
+      };
+
+      /**
+       * If specified, enables visual annotations on interacted elements during video recording.
+       */
+      annotate?: {
+        /**
+         * How long each annotation is displayed in milliseconds. Defaults to `500`.
+         */
+        delay?: number;
       };
     };
 
@@ -12773,6 +12771,17 @@ export interface Locator {
    */
   ariaSnapshot(options?: {
     /**
+     * When specified, limits the depth of the snapshot.
+     */
+    depth?: number;
+
+    /**
+     * When set to `"ai"`, returns a snapshot optimized for AI consumption with element references. Defaults to
+     * `"default"`.
+     */
+    mode?: "ai"|"default";
+
+    /**
      * Maximum time in milliseconds. Defaults to `0` - no timeout. The default value can be changed via `actionTimeout`
      * option in the config, or by using the
      * [browserContext.setDefaultTimeout(timeout)](https://playwright.dev/docs/api/class-browsercontext#browser-context-set-default-timeout)
@@ -14681,25 +14690,6 @@ export interface Locator {
   }): Promise<void>;
 
   /**
-   * Returns an accessibility snapshot of the element's subtree optimized for AI consumption.
-   * @param options
-   */
-  snapshotForAI(options?: {
-    /**
-     * When specified, limits the depth of the snapshot.
-     */
-    depth?: number;
-
-    /**
-     * Maximum time in milliseconds. Defaults to `0` - no timeout. The default value can be changed via `actionTimeout`
-     * option in the config, or by using the
-     * [browserContext.setDefaultTimeout(timeout)](https://playwright.dev/docs/api/class-browsercontext#browser-context-set-default-timeout)
-     * or [page.setDefaultTimeout(timeout)](https://playwright.dev/docs/api/class-page#page-set-default-timeout) methods.
-     */
-    timeout?: number;
-  }): Promise<string>;
-
-  /**
    * Perform a tap gesture on the element matching the locator. For examples of emulating other gestures by manually
    * dispatching touch events, see the [emulating legacy touch events](https://playwright.dev/docs/touch-events) page.
    *
@@ -15487,6 +15477,16 @@ export interface BrowserType<Unused = {}> {
          */
         height: number;
       };
+
+      /**
+       * If specified, enables visual annotations on interacted elements during video recording.
+       */
+      annotate?: {
+        /**
+         * How long each annotation is displayed in milliseconds. Defaults to `500`.
+         */
+        delay?: number;
+      };
     };
 
     /**
@@ -15825,7 +15825,7 @@ export interface CDPSession {
   /**
    * Emitted when the session is closed, either because the target was closed or `session.detach()` was called.
    */
-  on(event: 'close', listener: () => any): this;
+  on(event: 'close', listener: (cdpSession: CDPSession) => any): this;
 
   /**
    * Emitted for every CDP event received from the session. Allows subscribing to all CDP events at once without knowing
@@ -15855,7 +15855,7 @@ export interface CDPSession {
   /**
    * Adds an event listener that will be automatically removed after it is triggered once. See `addListener` for more information about this event.
    */
-  once(event: 'close', listener: () => any): this;
+  once(event: 'close', listener: (cdpSession: CDPSession) => any): this;
 
   /**
    * Adds an event listener that will be automatically removed after it is triggered once. See `addListener` for more information about this event.
@@ -15875,7 +15875,7 @@ export interface CDPSession {
   /**
    * Emitted when the session is closed, either because the target was closed or `session.detach()` was called.
    */
-  addListener(event: 'close', listener: () => any): this;
+  addListener(event: 'close', listener: (cdpSession: CDPSession) => any): this;
 
   /**
    * Emitted for every CDP event received from the session. Allows subscribing to all CDP events at once without knowing
@@ -15905,7 +15905,7 @@ export interface CDPSession {
   /**
    * Removes an event listener added by `on` or `addListener`.
    */
-  removeListener(event: 'close', listener: () => any): this;
+  removeListener(event: 'close', listener: (cdpSession: CDPSession) => any): this;
 
   /**
    * Removes an event listener added by `on` or `addListener`.
@@ -15925,7 +15925,7 @@ export interface CDPSession {
   /**
    * Removes an event listener added by `on` or `addListener`.
    */
-  off(event: 'close', listener: () => any): this;
+  off(event: 'close', listener: (cdpSession: CDPSession) => any): this;
 
   /**
    * Removes an event listener added by `on` or `addListener`.
@@ -15945,7 +15945,7 @@ export interface CDPSession {
   /**
    * Emitted when the session is closed, either because the target was closed or `session.detach()` was called.
    */
-  prependListener(event: 'close', listener: () => any): this;
+  prependListener(event: 'close', listener: (cdpSession: CDPSession) => any): this;
 
   /**
    * Emitted for every CDP event received from the session. Allows subscribing to all CDP events at once without knowing
@@ -16153,6 +16153,39 @@ export interface WebSocketRoute {
   url(): string;
 
   [Symbol.asyncDispose](): Promise<void>;
+}
+
+/**
+ * Interface for capturing screencast frames from a page.
+ */
+export interface Screencast {
+  /**
+   * Starts capturing screencast frames.
+   *
+   * **Usage**
+   *
+   * ```js
+   * await page.screencast.start(({ data })  => {
+   *   console.log(`frame size: ${data.length}`);
+   * }, { preferredSize: { width: 800, height: 600 } });
+   * // ... perform actions ...
+   * await page.screencast.stop();
+   * ```
+   *
+   * @param onFrame Callback that receives JPEG-encoded frame data.
+   * @param options
+   */
+  start(onFrame: ((frame: { data: Buffer }) => Promise<any>|any), options?: {
+    preferredSize?: {
+      width: number;
+      height: number;
+    };
+  }): Promise<Disposable>;
+  /**
+   * Stops the screencast started with
+   * [screencast.start(onFrame[, options])](https://playwright.dev/docs/api/class-screencast#screencast-start).
+   */
+  stop(): Promise<void>;
 }
 
 type DeviceDescriptor = {
@@ -17316,6 +17349,16 @@ export interface AndroidDevice {
          * Video frame height.
          */
         height: number;
+      };
+
+      /**
+       * If specified, enables visual annotations on interacted elements during video recording.
+       */
+      annotate?: {
+        /**
+         * How long each annotation is displayed in milliseconds. Defaults to `500`.
+         */
+        delay?: number;
       };
     };
 
@@ -19897,6 +19940,16 @@ export interface Electron {
          */
         height: number;
       };
+
+      /**
+       * If specified, enables visual annotations on interacted elements during video recording.
+       */
+      annotate?: {
+        /**
+         * How long each annotation is displayed in milliseconds. Defaults to `500`.
+         */
+        delay?: number;
+      };
     };
 
     /**
@@ -21640,60 +21693,6 @@ export interface Route {
 }
 
 /**
- * Interface for capturing screencast frames from a page.
- */
-export interface Screencast {
-  /**
-   * Starts capturing screencast frames.
-   *
-   * **Usage**
-   *
-   * ```js
-   * await page.screencast.start(buffer => {
-   *   console.log(`frame size: ${buffer.length}`);
-   * }, { maxSize: { width: 800, height: 600 } });
-   * // ... perform actions ...
-   * await page.screencast.stop();
-   * ```
-   *
-   * @param onFrame Callback that receives JPEG-encoded frame data.
-   * @param options
-   */
-  start(onFrame: ((buffer: Buffer) => Promise<any>|any), options?: {
-    /**
-     * Maximum screencast frame dimensions. The output frame may be smaller to preserve the page aspect ratio. Defaults to
-     * 800×800.
-     */
-    maxSize?: {
-      /**
-       * Max frame width in pixels.
-       */
-      width: number;
-
-      /**
-       * Max frame height in pixels.
-       */
-      height: number;
-    };
-  }): Promise<Disposable>;
-
-  /**
-   * Stops the screencast started with
-   * [screencast.start(onFrame[, options])](https://playwright.dev/docs/api/class-screencast#screencast-start).
-   *
-   * **Usage**
-   *
-   * ```js
-   * await screencast.start(buffer => { /* handle frame *\/ });
-   * // ... perform actions ...
-   * await screencast.stop();
-   * ```
-   *
-   */
-  stop(): Promise<void>;
-}
-
-/**
  * Selectors can be used to install custom selector engines. See [extensibility](https://playwright.dev/docs/extensibility) for more
  * information.
  */
@@ -22050,6 +22049,17 @@ export interface Video {
    * @param options
    */
   start(options?: {
+    /**
+     * If specified, enables visual annotations on interacted elements during video recording. Interacted elements are
+     * highlighted with a semi-transparent blue box and click points are shown as red circles.
+     */
+    annotate?: {
+      /**
+       * How long each annotation is displayed in milliseconds. Defaults to `500`.
+       */
+      delay?: number;
+    };
+
     /**
      * Path where the video should be saved when the recording is stopped.
      */
@@ -22954,6 +22964,16 @@ export interface BrowserContextOptions {
        * Video frame height.
        */
       height: number;
+    };
+
+    /**
+     * If specified, enables visual annotations on interacted elements during video recording.
+     */
+    annotate?: {
+      /**
+       * How long each annotation is displayed in milliseconds. Defaults to `500`.
+       */
+      delay?: number;
     };
   };
 

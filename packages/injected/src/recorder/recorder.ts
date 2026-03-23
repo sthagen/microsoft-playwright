@@ -1723,7 +1723,7 @@ export class Recorder {
   }
 
   elementPicked(selector: string, model: HighlightModel) {
-    const ariaSnapshot = this.injectedScript.ariaSnapshot(model.elements[0], { mode: 'expect' });
+    const ariaSnapshot = this.injectedScript.ariaSnapshot(model.elements[0], { mode: 'default' });
     void this._delegate.elementPicked?.({ selector, ariaSnapshot });
   }
 }

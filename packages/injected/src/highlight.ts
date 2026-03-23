@@ -24,9 +24,13 @@ import type { ParsedSelector } from '@isomorphic/selectorParser';
 import type { InjectedScript } from './injectedScript';
 
 
+type Rect = { x: number, y: number, width: number, height: number };
+
 type RenderedHighlightEntry = {
-  targetElement: Element,
+  targetElement?: Element,
   color: string,
+  borderColor?: string,
+  fadeDuration?: number,
   highlightElement: HTMLElement,
   tooltipElement?: HTMLElement,
   box?: DOMRect,
@@ -36,8 +40,11 @@ type RenderedHighlightEntry = {
 };
 
 export type HighlightEntry = {
-  element: Element,
+  element?: Element,
+  box?: Rect,
   color: string,
+  borderColor?: string,
+  fadeDuration?: number,
   tooltipText?: string,
 };
 
@@ -46,6 +53,7 @@ export class Highlight {
   private _glassPaneShadow: ShadowRoot;
   private _renderedEntries: RenderedHighlightEntry[] = [];
   private _actionPointElement: HTMLElement;
+  private _subtitleElement: HTMLElement;
   private _isUnderTest: boolean;
   private _injectedScript: InjectedScript;
   private _rafRequest: number | undefined;
@@ -71,6 +79,8 @@ export class Highlight {
     this._glassPaneElement.style.backgroundColor = 'transparent';
     this._actionPointElement = document.createElement('x-pw-action-point');
     this._actionPointElement.setAttribute('hidden', 'true');
+    this._subtitleElement = document.createElement('x-pw-subtitle');
+    this._subtitleElement.setAttribute('hidden', 'true');
     this._glassPaneShadow = this._glassPaneElement.attachShadow({ mode: this._isUnderTest ? 'open' : 'closed' });
     // workaround for firefox: when taking screenshots, it complains adoptedStyleSheets.push
     // is not a function, so we fallback to style injection
@@ -84,6 +94,7 @@ export class Highlight {
       this._glassPaneShadow.appendChild(styleElement);
     }
     this._glassPaneShadow.appendChild(this._actionPointElement);
+    this._glassPaneShadow.appendChild(this._subtitleElement);
   }
 
   install() {
@@ -123,14 +134,29 @@ export class Highlight {
     this._glassPaneElement.remove();
   }
 
-  showActionPoint(x: number, y: number) {
+  showActionPoint(x: number, y: number, fadeDuration?: number) {
     this._actionPointElement.style.top = y + 'px';
     this._actionPointElement.style.left = x + 'px';
     this._actionPointElement.hidden = false;
+    if (fadeDuration)
+      this._actionPointElement.style.animation = `pw-fade-out ${fadeDuration}ms ease-out forwards`;
+    else
+      this._actionPointElement.style.animation = '';
   }
 
   hideActionPoint() {
     this._actionPointElement.hidden = true;
+  }
+
+  showSubtitle(text: string, fadeDuration: number) {
+    this._subtitleElement.textContent = text;
+    this._subtitleElement.hidden = false;
+    const fadeTime = fadeDuration / 4;
+    this._subtitleElement.style.animation = `pw-fade-out ${fadeTime}ms ease-out ${fadeDuration - fadeTime}ms forwards`;
+  }
+
+  hideSubtitle() {
+    this._subtitleElement.hidden = true;
   }
 
   clearHighlight() {
@@ -170,12 +196,14 @@ export class Highlight {
         lineElement.textContent = entry.tooltipText;
         tooltipElement.appendChild(lineElement);
       }
-      this._renderedEntries.push({ targetElement: entry.element, color: entry.color, tooltipElement, highlightElement });
+      this._renderedEntries.push({ targetElement: entry.element, box: toDOMRect(entry.box), color: entry.color, borderColor: entry.borderColor, fadeDuration: entry.fadeDuration, tooltipElement, highlightElement });
     }
 
     // 2. Trigger layout while positioning tooltips and computing bounding boxes.
     for (const entry of this._renderedEntries) {
-      entry.box = entry.targetElement.getBoundingClientRect();
+      if (!entry.box && !entry.targetElement)
+        continue;
+      entry.box = entry.box || entry.targetElement!.getBoundingClientRect();
       if (!entry.tooltipElement)
         continue;
 
@@ -198,6 +226,10 @@ export class Highlight {
       entry.highlightElement.style.width = box.width + 'px';
       entry.highlightElement.style.height = box.height + 'px';
       entry.highlightElement.style.display = 'block';
+      if (entry.borderColor)
+        entry.highlightElement.style.border = '2px solid ' + entry.borderColor;
+      if (entry.fadeDuration)
+        entry.highlightElement.style.animation = `pw-fade-out ${entry.fadeDuration}ms ease-out forwards`;
 
       if (this._isUnderTest)
         console.error('Highlight box for test: ' + JSON.stringify({ x: box.x, y: box.y, width: box.width, height: box.height })); // eslint-disable-line no-console
@@ -259,7 +291,7 @@ export class Highlight {
       const oldBox = this._renderedEntries[i].box;
       if (!oldBox)
         return false;
-      const box = entries[i].element.getBoundingClientRect();
+      const box = entries[i].box ? toDOMRect(entries[i].box!) : entries[i].element!.getBoundingClientRect();
       if (box.top !== oldBox.top || box.right !== oldBox.right || box.bottom !== oldBox.bottom || box.left !== oldBox.left)
         return false;
     }
@@ -285,4 +317,12 @@ export class Highlight {
     this._glassPaneElement.style.backgroundColor = 'transparent';
     this._glassPaneElement.removeEventListener('click', handler);
   }
+}
+
+function toDOMRect(box: Rect): DOMRect;
+function toDOMRect(box: Rect | undefined): DOMRect | undefined;
+function toDOMRect(box: Rect | undefined): DOMRect | undefined {
+  if (!box)
+    return undefined;
+  return new DOMRect(box.x, box.y, box.width, box.height);
 }
