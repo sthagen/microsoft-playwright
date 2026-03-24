@@ -31,6 +31,7 @@ export type HtmlReporterOptions = {
   title?: string;
   noSnippets?: boolean;
   noCopyPrompt?: boolean;
+  doNotInlineAssets?: boolean;
 };
 
 export type ReporterDescription = Readonly<
@@ -6933,8 +6934,9 @@ export interface PlaywrightWorkerOptions {
    * down to fit into 800x800. If `viewport` is not configured explicitly the video size defaults to 800x450. Actual
    * picture of each page will be scaled down if necessary to fit the specified size.
    *
-   * To annotate actions in the video with element highlights and action title subtitles, pass `annotate` with an
-   * optional `delay` in milliseconds (defaults to `500`).
+   * To annotate actions in the video, pass `annotate` with `action` and/or `test` sub-options. The `action` option
+   * controls visual highlights on interacted elements with an optional `delay` in milliseconds (defaults to `500`). The
+   * `test` option controls which test information is displayed as a status overlay.
    *
    * **Usage**
    *
@@ -6951,7 +6953,7 @@ export interface PlaywrightWorkerOptions {
    *
    * Learn more about [recording video](https://playwright.dev/docs/test-use-options#recording-options).
    */
-  video: VideoMode | /** deprecated */ 'retry-with-video' | { mode: VideoMode, size?: ViewportSize, annotate?: { delay?: number } };
+  video: VideoMode | /** deprecated */ 'retry-with-video' | { mode: VideoMode, size?: ViewportSize, annotate?: { action?: { delay?: number, actionStyle?: string, locatorStyle?: string }, test?: { level?: 'file' | 'title' | 'step' } } };
 }
 
 export type ScreenshotMode = 'off' | 'on' | 'only-on-failure' | 'on-first-failure';
