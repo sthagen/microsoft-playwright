@@ -355,8 +355,8 @@ export class PageDispatcher extends Dispatcher<Page, channels.PageChannel, Brows
     await recorder?.setMode('none');
   }
 
-  async overlayAdd(params: channels.PageOverlayAddParams): Promise<channels.PageOverlayAddResult> {
-    const id = await this._page.overlay.add(params.html, params.timeout);
+  async overlayShow(params: channels.PageOverlayShowParams): Promise<channels.PageOverlayShowResult> {
+    const id = await this._page.overlay.show(params.html, params.duration);
     return { id };
   }
 
@@ -364,16 +364,12 @@ export class PageDispatcher extends Dispatcher<Page, channels.PageChannel, Brows
     await this._page.overlay.remove(params.id);
   }
 
-  async overlayHide(params: channels.PageOverlayHideParams): Promise<channels.PageOverlayHideResult> {
-    await this._page.overlay.hide();
+  async overlayChapter(params: channels.PageOverlayChapterParams): Promise<channels.PageOverlayChapterResult> {
+    await this._page.overlay.chapter(params);
   }
 
-  async overlayShow(params: channels.PageOverlayShowParams): Promise<channels.PageOverlayShowResult> {
-    await this._page.overlay.show();
-  }
-
-  async overlayConfigure(params: channels.PageOverlayConfigureParams): Promise<channels.PageOverlayConfigureResult> {
-    await this._page.overlay.configure(params);
+  async overlaySetVisible(params: channels.PageOverlaySetVisibleParams): Promise<channels.PageOverlaySetVisibleResult> {
+    await this._page.overlay.setVisible(params.visible);
   }
 
   async startScreencast(params: channels.PageStartScreencastParams, progress?: Progress): Promise<channels.PageStartScreencastResult> {
