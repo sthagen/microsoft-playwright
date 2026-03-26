@@ -829,6 +829,10 @@ for (const useIntermediateMergeReport of [true, false] as const) {
           test('has steps', async ({}) => {
             await test.step('click button', async () => {});
             await test.step('fill form', async () => {
+              await test.step('enter username', async () => {});
+              await test.step('enter password', async () => {});
+            });
+            await test.step('another form', async () => {
               await test.step('fill username', async () => {});
               await test.step('fill password', async () => {});
             });
@@ -850,7 +854,10 @@ for (const useIntermediateMergeReport of [true, false] as const) {
       await expect(page.locator('.tree-item-title', { hasText: 'fill form' })).toBeVisible();
       await expect(page.locator('.tree-item-title', { hasText: 'click button' })).toBeHidden();
       await expect(page.locator('.tree-item-title', { hasText: 'submit form' })).toBeHidden();
-      // matching parent is auto-expanded to show matching children (like trace viewer)
+      // matching parent is not auto-expanded when it has no matching children
+      await expect(page.locator('.tree-item-title', { hasText: 'enter username' })).toBeHidden();
+      await expect(page.locator('.tree-item-title', { hasText: 'enter password' })).toBeHidden();
+      // non-matching parent is auto-expanded when it has a matching child
       await expect(page.locator('.tree-item-title', { hasText: 'fill username' })).toBeVisible();
       await expect(page.locator('.tree-item-title', { hasText: 'fill password' })).toBeVisible();
 
@@ -858,7 +865,7 @@ for (const useIntermediateMergeReport of [true, false] as const) {
       await filterInput.clear();
       await expect(page.locator('.tree-item-title', { hasText: 'click button' })).toBeVisible();
       await expect(page.locator('.tree-item-title', { hasText: 'submit form' })).toBeVisible();
-      // children of fill form are collapsed again after clearing the filter
+      // children are collapsed again after clearing the filter
       await expect(page.locator('.tree-item-title', { hasText: 'fill username' })).toBeHidden();
       await expect(page.locator('.tree-item-title', { hasText: 'fill password' })).toBeHidden();
     });
@@ -1121,7 +1128,7 @@ for (const useIntermediateMergeReport of [true, false] as const) {
         'a.test.js': `
           import { test, expect } from '@playwright/test';
           test('passing', async ({ page }, testInfo) => {
-            await testInfo.attach('screenshot', { body: await page.screenshot(), contentType: 'image/png' });
+            await testInfo.attach('screenshot', { body: Buffer.from('d'), contentType: 'image/png' });
             await testInfo.attach('some-pdf', { body: Buffer.from('foo'), contentType: 'application/pdf' });
             await testInfo.attach('madeup-contentType', { body: Buffer.from('bar'), contentType: 'madeup' });
 
@@ -1136,7 +1143,7 @@ for (const useIntermediateMergeReport of [true, false] as const) {
       await page.getByRole('link', { name: 'passing' }).click();
 
       const expectedAttachments = [
-        ['screenshot', 'screenshot.png', '7a33d5db6370b6de345e990751aa1f1da65ad675.png'],
+        ['screenshot', 'screenshot.png', '3c363836cf4e16666669a25da280a1865c2d2874.png'],
         ['some-pdf', 'some-pdf.pdf', '0beec7b5ea3f0fdbc95d0dd47f3c5bc275da8a33.pdf'],
         ['madeup-contentType', 'madeup-contentType.dat', '62cdb7020ff920e5aa642c3d4066950dd1f01f4d.dat'],
         ['screenshot-that-already-has-an-extension-with-madeup.png', 'screenshot-that-already-has-an-extension-with-madeup.png', '86f7e437faa5a7fce15d1ddcb9eaeaea377667b8.png'],
@@ -1155,7 +1162,7 @@ for (const useIntermediateMergeReport of [true, false] as const) {
 
       const files = await fs.promises.readdir(path.join(testInfo.outputPath('playwright-report'), 'data'));
       expect(new Set(files)).toEqual(new Set([
-        '7a33d5db6370b6de345e990751aa1f1da65ad675.png', // screenshot
+        '3c363836cf4e16666669a25da280a1865c2d2874.png', // screenshot
         '0beec7b5ea3f0fdbc95d0dd47f3c5bc275da8a33.pdf', // some-pdf
         '62cdb7020ff920e5aa642c3d4066950dd1f01f4d.dat', // madeup-contentType
         '86f7e437faa5a7fce15d1ddcb9eaeaea377667b8.png', // screenshot-that-already-has-an-extension-with-madeup.png
