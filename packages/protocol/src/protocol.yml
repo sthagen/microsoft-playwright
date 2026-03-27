@@ -607,7 +607,7 @@ ContextOptions:
     recordVideo:
       type: object?
       properties:
-        dir: string
+        dir: string?
         size:
           type: object?
           properties:
@@ -4174,7 +4174,7 @@ Electron:
         recordVideo:
           type: object?
           properties:
-            dir: string
+            dir: string?
             size:
               type: object?
               properties:
@@ -4184,6 +4184,7 @@ Electron:
         strictSelectors: boolean?
         timezoneId: string?
         tracesDir: string?
+        artifactsDir: string?
         selectorEngines:
           type: array?
           items: SelectorEngine
