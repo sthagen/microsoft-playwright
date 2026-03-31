@@ -59,8 +59,8 @@ Rect:
     width: float
     height: float
 
-AnnotateOptions:
-  type: object
+ShowActionsOptions:
+  type: mixin
   properties:
     duration: float?
     position:
@@ -613,7 +613,10 @@ ContextOptions:
           properties:
             width: int
             height: int
-        annotate: AnnotateOptions?
+        showActions:
+          type: object?
+          properties:
+            $mixin: ShowActionsOptions
     strictSelectors: boolean?
     serviceWorkers:
       type: enum?
@@ -1061,8 +1064,10 @@ Browser:
         title: string
         workspaceDir: string?
         metadata: json?
+        host: string?
+        port: int?
       returns:
-        pipeName: string
+        endpoint: string
 
     stopServer:
       title: Stop server
@@ -2108,7 +2113,7 @@ Page:
       title: Cancel pick locator
       group: configuration
 
-    overlayShow:
+    screencastShowOverlay:
       title: Show overlay
       group: configuration
       parameters:
@@ -2117,13 +2122,13 @@ Page:
       returns:
         id: string
 
-    overlayRemove:
+    screencastRemoveOverlay:
       title: Remove overlay
       group: configuration
       parameters:
         id: string
 
-    overlayChapter:
+    screencastChapter:
       title: Show chapter overlay
       group: configuration
       parameters:
@@ -2131,13 +2136,23 @@ Page:
         description: string?
         duration: float?
 
-    overlaySetVisible:
+    screencastSetOverlayVisible:
       title: Set overlay visibility
       group: configuration
       parameters:
         visible: boolean
 
-    startScreencast:
+    screencastShowActions:
+      title: Show actions
+      group: configuration
+      parameters:
+        $mixin: ShowActionsOptions
+
+    screencastHideActions:
+      title: Remove actions
+      group: configuration
+
+    screencastStart:
       title: Start screencast
       group: configuration
       parameters:
@@ -2147,26 +2162,13 @@ Page:
             width: int
             height: int
         quality: int?
-
-    stopScreencast:
-      title: Stop screencast
-      group: configuration
-
-    videoStart:
-      title: Start video recording
-      group: configuration
-      parameters:
-        size:
-          type: object?
-          properties:
-            width: int
-            height: int
-        annotate: AnnotateOptions?
+        sendFrames: boolean?
+        record: boolean?
       returns:
-        artifact: Artifact
+        artifact: Artifact?
 
-    videoStop:
-      title: Stop video recording
+    screencastStop:
+      title: Stop screencast
       group: configuration
 
     updateSubscription:
@@ -4181,7 +4183,10 @@ Electron:
               properties:
                 width: int
                 height: int
-            annotate: AnnotateOptions?
+            showActions:
+              type: object?
+              properties:
+                $mixin: ShowActionsOptions
         strictSelectors: boolean?
         timezoneId: string?
         tracesDir: string?
