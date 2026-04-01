@@ -30,6 +30,7 @@ import { parseTrace, rafraf, roundBox } from '../config/utils';
 
 const test = playwrightTest.extend<TraceViewerFixtures>(traceViewerFixtures);
 
+// NOTE: set PWTEST_DEBUG_TRACE_VIEWER=1 to record/attach traces for these tests.
 test.skip(({ trace }) => trace === 'on');
 test.skip(({ mode }) => mode.startsWith('service'));
 test.skip(process.env.PW_CLOCK === 'frozen');
@@ -1419,10 +1420,10 @@ test('should pick locator in iframe', async ({ page, runAndTrace, server }) => {
     await frameTwo.setContent(`<div>HelloNameTwo</div>`);
     await page.evaluate('2+2');
   });
+  const snapshot = await traceViewer.snapshotFrame('Evaluate');
+
   await traceViewer.page.getByTitle('Pick locator').click();
   const cmWrapper = traceViewer.page.locator('.cm-wrapper').first();
-
-  const snapshot = await traceViewer.snapshotFrame('Evaluate');
 
   await snapshot.frameLocator('#frame1').getByText('Hello1').click();
   await expect.soft(cmWrapper).toContainText(`locator('#frame1').contentFrame().getByText('Hello1')`);
@@ -2021,7 +2022,7 @@ test('should render locator descriptions', async ({ runAndTrace, page }) => {
     await page.locator('input').describe('custom').first().click();
   });
 
-  await expect(traceViewer.page.locator('body')).toMatchAriaSnapshot(`
+  await expect(traceViewer.page).toMatchAriaSnapshot(`
     - treeitem /Click.*custom/
     - treeitem /Click.*input.*first/
   `);
@@ -2067,7 +2068,7 @@ test('should filter actions', async ({ runAndTrace, page }) => {
   await expect(traceViewer.page.getByText('3 hidden', { exact: true })).toBeVisible();
 
   await traceViewer.page.getByRole('button', { name: 'Filter actions' }).click();
-  await expect(traceViewer.page.getByTestId('actions-filter-dialog')).toMatchAriaSnapshot(`
+  await expect(traceViewer.page).toMatchAriaSnapshot(`
     - dialog:
       - checkbox "Getters 1"
       - checkbox "Network routes 2"

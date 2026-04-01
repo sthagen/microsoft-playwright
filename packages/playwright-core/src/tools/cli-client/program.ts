@@ -33,6 +33,7 @@ import type { MinimistArgs } from './minimist';
 
 type GlobalOptions = {
   help?: boolean;
+  raw?: boolean;
   session?: string;
   version?: boolean;
 };
@@ -56,6 +57,7 @@ const globalOptions: (keyof (GlobalOptions & OpenOptions))[] = [
   'help',
   'persistent',
   'profile',
+  'raw',
   'session',
   'version',
 ];
@@ -63,6 +65,7 @@ const globalOptions: (keyof (GlobalOptions & OpenOptions))[] = [
 const booleanOptions: (keyof (GlobalOptions & OpenOptions & { all?: boolean }))[] = [
   'all',
   'help',
+  'raw',
   'version',
 ];
 
@@ -192,10 +195,11 @@ async function startSession(sessionName: string, registry: Registry, clientInfo:
 }
 
 async function runInSession(entry: SessionFile, clientInfo: ClientInfo, args: MinimistArgs) {
+  const raw = !!args.raw;
   for (const globalOption of globalOptions)
     delete args[globalOption];
   const session = new Session(entry);
-  const result = await session.run(clientInfo, args);
+  const result = await session.run(clientInfo, args, { raw });
   console.log(result.text);
 }
 
@@ -231,7 +235,7 @@ async function killAllDaemons(): Promise<void> {
       const result = execSync(
           `powershell -NoProfile -NonInteractive -Command `
           + `"Get-CimInstance Win32_Process `
-          + `| Where-Object { $_.CommandLine -like '*run-mcp-server*' -or $_.CommandLine -like '*run-cli-server*' -or $_.CommandLine -like '*cli-daemon*' } `
+          + `| Where-Object { $_.CommandLine -like '*run-mcp-server*' -or $_.CommandLine -like '*run-cli-server*' -or $_.CommandLine -like '*cli-daemon*' -or $_.CommandLine -like '*dashboardApp.js*' } `
           + `| ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue; $_.ProcessId }"`,
           { encoding: 'utf-8' }
       );
@@ -245,7 +249,7 @@ async function killAllDaemons(): Promise<void> {
       const result = execSync('ps aux', { encoding: 'utf-8' });
       const lines = result.split('\n');
       for (const line of lines) {
-        if (line.includes('run-mcp-server') || line.includes('run-cli-server') || line.includes('cli-daemon')) {
+        if (line.includes('run-mcp-server') || line.includes('run-cli-server') || line.includes('cli-daemon') || line.includes('dashboardApp.js')) {
           const parts = line.trim().split(/\s+/);
           const pid = parts[1];
           if (pid && /^\d+$/.test(pid)) {
