@@ -141,7 +141,7 @@ export abstract class BrowserContext<EM extends EventMap = EventMap> extends Sdk
     return this._selectors;
   }
 
-  async _initialize() {
+  async initialize() {
     if (this.attribution.playwright.options.isInternalPlaywright)
       return;
     // Debugger will pause execution upon page.pause in headed mode.
@@ -244,7 +244,7 @@ export abstract class BrowserContext<EM extends EventMap = EventMap> extends Sdk
     await page?.resetForReuse(progress);
   }
 
-  _browserClosed() {
+  browserClosed() {
     for (const page of this.pages())
       page._didClose();
     this._didCloseInternal();
@@ -419,7 +419,7 @@ export abstract class BrowserContext<EM extends EventMap = EventMap> extends Sdk
     }
   }
 
-  async _loadDefaultContextAsIs(progress: Progress): Promise<Page | undefined> {
+  async loadDefaultContextAsIs(progress: Progress): Promise<Page | undefined> {
     if (!this.possiblyUninitializedPages().length) {
       const waitForEvent = helper.waitForEvent(progress, this, BrowserContext.Events.Page);
       // Race against BrowserContext.close
@@ -435,8 +435,8 @@ export abstract class BrowserContext<EM extends EventMap = EventMap> extends Sdk
     return page;
   }
 
-  async _loadDefaultContext(progress: Progress) {
-    const defaultPage = await this._loadDefaultContextAsIs(progress);
+  async loadDefaultContext(progress: Progress) {
+    const defaultPage = await this.loadDefaultContextAsIs(progress);
     if (!defaultPage)
       return;
     const browserName = this._browser.options.name;
@@ -449,7 +449,7 @@ export abstract class BrowserContext<EM extends EventMap = EventMap> extends Sdk
     }
   }
 
-  protected _authenticateProxyViaHeader() {
+  protected authenticateProxyViaHeader() {
     const proxy = this._options.proxy || this._browser.options.proxy || { username: undefined, password: undefined };
     const { username, password } = proxy;
     if (username) {
@@ -462,7 +462,7 @@ export abstract class BrowserContext<EM extends EventMap = EventMap> extends Sdk
     }
   }
 
-  protected _authenticateProxyViaCredentials() {
+  protected authenticateProxyViaCredentials() {
     const proxy = this._options.proxy || this._browser.options.proxy;
     if (!proxy)
       return;
@@ -788,74 +788,6 @@ export function normalizeProxySettings(proxy: types.ProxySettings): types.ProxyS
   if (bypass)
     bypass = bypass.split(',').map(t => t.trim()).join(',');
   return { ...proxy, server, bypass };
-}
-
-// Chromium reference: https://source.chromium.org/chromium/chromium/src/+/main:components/embedder_support/user_agent_utils.cc;l=434
-export function calculateUserAgentEmulation(options: types.BrowserContextOptions): {
-  navigatorPlatform: string | undefined;
-  userAgentMetadata: {
-    mobile: boolean;
-    model: string;
-    architecture: string;
-    platform: string;
-    platformVersion: string;
-  } | undefined;
-} {
-  const ua = options.userAgent;
-  if (!ua)
-    return { navigatorPlatform: undefined, userAgentMetadata: undefined };
-
-  const userAgentMetadata = {
-    mobile: !!options.isMobile,
-    model: '',
-    architecture: 'x86',
-    platform: 'Windows',
-    platformVersion: '',
-  };
-
-  const androidMatch = ua.match(/Android (\d+(\.\d+)?(\.\d+)?)/);
-  const iPhoneMatch = ua.match(/iPhone OS (\d+(_\d+)?)/);
-  const iPadMatch = ua.match(/iPad; CPU OS (\d+(_\d+)?)/);
-  const macOSMatch = ua.match(/Mac OS X (\d+(_\d+)?(_\d+)?)/);
-  const windowsMatch = ua.match(/Windows\D+(\d+(\.\d+)?(\.\d+)?)/);
-  if (androidMatch) {
-    userAgentMetadata.platform = 'Android';
-    userAgentMetadata.platformVersion = androidMatch[1];
-    userAgentMetadata.architecture = 'arm';
-  } else if (iPhoneMatch) {
-    userAgentMetadata.platform = 'iOS';
-    userAgentMetadata.platformVersion = iPhoneMatch[1].replace(/_/g, '.');
-    userAgentMetadata.architecture = 'arm';
-  } else if (iPadMatch) {
-    userAgentMetadata.platform = 'iOS';
-    userAgentMetadata.platformVersion = iPadMatch[1].replace(/_/g, '.');
-    userAgentMetadata.architecture = 'arm';
-  } else if (macOSMatch) {
-    userAgentMetadata.platform = 'macOS';
-    userAgentMetadata.platformVersion = macOSMatch[1].replace(/_/g, '.');
-    if (!ua.includes('Intel'))
-      userAgentMetadata.architecture = 'arm';
-  } else if (windowsMatch) {
-    userAgentMetadata.platform = 'Windows';
-    userAgentMetadata.platformVersion = windowsMatch[1];
-  } else if (ua.toLowerCase().includes('linux')) {
-    userAgentMetadata.platform = 'Linux';
-  }
-  if (ua.includes('ARM') || ua.includes('aarch64'))
-    userAgentMetadata.architecture = 'arm';
-
-  let navigatorPlatform: string | undefined;
-  if (!process.env.PLAYWRIGHT_NO_UA_PLATFORM) {
-    switch (userAgentMetadata.platform) {
-      case 'Android': navigatorPlatform = userAgentMetadata.architecture === 'arm' ? 'Linux armv8l' : 'Linux x86_64'; break;
-      case 'iOS': navigatorPlatform = ua.includes('iPad') ? 'iPad' : 'iPhone'; break;
-      case 'macOS': navigatorPlatform = 'MacIntel'; break;
-      case 'Linux': navigatorPlatform = userAgentMetadata.architecture === 'arm' ? 'Linux aarch64' : 'Linux x86_64'; break;
-      case 'Windows': navigatorPlatform = 'Win32'; break;
-    }
-  }
-
-  return { navigatorPlatform, userAgentMetadata };
 }
 
 const paramsThatAllowContextReuse: (keyof channels.BrowserNewContextForReuseParams)[] = [
