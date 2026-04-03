@@ -79,7 +79,7 @@ export class WebSocketRouteDispatcher extends Dispatcher<SdkObject, channels.Web
             new WebSocketRouteDispatcher(scope, payload.id, payload.url, source.frame);
           } else {
             const request: ws.PassthroughRequest = { id: payload.id, type: 'passthrough' };
-            source.frame.evaluateExpression(`globalThis.__pwWebSocketDispatch(${JSON.stringify(request)})`).catch(() => {});
+            source.frame.evaluateExpression(progress, `globalThis.__pwWebSocketDispatch(${JSON.stringify(request)})`).catch(() => {});
           }
           return;
         }
@@ -97,7 +97,7 @@ export class WebSocketRouteDispatcher extends Dispatcher<SdkObject, channels.Web
     }
     ++data.counter;
 
-    return await target.addInitScript(`
+    return await target.addInitScript(progress, `
       (() => {
         const module = {};
         ${rawWebSocketMockSource.source}
@@ -141,7 +141,7 @@ export class WebSocketRouteDispatcher extends Dispatcher<SdkObject, channels.Web
   }
 
   private async _evaluateAPIRequest(progress: Progress, request: ws.APIRequest) {
-    await progress.race(this._frame.evaluateExpression(`globalThis.__pwWebSocketDispatch(${JSON.stringify(request)})`).catch(() => {}));
+    await this._frame.evaluateExpression(progress, `globalThis.__pwWebSocketDispatch(${JSON.stringify(request)})`).catch(() => {});
   }
 
   override _onDispose() {

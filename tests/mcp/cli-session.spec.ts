@@ -15,6 +15,7 @@
  */
 
 import fs from 'fs';
+import os from 'os';
 import path from 'path';
 import { test, expect, daemonFolder } from './cli-fixtures';
 import { killProcessGroup } from '../config/commonFixtures';
@@ -30,6 +31,21 @@ test('list', async ({ cli, server }) => {
   const { output: listOutput } = await cli('list');
   expect(listOutput).toContain('### Browsers');
   expect(listOutput).toContain('- default:');
+});
+
+test('list shows sessions when cwd has no .playwright directory', async ({ cli, server }) => {
+  // Temp dir must have no .playwright ancestor so findWorkspaceDir returns undefined
+  // and the registry key falls back to workspaceDirHash.
+  const tmpDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'pw-no-workspace-'));
+  try {
+    await cli('open', server.HELLO_WORLD, { cwd: tmpDir });
+
+    const { output } = await cli('list', { cwd: tmpDir });
+    expect(output).toContain('### Browsers');
+    expect(output).toContain('- default:');
+  } finally {
+    await fs.promises.rm(tmpDir, { recursive: true, force: true }).catch(() => {});
+  }
 });
 
 test('close', async ({ cli, server }) => {
@@ -378,6 +394,18 @@ workspace1:
   - status: open
   - data-dir: <in-memory>
   - run \`playwright-cli attach \"foobar\"\` to attach`);
+  });
+
+  test('attach --cdp', async ({ cli, cdpServer, server }) => {
+    const context = await cdpServer.start();
+    await context.pages()[0].goto(server.HELLO_WORLD);
+    const { output, snapshot } = await cli('attach', `--cdp=${cdpServer.endpoint}`);
+    expect(output).toContain(`### Page
+- Page URL: ${server.HELLO_WORLD}
+- Page Title: Title`);
+    expect(snapshot).toContain(`- generic [active] [ref=e1]: Hello, world!`);
+    await cli('goto', 'data:text/html,<title>CDP Title</title>');
+    expect(await context.pages()[0].title()).toBe('CDP Title');
   });
 });
 

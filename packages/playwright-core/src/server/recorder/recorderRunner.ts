@@ -17,18 +17,16 @@
 import { serializeExpectedTextValues } from '../../utils';
 import { toKeyboardModifiers } from '../codegen/language';
 import { buildFullSelector, mainFrameForAction } from './recorderUtils';
-import { Progress, ProgressController } from '../progress';
+import { Progress } from '../progress';
 
 import type { Page } from '../page';
 import type * as types from '../types';
 import type * as actions from '@recorder/actions';
 import type { Frame } from '../frames';
 
-export async function performAction(pageAliases: Map<Page, string>, actionInContext: actions.ActionInContext) {
+export async function performAction(progress: Progress, pageAliases: Map<Page, string>, actionInContext: actions.ActionInContext) {
   const mainFrame = mainFrameForAction(pageAliases, actionInContext);
-  const controller = new ProgressController();
-  const kActionTimeout = 5000;
-  return await controller.run(progress => performActionImpl(progress, mainFrame, actionInContext), kActionTimeout);
+  return await performActionImpl(progress, mainFrame, actionInContext);
 }
 
 async function performActionImpl(progress: Progress, mainFrame: Frame, actionInContext: actions.ActionInContext) {
@@ -43,7 +41,7 @@ async function performActionImpl(progress: Progress, mainFrame: Frame, actionInC
     throw Error('Not reached');
 
   if (action.name === 'closePage') {
-    await mainFrame._page.close();
+    await mainFrame._page.close(progress);
     return;
   }
 

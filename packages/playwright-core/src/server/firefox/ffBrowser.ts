@@ -204,7 +204,7 @@ export class FFBrowserContext extends BrowserContext {
     if (this._options.extraHTTPHeaders || this._options.locale)
       promises.push(this.doUpdateExtraHTTPHeaders());
     if (this._options.httpCredentials)
-      promises.push(this.setHTTPCredentials(this._options.httpCredentials));
+      promises.push(this.innerSetHTTPCredentials(this._options.httpCredentials));
     if (this._options.geolocation)
       promises.push(this.setGeolocation(this._options.geolocation));
     if (this._options.offline)
@@ -402,10 +402,10 @@ export class FFBrowserContext extends BrowserContext {
     await this._browser.session.send('Browser.clearCache');
   }
 
-  async doClose(reason: string | undefined) {
+  async doClose(reason: string | undefined): Promise<void | 'close-browser'> {
     if (!this._browserContextId) {
       // Closing persistent context should close the browser.
-      await this._browser.close({ reason });
+      return 'close-browser';
     } else {
       await this._browser.session.send('Browser.removeBrowserContext', { browserContextId: this._browserContextId });
       this._browser._contexts.delete(this._browserContextId);
