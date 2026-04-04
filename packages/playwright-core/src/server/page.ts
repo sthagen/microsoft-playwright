@@ -271,11 +271,11 @@ export class Page extends SdkObject<PageEventMap> {
     this._emulatedSize = undefined;
     this._emulatedMedia = {};
     this._extraHTTPHeaders = undefined;
-    await Promise.all([
+    await progress.race(Promise.all([
       this.delegate.updateEmulatedViewportSize(),
       this.delegate.updateEmulateMedia(),
       this.delegate.updateExtraHTTPHeaders(),
-    ]);
+    ]));
 
     await this.delegate.resetForReuse(progress);
   }
@@ -567,7 +567,13 @@ export class Page extends SdkObject<PageEventMap> {
             progress.log(`  locator handler has finished`);
           }
         });
-        await progress.race(this.openScope.race(promise)).finally(() => --this._locatorHandlerRunningCounter);
+        try {
+          progress.setAllowConcurrentOrNestedRaces(true);
+          await progress.race(this.openScope.race(promise));
+        } finally {
+          progress.setAllowConcurrentOrNestedRaces(false);
+          --this._locatorHandlerRunningCounter;
+        }
         progress.log(`  interception handler has finished, continuing`);
       }
     }
@@ -673,7 +679,7 @@ export class Page extends SdkObject<PageEventMap> {
       this.requestInterceptors.unshift(handler);
     else
       this.requestInterceptors.push(handler);
-    await this.delegate.updateRequestInterception();
+    await progress.race(this.delegate.updateRequestInterception());
   }
 
   async removeRequestInterceptor(handler: network.RouteHandler): Promise<void> {
@@ -687,9 +693,9 @@ export class Page extends SdkObject<PageEventMap> {
 
   async expectScreenshot(progress: Progress, options: ExpectScreenshotOptions): Promise<{ actual?: Buffer, previous?: Buffer, diff?: Buffer, errorMessage?: string, log?: string[], timedOut?: boolean }> {
     const locator = options.locator;
-    const rafrafScreenshot = locator ? async (timeout: number) => {
+    const rafrafScreenshot = locator ? async (progress: Progress, timeout: number) => {
       return await locator.frame.rafrafTimeoutScreenshotElementWithProgress(progress, locator.selector, timeout, options || {});
-    } : async (timeout: number) => {
+    } : async (progress: Progress, timeout: number) => {
       await this.performActionPreChecks(progress);
       await this.mainFrame().rafrafTimeout(progress, timeout);
       return await this.screenshotter.screenshotPage(progress, options || {});
@@ -737,7 +743,7 @@ export class Page extends SdkObject<PageEventMap> {
         if (screenshotTimeout)
           progress.log(`waiting ${screenshotTimeout}ms before taking screenshot`);
         previous = actual;
-        actual = await rafrafScreenshot(screenshotTimeout).catch(e => {
+        actual = await rafrafScreenshot(progress, screenshotTimeout).catch(e => {
           if (this.mainFrame().isNonRetriableError(e))
             throw e;
           progress.log(`failed to take screenshot - ` + e.message);
@@ -1051,7 +1057,7 @@ export class InitScript extends DisposableObject {
 
 export async function ariaSnapshotForFrame(progress: Progress, frame: frames.Frame, options: { mode?: 'ai' | 'default', track?: string, doNotRenderActive?: boolean, info?: SelectorInfo, depth?: number } = {}): Promise<{ full: string[], incremental?: string[] }> {
   // Only await the topmost navigations, inner frames will be empty when racing.
-  const snapshot = await frame.retryWithProgressAndTimeouts(progress, [1000, 2000, 4000, 8000], async continuePolling => {
+  const snapshot = await frame.retryWithProgressAndTimeouts(progress, [1000, 2000, 4000, 8000], async (progress, continuePolling) => {
     try {
       const context = await progress.race(frame.utilityContext());
       const injectedScript = await progress.race(context.injectedScript());
@@ -1088,12 +1094,14 @@ export async function ariaSnapshotForFrame(progress: Progress, frame: frames.Fra
 
   // Only fetch child snapshots for iframes that were actually rendered (not filtered by depth).
   const renderedIframeRefs = snapshot.iframeRefs.filter(ref => ref in snapshot.iframeDepths);
+  progress.setAllowConcurrentOrNestedRaces(true);
   const childSnapshotPromises = renderedIframeRefs.map(ref => {
     const iframeDepth = snapshot.iframeDepths[ref];
     const childDepth = options.depth ? options.depth - iframeDepth - 1 : undefined;
     return ariaSnapshotFrameRef(progress, frame, ref, { ...options, depth: childDepth });
   });
   const childSnapshots = await Promise.all(childSnapshotPromises);
+  progress.setAllowConcurrentOrNestedRaces(false);
 
   const full = [];
   let incremental: string[] | undefined;
