@@ -1,10 +1,11 @@
 [*]
+../../package.ts
 ../../utils/isomorphic/**
 ../../server/utils/zipFile.ts
 ./*.ts
 
 [traceSnapshot.ts]
-../../..
+../../inprocess.ts
 ../../utils
 ../backend/browserBackend.ts
 ../backend/tools.ts

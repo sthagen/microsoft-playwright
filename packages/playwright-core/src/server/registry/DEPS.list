@@ -1,0 +1,8 @@
+[*]
+../../package.ts
+../../utils/
+../../utils/isomorphic/
+../../utilsBundle.ts
+../../zipBundle.ts
+../utils/
+./

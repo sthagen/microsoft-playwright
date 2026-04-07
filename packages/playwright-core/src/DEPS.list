@@ -18,15 +18,19 @@ utilsBundle.ts
 **
 
 [inprocess.ts]
-utils/
-server/utils
+**
 
 [outofprocess.ts]
 client/
+package.ts
 protocol/
 utils/
 utils/isomorphic
 server/utils
 
+[package.ts]
+"strict"
+
 [serverRegistry.ts]
 "strict"
+package.ts

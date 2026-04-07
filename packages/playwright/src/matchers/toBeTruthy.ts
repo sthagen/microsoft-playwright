@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { formatMatcherMessage } from 'playwright-core/lib/utils';
+import { serverUtils } from 'playwright-core/lib/coreBundle';
 
 import { expectTypes } from '../util';
 
@@ -26,7 +26,7 @@ export async function toBeTruthy(
   this: ExpectMatcherStateInternal,
   matcherName: string,
   locator: Locator,
-  receiverType: string,
+  receiverType: 'Locator',
   expected: string,
   arg: string,
   query: (isNot: boolean, timeout: number) => Promise<{ matches: boolean, log?: string[], received?: any, timedOut?: boolean, errorMessage?: string }>,
@@ -57,7 +57,7 @@ export async function toBeTruthy(
     printedReceived = errorMessage ? '' : `Received: ${received}`;
   }
   const message = () => {
-    return formatMatcherMessage(this.utils, {
+    return serverUtils.formatMatcherMessage(this.utils, {
       isNot: this.isNot,
       promise: this.promise,
       matcherName,
