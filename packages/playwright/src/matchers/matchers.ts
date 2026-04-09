@@ -22,6 +22,7 @@ import { isString } from '@isomorphic/stringUtils';
 import { pollAgainstDeadline } from '@isomorphic/timeoutRunner';
 import { constructURLBasedOnBaseURL, isURLPattern } from '@isomorphic/urlMatch';
 import { formatMatcherMessage, serializeExpectedTextValues } from '@utils/expectUtils';
+import { monotonicTime } from '@isomorphic/index';
 
 import { expectTypes } from '../util';
 import { toBeTruthy } from './toBeTruthy';
@@ -29,10 +30,9 @@ import { toEqual } from './toEqual';
 import { toHaveURLWithPredicate } from './toHaveURL';
 import { toMatchText } from './toMatchText';
 import { toHaveScreenshotStepTitle } from './toMatchSnapshot';
-import { takeFirst } from '../common/config';
-import { currentTestInfo } from '../common/globals';
-import { TestInfoImpl } from '../worker/testInfo';
+import * as globals from '../globals';
 import { MatcherResult } from './matcherHint';
+import { takeFirst } from '../util';
 
 import type { ExpectMatcherState } from '../../types/test';
 import type { TestStepInfoImpl } from '../worker/testInfo';
@@ -483,13 +483,13 @@ export async function toPass(
     timeout?: number,
   } = {},
 ) {
-  const testInfo = currentTestInfo();
+  const testInfo = globals.currentTestInfo();
   const timeout = takeFirst(options.timeout, testInfo?._projectInternal.expect?.toPass?.timeout, 0);
   const intervals = takeFirst(options.intervals, testInfo?._projectInternal.expect?.toPass?.intervals, [100, 250, 500, 1000]);
 
-  const { deadline, timeoutMessage } = testInfo ? testInfo._deadlineForMatcher(timeout) : TestInfoImpl._defaultDeadlineForMatcher(timeout);
+  const { deadline, timeoutMessage } = testInfo ? testInfo._deadlineForMatcher(timeout) : defaultDeadlineForMatcher(timeout);
   const result = await pollAgainstDeadline<Error|undefined>(async () => {
-    if (testInfo && currentTestInfo() !== testInfo)
+    if (testInfo && globals.currentTestInfo() !== testInfo)
       return { continuePolling: false, result: undefined };
     try {
       await callback();
@@ -523,4 +523,8 @@ export function computeMatcherTitleSuffix(matcherName: string, receiver: any, ar
     }
   }
   return {};
+}
+
+export function defaultDeadlineForMatcher(timeout: number): { deadline: any; timeoutMessage: any; } {
+  return { deadline: (timeout ? monotonicTime() + timeout : 0), timeoutMessage: `Timeout ${timeout}ms exceeded while waiting on the predicate` };
 }

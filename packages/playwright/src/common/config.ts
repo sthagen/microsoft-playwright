@@ -19,11 +19,10 @@ import os from 'os';
 import path from 'path';
 
 import { packageJSON } from '../package';
-import { getPackageJsonPath, mergeObjects } from '../util';
+import { getPackageJsonPath, mergeObjects, takeFirst } from '../util';
 
 import type { Config, Fixtures, Metadata, Project, ReporterDescription } from '../../types/test';
 import type { TestRunnerPluginRegistration } from '../plugins';
-import type { Matcher, TestCaseFilter } from '../util';
 import type { ConfigCLIOverrides } from './ipc';
 import type { Location } from '../../types/testReporter';
 import type { FullConfig, FullProject } from '../../types/testReporter';
@@ -50,19 +49,6 @@ export class FullConfigInternal {
   readonly singleTSConfigPath?: string;
   readonly captureGitInfo: Config['captureGitInfo'];
   readonly failOnFlakyTests: boolean;
-  cliArgs: string[] = [];
-  cliGrep: string | undefined;
-  cliGrepInvert: string | undefined;
-  cliOnlyChanged: string | undefined;
-  cliProjectFilter?: string[];
-  cliListOnly = false;
-  cliPassWithNoTests?: boolean;
-  cliLastFailed?: boolean;
-  cliTestList?: string;
-  cliTestListInvert?: string;
-  loadFileFilters: Matcher[] = [];
-  preOnlyTestFilters: TestCaseFilter[] = [];
-  postShardTestFilters: TestCaseFilter[] = [];
   defineConfigWasUsed = false;
 
   globalSetups: string[] = [];
@@ -214,14 +200,6 @@ export class FullProjectInternal {
     if (configCLIOverrides.debug && this.workers)
       this.workers = 1;
   }
-}
-
-export function takeFirst<T>(...args: (T | undefined)[]): T {
-  for (const arg of args) {
-    if (arg !== undefined)
-      return arg;
-  }
-  return undefined as any as T;
 }
 
 function pathResolve(baseDir: string, relative: string | undefined): string | undefined {

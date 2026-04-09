@@ -267,7 +267,7 @@ bundles.push({
 
 bundles.push({
   modulePath: 'packages/playwright/bundles/expect',
-  outdir: 'packages/playwright/lib/common',
+  outdir: 'packages/playwright/lib/matchers',
   entryPoints: ['src/expectBundleImpl.ts'],
 });
 
@@ -365,6 +365,10 @@ class EsbuildStep extends Step {
     super({ concurrent: false });
     this._options = options;
     this._watchPaths = watchPaths;
+    // For bundled outputs we always want a metafile so we can emit a
+    // sidecar .bundle.txt report next to each output.
+    if (options.bundle && !options.metafile)
+      options.metafile = true;
   }
 
   /** @override */
@@ -374,7 +378,8 @@ class EsbuildStep extends Step {
     } else {
       console.log('==== Running esbuild:', this._relativeEntryPoints().join(', '));
       const start = Date.now();
-      await build(this._options);
+      const result = await build(this._options);
+      this._writeBundleReport(result);
       console.log('==== Done in', Date.now() - start, 'ms');
     }
   }
@@ -403,7 +408,9 @@ class EsbuildStep extends Step {
       this._sourcesChanged = false;
       this._rebuilding = true;
       try {
-        await this._context?.rebuild();
+        const result = await this._context?.rebuild();
+        if (result)
+          this._writeBundleReport(result);
       } catch (e) {
         // Ignore. Esbuild inherits stderr and already logs nicely formatted errors
         // before throwing.
@@ -411,6 +418,56 @@ class EsbuildStep extends Step {
 
       this._rebuilding = false;
     } while (this._sourcesChanged);
+  }
+
+  /**
+   * @param {import('esbuild').BuildResult} result
+   */
+  _writeBundleReport(result) {
+    if (!this._options.bundle || !result.metafile)
+      return;
+    const { outputs } = result.metafile;
+    for (const [outFile, outInfo] of Object.entries(outputs)) {
+      if (outFile.endsWith('.map'))
+        continue;
+      const inputs = Object.keys(outInfo.inputs)
+          .filter(p => !p.startsWith('(disabled):'))
+          .sort();
+      const externals = new Set();
+      for (const [, meta] of Object.entries(outInfo.inputs)) {
+        // imports field is per-input via metafile.inputs, not outputs.
+      }
+      for (const inFile of inputs) {
+        const meta = result.metafile.inputs[inFile];
+        if (!meta) continue;
+        for (const imp of meta.imports || []) {
+          if (!imp.external)
+            continue;
+          if (imp.path.startsWith('node:'))
+            continue;
+          if (require('module').isBuiltin?.(imp.path) || require('module').builtinModules.includes(imp.path))
+            continue;
+          externals.add(imp.path);
+        }
+      }
+      const sortedExternals = [...externals].sort();
+      const lines = [];
+      lines.push(`# ${path.relative(ROOT, outFile)}`);
+      lines.push(`# size: ${(outInfo.bytes / 1024).toFixed(1)} KB`);
+      lines.push('');
+      lines.push(`## Inlined (${inputs.length})`);
+      for (const f of inputs)
+        lines.push(`  ${f}`);
+      lines.push('');
+      lines.push(`## External (${sortedExternals.length})`);
+      for (const e of sortedExternals)
+        lines.push(`  ${e}`);
+      lines.push('');
+      const reportPath = outFile + '.txt';
+      fs.writeFileSync(reportPath, lines.join('\n'));
+      const rel = path.relative(ROOT, outFile);
+      console.log(`     bundle: ${rel}  (${inputs.length} files, ${sortedExternals.length} external, ${(outInfo.bytes / 1024).toFixed(1)} KB)`);
+    }
   }
 
   _relativeEntryPoints() {
@@ -580,7 +637,7 @@ for (const pkg of workspace.packages()) {
   // playwright-client is built as a bundle.
   if (['@playwright/client'].includes(pkg.name))
     continue;
-  if (pkg.name === 'playwright-core')
+  if (pkg.name === 'playwright-core' || pkg.name === 'playwright')
     continue;
 
   steps.push(new EsbuildStep({
@@ -669,7 +726,7 @@ function assertCoreBundleHasNoNodeModules() {
 
 steps.push(new CustomCallbackStep(assertCoreBundleHasNoNodeModules));
 
-// playwright/lib/transform/esmLoader2.js — bundled ESM loader registered by
+// playwright/lib/transform/esmLoader.js — bundled ESM loader registered by
 // common/esmLoaderHost.ts via node:module register. Same externalization
 // rules as the worker bundle.
 {
@@ -688,6 +745,69 @@ steps.push(new CustomCallbackStep(assertCoreBundleHasNoNodeModules));
     plugins: [],
   }, [playwrightSrc]));
 }
+
+// Build playwright entry points (per-file), excluding matchers/* and
+// common/* + transform/* — all of those are produced by bundle steps below.
+steps.push(new EsbuildStep({
+  entryPoints: [
+    filePath('packages/playwright/src/*.ts'),
+    filePath('packages/playwright/src/agents/**/*.ts'),
+    filePath('packages/playwright/src/cli/**/*.ts'),
+    filePath('packages/playwright/src/common/**/*.ts'),
+    filePath('packages/playwright/src/isomorphic/**/*.ts'),
+    filePath('packages/playwright/src/loader/**/*.ts'),
+    filePath('packages/playwright/src/mcp/**/*.ts'),
+    filePath('packages/playwright/src/plugins/**/*.ts'),
+    filePath('packages/playwright/src/reporters/**/*.ts'),
+    filePath('packages/playwright/src/runner/**/*.ts'),
+    filePath('packages/playwright/src/transform/**/*.ts'),
+    filePath('packages/playwright/src/worker/**/*.ts'),
+  ],
+  outdir: filePath('packages/playwright/lib'),
+  sourcemap: withSourceMaps ? 'linked' : false,
+  platform: 'node',
+  format: 'cjs',
+  plugins: [dynamicImportToRequirePlugin],
+}));
+
+// playwright/lib/matchers/expect.js — bundled jest expect facade.
+steps.push(new EsbuildStep({
+  bundle: true,
+  entryPoints: [filePath('packages/playwright/src/matchers/expect.ts')],
+  outfile: filePath('packages/playwright/lib/matchers/expect.js'),
+  sourcemap: withSourceMaps ? 'linked' : false,
+  platform: 'node',
+  format: 'cjs',
+  external: [
+    'playwright-core',
+    'playwright-core/*',
+    '../globals',
+    '../package',
+  ],
+  plugins: [dynamicImportToRequirePlugin],
+}, [filePath('packages/playwright/src')]));
+
+// playwright/lib/common/index.js — bundled common barrel. Inlines all of
+// common/* and transform/* (the barrel re-exports both). Externalizes
+// sibling lib/ files so state-holding singletons (currentTestInfo, config,
+// compilation cache) live exactly once at runtime.
+steps.push(new EsbuildStep({
+  bundle: true,
+  entryPoints: [filePath('packages/playwright/src/common/index.ts')],
+  outfile: filePath('packages/playwright/lib/common/index.js'),
+  sourcemap: withSourceMaps ? 'linked' : false,
+  platform: 'node',
+  format: 'cjs',
+  external: [
+    'playwright-core',
+    'playwright-core/*',
+    '../globals',
+    '../package',
+    '../utils',
+    '../matchers/expect',
+  ],
+  plugins: [dynamicImportToRequirePlugin],
+}, [filePath('packages/playwright/src')]));
 
 // Build the Electron preload loader as a standalone CJS file. It runs inside
 // the Electron process (via `electron -r loader.js`) and must not depend on
