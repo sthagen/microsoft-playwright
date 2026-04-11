@@ -26,7 +26,7 @@ import { buildProjectsClosure, collectFilesForProject } from './projectUtils';
 import {  createTestGroups, filterForShard } from './testGroups';
 import { cc, config as commonConfig, FullConfigInternal, suiteUtils, test as testNs, transform } from '../common';
 
-import type { RawSourceMap } from 'playwright-core/lib/utilsBundle';
+import type { RawSourceMap } from 'source-map';
 import type { TestRun } from './tasks';
 import type { TestGroup } from './testGroups';
 import type { FullConfig, Reporter, TestError } from '../../types/testReporter';
@@ -117,7 +117,7 @@ export async function loadFileSuites(testRun: TestRun, mode: 'out-of-process' | 
   }
 }
 
-export async function createRootSuite(testRun: TestRun, errors: TestError[], shouldFilterOnly: boolean): Promise<{ rootSuite: testNs.Suite, topLevelProjects: commonConfig.FullProjectInternal[] }> {
+export async function createRootSuite(testRun: TestRun, errors: TestError[], shouldFilterOnly: boolean) {
   const config = testRun.config;
   // Create root suite, where each child will be a project suite with cloned file suites inside it.
   const rootSuite = new testNs.Suite('', 'root');
@@ -177,7 +177,7 @@ export async function createRootSuite(testRun: TestRun, errors: TestError[], sho
     }
 
     // Shard test groups.
-    const testGroupsInThisShard = filterForShard(config.config.shard, config.configCLIOverrides.shardWeights, testGroups);
+    const testGroupsInThisShard = filterForShard(config.config.shard, testRun.options.shardWeights, testGroups);
     const testsInThisShard = new Set<testNs.TestCase>();
     for (const group of testGroupsInThisShard) {
       for (const test of group.tests)
@@ -207,7 +207,8 @@ export async function createRootSuite(testRun: TestRun, errors: TestError[], sho
     }
   }
 
-  return { rootSuite, topLevelProjects };
+  testRun.rootSuite = rootSuite;
+  testRun.topLevelProjects = topLevelProjects;
 }
 
 function createProjectSuite(project: commonConfig.FullProjectInternal, fileSuites: testNs.Suite[]): testNs.Suite {

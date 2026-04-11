@@ -15,10 +15,10 @@
  */
 
 import util from 'util';
-
-import { sever } from 'playwright-core/lib/coreBundle';
 import debug from 'debug';
 import open from 'open';
+
+import { server as coreServer } from 'playwright-core/lib/coreBundle';
 import { ManualPromise } from '@isomorphic/manualPromise';
 import { isUnderTest } from '@utils/debug';
 import { HttpServer } from '@utils/httpServer';
@@ -26,9 +26,11 @@ import { gracefullyProcessExitDoNotHang } from '@utils/processLauncher';
 
 import { configLoader, ipc } from '../common';
 import ListReporter from '../reporters/list';
-import { createReporterForTestServer } from './reporters';
 import { SigIntWatcher } from './sigIntWatcher';
 import { TestRunner, TestRunnerEvent } from './testRunner';
+import UIModeReporter from './uiModeReporter';
+import { loadReporter } from './loadUtils';
+import { wrapReporterAsV2 } from '../reporters/reporterV2';
 
 import type { Transport } from '@utils/httpServer';
 import type * as reporterTypes from '../../types/testReporter';
@@ -36,8 +38,8 @@ import type { ConfigLocation } from '../common';
 import type { ReportEntry, TestServerInterface, TestServerInterfaceEventEmitters } from '../isomorphic/testServerInterface';
 import type { ReporterV2 } from '../reporters/reporterV2';
 
-type TraceViewerRedirectOptions = sever.TraceViewerRedirectOptions;
-type TraceViewerServerOptions = sever.TraceViewerServerOptions;
+type TraceViewerRedirectOptions = coreServer.TraceViewerRedirectOptions;
+type TraceViewerServerOptions = coreServer.TraceViewerServerOptions;
 
 const originalDebugLog = debug.log;
 // eslint-disable-next-line no-restricted-properties
@@ -59,7 +61,7 @@ class TestServer {
 
   async start(options: { host?: string, port?: number }): Promise<HttpServer> {
     this._dispatcher = new TestServerDispatcher(this._configLocation, this._configCLIOverrides);
-    return await sever.startTraceViewerServer({ ...options, transport: this._dispatcher.transport });
+    return await coreServer.startTraceViewerServer({ ...options, transport: this._dispatcher.transport });
   }
 
   async stop() {
@@ -93,7 +95,7 @@ export type RunTestsParams = {
 
 export class TestServerDispatcher implements TestServerInterface {
   readonly transport: Transport;
-  private _serializer = require.resolve('./uiModeReporter');
+  private _serializer: string | undefined;
   private _closeOnDisconnect = false;
   private _testRunner: TestRunner;
   private _globalSetupReport: ReportEntry[] | undefined;
@@ -129,7 +131,7 @@ export class TestServerDispatcher implements TestServerInterface {
 
   async initialize(params: Parameters<TestServerInterface['initialize']>[0]): ReturnType<TestServerInterface['initialize']> {
     // Note: this method can be called multiple times, for example from a new connection after UI mode reload.
-    this._serializer = params.serializer || require.resolve('./uiModeReporter');
+    this._serializer = params.serializer;
     this._closeOnDisconnect = !!params.closeOnDisconnect;
     await this._testRunner.initialize({
       ...params,
@@ -261,12 +263,12 @@ export class TestServerDispatcher implements TestServerInterface {
 export async function runUIMode(configFile: string | undefined, configCLIOverrides: ipc.ConfigCLIOverrides, options: TraceViewerServerOptions & TraceViewerRedirectOptions): Promise<reporterTypes.FullResult['status']> {
   const configLocation = configLoader.resolveConfigLocation(configFile);
   return await innerRunTestServer(configLocation, configCLIOverrides, options, async (server: HttpServer, cancelPromise: ManualPromise<void>) => {
-    await sever.installRootRedirect(server, undefined, { ...options, webApp: 'uiMode.html' });
+    await coreServer.installRootRedirect(server, undefined, { ...options, webApp: 'uiMode.html' });
     if (options.host !== undefined || options.port !== undefined) {
-      await sever.openTraceInBrowser(server.urlPrefix('human-readable'));
+      await coreServer.openTraceInBrowser(server.urlPrefix('human-readable'));
     } else {
       const channel = await installedChromiumChannelForUI(configLocation, configCLIOverrides);
-      const page = await sever.openTraceViewerApp(server.urlPrefix('precise'), 'chromium', {
+      const page = await coreServer.openTraceViewerApp(server.urlPrefix('precise'), 'chromium', {
         headless: isUnderTest() && process.env.PWTEST_HEADED_FOR_TEST !== '1',
         persistentContextOptions: {
           handleSIGINT: false,
@@ -327,4 +329,11 @@ function chunkToPayload(type: 'stdout' | 'stderr', chunk: Buffer | string): Stdi
   if (chunk instanceof Uint8Array)
     return { type, buffer: chunk.toString('base64') };
   return { type, text: chunk };
+}
+
+async function createReporterForTestServer(file: string | undefined, messageSink: (message: any) => void): Promise<ReporterV2> {
+  const reporterConstructor = file ? await loadReporter(null, file) : UIModeReporter;
+  return wrapReporterAsV2(new reporterConstructor({
+    _send: messageSink,
+  }));
 }

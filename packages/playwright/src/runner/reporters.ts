@@ -51,8 +51,8 @@ export async function createReporters(config: FullConfigInternal, mode: 'list' |
   };
   const reporters: ReporterV2[] = [];
   descriptions ??= config.config.reporter;
-  if (config.configCLIOverrides.additionalReporters)
-    descriptions = [...descriptions, ...config.configCLIOverrides.additionalReporters];
+  if (runOptions?.additionalReporters)
+    descriptions = [...descriptions, ...runOptions.additionalReporters];
   const reportOptions = reporterCommandOptions(config, mode, runOptions);
   for (const r of descriptions) {
     const [name, arg] = r;
@@ -65,8 +65,13 @@ export async function createReporters(config: FullConfigInternal, mode: 'list' |
     }
   }
   if (process.env.PW_TEST_REPORTER) {
-    const reporterConstructor = await loadReporter(config, process.env.PW_TEST_REPORTER);
-    reporters.push(wrapReporterAsV2(new reporterConstructor(reportOptions)));
+    const name = process.env.PW_TEST_REPORTER;
+    if (name in defaultReporters) {
+      reporters.push(new defaultReporters[name as keyof typeof defaultReporters](reportOptions));
+    } else {
+      const reporterConstructor = await loadReporter(config, name);
+      reporters.push(wrapReporterAsV2(new reporterConstructor(reportOptions)));
+    }
   }
 
   const someReporterPrintsToStdio = reporters.some(r => r.printsToStdio ? r.printsToStdio() : true);
@@ -79,13 +84,6 @@ export async function createReporters(config: FullConfigInternal, mode: 'list' |
       reporters.unshift(!process.env.CI ? new LineReporter() : new DotReporter());
   }
   return reporters;
-}
-
-export async function createReporterForTestServer(file: string, messageSink: (message: any) => void): Promise<ReporterV2> {
-  const reporterConstructor = await loadReporter(null, file);
-  return wrapReporterAsV2(new reporterConstructor({
-    _send: messageSink,
-  }));
 }
 
 interface ErrorCollectingReporter extends ReporterV2 {

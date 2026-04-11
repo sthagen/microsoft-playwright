@@ -21,12 +21,7 @@ import { gracefullyProcessExitDoNotHang } from '@utils/processLauncher';
 import { startProfiling, stopProfiling } from '@utils/profiler';
 
 import { builtInReporters, configLoader, ipc } from '../common';
-import { terminalScreen } from '../reporters/base';
-import { filterProjects } from '../runner/projectUtils';
-import * as testServer from '../runner/testServer';
-import { runWatchModeLoop } from '../runner/watchMode';
-import { runAllTestsWithConfig, TestRunner } from '../runner/testRunner';
-import { createErrorCollectingReporter } from '../runner/reporters';
+import { base, projectUtils, testServer, watchMode, testRunner, runnerReporters } from '../runner';
 import type { ReporterDescription } from '../../types/test';
 import type { TestRunOptions } from '../runner/tasks';
 
@@ -46,10 +41,11 @@ export async function runTests(args: string[], opts: { [key: string]: any }) {
     lastFailed: !!opts.lastFailed,
     testList: opts.testList ? path.resolve(process.cwd(), opts.testList) : undefined,
     testListInvert: opts.testListInvert ? path.resolve(process.cwd(), opts.testListInvert) : undefined,
+    shardWeights: resolveShardWeightsOption(),
   };
 
   // Evaluate project filters against config before starting execution. This enables a consistent error message across run modes
-  filterProjects(config.projects, options.projectFilter);
+  projectUtils.filterProjects(config.projects, options.projectFilter);
 
   if (opts.ui || opts.uiHost || opts.uiPort) {
     if (opts.onlyChanged)
@@ -74,7 +70,7 @@ export async function runTests(args: string[], opts: { [key: string]: any }) {
     if (opts.onlyChanged)
       throw new Error(`--only-changed is not supported in watch mode. If you'd like that to change, file an issue and let us know about your usecase for it.`);
 
-    const status = await runWatchModeLoop(
+    const status = await watchMode.runWatchModeLoop(
         configLoader.resolveConfigLocation(opts.config),
         {
           projects: opts.project,
@@ -88,7 +84,7 @@ export async function runTests(args: string[], opts: { [key: string]: any }) {
     return;
   }
 
-  const status = await runAllTestsWithConfig(config, options);
+  const status = await testRunner.runAllTestsWithConfig(config, options);
   await stopProfiling('runner');
   const exitCode = status === 'interrupted' ? 130 : (status === 'passed' ? 0 : 1);
   gracefullyProcessExitDoNotHang(exitCode);
@@ -103,8 +99,8 @@ export async function runTestServerAction(opts: { [key: string]: any }) {
 }
 
 export async function clearCache(opts: { [key: string]: any }) {
-  const runner = new TestRunner(configLoader.resolveConfigLocation(opts.config), {});
-  const { status } = await runner.clearCache(createErrorCollectingReporter(terminalScreen));
+  const runner = new testRunner.TestRunner(configLoader.resolveConfigLocation(opts.config), {});
+  const { status } = await runner.clearCache(runnerReporters.createErrorCollectingReporter(base.terminalScreen));
   const exitCode = status === 'interrupted' ? 130 : (status === 'passed' ? 0 : 1);
   gracefullyProcessExitDoNotHang(exitCode);
 }
@@ -129,7 +125,6 @@ function overridesFromOptions(options: { [key: string]: any }): ipc.ConfigCLIOve
     retries: options.retries ? parseInt(options.retries, 10) : undefined,
     reporter: resolveReporterOption(options.reporter),
     shard: resolveShardOption(options.shard),
-    shardWeights: resolveShardWeightsOption(),
     timeout: options.timeout ? parseInt(options.timeout, 10) : undefined,
     tsconfig: options.tsconfig ? path.resolve(process.cwd(), options.tsconfig) : undefined,
     ignoreSnapshots: options.ignoreSnapshots ? !!options.ignoreSnapshots : undefined,
@@ -200,7 +195,7 @@ function resolveShardOption(shard?: string): ipc.ConfigCLIOverrides['shard'] {
   return { current, total };
 }
 
-function resolveShardWeightsOption(): ipc.ConfigCLIOverrides['shardWeights'] {
+function resolveShardWeightsOption(): TestRunOptions['shardWeights'] {
   const shardWeights = process.env.PWTEST_SHARD_WEIGHTS;
   if (!shardWeights)
     return undefined;
