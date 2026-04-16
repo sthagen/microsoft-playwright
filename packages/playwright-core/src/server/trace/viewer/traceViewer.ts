@@ -178,7 +178,7 @@ export async function openTraceViewerApp(url: string, browserName: string, optio
     windowSize: { width: 1280, height: 800 },
     persistentContextOptions: {
       ...options?.persistentContextOptions,
-      cdpPort: isUnderTest() ? 0 : undefined,
+      args: isUnderTest() ? ['--remote-debugging-port=0'] : undefined,
       headless: !!options?.headless,
       colorScheme: isUnderTest() ? 'light' : undefined,
     },
@@ -231,25 +231,23 @@ class StdinServer implements Transport {
   onconnect() {
   }
 
-  onmessage(message: string) {
-    const { id, method } = JSON.parse(message);
+  async dispatch(method: string, params: any) {
     if (method === 'initialize') {
       if (this._traceUrl)
         this._loadTrace(this._traceUrl);
     }
-    this.sendMessage?.(JSON.stringify({ id }));
   }
 
   onclose() {
   }
 
-  sendMessage?: (message: string) => void;
+  sendEvent?: (method: string, params: any) => void;
   close?: () => void;
 
   private _loadTrace(traceUrl: string) {
     this._traceUrl = traceUrl;
     clearTimeout(this._pollTimer);
-    this.sendMessage?.(JSON.stringify({ method: 'loadTraceRequested', params: { traceUrl } }));
+    this.sendEvent?.('loadTraceRequested', { traceUrl });
   }
 
   private _pollLoadTrace(url: string) {

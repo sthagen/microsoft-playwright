@@ -74,7 +74,7 @@ export class Chromium extends BrowserType {
     return super.launch(progress, options, protocolLogger);
   }
 
-  override async launchPersistentContext(progress: Progress, userDataDir: string, options: channels.BrowserTypeLaunchPersistentContextOptions & { cdpPort?: number, internalIgnoreHTTPSErrors?: boolean, socksProxyPort?: number }): Promise<BrowserContext> {
+  override async launchPersistentContext(progress: Progress, userDataDir: string, options: channels.BrowserTypeLaunchPersistentContextOptions & { internalIgnoreHTTPSErrors?: boolean, socksProxyPort?: number }): Promise<BrowserContext> {
     if (options.channel?.startsWith('bidi-'))
       return this._bidiChromium.launchPersistentContext(progress, userDataDir, options);
     return super.launchPersistentContext(progress, userDataDir, options);
@@ -154,11 +154,6 @@ export class Chromium extends BrowserType {
     }
   }
 
-  override async connectOverCDPTransport(progress: Progress, transport: ConnectionTransport) {
-    const closeAndWait = async () => transport.close();
-    return this._connectOverCDPImpl(progress, transport, closeAndWait, { isLocal: true });
-  }
-
   override async connectToWorker(progress: Progress, endpoint: string) {
     const wsEndpoint = await urlToWSEndpoint(progress, endpoint, {});
     const transport = await WebSocketTransport.connect(progress, wsEndpoint);
@@ -198,12 +193,9 @@ export class Chromium extends BrowserType {
     try {
       return await CRBrowser.connect(this.attribution.playwright, transport, options, this._devtools);
     } catch (e) {
-      if (browserLogsCollector.recentLogs().some(log => log.includes('Failed to create a ProcessSingleton for your profile directory.'))) {
-        throw new Error(
-            'Failed to create a ProcessSingleton for your profile directory. ' +
-            'This usually means that the profile is already in use by another instance of Chromium.'
-        );
-      }
+      const error = profileInUseError(browserLogsCollector.recentLogs());
+      if (error)
+        throw error;
       throw e;
     }
   }
@@ -343,10 +335,7 @@ export class Chromium extends BrowserType {
   override async defaultArgs(options: types.LaunchOptions, isPersistent: boolean, userDataDir: string) {
     const chromeArguments = this._innerDefaultArgs(options);
     chromeArguments.push(`--user-data-dir=${userDataDir}`);
-    if (options.cdpPort !== undefined)
-      chromeArguments.push(`--remote-debugging-port=${options.cdpPort}`);
-    else
-      chromeArguments.push('--remote-debugging-pipe');
+    chromeArguments.push('--remote-debugging-pipe');
     if (isPersistent)
       chromeArguments.push('about:blank');
     else
@@ -363,7 +352,7 @@ export class Chromium extends BrowserType {
       throw new Error('Playwright manages remote debugging connection itself.');
     if (args.find(arg => !arg.startsWith('-')))
       throw new Error('Arguments can not specify page to be opened');
-    const chromeArguments = [...chromiumSwitches(options.assistantMode, options.channel)];
+    const chromeArguments = [...chromiumSwitches()];
 
     // See https://issues.chromium.org/issues/40277080
     chromeArguments.push('--enable-unsafe-swiftshader');
@@ -417,16 +406,31 @@ export class Chromium extends BrowserType {
   }
 }
 
+export function profileInUseError(logs: string[]): Error | undefined {
+  const markers = [
+    'Failed to create a ProcessSingleton for your profile directory.',
+    'Opening in existing browser session.',
+  ];
+  for (const log of logs) {
+    const marker = markers.find(m => log.includes(m));
+    if (marker) {
+      return new Error(
+          `${marker} ` +
+          'This usually means that the profile is already in use by another instance of Chromium.'
+      );
+    }
+  }
+}
+
 export async function waitForReadyState(options: types.LaunchOptions, browserLogsCollector: RecentLogsCollector): Promise<{ wsEndpoint?: string }> {
-  if (options.cdpPort === undefined && !options.args?.some(a => a.startsWith('--remote-debugging-port')))
+  if (!options.args?.some(a => a.startsWith('--remote-debugging-port')))
     return {};
 
   const result = new ManualPromise<{ wsEndpoint?: string }>();
   browserLogsCollector.onMessage(message => {
-    if (message.includes('Failed to create a ProcessSingleton for your profile directory.')) {
-      result.reject(new Error('Failed to create a ProcessSingleton for your profile directory. ' +
-        'This usually means that the profile is already in use by another instance of Chromium.'));
-    }
+    const error = profileInUseError([message]);
+    if (error)
+      result.reject(error);
     const match = message.match(/DevTools listening on (.*)/);
     if (match)
       result.resolve({ wsEndpoint: match[1] });

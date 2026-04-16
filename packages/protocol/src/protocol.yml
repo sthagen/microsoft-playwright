@@ -491,7 +491,6 @@ LaunchOptions:
     ignoreDefaultArgs:
       type: array?
       items: string
-    assistantMode: boolean?
     handleSIGINT: boolean?
     handleSIGTERM: boolean?
     handleSIGHUP: boolean?
@@ -1035,14 +1034,6 @@ BrowserType:
         browser: Browser
         defaultContext: BrowserContext?
 
-    connectOverCDPTransport:
-      title: Connect over CDP transport
-      parameters:
-        transport: binary
-      returns:
-        browser: Browser
-        defaultContext: BrowserContext?
-
     connectToWorker:
       title: Connect to worker
       parameters:
@@ -1290,7 +1281,6 @@ BrowserContext:
       group: configuration
       parameters:
         name: string
-        needsHandle: boolean?
       returns:
         disposable: Disposable
 
@@ -1526,6 +1516,10 @@ BrowserContext:
       parameters:
         binding: BindingCall
 
+    pickLocator:
+      parameters:
+        page: Page
+
     console:
       parameters:
         $mixin: ConsoleMessage
@@ -1688,7 +1682,6 @@ Page:
       group: configuration
       parameters:
         name: string
-        needsHandle: boolean?
       returns:
         disposable: Disposable
 
@@ -2106,6 +2099,10 @@ Page:
       title: Cancel pick locator
       group: configuration
 
+    hideHighlight:
+      title: Hide all element highlights
+      group: configuration
+
     screencastShowOverlay:
       title: Show overlay
       group: configuration
@@ -2309,6 +2306,14 @@ Frame:
       flags:
         snapshot: true
         pause: true
+
+    ariaRef:
+      internal: true
+      parameters:
+        selector: string
+        timeout: float
+      returns:
+        ref: string?
 
     ariaSnapshot:
       title: Aria snapshot
@@ -2528,8 +2533,13 @@ Frame:
         resolvedSelector: string
 
     highlight:
-      title: Highlight element
-      group: configuration
+      internal: true
+      parameters:
+        selector: string
+        style: string?
+
+    hideHighlight:
+      internal: true
       parameters:
         selector: string
 
@@ -2944,6 +2954,11 @@ Frame:
         selector: string?
         expression: string
         expressionArg: json?
+        pseudo:
+          type: enum?
+          literals:
+          - before
+          - after
         expectedText:
           type: array?
           items: ExpectedTextValue
@@ -3883,9 +3898,8 @@ BindingCall:
     frame: Frame
     name: string
     args:
-      type: array?
+      type: array
       items: SerializedValue
-    handle: JSHandle?
 
   commands:
 
@@ -4605,5 +4619,3 @@ JsonPipe:
     closed:
       parameters:
         reason: string?
-
-

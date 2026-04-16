@@ -163,17 +163,18 @@ export async function resolveCLIConfigForCLI(daemonProfilesDir: string, sessionN
   if (result.browser.isolated === undefined)
     result.browser.isolated = !options.profile && !options.persistent && !result.browser.userDataDir && !result.browser.remoteEndpoint && !result.browser.cdpEndpoint && !result.extension;
 
-  if (!result.extension && !result.browser.isolated && !result.browser.userDataDir && !result.browser.remoteEndpoint) {
-    // No custom value provided, use the daemon data dir.
-    const browserToken = result.browser.launchOptions?.channel ?? result.browser?.browserName;
-    const userDataDir = path.resolve(daemonProfilesDir, `ud-${sessionName}-${browserToken}`);
-    result.browser.userDataDir = userDataDir;
-  }
-
   if (result.browser.launchOptions.headless === undefined)
     result.browser.launchOptions.headless = true;
 
   const browser = await validateBrowserConfig(result.browser);
+
+  if (!result.extension && !browser.isolated && !browser.userDataDir && !browser.remoteEndpoint && !browser.cdpEndpoint) {
+    // No custom value provided, use the daemon data dir.
+    const browserToken = browser.launchOptions?.channel ?? browser?.browserName;
+    const userDataDir = path.resolve(daemonProfilesDir, `ud-${sessionName}-${browserToken}`);
+    browser.userDataDir = userDataDir;
+  }
+
   return { ...result, browser, configFile, skillMode: true };
 }
 
@@ -257,19 +258,22 @@ function configFromCLIOptions(cliOptions: CLIOptions): Config & { configFile?: s
   if (cliOptions.sandbox !== undefined)
     launchOptions.chromiumSandbox = cliOptions.sandbox;
 
-  if (cliOptions.proxyServer) {
-    launchOptions.proxy = {
-      server: cliOptions.proxyServer
-    };
-    if (cliOptions.proxyBypass)
-      launchOptions.proxy.bypass = cliOptions.proxyBypass;
-  }
-
   if (cliOptions.device && cliOptions.cdpEndpoint)
     throw new Error('Device emulation is not supported with cdpEndpoint.');
 
   // Context options
   const contextOptions: playwrightTypes.BrowserContextOptions = cliOptions.device ? playwright.devices[cliOptions.device] : {};
+
+  if (cliOptions.proxyServer) {
+    const proxy: playwrightTypes.LaunchOptions['proxy'] = { server: cliOptions.proxyServer };
+    if (cliOptions.proxyBypass)
+      proxy.bypass = cliOptions.proxyBypass;
+    // Set on both to ensure CLI takes precedence over any proxy set in the config file
+    // (launchOptions.proxy applies at browser launch, contextOptions.proxy at context creation).
+    launchOptions.proxy = proxy;
+    contextOptions.proxy = proxy;
+  }
+
   if (cliOptions.storageState)
     contextOptions.storageState = cliOptions.storageState;
 
@@ -412,8 +416,6 @@ function mergeConfig(base: MergedConfig, overrides: Config): MergedConfig {
     launchOptions: {
       ...pickDefined(base.browser?.launchOptions),
       ...pickDefined(overrides.browser?.launchOptions),
-      // Assistant mode is not a part of the public API.
-      ...{ assistantMode: true },
     },
     contextOptions: {
       ...pickDefined(base.browser?.contextOptions),

@@ -31,20 +31,6 @@ test('should show browser session chip', async ({ cli, server, openDashboard }) 
   await expect(chips).toHaveCount(1);
 });
 
-test('should show devtools sidebar', async ({ cli, server, openDashboard, mcpBrowser }) => {
-  test.skip(!['chrome', 'msedge', 'chromium'].includes(mcpBrowser!), 'DevTools sidebar requires CDP, only available in Chromium');
-
-  await cli('open', server.EMPTY_PAGE);
-
-  const dashboard = await openDashboard();
-  await dashboard.locator('.session-chip').click();
-
-  const devToolsButton = dashboard.locator('button.nav-btn[title="Chrome DevTools"]');
-  await expect(dashboard.locator('.inspector-frame')).not.toBeVisible();
-  await devToolsButton.click();
-  await expect(dashboard.locator('.inspector-frame')).toBeVisible();
-});
-
 test('should show current workspace sessions first', async ({ cli, server, openDashboard }) => {
   const wsA = test.info().outputPath('workspace-a');
   const wsB = test.info().outputPath('workspace-b');
@@ -60,13 +46,13 @@ test('should show current workspace sessions first', async ({ cli, server, openD
     const workspaceGroups = dashboard.locator('.workspace-group');
     await expect(workspaceGroups).toHaveCount(2);
 
-    // Current workspace (first) should be first and expanded.
-    await expect(workspaceGroups.nth(0).locator('.workspace-path')).toContainText(first);
-    await expect(workspaceGroups.nth(0).locator('.session-chips')).toBeVisible();
+    // Current workspace (first) should be first.
+    await expect(workspaceGroups.nth(0).locator('.workspace-path-full')).toContainText(first);
+    await expect(workspaceGroups.nth(0).locator('.session-chip')).toHaveCount(1);
 
-    // Other workspace (second) should be second and collapsed.
-    await expect(workspaceGroups.nth(1).locator('.workspace-path')).toContainText(second);
-    await expect(workspaceGroups.nth(1).locator('.session-chips')).not.toBeVisible();
+    // Other workspace (second) should be second.
+    await expect(workspaceGroups.nth(1).locator('.workspace-path-full')).toContainText(second);
+    await expect(workspaceGroups.nth(1).locator('.session-chip')).toHaveCount(1);
 
     await dashboard.close();
   };
@@ -81,38 +67,25 @@ test('should show current workspace sessions first', async ({ cli, server, openD
 });
 
 test('should pick locator from browser', async ({ cli, server, openDashboard }) => {
-  server.setContent('/', '<button style="position:fixed;top:0;left:0;width:200px;height:100px">Submit</button>', 'text/html');
+  server.setContent('/', '<button style="position:fixed;inset:0;width:100vw;height:100vh">Submit</button>', 'text/html');
 
   await cli('open', server.PREFIX);
 
   const dashboard = await openDashboard();
-  await dashboard.locator('.session-chip').click();
+  await dashboard.locator('.sidebar-tab').first().click();
 
-  const pickBtn = dashboard.locator('button.nav-btn[title="Pick locator"]');
-  await pickBtn.click();
+  const pickPromise = cli('pick');
+  let done = false;
+  void pickPromise.finally(() => { done = true; });
 
-  await expect(dashboard.locator('div.dashboard-view')).toContainClass('interactive');
-
-  // Intercept clipboard writes before clicking pick.
-  const copyPromise = dashboard.evaluate(() => {
-    if (!navigator.clipboard)
-      return 'no clipboard';
-    return new Promise<string>(f => {
-      const original = navigator.clipboard.writeText;
-      navigator.clipboard.writeText = text => {
-        f(text);
-        navigator.clipboard.writeText = original;
-        return navigator.clipboard.writeText(text);
-      };
-    });
-  }).catch(e => `Exception in eval: ${e}`);
+  await expect(dashboard.locator('div.dashboard-view.interactive')).toBeVisible();
 
   await expect(async () => {
-    await dashboard.locator('img#display').click({ position: { x: 50, y: 25 } });
-    const text = await Promise.race([
-      copyPromise,
-      new Promise<string>(f => setTimeout(() => f('timeout'), 1000))
-    ]);
-    expect(text).toContain('Submit');
+    const box = await dashboard.locator('img#display').boundingBox();
+    await dashboard.mouse.click(box!.x + box!.width / 2, box!.y + box!.height / 2);
+    expect(done).toBe(true);
   }).toPass();
+
+  const { output } = await pickPromise;
+  expect(output).toContain(`getByRole('button', { name: 'Submit' })`);
 });
