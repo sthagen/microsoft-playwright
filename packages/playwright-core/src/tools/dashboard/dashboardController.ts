@@ -49,6 +49,7 @@ export class DashboardConnection implements Transport {
   private _pushSessionsScheduled = false;
   private _pushTabsScheduled = false;
   private _visible = true;
+  private _pendingReveal: { sessionName: string; workspaceDir?: string } | undefined;
 
   _recordingDir: string;
 
@@ -137,6 +138,25 @@ export class DashboardConnection implements Transport {
       return;
     this._visible = params.visible;
     await this._attachedBrowser?.setScreencastActive(params.visible);
+  }
+
+  revealSession(sessionName: string, workspaceDir?: string) {
+    this._pendingReveal = { sessionName, workspaceDir };
+    void this._tryRevealPending();
+  }
+
+  private async _tryRevealPending() {
+    const pending = this._pendingReveal;
+    if (!pending)
+      return;
+    const slot = [...this._browsers.values()].find(s =>
+      s.descriptor.title === pending.sessionName
+        && (pending.workspaceDir === undefined || s.descriptor.workspaceDir === pending.workspaceDir));
+    if (!slot)
+      return;
+    this._pendingReveal = undefined;
+    await this._switchAttachedTo(slot.guid);
+    this._pushTabs();
   }
 
   async reveal(params: { path: string }) {
@@ -238,7 +258,9 @@ export class DashboardConnection implements Transport {
         for (const list of byWs.values())
           sessions.push(...list);
         await this._reconcile(sessions);
+        await this._tryRevealPending();
         this.emitSessions(sessions);
+        this._pushTabs();
       } catch {
         // best-effort
       }
@@ -281,12 +303,27 @@ export class DashboardConnection implements Transport {
           context,
           listeners: [],
         };
+        const watchPage = (page: api.Page) => {
+          slot.listeners.push(
+              eventsHelper.addEventListener(page, 'load', () => this._pushTabs()),
+              eventsHelper.addEventListener(page, 'framenavigated', (frame: api.Frame) => {
+                if (frame === page.mainFrame())
+                  this._pushTabs();
+              }),
+              eventsHelper.addEventListener(page, 'close', () => this._pushTabs()),
+          );
+        };
         slot.listeners.push(
-            eventsHelper.addEventListener(context, 'page', () => this._pushTabs()),
+            eventsHelper.addEventListener(context, 'page', (page: api.Page) => {
+              watchPage(page);
+              this._pushTabs();
+            }),
             eventsHelper.addEventListener(context, 'picklocator', (page: api.Page) => {
               this._onPickLocator(guid, page).catch(() => {});
             }),
         );
+        for (const page of context.pages())
+          watchPage(page);
         this._browsers.set(guid, slot);
         this._pushTabs();
       } catch {
@@ -537,6 +574,8 @@ async function faviconUrl(page: api.Page): Promise<string | undefined> {
     if (!response.ok)
       return undefined;
     const blob = await response.blob();
+    if (!blob.type.startsWith('image/'))
+      return undefined;
     return await new Promise<string>((resolve, reject) => {
       const reader = new FileReader();
       reader.onloadend = () => resolve(reader.result as string);

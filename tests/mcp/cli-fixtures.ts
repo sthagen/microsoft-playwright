@@ -17,19 +17,17 @@
 import fs from 'fs';
 import path from 'path';
 
-import { chromium } from 'playwright-core';
-
 import { test as baseTest } from './fixtures';
 import { killProcessGroup } from '../config/commonFixtures';
 import { inheritAndCleanEnv } from '../config/utils';
 
-import type { Browser, Page } from 'playwright-core';
+import type { Page } from 'playwright-core';
 import type { CommonFixtures } from '../config/commonFixtures';
 
 export { expect } from './fixtures';
 export const test = baseTest.extend<{
   cliEnv: Record<string, string>,
-  openDashboard: (options?: { cwd?: string }) => Promise<Page>,
+  openDashboard: (options?: { cwd?: string, session?: string }) => Promise<Page>,
   cli: (...args: any[]) => Promise<{
     output: string,
     error: string,
@@ -43,28 +41,19 @@ export const test = baseTest.extend<{
   cliEnv: async ({}, use) => {
     await use(cliEnv());
   },
-  openDashboard: async ({ cli, waitForPort, findFreePort }, use) => {
-    const dashboards: { dashboard: Page, browser: Browser }[] = [];
-    await use(async (options?: { cwd?: string }) => {
-      const debugPort = await findFreePort();
-      await cli('show', { cwd: options?.cwd, env: { PLAYWRIGHT_DASHBOARD_DEBUG_PORT: String(debugPort) } });
-      await waitForPort(debugPort);
-      const browser = await chromium.connectOverCDP(`http://127.0.0.1:${debugPort}`);
-      const dashboard = browser.contexts()[0].pages()[0];
-      dashboards.push({ dashboard, browser });
-      return dashboard;
+  openDashboard: async ({ childProcess, page }, use) => {
+    await use(async (options?: { cwd?: string, session?: string }) => {
+      const testInfo = test.info();
+      const showArgs = options?.session ? [`-s=${options.session}`, 'show'] : ['show'];
+      const serverProcess = childProcess({
+        command: [process.execPath, require.resolve('../../packages/playwright-core/lib/tools/cli-client/cli.js'), ...showArgs, '--port=0'],
+        cwd: options?.cwd ?? testInfo.outputPath(),
+        env: inheritAndCleanEnv(cliEnv()),
+      });
+      await serverProcess.waitForOutput('Listening on ');
+      await page.goto(serverProcess.output.match(/Listening on (http:\/\/\S+)/)![1]);
+      return page;
     });
-    for (const { dashboard, browser } of dashboards) {
-      if (!browser.isConnected())
-        continue;
-      if (test.info().error)
-        await test.info().attach('dashboard', { body: await dashboard.ariaSnapshot({ mode: 'ai' }), contentType: 'text/yaml' });
-      await Promise.all([
-        // Closing the page should close the browser.
-        new Promise(r => browser.on('disconnected', r)),
-        dashboard.close()
-      ]).catch(e => console.error('Error during dashboard close', e));
-    }
   },
   cli: async ({ mcpBrowser, mcpHeadless, childProcess }, use) => {
     const sessions: { name: string, pid: number }[] = [];
@@ -97,6 +86,7 @@ function cliEnv() {
     PLAYWRIGHT_DASHBOARD_SETTINGS_FILE_FOR_TEST: test.info().outputPath('dashboard.settings.json'),
     PLAYWRIGHT_DAEMON_SESSION_DIR: test.info().outputPath('daemon'),
     PLAYWRIGHT_SOCKETS_DIR: path.join(test.info().project.outputDir, 'ds', String(test.info().parallelIndex)),
+    PLAYWRIGHT_CLI_CHANNEL_SCAN_DISABLED_FOR_TEST: '1',
   };
 }
 
