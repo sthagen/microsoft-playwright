@@ -1,4 +1,3 @@
-#!/usr/bin/env node
 /**
  * Copyright (c) Microsoft Corporation.
  *
@@ -15,9 +14,14 @@
  * limitations under the License.
  */
 
-const { program } = require('playwright-core/lib/tools/cli-client/program');
+export function guessClientName(): string {
+  if (process.env.CLAUDECODE)
+    return 'Claude Code';
+  if (process.env.COPILOT_CLI)
+    return 'GitHub Copilot';
+  return 'playwright-cli';
+}
 
-program().catch(e => {
-  console.error(e.message);
-  process.exit(1);
-});
+export function isCodingAgent(): boolean {
+  return !!process.env.CLAUDECODE || !!process.env.COPILOT_CLI;
+}

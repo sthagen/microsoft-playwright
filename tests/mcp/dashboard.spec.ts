@@ -41,6 +41,29 @@ test('should show browser session chip', async ({ cli, server, startDashboardSer
   await expect(chips).toHaveCount(1);
 });
 
+test('should show placeholder chip for browser with no contexts', async ({ boundBrowser, startDashboardServer }) => {
+  expect(boundBrowser.contexts()).toHaveLength(0);
+
+  const dashboard = await startDashboardServer();
+  const chips = dashboard.locator('.session-chip');
+  await expect(chips).toHaveCount(1);
+  await expect(chips.locator('.sidebar-tabs-empty')).toHaveText('No tabs open.');
+  await expect(chips.locator('.sidebar-session-new-tab')).toHaveCount(0);
+});
+
+test('should show one row per context for a single browser', async ({ boundBrowser, server, startDashboardServer }) => {
+  const contextA = await boundBrowser.newContext();
+  const pageA = await contextA.newPage();
+  await pageA.goto(server.EMPTY_PAGE);
+  const contextB = await boundBrowser.newContext();
+  const pageB = await contextB.newPage();
+  await pageB.goto(server.EMPTY_PAGE);
+
+  const dashboard = await startDashboardServer();
+  const chips = dashboard.locator('.session-chip');
+  await expect(chips).toHaveCount(2);
+});
+
 test('should show current workspace sessions first', async ({ cli, server, startDashboardServer }) => {
   const wsA = test.info().outputPath('workspace-a');
   const wsB = test.info().outputPath('workspace-b');
@@ -74,7 +97,8 @@ test('should show current workspace sessions first', async ({ cli, server, start
   });
 });
 
-test('should activate session when show is called with -s', async ({ cli, server, startDashboardServer }) => {
+test('should activate session when show is called with -s', async ({ cli, server, startDashboardServer, mcpBrowser }) => {
+  test.fixme(mcpBrowser === 'firefox', 'race condition gonna be fixed through https://github.com/microsoft/playwright/pull/40315');
   await cli('-s=sessA', 'open', server.EMPTY_PAGE);
   await cli('-s=sessB', 'open', server.EMPTY_PAGE);
 
@@ -94,16 +118,16 @@ function isAlive(pid: number): boolean {
 
 test('daemon show: closing page exits the process', async ({ cli, connectToDashboard }) => {
   const bindTitle = `--playwright-internal--${crypto.randomUUID()}`;
-  const { exitCode, pid } = await cli('show', { env: { PW_DASHBOARD_APP_BIND_TITLE: bindTitle } });
+  const { exitCode, dashboardPid } = await cli('show', { bindTitle });
   expect(exitCode).toBe(0);
-  expect(pid).toBeDefined();
-  expect(isAlive(pid!)).toBe(true);
+  expect(dashboardPid).toBeDefined();
+  expect(isAlive(dashboardPid)).toBe(true);
 
   const browser = await connectToDashboard(bindTitle);
   const page = browser.contexts()[0].pages()[0];
   await page.close();
 
-  await expect(() => expect(isAlive(pid!)).toBe(false)).toPass();
+  await expect(() => expect(isAlive(dashboardPid)).toBe(false)).toPass();
 });
 
 async function drawAndSubmitAnnotation(dashboard: import('playwright-core').Page, text: string) {
@@ -135,7 +159,7 @@ function verifyAnnotateOutput(output: string, expectedText: string, outputDir: s
 test('should capture annotations via show --annotate', async ({ connectToDashboard, cli, server }) => {
   await cli('open', server.EMPTY_PAGE);
   const bindTitle = `--playwright-internal--${crypto.randomUUID()}`;
-  await cli('show', { env: { PW_DASHBOARD_APP_BIND_TITLE: bindTitle } });
+  await cli('show', { bindTitle });
   const browser = await connectToDashboard(bindTitle);
 
   const dashboard = browser.contexts()[0].pages()[0];
@@ -157,7 +181,7 @@ test('should start dashboard and annotate when no dashboard is running', async (
   await cli('open', server.EMPTY_PAGE);
 
   const bindTitle = `--playwright-internal--${crypto.randomUUID()}`;
-  const annotatePromise = cli('show', '--annotate', { env: { PW_DASHBOARD_APP_BIND_TITLE: bindTitle } });
+  const annotatePromise = cli('show', '--annotate', { bindTitle });
   let done = false;
   void annotatePromise.finally(() => { done = true; });
 

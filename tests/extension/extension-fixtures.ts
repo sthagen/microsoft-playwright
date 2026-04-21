@@ -59,6 +59,8 @@ export const test = base.extend<TestFixtures, WorkerFixtures & ExtensionTestOpti
     // Default is 1.
     if (protocolVersion === 2)
       process.env.PLAYWRIGHT_EXTENSION_PROTOCOL = '2';
+    else
+      delete process.env.PLAYWRIGHT_EXTENSION_PROTOCOL;
     await use();
   }, { auto: true, scope: 'worker' }],
 
@@ -222,6 +224,6 @@ export async function connectAndNavigate(
   );
   const navigatePromise = client.callTool({ name: 'browser_navigate', arguments: { url } });
   const selectorPage = await confirmationPagePromise;
-  await selectorPage.locator('.tab-item', { hasText: tabTitle }).getByRole('button', { name: 'Connect' }).click();
+  await selectorPage.locator('.tab-item', { hasText: tabTitle }).getByRole('button', { name: 'Allow & select' }).click();
   return await navigatePromise;
 }

@@ -32,23 +32,24 @@ import { DashboardConnection } from './dashboardController';
 import type * as api from '../../..';
 import type { AnnotationData } from '@dashboard/dashboardChannel';
 
-type RevealOptions = { sessionName?: string; workspaceDir?: string };
-
-type DashboardCommand = RevealOptions & { command: 'bringToFront' | 'annotate' };
+// HMR: build-time flag — `true` in watch builds, `false` in release. esbuild
+// replaces the identifier via `define`, so the static branch pays zero runtime
+// cost and the dev-server code (incl. `import('vite')`) is DCE'd in release.
+declare const __PW_DASHBOARD_HMR__: boolean;
 
 type DashboardServer = {
   url: string;
-  reveal: (options: RevealOptions) => void;
+  reveal: (options: DashboardOptions) => void;
   triggerAnnotate: () => void;
   registerAnnotateWaiter: (socket: net.Socket) => void;
 };
 
-async function startDashboardServer(options: { port?: number; host?: string; reveal?: RevealOptions } = {}): Promise<DashboardServer> {
+async function startDashboardServer(options: DashboardOptions): Promise<DashboardServer> {
   const httpServer = new HttpServer();
   const dashboardDir = libPath('vite', 'dashboard');
 
   const connections = new Set<DashboardConnection>();
-  let currentReveal: RevealOptions = options.reveal ?? {};
+  let currentReveal: DashboardOptions = options;
   let pendingAnnotate = false;
   const waitingSockets = new Set<net.Socket>();
 
@@ -78,17 +79,17 @@ async function startDashboardServer(options: { port?: number; host?: string; rev
     return connection;
   }, 'ws');
 
-  httpServer.routePrefix('/', (request: http.IncomingMessage, response: http.ServerResponse) => {
-    const pathname = new URL(request.url!, `http://${request.headers.host}`).pathname;
-    const filePath = pathname === '/' ? 'index.html' : pathname.substring(1);
-    const resolved = path.join(dashboardDir, filePath);
-    if (!resolved.startsWith(dashboardDir))
-      return false;
-    return httpServer.serveFile(request, response, resolved);
-  });
+  // HMR: watch builds serve the dashboard through an embedded Vite dev server
+  // so edits to packages/dashboard/src/* reload live. Release builds always
+  // take the static branch (the dev-server arm is DCE'd). Set
+  // PW_DASHBOARD_STATIC=1 during watch to exercise the bundled output.
+  if (__PW_DASHBOARD_HMR__ && process.env.PW_DASHBOARD_STATIC !== '1')
+    await attachDashboardDevServer(httpServer);
+  else
+    attachDashboardStaticServer(httpServer, dashboardDir);
   await httpServer.start({ port: options.port, host: options.host });
 
-  const reveal = (next: RevealOptions) => {
+  const reveal = (next: DashboardOptions) => {
     currentReveal = next;
     if (!next.sessionName)
       return;
@@ -115,8 +116,48 @@ async function startDashboardServer(options: { port?: number; host?: string; rev
   return { url: httpServer.urlPrefix('human-readable'), reveal, triggerAnnotate, registerAnnotateWaiter };
 }
 
-async function innerOpenDashboardApp(initialReveal: RevealOptions): Promise<{ page: api.Page; server: DashboardServer }> {
-  const server = await startDashboardServer({ reveal: initialReveal });
+function attachDashboardStaticServer(httpServer: HttpServer, dashboardDir: string) {
+  httpServer.routePrefix('/', (request: http.IncomingMessage, response: http.ServerResponse) => {
+    const pathname = new URL(request.url!, `http://${request.headers.host}`).pathname;
+    const filePath = pathname === '/' ? 'index.html' : pathname.substring(1);
+    const resolved = path.join(dashboardDir, filePath);
+    if (!resolved.startsWith(dashboardDir))
+      return false;
+    return httpServer.serveFile(request, response, resolved);
+  });
+}
+
+// HMR begin: dev-mode branch — wires a Vite dev server into HttpServer.
+async function attachDashboardDevServer(httpServer: HttpServer) {
+  const dashboardRoot = path.resolve(__dirname, '..', '..', 'dashboard');
+  const loadVite = new Function('return import("vite")') as () => Promise<typeof import('vite')>;
+  const vite = await loadVite();
+  const devServer = await vite.createServer({
+    root: dashboardRoot,
+    configFile: path.join(dashboardRoot, 'vite.config.ts'),
+    server: {
+      middlewareMode: true,
+      // HMR: dedicated path so this websocket does not collide with the
+      // dashboard IPC websocket HttpServer owns at /ws.
+      hmr: { path: '/__vite_hmr', server: httpServer.server() },
+    },
+    appType: 'spa',
+    clearScreen: false,
+  });
+  httpServer.routePrefix('/', (request: http.IncomingMessage, response: http.ServerResponse) => {
+    devServer.middlewares(request, response, () => {
+      if (!response.headersSent) {
+        response.statusCode = 404;
+        response.end();
+      }
+    });
+    return true;
+  });
+}
+// HMR end
+
+async function innerOpenDashboardApp(options: DashboardOptions): Promise<{ page: api.Page; server: DashboardServer }> {
+  const server = await startDashboardServer(options);
   const { page } = await launchApp('dashboard');
   await page.goto(server.url);
   return { page, server };
@@ -127,7 +168,7 @@ async function launchApp(appName: string) {
   const context = await playwright.chromium.launchPersistentContext('', {
     ignoreDefaultArgs: ['--enable-automation'],
     channel,
-    headless: !!process.env.PW_DASHBOARD_APP_BIND_TITLE,
+    headless: !!process.env.PWTEST_DASHBOARD_APP_BIND_TITLE,
     args: [
       '--app=data:text/html,',
       '--test-type=',
@@ -136,8 +177,8 @@ async function launchApp(appName: string) {
     ],
     viewport: null,
   });
-  if (process.env.PW_DASHBOARD_APP_BIND_TITLE)
-    await context.browser()?.bind(process.env.PW_DASHBOARD_APP_BIND_TITLE, { workspaceDir: process.cwd() });
+  if (process.env.PWTEST_DASHBOARD_APP_BIND_TITLE)
+    await context.browser()?.bind(process.env.PWTEST_DASHBOARD_APP_BIND_TITLE, { workspaceDir: process.cwd() });
 
   const [page] = context.pages();
   // Chromium on macOS opens a new tab when clicking on the dock icon.
@@ -164,7 +205,7 @@ async function launchApp(appName: string) {
 }
 
 export async function syncLocalStorageWithSettings(page: api.Page, appName: string) {
-  const settingsFile = process.env.PLAYWRIGHT_DASHBOARD_SETTINGS_FILE_FOR_TEST ?? path.join(registryDirectory, '.settings', `${appName}.json`);
+  const settingsFile = process.env.PWTEST_DASHBOARD_SETTINGS_FILE ?? path.join(registryDirectory, '.settings', `${appName}.json`);
 
   await page.exposeBinding('_saveSerializedSettings', (_, settings) => {
     fs.mkdirSync(path.dirname(settingsFile), { recursive: true });
@@ -193,37 +234,41 @@ function dashboardSocketPath() {
   return makeSocketPath('dashboard', 'app');
 }
 
-type OpenArgs = { reveal: RevealOptions; port?: number; host?: string; annotate: boolean };
+type DashboardOptions = {
+  sessionName: string;
+  workspaceDir: string;
+  kill?: boolean;
+  annotate?: boolean;
+  port?: number;
+  host?: string;
+};
 
-function parseOpenArgs(): OpenArgs {
-  const args = minimist(process.argv.slice(2), { string: ['session', 'workspace', 'host'], boolean: ['annotate'] });
+function parseOpenArgs(): DashboardOptions {
+  const args = minimist(process.argv.slice(2), { string: ['sessionName', 'workspaceDir', 'host'], boolean: ['annotate', 'kill'] });
   const portStr = args.port as string | undefined;
   return {
-    reveal: {
-      sessionName: (args.session as string) || undefined,
-      workspaceDir: (args.workspace as string) || undefined,
-    },
+    sessionName: args.sessionName as string,
+    workspaceDir: args.workspaceDir as string,
     port: portStr !== undefined ? Number(portStr) : undefined,
-    host: (args.host as string) || undefined,
+    host: args.host as string | undefined,
     annotate: !!args.annotate,
+    kill: !!args.kill,
   };
 }
 
-async function acquireSingleton(reveal: RevealOptions): Promise<net.Server> {
+async function acquireSingleton(options: DashboardOptions): Promise<net.Server> {
   const socketPath = dashboardSocketPath();
   if (process.platform !== 'win32')
     await fs.promises.mkdir(path.dirname(socketPath), { recursive: true });
 
   return await new Promise((resolve, reject) => {
-    const server = net.createServer({ allowHalfOpen: true });
+    const server = net.createServer();
     server.listen(socketPath, () => resolve(server));
     server.on('error', (err: NodeJS.ErrnoException) => {
       if (err.code !== 'EADDRINUSE')
         return reject(err);
       const client = net.connect(socketPath, () => {
-        const message: DashboardCommand = { command: 'bringToFront', ...reveal };
-        client.write(JSON.stringify(message));
-        client.end();
+        client.write(JSON.stringify(options) + '\n');
         reject(new Error('already running'));
       });
       client.on('error', () => {
@@ -236,17 +281,21 @@ async function acquireSingleton(reveal: RevealOptions): Promise<net.Server> {
 }
 
 export async function openDashboardApp() {
-  const args = parseOpenArgs();
-  if (args.annotate) {
-    await runAnnotateClient(args);
+  const options = parseOpenArgs();
+  if (options.kill) {
+    await runKillClient();
+    return;
+  }
+  if (options.annotate) {
+    await runAnnotateClient(options);
     return;
   }
   process.on('unhandledRejection', error => {
     // eslint-disable-next-line no-console
     console.error('Unhandled promise rejection:', error);
   });
-  if (args.port !== undefined) {
-    const { url } = await startDashboardServer({ port: args.port, host: args.host, reveal: args.reveal });
+  if (options.port !== undefined) {
+    const { url } = await startDashboardServer(options);
     // eslint-disable-next-line no-console
     console.log(`Listening on ${url}`);
     selfDestructOnParentGone();
@@ -255,41 +304,63 @@ export async function openDashboardApp() {
   let server: net.Server | undefined;
   process.on('exit', () => server?.close());
   try {
-    server = await acquireSingleton(args.reveal);
+    server = await acquireSingleton(options);
   } catch {
     return;
   }
-  const statePromise = innerOpenDashboardApp(args.reveal);
+  const statePromise = innerOpenDashboardApp(options);
   server?.on('connection', socket => {
-    const chunks: Buffer[] = [];
-    socket.on('data', data => chunks.push(data));
-    socket.on('end', async () => {
-      const message = Buffer.concat(chunks).toString();
-      let parsed: DashboardCommand | undefined;
+    let buffer = '';
+    socket.on('data', data => {
+      buffer += data.toString();
+      const newlineIndex = buffer.indexOf('\n');
+      if (newlineIndex === -1)
+        return;
+      const line = buffer.slice(0, newlineIndex);
+      buffer = buffer.slice(newlineIndex + 1);
+      let parsed: DashboardOptions | undefined;
       try {
-        parsed = JSON.parse(message);
+        parsed = JSON.parse(line);
       } catch {
         // no-op
       }
-      if (!parsed?.command)
+      if (!parsed) {
+        socket.end();
         return;
-      const { page, server: dashboard } = await statePromise;
-      const revealTo = { sessionName: parsed.sessionName, workspaceDir: parsed.workspaceDir };
-      if (parsed.command === 'bringToFront') {
-        page?.bringToFront().catch(() => {});
-        dashboard.reveal(revealTo);
-      } else if (parsed.command === 'annotate') {
-        page?.bringToFront().catch(() => {});
-        dashboard.reveal(revealTo);
-        dashboard.triggerAnnotate();
-        dashboard.registerAnnotateWaiter(socket);
       }
+      void statePromise.then(({ page, server: dashboard }) => {
+        if (parsed.annotate) {
+          page?.bringToFront().catch(() => {});
+          dashboard.reveal(parsed);
+          dashboard.triggerAnnotate();
+          dashboard.registerAnnotateWaiter(socket);
+        } else if (parsed.kill) {
+          socket.end();
+          gracefullyProcessExitDoNotHang(0);
+        } else {
+          page?.bringToFront().catch(() => {});
+          dashboard.reveal(parsed);
+          socket.end();
+        }
+      });
     });
   });
   await statePromise;
 }
 
-async function runAnnotateClient(args: OpenArgs): Promise<void> {
+async function runKillClient(): Promise<void> {
+  const socketPath = dashboardSocketPath();
+  await new Promise<void>(resolve => {
+    const client = net.connect(socketPath);
+    client.once('connect', () => {
+      client.write(JSON.stringify({ kill: true }) + '\n');
+    });
+    client.once('end', () => resolve());
+    client.once('error', () => resolve());
+  });
+}
+
+async function runAnnotateClient(options: DashboardOptions): Promise<void> {
   selfDestructOnParentGone();
 
   const socketPath = dashboardSocketPath();
@@ -313,8 +384,7 @@ async function runAnnotateClient(args: OpenArgs): Promise<void> {
     gracefullyProcessExitDoNotHang(1);
     return;
   }
-  const message: DashboardCommand = { command: 'annotate', ...args.reveal };
-  socket.end(JSON.stringify(message));
+  socket.write(JSON.stringify(options) + '\n');
   const chunks: Buffer[] = [];
   await new Promise<void>((resolve, reject) => {
     socket!.on('data', chunk => chunks.push(chunk));

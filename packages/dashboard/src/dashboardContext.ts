@@ -1,4 +1,3 @@
-#!/usr/bin/env node
 /**
  * Copyright (c) Microsoft Corporation.
  *
@@ -6,7 +5,7 @@
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- * http://www.apache.org/licenses/LICENSE-2.0
+ *     http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -15,9 +14,11 @@
  * limitations under the License.
  */
 
-const { program } = require('playwright-core/lib/tools/cli-client/program');
+// HMR: extracted from index.tsx so index.tsx only exports components and stays
+// a clean Fast Refresh boundary (mixed exports break @vitejs/plugin-react HMR).
 
-program().catch(e => {
-  console.error(e.message);
-  process.exit(1);
-});
+import React from 'react';
+
+import type { DashboardClientChannel } from './dashboardClient';
+
+export const DashboardClientContext = React.createContext<DashboardClientChannel | undefined>(undefined);
