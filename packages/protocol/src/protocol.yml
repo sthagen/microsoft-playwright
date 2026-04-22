@@ -1029,6 +1029,7 @@ BrowserType:
         slowMo: float?
         timeout: float
         isLocal: boolean?
+        noDefaults: boolean?
       returns:
         browser: Browser
         defaultContext: BrowserContext?
@@ -1514,10 +1515,6 @@ BrowserContext:
     bindingCall:
       parameters:
         binding: BindingCall
-
-    pickLocator:
-      parameters:
-        page: Page
 
     console:
       parameters:

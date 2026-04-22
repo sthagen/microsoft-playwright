@@ -631,6 +631,7 @@ scheme.BrowserTypeConnectOverCDPParams = tObject({
   slowMo: tOptional(tFloat),
   timeout: tFloat,
   isLocal: tOptional(tBoolean),
+  noDefaults: tOptional(tBoolean),
 });
 scheme.BrowserTypeConnectOverCDPResult = tObject({
   browser: tChannel(['Browser']),
@@ -937,9 +938,6 @@ scheme.BrowserContextInitializer = tObject({
 });
 scheme.BrowserContextBindingCallEvent = tObject({
   binding: tChannel(['BindingCall']),
-});
-scheme.BrowserContextPickLocatorEvent = tObject({
-  page: tChannel(['Page']),
 });
 scheme.BrowserContextConsoleEvent = tObject({
   type: tString,

@@ -14,4 +14,7 @@
  * limitations under the License.
  */
 
-module.exports = require('./lib/index');
+// Also pinned via the "key" field in packages/extension/manifest.json.
+export const playwrightExtensionId = 'mmlmfjhmonkocbjadbfplnigmagldckm';
+
+export const playwrightExtensionInstallUrl = `https://chromewebstore.google.com/detail/playwright-mcp-bridge/${playwrightExtensionId}`;

@@ -8295,6 +8295,35 @@ export interface BrowserContext {
   on(event: 'dialog', listener: (dialog: Dialog) => any): this;
 
   /**
+   * Emitted when attachment download started in any page belonging to this context. User can access basic file
+   * operations on downloaded content via the passed [Download](https://playwright.dev/docs/api/class-download)
+   * instance. See also [page.on('download')](https://playwright.dev/docs/api/class-page#page-event-download) to receive
+   * events about a specific page.
+   */
+  on(event: 'download', listener: (download: Download) => any): this;
+
+  /**
+   * Emitted when a frame is attached in any page belonging to this context. See also
+   * [page.on('frameattached')](https://playwright.dev/docs/api/class-page#page-event-frame-attached) to receive events
+   * about a specific page.
+   */
+  on(event: 'frameattached', listener: (frame: Frame) => any): this;
+
+  /**
+   * Emitted when a frame is detached in any page belonging to this context. See also
+   * [page.on('framedetached')](https://playwright.dev/docs/api/class-page#page-event-frame-detached) to receive events
+   * about a specific page.
+   */
+  on(event: 'framedetached', listener: (frame: Frame) => any): this;
+
+  /**
+   * Emitted when a frame is navigated to a new url in any page belonging to this context. See also
+   * [page.on('framenavigated')](https://playwright.dev/docs/api/class-page#page-event-frame-navigated) to receive
+   * events about navigations in a specific page.
+   */
+  on(event: 'framenavigated', listener: (frame: Frame) => any): this;
+
+  /**
    * The event is emitted when a new Page is created in the BrowserContext. The page may still be loading. The event
    * will also fire for popup pages. See also
    * [page.on('popup')](https://playwright.dev/docs/api/class-page#page-event-popup) to receive events about popups
@@ -8324,11 +8353,19 @@ export interface BrowserContext {
   on(event: 'page', listener: (page: Page) => any): this;
 
   /**
-   * Emitted when a client calls [page.pickLocator()](https://playwright.dev/docs/api/class-page#page-pick-locator) on a
-   * page in this context. The event is dispatched to all clients connected to the context, including the one that
-   * initiated the call.
+   * Emitted when a page in this context is closed. See also
+   * [page.on('close')](https://playwright.dev/docs/api/class-page#page-event-close) to receive events about a specific
+   * page.
    */
-  on(event: 'picklocator', listener: (page: Page) => any): this;
+  on(event: 'pageclose', listener: (page: Page) => any): this;
+
+  /**
+   * Emitted when the JavaScript [`load`](https://developer.mozilla.org/en-US/docs/Web/Events/load) event is dispatched
+   * in any page belonging to this context. See also
+   * [page.on('load')](https://playwright.dev/docs/api/class-page#page-event-load) to receive events about a specific
+   * page.
+   */
+  on(event: 'pageload', listener: (page: Page) => any): this;
 
   /**
    * Emitted when a request is issued from any pages created through this context. The [request] object is read-only. To
@@ -8405,12 +8442,37 @@ export interface BrowserContext {
   /**
    * Adds an event listener that will be automatically removed after it is triggered once. See `addListener` for more information about this event.
    */
+  once(event: 'download', listener: (download: Download) => any): this;
+
+  /**
+   * Adds an event listener that will be automatically removed after it is triggered once. See `addListener` for more information about this event.
+   */
+  once(event: 'frameattached', listener: (frame: Frame) => any): this;
+
+  /**
+   * Adds an event listener that will be automatically removed after it is triggered once. See `addListener` for more information about this event.
+   */
+  once(event: 'framedetached', listener: (frame: Frame) => any): this;
+
+  /**
+   * Adds an event listener that will be automatically removed after it is triggered once. See `addListener` for more information about this event.
+   */
+  once(event: 'framenavigated', listener: (frame: Frame) => any): this;
+
+  /**
+   * Adds an event listener that will be automatically removed after it is triggered once. See `addListener` for more information about this event.
+   */
   once(event: 'page', listener: (page: Page) => any): this;
 
   /**
    * Adds an event listener that will be automatically removed after it is triggered once. See `addListener` for more information about this event.
    */
-  once(event: 'picklocator', listener: (page: Page) => any): this;
+  once(event: 'pageclose', listener: (page: Page) => any): this;
+
+  /**
+   * Adds an event listener that will be automatically removed after it is triggered once. See `addListener` for more information about this event.
+   */
+  once(event: 'pageload', listener: (page: Page) => any): this;
 
   /**
    * Adds an event listener that will be automatically removed after it is triggered once. See `addListener` for more information about this event.
@@ -8499,6 +8561,35 @@ export interface BrowserContext {
   addListener(event: 'dialog', listener: (dialog: Dialog) => any): this;
 
   /**
+   * Emitted when attachment download started in any page belonging to this context. User can access basic file
+   * operations on downloaded content via the passed [Download](https://playwright.dev/docs/api/class-download)
+   * instance. See also [page.on('download')](https://playwright.dev/docs/api/class-page#page-event-download) to receive
+   * events about a specific page.
+   */
+  addListener(event: 'download', listener: (download: Download) => any): this;
+
+  /**
+   * Emitted when a frame is attached in any page belonging to this context. See also
+   * [page.on('frameattached')](https://playwright.dev/docs/api/class-page#page-event-frame-attached) to receive events
+   * about a specific page.
+   */
+  addListener(event: 'frameattached', listener: (frame: Frame) => any): this;
+
+  /**
+   * Emitted when a frame is detached in any page belonging to this context. See also
+   * [page.on('framedetached')](https://playwright.dev/docs/api/class-page#page-event-frame-detached) to receive events
+   * about a specific page.
+   */
+  addListener(event: 'framedetached', listener: (frame: Frame) => any): this;
+
+  /**
+   * Emitted when a frame is navigated to a new url in any page belonging to this context. See also
+   * [page.on('framenavigated')](https://playwright.dev/docs/api/class-page#page-event-frame-navigated) to receive
+   * events about navigations in a specific page.
+   */
+  addListener(event: 'framenavigated', listener: (frame: Frame) => any): this;
+
+  /**
    * The event is emitted when a new Page is created in the BrowserContext. The page may still be loading. The event
    * will also fire for popup pages. See also
    * [page.on('popup')](https://playwright.dev/docs/api/class-page#page-event-popup) to receive events about popups
@@ -8528,11 +8619,19 @@ export interface BrowserContext {
   addListener(event: 'page', listener: (page: Page) => any): this;
 
   /**
-   * Emitted when a client calls [page.pickLocator()](https://playwright.dev/docs/api/class-page#page-pick-locator) on a
-   * page in this context. The event is dispatched to all clients connected to the context, including the one that
-   * initiated the call.
+   * Emitted when a page in this context is closed. See also
+   * [page.on('close')](https://playwright.dev/docs/api/class-page#page-event-close) to receive events about a specific
+   * page.
    */
-  addListener(event: 'picklocator', listener: (page: Page) => any): this;
+  addListener(event: 'pageclose', listener: (page: Page) => any): this;
+
+  /**
+   * Emitted when the JavaScript [`load`](https://developer.mozilla.org/en-US/docs/Web/Events/load) event is dispatched
+   * in any page belonging to this context. See also
+   * [page.on('load')](https://playwright.dev/docs/api/class-page#page-event-load) to receive events about a specific
+   * page.
+   */
+  addListener(event: 'pageload', listener: (page: Page) => any): this;
 
   /**
    * Emitted when a request is issued from any pages created through this context. The [request] object is read-only. To
@@ -8609,12 +8708,37 @@ export interface BrowserContext {
   /**
    * Removes an event listener added by `on` or `addListener`.
    */
+  removeListener(event: 'download', listener: (download: Download) => any): this;
+
+  /**
+   * Removes an event listener added by `on` or `addListener`.
+   */
+  removeListener(event: 'frameattached', listener: (frame: Frame) => any): this;
+
+  /**
+   * Removes an event listener added by `on` or `addListener`.
+   */
+  removeListener(event: 'framedetached', listener: (frame: Frame) => any): this;
+
+  /**
+   * Removes an event listener added by `on` or `addListener`.
+   */
+  removeListener(event: 'framenavigated', listener: (frame: Frame) => any): this;
+
+  /**
+   * Removes an event listener added by `on` or `addListener`.
+   */
   removeListener(event: 'page', listener: (page: Page) => any): this;
 
   /**
    * Removes an event listener added by `on` or `addListener`.
    */
-  removeListener(event: 'picklocator', listener: (page: Page) => any): this;
+  removeListener(event: 'pageclose', listener: (page: Page) => any): this;
+
+  /**
+   * Removes an event listener added by `on` or `addListener`.
+   */
+  removeListener(event: 'pageload', listener: (page: Page) => any): this;
 
   /**
    * Removes an event listener added by `on` or `addListener`.
@@ -8669,12 +8793,37 @@ export interface BrowserContext {
   /**
    * Removes an event listener added by `on` or `addListener`.
    */
+  off(event: 'download', listener: (download: Download) => any): this;
+
+  /**
+   * Removes an event listener added by `on` or `addListener`.
+   */
+  off(event: 'frameattached', listener: (frame: Frame) => any): this;
+
+  /**
+   * Removes an event listener added by `on` or `addListener`.
+   */
+  off(event: 'framedetached', listener: (frame: Frame) => any): this;
+
+  /**
+   * Removes an event listener added by `on` or `addListener`.
+   */
+  off(event: 'framenavigated', listener: (frame: Frame) => any): this;
+
+  /**
+   * Removes an event listener added by `on` or `addListener`.
+   */
   off(event: 'page', listener: (page: Page) => any): this;
 
   /**
    * Removes an event listener added by `on` or `addListener`.
    */
-  off(event: 'picklocator', listener: (page: Page) => any): this;
+  off(event: 'pageclose', listener: (page: Page) => any): this;
+
+  /**
+   * Removes an event listener added by `on` or `addListener`.
+   */
+  off(event: 'pageload', listener: (page: Page) => any): this;
 
   /**
    * Removes an event listener added by `on` or `addListener`.
@@ -8763,6 +8912,35 @@ export interface BrowserContext {
   prependListener(event: 'dialog', listener: (dialog: Dialog) => any): this;
 
   /**
+   * Emitted when attachment download started in any page belonging to this context. User can access basic file
+   * operations on downloaded content via the passed [Download](https://playwright.dev/docs/api/class-download)
+   * instance. See also [page.on('download')](https://playwright.dev/docs/api/class-page#page-event-download) to receive
+   * events about a specific page.
+   */
+  prependListener(event: 'download', listener: (download: Download) => any): this;
+
+  /**
+   * Emitted when a frame is attached in any page belonging to this context. See also
+   * [page.on('frameattached')](https://playwright.dev/docs/api/class-page#page-event-frame-attached) to receive events
+   * about a specific page.
+   */
+  prependListener(event: 'frameattached', listener: (frame: Frame) => any): this;
+
+  /**
+   * Emitted when a frame is detached in any page belonging to this context. See also
+   * [page.on('framedetached')](https://playwright.dev/docs/api/class-page#page-event-frame-detached) to receive events
+   * about a specific page.
+   */
+  prependListener(event: 'framedetached', listener: (frame: Frame) => any): this;
+
+  /**
+   * Emitted when a frame is navigated to a new url in any page belonging to this context. See also
+   * [page.on('framenavigated')](https://playwright.dev/docs/api/class-page#page-event-frame-navigated) to receive
+   * events about navigations in a specific page.
+   */
+  prependListener(event: 'framenavigated', listener: (frame: Frame) => any): this;
+
+  /**
    * The event is emitted when a new Page is created in the BrowserContext. The page may still be loading. The event
    * will also fire for popup pages. See also
    * [page.on('popup')](https://playwright.dev/docs/api/class-page#page-event-popup) to receive events about popups
@@ -8792,11 +8970,19 @@ export interface BrowserContext {
   prependListener(event: 'page', listener: (page: Page) => any): this;
 
   /**
-   * Emitted when a client calls [page.pickLocator()](https://playwright.dev/docs/api/class-page#page-pick-locator) on a
-   * page in this context. The event is dispatched to all clients connected to the context, including the one that
-   * initiated the call.
+   * Emitted when a page in this context is closed. See also
+   * [page.on('close')](https://playwright.dev/docs/api/class-page#page-event-close) to receive events about a specific
+   * page.
    */
-  prependListener(event: 'picklocator', listener: (page: Page) => any): this;
+  prependListener(event: 'pageclose', listener: (page: Page) => any): this;
+
+  /**
+   * Emitted when the JavaScript [`load`](https://developer.mozilla.org/en-US/docs/Web/Events/load) event is dispatched
+   * in any page belonging to this context. See also
+   * [page.on('load')](https://playwright.dev/docs/api/class-page#page-event-load) to receive events about a specific
+   * page.
+   */
+  prependListener(event: 'pageload', listener: (page: Page) => any): this;
 
   /**
    * Emitted when a request is issued from any pages created through this context. The [request] object is read-only. To
@@ -9559,6 +9745,35 @@ export interface BrowserContext {
   waitForEvent(event: 'dialog', optionsOrPredicate?: { predicate?: (dialog: Dialog) => boolean | Promise<boolean>, timeout?: number } | ((dialog: Dialog) => boolean | Promise<boolean>)): Promise<Dialog>;
 
   /**
+   * Emitted when attachment download started in any page belonging to this context. User can access basic file
+   * operations on downloaded content via the passed [Download](https://playwright.dev/docs/api/class-download)
+   * instance. See also [page.on('download')](https://playwright.dev/docs/api/class-page#page-event-download) to receive
+   * events about a specific page.
+   */
+  waitForEvent(event: 'download', optionsOrPredicate?: { predicate?: (download: Download) => boolean | Promise<boolean>, timeout?: number } | ((download: Download) => boolean | Promise<boolean>)): Promise<Download>;
+
+  /**
+   * Emitted when a frame is attached in any page belonging to this context. See also
+   * [page.on('frameattached')](https://playwright.dev/docs/api/class-page#page-event-frame-attached) to receive events
+   * about a specific page.
+   */
+  waitForEvent(event: 'frameattached', optionsOrPredicate?: { predicate?: (frame: Frame) => boolean | Promise<boolean>, timeout?: number } | ((frame: Frame) => boolean | Promise<boolean>)): Promise<Frame>;
+
+  /**
+   * Emitted when a frame is detached in any page belonging to this context. See also
+   * [page.on('framedetached')](https://playwright.dev/docs/api/class-page#page-event-frame-detached) to receive events
+   * about a specific page.
+   */
+  waitForEvent(event: 'framedetached', optionsOrPredicate?: { predicate?: (frame: Frame) => boolean | Promise<boolean>, timeout?: number } | ((frame: Frame) => boolean | Promise<boolean>)): Promise<Frame>;
+
+  /**
+   * Emitted when a frame is navigated to a new url in any page belonging to this context. See also
+   * [page.on('framenavigated')](https://playwright.dev/docs/api/class-page#page-event-frame-navigated) to receive
+   * events about navigations in a specific page.
+   */
+  waitForEvent(event: 'framenavigated', optionsOrPredicate?: { predicate?: (frame: Frame) => boolean | Promise<boolean>, timeout?: number } | ((frame: Frame) => boolean | Promise<boolean>)): Promise<Frame>;
+
+  /**
    * The event is emitted when a new Page is created in the BrowserContext. The page may still be loading. The event
    * will also fire for popup pages. See also
    * [page.on('popup')](https://playwright.dev/docs/api/class-page#page-event-popup) to receive events about popups
@@ -9588,11 +9803,19 @@ export interface BrowserContext {
   waitForEvent(event: 'page', optionsOrPredicate?: { predicate?: (page: Page) => boolean | Promise<boolean>, timeout?: number } | ((page: Page) => boolean | Promise<boolean>)): Promise<Page>;
 
   /**
-   * Emitted when a client calls [page.pickLocator()](https://playwright.dev/docs/api/class-page#page-pick-locator) on a
-   * page in this context. The event is dispatched to all clients connected to the context, including the one that
-   * initiated the call.
+   * Emitted when a page in this context is closed. See also
+   * [page.on('close')](https://playwright.dev/docs/api/class-page#page-event-close) to receive events about a specific
+   * page.
    */
-  waitForEvent(event: 'picklocator', optionsOrPredicate?: { predicate?: (page: Page) => boolean | Promise<boolean>, timeout?: number } | ((page: Page) => boolean | Promise<boolean>)): Promise<Page>;
+  waitForEvent(event: 'pageclose', optionsOrPredicate?: { predicate?: (page: Page) => boolean | Promise<boolean>, timeout?: number } | ((page: Page) => boolean | Promise<boolean>)): Promise<Page>;
+
+  /**
+   * Emitted when the JavaScript [`load`](https://developer.mozilla.org/en-US/docs/Web/Events/load) event is dispatched
+   * in any page belonging to this context. See also
+   * [page.on('load')](https://playwright.dev/docs/api/class-page#page-event-load) to receive events about a specific
+   * page.
+   */
+  waitForEvent(event: 'pageload', optionsOrPredicate?: { predicate?: (page: Page) => boolean | Promise<boolean>, timeout?: number } | ((page: Page) => boolean | Promise<boolean>)): Promise<Page>;
 
   /**
    * Emitted when a request is issued from any pages created through this context. The [request] object is read-only. To
@@ -9709,6 +9932,11 @@ export interface Browser {
     behavior?: 'wait'|'ignoreErrors'|'default'
   }): Promise<void>;
   /**
+   * Emitted when a new browser context is created.
+   */
+  on(event: 'context', listener: (browserContext: BrowserContext) => any): this;
+
+  /**
    * Emitted when Browser gets disconnected from the browser application. This might happen because of one of the
    * following:
    * - Browser application is closed or crashed.
@@ -9719,7 +9947,17 @@ export interface Browser {
   /**
    * Adds an event listener that will be automatically removed after it is triggered once. See `addListener` for more information about this event.
    */
+  once(event: 'context', listener: (browserContext: BrowserContext) => any): this;
+
+  /**
+   * Adds an event listener that will be automatically removed after it is triggered once. See `addListener` for more information about this event.
+   */
   once(event: 'disconnected', listener: (browser: Browser) => any): this;
+
+  /**
+   * Emitted when a new browser context is created.
+   */
+  addListener(event: 'context', listener: (browserContext: BrowserContext) => any): this;
 
   /**
    * Emitted when Browser gets disconnected from the browser application. This might happen because of one of the
@@ -9732,12 +9970,27 @@ export interface Browser {
   /**
    * Removes an event listener added by `on` or `addListener`.
    */
+  removeListener(event: 'context', listener: (browserContext: BrowserContext) => any): this;
+
+  /**
+   * Removes an event listener added by `on` or `addListener`.
+   */
   removeListener(event: 'disconnected', listener: (browser: Browser) => any): this;
 
   /**
    * Removes an event listener added by `on` or `addListener`.
    */
+  off(event: 'context', listener: (browserContext: BrowserContext) => any): this;
+
+  /**
+   * Removes an event listener added by `on` or `addListener`.
+   */
   off(event: 'disconnected', listener: (browser: Browser) => any): this;
+
+  /**
+   * Emitted when a new browser context is created.
+   */
+  prependListener(event: 'context', listener: (browserContext: BrowserContext) => any): this;
 
   /**
    * Emitted when Browser gets disconnected from the browser application. This might happen because of one of the
@@ -22106,6 +22359,16 @@ export interface ConnectOverCDPOptions {
    * upon the file system being the same between Playwright and the Browser.
    */
   isLocal?: boolean;
+
+  /**
+   * When true, Playwright will not send default overrides to the browser on the default context. This includes
+   * `Browser.setDownloadBehavior`, `Emulation.setFocusEmulationEnabled`, and `Emulation.setEmulatedMedia`. Useful when
+   * attaching to a user's daily-driver browser where these overrides would interfere with existing browser state. New
+   * contexts created via
+   * [browser.newContext([options])](https://playwright.dev/docs/api/class-browser#browser-new-context) are not
+   * affected. Defaults to `false`.
+   */
+  noDefaults?: boolean;
 
   /**
    * Slows down Playwright operations by the specified amount of milliseconds. Useful so that you can see what is going

@@ -19,10 +19,13 @@ import net from 'net';
 import os from 'os';
 import path from 'path';
 
+import { playwrightExtensionId } from '../utils/extension';
+
 export type ChannelSession = {
   channel: string;
   userDataDir: string;
   endpoint?: string;
+  extensionInstalled: boolean;
 };
 
 export async function listChannelSessions(): Promise<ChannelSession[]> {
@@ -35,14 +38,17 @@ export async function listChannelSessions(): Promise<ChannelSession[]> {
       continue;
     if (!await pathExists(userDataDir))
       continue;
-    const endpoint = await readEndpoint(userDataDir);
-    result.push({ channel, userDataDir, endpoint });
+    const [endpoint, extensionInstalled] = await Promise.all([
+      readEndpoint(userDataDir),
+      hasPlaywrightExtension(userDataDir),
+    ]);
+    result.push({ channel, userDataDir, endpoint, extensionInstalled });
   }
   return result;
 }
 
-export function remoteDebuggingHint(channel: string): string {
-  return `to enable, launch ${channel}, navigate to chrome://inspect/#remote-debugging and check "Allow remote debugging for this browser instance"`;
+async function hasPlaywrightExtension(userDataDir: string): Promise<boolean> {
+  return await pathExists(path.join(userDataDir, 'Default', 'Extensions', playwrightExtensionId));
 }
 
 async function pathExists(p: string): Promise<boolean> {
