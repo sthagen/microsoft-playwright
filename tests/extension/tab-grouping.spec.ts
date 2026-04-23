@@ -14,7 +14,26 @@
  * limitations under the License.
  */
 
-import { test, expect, extensionId, startWithExtensionFlag } from './extension-fixtures';
+import { test, expect, extensionId, clickAllowAndSelect, startWithExtensionFlag } from './extension-fixtures';
+
+test('connect page hides chrome-extension:// tabs from the selector', async ({ browserWithExtension, startClient, server }) => {
+  const browserContext = await browserWithExtension.launch();
+
+  const extraExtensionPage = await browserContext.newPage();
+  await extraExtensionPage.goto(`chrome-extension://${extensionId}/status.html`);
+
+  const client = await startWithExtensionFlag(browserWithExtension, startClient);
+
+  const connectPagePromise = browserContext.waitForEvent('page', p =>
+    p.url().startsWith(`chrome-extension://${extensionId}/connect.html`)
+  );
+  client.callTool({ name: 'browser_navigate', arguments: { url: server.HELLO_WORLD } }).catch(() => {});
+
+  const connectPage = await connectPagePromise;
+  await expect(connectPage.locator('.tab-item').first()).toBeVisible();
+
+  await expect(connectPage.locator('.tab-item', { hasText: 'chrome-extension://' })).toHaveCount(0);
+});
 
 test('connect page is not in group before selection', async ({ startExtensionClient, server }) => {
   const { browserContext, client } = await startExtensionClient();
@@ -36,11 +55,11 @@ test('connect page is not in group before selection', async ({ startExtensionCli
   });
   expect(groupId).toBe(-1);
 
-  await connectPage.locator('.tab-item', { hasText: 'Welcome' }).getByRole('button', { name: 'Allow & select' }).click();
+  await connectPage.getByRole('button', { name: 'Allow', exact: true }).click();
   await navigatePromise;
 });
 
-test('connected tab is in green Playwright group, connect page is not', async ({ browserWithExtension, startClient, server }) => {
+test('connected tab is in green Playwright group, connect page is closed', async ({ browserWithExtension, startClient, server }) => {
   const browserContext = await browserWithExtension.launch();
 
   const page = await browserContext.newPage();
@@ -54,14 +73,20 @@ test('connected tab is in green Playwright group, connect page is not', async ({
 
   const navigatePromise = client.callTool({ name: 'browser_navigate', arguments: { url: server.HELLO_WORLD } });
   const connectPage = await connectPagePromise;
+  const connectClosePromise = connectPage.waitForEvent('close');
 
-  await connectPage.locator('.tab-item', { hasText: 'Title' }).getByRole('button', { name: 'Allow & select' }).click();
+  await clickAllowAndSelect(connectPage, 'Title');
   await navigatePromise;
+
+  // The connect page tab is closed since the user selected a different tab.
+  await connectClosePromise;
+
+  const [sw] = browserContext.serviceWorkers();
 
   // Connected tab should be in the Playwright group.
   await expect.poll(async () => {
-    return connectPage.evaluate(async () => {
-      const chrome = (window as any).chrome;
+    return sw.evaluate(async () => {
+      const chrome = (globalThis as any).chrome;
       const [connectedTab] = await chrome.tabs.query({ title: 'Title' });
       if (!connectedTab || connectedTab.groupId === -1)
         return null;
@@ -69,14 +94,6 @@ test('connected tab is in green Playwright group, connect page is not', async ({
       return { color: g.color, title: g.title };
     });
   }).toEqual({ color: 'green', title: 'Playwright' });
-
-  // Connect page itself should not be in any group.
-  const connectGroupId = await connectPage.evaluate(async () => {
-    const chrome = (window as any).chrome;
-    const connectTab = await chrome.tabs.getCurrent();
-    return connectTab?.groupId ?? -1;
-  });
-  expect(connectGroupId).toBe(-1);
 });
 
 test('tab added to group gets auto-attached', async ({ browserWithExtension, startClient, server, protocolVersion }) => {
@@ -101,21 +118,23 @@ test('tab added to group gets auto-attached', async ({ browserWithExtension, sta
   const navigatePromise = client.callTool({ name: 'browser_navigate', arguments: { url: server.HELLO_WORLD } });
   const connectPage = await connectPagePromise;
 
-  await connectPage.locator('.tab-item', { hasText: 'Title' }).getByRole('button', { name: 'Allow & select' }).click();
+  await clickAllowAndSelect(connectPage, 'Title');
   await navigatePromise;
+
+  const [sw] = browserContext.serviceWorkers();
 
   // Wait for the connected tab to be added to the group.
   await expect.poll(async () => {
-    return connectPage.evaluate(async () => {
-      const chrome = (window as any).chrome;
+    return sw.evaluate(async () => {
+      const chrome = (globalThis as any).chrome;
       const [connectedTab] = await chrome.tabs.query({ title: 'Title' });
       return connectedTab?.groupId ?? -1;
     });
   }).toBeGreaterThan(-1);
 
   // Drag the extra tab into the Playwright group — this should auto-attach it.
-  await connectPage.evaluate(async (targetUrl: string) => {
-    const chrome = (window as any).chrome;
+  await sw.evaluate(async (targetUrl: string) => {
+    const chrome = (globalThis as any).chrome;
     const [connectedTab] = await chrome.tabs.query({ title: 'Title' });
     const [extra] = await chrome.tabs.query({ url: targetUrl });
     await chrome.tabs.group({ groupId: connectedTab.groupId, tabIds: [extra.id] });
@@ -127,8 +146,10 @@ test('tab added to group gets auto-attached', async ({ browserWithExtension, sta
   }).toContain('Extra');
 });
 
-test('chrome:// tab dragged into group is automatically ungrouped', async ({ browserWithExtension, startClient, server, protocolVersion }) => {
+test('chrome:// tab dragged into group stays until it navigates to a debuggable URL', async ({ browserWithExtension, startClient, server, protocolVersion }) => {
   test.skip(protocolVersion === 1, 'Multi-tab not supported in protocol v1');
+
+  server.setContent('/second', '<title>Second</title><body>Second</body>', 'text/html');
 
   const browserContext = await browserWithExtension.launch();
 
@@ -144,49 +165,65 @@ test('chrome:// tab dragged into group is automatically ungrouped', async ({ bro
   const navigatePromise = client.callTool({ name: 'browser_navigate', arguments: { url: server.HELLO_WORLD } });
   const connectPage = await connectPagePromise;
 
-  await connectPage.locator('.tab-item', { hasText: 'Title' }).getByRole('button', { name: 'Allow & select' }).click();
+  await clickAllowAndSelect(connectPage, 'Title');
   await navigatePromise;
 
-  // Wait for the connected tab to be added to the group.
+  const [sw] = browserContext.serviceWorkers();
+
   await expect.poll(async () => {
-    return connectPage.evaluate(async () => {
-      const chrome = (window as any).chrome;
+    return sw.evaluate(async () => {
+      const chrome = (globalThis as any).chrome;
       const [connectedTab] = await chrome.tabs.query({ title: 'Title' });
       return connectedTab?.groupId ?? -1;
     });
   }).toBeGreaterThan(-1);
+  const groupId = await sw.evaluate(async () => {
+    const chrome = (globalThis as any).chrome;
+    const [connectedTab] = await chrome.tabs.query({ title: 'Title' });
+    return connectedTab.groupId as number;
+  });
 
-  // Open a chrome:// tab.
-  const chromeTabId = await connectPage.evaluate(async () => {
-    const chrome = (window as any).chrome;
+  // Open a chrome:// tab and drag it into the Playwright group.
+  const chromeTabId = await sw.evaluate(async () => {
+    const chrome = (globalThis as any).chrome;
     const tab = await chrome.tabs.create({ url: 'chrome://version/', active: false });
     return tab.id as number;
   });
-
-  // Wait for the chrome:// URL to actually load so tab.url is set.
   await expect.poll(async () => {
-    return connectPage.evaluate(async (id: number) => {
-      const chrome = (window as any).chrome;
+    return sw.evaluate(async (id: number) => {
+      const chrome = (globalThis as any).chrome;
       const tab = await chrome.tabs.get(id);
       return tab.url || '';
     }, chromeTabId);
   }).toContain('chrome://version');
+  await sw.evaluate(async ({ id, gid }: { id: number, gid: number }) => {
+    const chrome = (globalThis as any).chrome;
+    await chrome.tabs.group({ groupId: gid, tabIds: [id] });
+  }, { id: chromeTabId, gid: groupId });
 
-  // Drag the chrome:// tab into the Playwright group.
-  await connectPage.evaluate(async (id: number) => {
-    const chrome = (window as any).chrome;
-    const [connectedTab] = await chrome.tabs.query({ title: 'Title' });
-    await chrome.tabs.group({ groupId: connectedTab.groupId, tabIds: [id] });
-  }, chromeTabId);
-
-  // The chrome:// tab should be automatically removed from the group.
+  // The chrome:// tab stays in the group without a debugger badge.
   await expect.poll(async () => {
-    return connectPage.evaluate(async (id: number) => {
-      const chrome = (window as any).chrome;
+    return sw.evaluate(async (id: number) => {
+      const chrome = (globalThis as any).chrome;
       const tab = await chrome.tabs.get(id);
-      return tab.groupId;
+      const badge = await chrome.action.getBadgeText({ tabId: id });
+      return { groupId: tab.groupId, badge };
     }, chromeTabId);
-  }).toBe(-1);
+  }).toEqual({ groupId, badge: '' });
+
+  // Navigating to a debuggable URL attaches it and shows the badge.
+  await sw.evaluate(async ({ id, url }: { id: number, url: string }) => {
+    const chrome = (globalThis as any).chrome;
+    await chrome.tabs.update(id, { url });
+  }, { id: chromeTabId, url: server.PREFIX + '/second' });
+  await expect.poll(async () => {
+    return sw.evaluate(async (id: number) => {
+      const chrome = (globalThis as any).chrome;
+      const tab = await chrome.tabs.get(id);
+      const badge = await chrome.action.getBadgeText({ tabId: id });
+      return { groupId: tab.groupId, badge };
+    }, chromeTabId);
+  }).toEqual({ groupId, badge: '✓' });
 });
 
 test('tab removed from group gets auto-detached', async ({ browserWithExtension, startClient, server, protocolVersion }) => {
@@ -207,16 +244,18 @@ test('tab removed from group gets auto-detached', async ({ browserWithExtension,
   const navigatePromise = client.callTool({ name: 'browser_navigate', arguments: { url: server.HELLO_WORLD } });
   const connectPage = await connectPagePromise;
 
-  await connectPage.locator('.tab-item', { hasText: 'Title' }).getByRole('button', { name: 'Allow & select' }).click();
+  await clickAllowAndSelect(connectPage, 'Title');
   await navigatePromise;
 
   // Create a second tab via the client — it will be attached and added to the group.
   await client.callTool({ name: 'browser_tabs', arguments: { action: 'new', url: server.PREFIX + '/second' } });
 
+  const [sw] = browserContext.serviceWorkers();
+
   // The second tab is attached (has the connected badge).
   await expect.poll(async () => {
-    return connectPage.evaluate(async (targetUrl: string) => {
-      const chrome = (window as any).chrome;
+    return sw.evaluate(async (targetUrl: string) => {
+      const chrome = (globalThis as any).chrome;
       const [t] = await chrome.tabs.query({ url: targetUrl });
       if (!t?.id)
         return '';
@@ -225,16 +264,16 @@ test('tab removed from group gets auto-detached', async ({ browserWithExtension,
   }).toBe('✓');
 
   // Ungroup the second tab — this should auto-detach it.
-  await connectPage.evaluate(async (targetUrl: string) => {
-    const chrome = (window as any).chrome;
+  await sw.evaluate(async (targetUrl: string) => {
+    const chrome = (globalThis as any).chrome;
     const [second] = await chrome.tabs.query({ url: targetUrl });
     await chrome.tabs.ungroup([second.id]);
   }, server.PREFIX + '/second');
 
   // The badge should be cleared, indicating the tab was detached.
   await expect.poll(async () => {
-    return connectPage.evaluate(async (targetUrl: string) => {
-      const chrome = (window as any).chrome;
+    return sw.evaluate(async (targetUrl: string) => {
+      const chrome = (globalThis as any).chrome;
       const [t] = await chrome.tabs.query({ url: targetUrl });
       if (!t?.id)
         return '';
@@ -258,14 +297,16 @@ test('connected tab is removed from group on disconnect', async ({ browserWithEx
   const navigatePromise = client.callTool({ name: 'browser_navigate', arguments: { url: server.HELLO_WORLD } });
   const connectPage = await connectPagePromise;
 
-  await connectPage.locator('.tab-item', { hasText: 'Title' }).getByRole('button', { name: 'Allow & select' }).click();
+  await clickAllowAndSelect(connectPage, 'Title');
   await navigatePromise;
+
+  const [sw] = browserContext.serviceWorkers();
 
   await client.close();
 
   await expect.poll(async () => {
-    return connectPage.evaluate(async () => {
-      const chrome = (window as any).chrome;
+    return sw.evaluate(async () => {
+      const chrome = (globalThis as any).chrome;
       const [tab] = await chrome.tabs.query({ title: 'Title' });
       return tab?.groupId ?? -1;
     });
@@ -285,19 +326,20 @@ test('tab is re-added to Playwright group after reconnecting', async ({ browserW
     );
     const navigatePromise = client.callTool({ name: 'browser_navigate', arguments: { url: server.HELLO_WORLD } });
     const connectPage = await connectPagePromise;
-    await connectPage.locator('.tab-item', { hasText: 'Title' }).getByRole('button', { name: 'Allow & select' }).click();
+    await clickAllowAndSelect(connectPage, 'Title');
     await navigatePromise;
-    return { client, connectPage };
+    return { client };
   };
 
   // First connection.
   const first = await connect();
+  const [sw] = browserContext.serviceWorkers();
   await first.client.close();
 
   // Wait for the tab to be ungrouped after disconnect.
   await expect.poll(async () => {
-    return first.connectPage.evaluate(async () => {
-      const chrome = (window as any).chrome;
+    return sw.evaluate(async () => {
+      const chrome = (globalThis as any).chrome;
       if (!chrome?.tabs)
         return null;
       const [tab] = await chrome.tabs.query({ title: 'Title' });
@@ -306,12 +348,12 @@ test('tab is re-added to Playwright group after reconnecting', async ({ browserW
   }).toBe(-1);
 
   // Second connection.
-  const second = await connect();
+  await connect();
 
   // The tab must end up in a green Playwright group again.
   await expect.poll(async () => {
-    return second.connectPage.evaluate(async () => {
-      const chrome = (window as any).chrome;
+    return sw.evaluate(async () => {
+      const chrome = (globalThis as any).chrome;
       if (!chrome?.tabs)
         return null;
       const [tab] = await chrome.tabs.query({ title: 'Title' });
