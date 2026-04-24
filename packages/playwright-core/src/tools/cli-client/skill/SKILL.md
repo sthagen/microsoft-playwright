@@ -224,6 +224,8 @@ playwright-cli open --config=my-config.json
 
 # Close the browser
 playwright-cli close
+# Detach from an attached browser (leaves the external browser running)
+playwright-cli -s=msedge detach
 # Delete user data for the default session
 playwright-cli delete-data
 ```
@@ -256,6 +258,9 @@ playwright-cli snapshot "#main"
 # limit snapshot depth for efficiency, take a partial snapshot afterwards
 playwright-cli snapshot --depth=4
 playwright-cli snapshot e34
+
+# include each element's bounding box as [box=x,y,width,height]
+playwright-cli snapshot --boxes
 ```
 
 ## Targeting elements

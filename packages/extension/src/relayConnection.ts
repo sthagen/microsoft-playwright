@@ -51,19 +51,19 @@ export class RelayConnection {
   // Once we've attached at least one tab, detaching the last one closes the connection.
   private _hasEverAttached = false;
   private _eventListeners: Array<{ remove: () => void }> = [];
-  private _selectedTabPromise: Promise<number>;
-  private _selectedTabResolve!: (tabId: number) => void;
   private _closed = false;
 
   onclose?: () => void;
   ontabattached?: (tabId: number) => void;
   ontabdetached?: (tabId: number) => void;
 
+  get attachedTabs(): ReadonlySet<number> {
+    return this._attachedTabs;
+  }
+
   constructor(ws: WebSocket, protocolVersion: number) {
     this._ws = ws;
-    this._selectedTabPromise = new Promise(resolve => this._selectedTabResolve = resolve);
     const context: RelayContext = {
-      selectedTab: this._selectedTabPromise,
       attachedTabs: this._attachedTabs,
       sendMessage: msg => this._sendMessage(msg),
       notifyTabAttached: tabId => this._notifyTabAttached(tabId),
@@ -77,9 +77,11 @@ export class RelayConnection {
     this._ws.onclose = () => this._onClose();
   }
 
-  // Resolves the pending extension.selectTab call from cdpRelay.
-  setSelectedTab(tabId: number): void {
-    this._selectedTabResolve(tabId);
+  // Signals the end of the initial-tab handshake — call after the initial
+  // round of `attachTab` invocations. For v2 this sends `extension.initialized`
+  // so the relay can unblock Playwright CDP traffic; v1 has no handshake.
+  didInitialize(): void {
+    this._handler.didInitialize();
   }
 
   close(message: string): void {
@@ -91,23 +93,21 @@ export class RelayConnection {
 
   // Called when the UI adds a tab to the Playwright group. The handler asks
   // the relay to attach; the normal command path fires ontabattached.
-  async attachTab(tabId: number): Promise<void> {
-    if (this._closed || this._attachedTabs.has(tabId))
+  attachTab(tab: chrome.tabs.Tab): void {
+    if (this._closed || this._attachedTabs.has(tab.id!))
       return;
-    await this._handler.onUserAttachRequest(tabId);
+    this._handler.onUserAttachRequest(tab);
   }
 
   // Called when the UI removes a tab from the Playwright group. We detach the
   // debugger and update bookkeeping; the handler emits the wire-level detach
   // notification for protocols that have one.
-  async detachTab(tabId: number): Promise<void> {
+  detachTab(tabId: number): void {
     if (this._closed || !this._attachedTabs.has(tabId))
       return;
-    try {
-      await chrome.debugger.detach({ tabId });
-    } catch (error: any) {
+    chrome.debugger.detach({ tabId }).catch(error => {
       debugLog('Error detaching tab:', error);
-    }
+    });
     this._notifyTabDetached(tabId);
     this._handler.onUserDetachRequest(tabId);
     this._checkLastTabDetached();
@@ -142,9 +142,10 @@ export class RelayConnection {
     for (const l of this._eventListeners)
       l.remove();
     this._eventListeners = [];
-    for (const tabId of this._attachedTabs)
+    for (const tabId of [...this._attachedTabs]) {
       chrome.debugger.detach({ tabId }).catch(() => {});
-    this._attachedTabs.clear();
+      this._notifyTabDetached(tabId);
+    }
     this.onclose?.();
   }
 

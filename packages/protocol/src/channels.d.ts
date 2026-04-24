@@ -2927,6 +2927,7 @@ export type FrameAriaSnapshotParams = {
   track?: string,
   selector?: string,
   depth?: number,
+  boxes?: boolean,
   timeout: number,
 };
 export type FrameAriaSnapshotOptions = {
@@ -2934,6 +2935,7 @@ export type FrameAriaSnapshotOptions = {
   track?: string,
   selector?: string,
   depth?: number,
+  boxes?: boolean,
 };
 export type FrameAriaSnapshotResult = {
   snapshot: string,
@@ -3516,7 +3518,10 @@ export type FrameExpectOptions = {
 };
 export type FrameExpectResult = {
   matches: boolean,
-  received?: SerializedValue,
+  received?: {
+    value?: SerializedValue,
+    ariaSnapshot?: string,
+  },
   timedOut?: boolean,
   errorMessage?: string,
   log?: string[],

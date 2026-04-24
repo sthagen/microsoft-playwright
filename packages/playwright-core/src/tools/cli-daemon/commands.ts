@@ -80,6 +80,15 @@ const close = declareCommand({
   toolParams: () => ({}),
 });
 
+const detach = declareCommand({
+  name: 'detach',
+  description: 'Detach from an attached browser',
+  category: 'core',
+  args: z.object({}),
+  toolName: '',
+  toolParams: () => ({}),
+});
+
 const goto = declareCommand({
   name: 'goto',
   description: 'Navigate to a URL',
@@ -367,9 +376,10 @@ const snapshot = declareCommand({
   options: z.object({
     filename: z.string().optional().describe('Save snapshot to markdown file instead of returning it in the response.'),
     depth: numberArg.optional().describe('Limit snapshot depth, unlimited by default.'),
+    boxes: z.boolean().optional().describe('Include each element\'s bounding box as [box=x,y,width,height] in the snapshot.'),
   }),
   toolName: 'browser_snapshot',
-  toolParams: ({ filename, target, depth }) => ({ filename, target, depth }),
+  toolParams: ({ filename, target, depth, boxes }) => ({ filename, target, depth, boxes }),
 });
 
 const generateLocator = declareCommand({
@@ -1014,6 +1024,7 @@ const commandsArray: AnyCommandSchema[] = [
   open,
   attach,
   close,
+  detach,
   goto,
   type,
   click,
