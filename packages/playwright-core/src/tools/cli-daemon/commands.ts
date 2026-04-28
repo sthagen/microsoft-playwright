@@ -815,19 +815,89 @@ const consoleList = declareCommand({
 });
 
 const networkRequests = declareCommand({
-  name: 'network',
-  description: 'List all network requests since loading the page',
-  category: 'devtools',
+  name: 'requests',
+  description: 'List all network requests since loading the page. Each request is numbered for use with the `request` command.',
+  category: 'network',
   args: z.object({}),
   options: z.object({
     static: z.boolean().optional().describe('Whether to include successful static resources like images, fonts, scripts, etc. Defaults to false.'),
-    ['request-body']: z.boolean().optional().describe('Whether to include request body. Defaults to false.'),
-    ['request-headers']: z.boolean().optional().describe('Whether to include request headers. Defaults to false.'),
     filter: z.string().optional().describe('Only return requests whose URL matches this regexp (e.g. "/api/.*user").'),
     clear: z.boolean().optional().describe('Whether to clear the network list'),
   }),
   toolName: ({ clear }) => clear ? 'browser_network_clear' : 'browser_network_requests',
-  toolParams: ({ static: s, 'request-body': requestBody, 'request-headers': requestHeaders, filter, clear }) => clear ? ({}) : ({ static: s, requestBody, requestHeaders, filter }),
+  toolParams: ({ static: s, filter, clear }) => clear ? ({}) : ({ static: s, filter }),
+});
+
+const filenameOption = z.string().optional().describe('Filename to save the result to. If not provided, output is returned as text.');
+
+const networkRequest = declareCommand({
+  name: 'request',
+  description: 'Show full details (headers, body, response) of a single network request by its number from the `requests` command.',
+  category: 'network',
+  args: z.object({
+    index: numberArg.describe('1-based number of the request as listed by `requests`'),
+  }),
+  options: z.object({
+    filename: filenameOption,
+  }),
+  toolName: 'browser_network_request',
+  toolParams: ({ index, filename }) => ({ index, filename }),
+});
+
+const networkRequestHeaders = declareCommand({
+  name: 'request-headers',
+  description: 'Print only the request headers for a single network request by its number from the `requests` command.',
+  category: 'network',
+  args: z.object({
+    index: numberArg.describe('1-based number of the request as listed by `requests`'),
+  }),
+  options: z.object({
+    filename: filenameOption,
+  }),
+  toolName: 'browser_network_request',
+  toolParams: ({ index, filename }) => ({ index, part: 'request-headers', filename }),
+});
+
+const networkRequestBody = declareCommand({
+  name: 'request-body',
+  description: 'Print only the request body for a single network request by its number from the `requests` command.',
+  category: 'network',
+  args: z.object({
+    index: numberArg.describe('1-based number of the request as listed by `requests`'),
+  }),
+  options: z.object({
+    filename: filenameOption,
+  }),
+  toolName: 'browser_network_request',
+  toolParams: ({ index, filename }) => ({ index, part: 'request-body', filename }),
+});
+
+const networkResponseHeaders = declareCommand({
+  name: 'response-headers',
+  description: 'Print only the response headers for a single network request by its number from the `requests` command.',
+  category: 'network',
+  args: z.object({
+    index: numberArg.describe('1-based number of the request as listed by `requests`'),
+  }),
+  options: z.object({
+    filename: filenameOption,
+  }),
+  toolName: 'browser_network_request',
+  toolParams: ({ index, filename }) => ({ index, part: 'response-headers', filename }),
+});
+
+const networkResponseBody = declareCommand({
+  name: 'response-body',
+  description: 'Print the response body for a single network request by its number from the `requests` command. Textual bodies are inlined; binary bodies are saved to a file and the path is printed.',
+  category: 'network',
+  args: z.object({
+    index: numberArg.describe('1-based number of the request as listed by `requests`'),
+  }),
+  options: z.object({
+    filename: filenameOption,
+  }),
+  toolName: 'browser_network_request',
+  toolParams: ({ index, filename }) => ({ index, part: 'response-body', filename }),
 });
 
 const tracingStart = declareCommand({
@@ -1092,6 +1162,12 @@ const commandsArray: AnyCommandSchema[] = [
   sessionStorageClear,
 
   // network category
+  networkRequests,
+  networkRequest,
+  networkRequestHeaders,
+  networkRequestBody,
+  networkResponseHeaders,
+  networkResponseBody,
   routeMock,
   routeList,
   unroute,
@@ -1105,7 +1181,6 @@ const commandsArray: AnyCommandSchema[] = [
   installBrowser,
 
   // devtools category
-  networkRequests,
   tracingStart,
   tracingStop,
   videoStart,

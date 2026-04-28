@@ -21,7 +21,7 @@ import { Serializable, EvaluationArgument, PageFunction, PageFunctionOn, SmartHa
 
 // Use the global URLPattern type if available (Node.js 22+, modern browsers),
 // otherwise fall back to `never` so it disappears from union types.
-type URLPattern = typeof globalThis extends { URLPattern: infer T } ? T : never;
+type URLPattern = typeof globalThis extends { URLPattern: new (...args: any) => infer T } ? T : never;
 
 type PageWaitForSelectorOptionsNotHidden = PageWaitForSelectorOptions & {
   state?: 'visible'|'attached';
@@ -383,6 +383,16 @@ export type AndroidKey =
   'Paste';
 
 export const _android: Android;
+
+//@ts-ignore this will be any if electron is not installed
+type ElectronType = typeof import('electron');
+
+export interface ElectronApplication {
+  evaluate: JSHandle<ElectronType>['evaluate'];
+  evaluateHandle: JSHandle<ElectronType>['evaluateHandle'];
+}
+
+export const _electron: Electron;
 
 // This is required to not export everything by default. See https://github.com/Microsoft/TypeScript/issues/19545#issuecomment-340490459
 export {};

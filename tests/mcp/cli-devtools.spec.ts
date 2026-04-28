@@ -45,80 +45,156 @@ test('console --clear', async ({ cli, server }) => {
   expect(output).not.toContain('log-level');
 });
 
-test('network', async ({ cli, server }) => {
+test('requests', async ({ cli, server }) => {
   await cli('open', server.PREFIX);
   await cli('eval', '() => fetch("/hello-world")');
-  const { output } = await cli('network');
+  const { output } = await cli('requests');
   expect(output).not.toContain(`[GET] ${`${server.PREFIX}/`} => [200] OK`);
-  expect(output).toContain(`[GET] ${`${server.PREFIX}/hello-world`} => [200] OK`);
+  expect(output).toMatch(new RegExp(String.raw`^\d+\. \[GET\] ${escapeRegExp(`${server.PREFIX}/hello-world`)} => \[200\] OK$`, 'm'));
+  expect(output).toContain('Note: 1 static request not shown, run with --static option to see it.');
 });
 
-test('network --static', async ({ cli, server }) => {
+test('requests --static', async ({ cli, server }) => {
   await cli('open', server.PREFIX);
-  const { output } = await cli('network', '--static');
-  expect(output).toContain(`[GET] ${`${server.PREFIX}/`} => [200] OK`);
+  const { output } = await cli('requests', '--static');
+  expect(output).toMatch(new RegExp(String.raw`^\d+\. \[GET\] ${escapeRegExp(`${server.PREFIX}/`)} => \[200\] OK$`, 'm'));
+  expect(output).not.toContain('not shown');
 });
 
-test('network --filter', async ({ cli, server }) => {
+test('requests --filter', async ({ cli, server }) => {
   server.setContent('/', `<script>
     Promise.all([fetch('/api/users'), fetch('/api/orders'), fetch('/static/image.png')]);
   </script>`, 'text/html');
   await cli('open', server.PREFIX);
 
-  const { output } = await cli('network', '--filter=/api/', '--static');
+  const { output } = await cli('requests', '--filter=/api/', '--static');
   expect(output).toContain(`${server.PREFIX}/api/users`);
   expect(output).toContain(`${server.PREFIX}/api/orders`);
   expect(output).not.toContain(`${server.PREFIX}/static/image.png`);
 });
 
-test('network --request-body', async ({ cli, server }) => {
-  server.setContent('/', `
-    <button onclick="fetch('/api', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key: 'value' }) })">Click me</button>
-  `, 'text/html');
-  server.setContent('/api', '{}', 'application/json');
-  await cli('open', server.PREFIX);
-  await cli('click', 'e2');
-
-  {
-    const { output } = await cli('network');
-    expect(output).not.toContain('Request body:');
-  }
-
-  {
-    const { output } = await cli('network', '--request-body');
-    expect(output).toContain(`[POST] ${server.PREFIX}/api => [200] OK`);
-    expect(output).toContain('Request body: {"key":"value"}');
-  }
-});
-
-test('network --request-headers', async ({ cli, server }) => {
-  server.setContent('/', `
-    <button onclick="fetch('/api', { headers: { 'X-Custom-Header': 'test-value' } })">Click me</button>
-  `, 'text/html');
-  server.setContent('/api', '{}', 'application/json');
-  await cli('open', server.PREFIX);
-  await cli('click', 'e2');
-
-  {
-    const { output } = await cli('network');
-    expect(output).not.toContain('Request headers:');
-  }
-
-  {
-    const { output } = await cli('network', '--request-headers');
-    expect(output).toContain(`[GET] ${server.PREFIX}/api => [200] OK`);
-    expect(output).toContain('Request headers:');
-    expect(output).toContain('x-custom-header: test-value');
-  }
-});
-
-test('network --clear', async ({ cli, server }) => {
+test('requests --clear', async ({ cli, server }) => {
   await cli('open', server.PREFIX);
   await cli('eval', '() => fetch("/hello-world")');
-  await cli('network', '--clear');
-  const { output } = await cli('network');
-  expect(output).not.toContain(`[GET] ${`${server.PREFIX}/hello-world`} => [200] OK`);
+  await cli('requests', '--clear');
+  const { output } = await cli('requests');
+  expect(output).not.toContain(`${server.PREFIX}/hello-world`);
 });
+
+test('request shows full request and response details', async ({ cli, server }) => {
+  server.setContent('/', `
+    <button onclick="fetch('/api', { method: 'POST', headers: { 'X-Custom-Header': 'test-value' }, body: JSON.stringify({ key: 'value' }) })">Click me</button>
+  `, 'text/html');
+  server.setRoute('/api', (_req, res) => {
+    res.setHeader('X-Custom-Response', 'response-value');
+    res.setHeader('Content-Type', 'application/json');
+    res.end(JSON.stringify({ name: 'John Doe' }));
+  });
+  await cli('open', server.PREFIX);
+  await cli('click', 'e2');
+
+  const { output: list } = await cli('requests');
+  const match = list.match(/^(\d+)\. \[POST\] [^ ]+\/api =>/m);
+  expect(match).not.toBeNull();
+
+  const { output } = await cli('request', match![1]);
+  expect(output).toContain(`#${match![1]} [POST] ${server.PREFIX}/api`);
+  expect(output).toContain('General');
+  expect(output).toContain('status:    [200] OK');
+  expect(output).toContain('Request headers');
+  expect(output).toContain('x-custom-header: test-value');
+  expect(output).toContain('Response headers');
+  expect(output).toContain('x-custom-response: response-value');
+  expect(output).toContain(`Run \`request-body ${match![1]}\` to read the request body.`);
+  expect(output).toContain(`Run \`response-body ${match![1]}\` to read the response body.`);
+  expect(output).not.toContain('Request body');
+  expect(output).not.toContain('Response body');
+  expect(output).not.toContain('{"key":"value"}');
+});
+
+test('per-part commands extract individual parts', async ({ cli, server }) => {
+  server.setContent('/', `
+    <button onclick="fetch('/api', { method: 'POST', headers: { 'X-Custom-Header': 'test-value' }, body: JSON.stringify({ key: 'value' }) })">Click me</button>
+  `, 'text/html');
+  server.setRoute('/api', (_req, res) => {
+    res.setHeader('X-Custom-Response', 'response-value');
+    res.setHeader('Content-Type', 'application/json');
+    res.end(JSON.stringify({ name: 'John Doe' }));
+  });
+  await cli('open', server.PREFIX);
+  await cli('click', 'e2');
+
+  const { output: list } = await cli('requests');
+  const match = list.match(/^(\d+)\. \[POST\] [^ ]+\/api =>/m);
+  expect(match).not.toBeNull();
+  const num = match![1];
+
+  expect((await cli('request-headers', num)).output).toContain('x-custom-header: test-value');
+  expect((await cli('request-body', num)).output).toContain('{"key":"value"}');
+  expect((await cli('response-headers', num)).output).toContain('x-custom-response: response-value');
+  expect((await cli('response-body', num)).output).toContain('{"name":"John Doe"}');
+});
+
+test('request* and response* commands support --filename', async ({ cli, server }, testInfo) => {
+  server.setContent('/', `
+    <button onclick="fetch('/api', { method: 'POST', body: 'hello' })">Click me</button>
+  `, 'text/html');
+  server.setRoute('/api', (_req, res) => {
+    res.setHeader('X-Custom-Response', 'response-value');
+    res.setHeader('Content-Type', 'application/json');
+    res.end(JSON.stringify({ name: 'John Doe' }));
+  });
+  await cli('open', server.PREFIX);
+  await cli('click', 'e2');
+
+  const { output: list } = await cli('requests');
+  const match = list.match(/^(\d+)\. \[POST\] [^ ]+\/api =>/m);
+  expect(match).not.toBeNull();
+  const num = match![1];
+
+  const read = (file: string) => fs.readFileSync(testInfo.outputPath(file), 'utf-8');
+
+  expect((await cli('request', num, '--filename=req.log')).output).toContain('[Request](./req.log)');
+  expect(read('req.log')).toContain(`[POST] ${server.PREFIX}/api`);
+
+  expect((await cli('request-headers', num, '--filename=req-h.txt')).output).toContain('[Request headers](./req-h.txt)');
+  expect(read('req-h.txt')).toContain('content-type: text/plain;charset=UTF-8');
+
+  expect((await cli('request-body', num, '--filename=req-b.txt')).output).toContain('[Request body](./req-b.txt)');
+  expect(read('req-b.txt')).toBe('hello');
+
+  expect((await cli('response-headers', num, '--filename=res-h.txt')).output).toContain('[Response headers](./res-h.txt)');
+  expect(read('res-h.txt')).toContain('x-custom-response: response-value');
+
+  expect((await cli('response-body', num, '--filename=res-b.json')).output).toContain('[Response body](./res-b.json)');
+  expect(read('res-b.json')).toBe('{"name":"John Doe"}');
+});
+
+test('--raw response-body returns just the body', async ({ cli, server }) => {
+  server.setContent('/', `
+    <button onclick="fetch('/api')">Click me</button>
+  `, 'text/html');
+  server.setContent('/api', JSON.stringify({ name: 'John Doe' }), 'application/json');
+  await cli('open', server.PREFIX);
+  await cli('click', 'e2');
+
+  const { output: list } = await cli('requests');
+  const match = list.match(/^(\d+)\. \[GET\] [^ ]+\/api =>/m);
+  expect(match).not.toBeNull();
+
+  const { output } = await cli('--raw', 'response-body', match![1]);
+  expect(output.trim()).toBe('{"name":"John Doe"}');
+});
+
+test('request with out-of-range index', async ({ cli, server }) => {
+  await cli('open', server.PREFIX);
+  const { output } = await cli('request', '999');
+  expect(output).toContain('Request #999 not found');
+});
+
+function escapeRegExp(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
 
 test('tracing-start-stop', async ({ cli, server }, testInfo) => {
   await cli('open', server.HELLO_WORLD);

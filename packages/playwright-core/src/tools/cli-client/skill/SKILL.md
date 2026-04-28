@@ -153,7 +153,8 @@ playwright-cli unroute
 ```bash
 playwright-cli console
 playwright-cli console warning
-playwright-cli network
+playwright-cli requests
+playwright-cli request 5
 playwright-cli run-code "async page => await page.context().grantPermissions(['geolocation'])"
 playwright-cli run-code --filename=script.js
 playwright-cli tracing-start
@@ -351,7 +352,7 @@ playwright-cli open https://example.com
 playwright-cli click e4
 playwright-cli fill e7 "test"
 playwright-cli console
-playwright-cli network
+playwright-cli requests
 playwright-cli close
 ```
 
@@ -379,6 +380,7 @@ playwright-cli show --annotate
 * **Request mocking** [references/request-mocking.md](references/request-mocking.md)
 * **Running Playwright code** [references/running-code.md](references/running-code.md)
 * **Browser session management** [references/session-management.md](references/session-management.md)
+* **Spec-driven testing (plan / generate / heal)** [references/spec-driven-testing.md](references/spec-driven-testing.md)
 * **Storage state (cookies, localStorage)** [references/storage-state.md](references/storage-state.md)
 * **Test generation** [references/test-generation.md](references/test-generation.md)
 * **Tracing** [references/tracing.md](references/tracing.md)
