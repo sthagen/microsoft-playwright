@@ -236,38 +236,6 @@ existing browser state. New contexts created via
 are not affected. Defaults to `false`.
 
 
-## async method: BrowserType.connectToWorker
-* since: v1.60
-* langs: js
-- returns: <[Worker]>
-
-This method attaches Playwright to an existing JavaScript engine exposing Chrome DevTools Protocol, for example to a Node.js process or an Electron application.
-
-:::note
-This is only supported on `chromium`.
-:::
-
-**Usage**
-
-```js
-const worker = await playwright.chromium.connectToWorker('http://localhost:9229');
-const global = await worker.evaluate(() => globalThis);
-```
-
-### param: BrowserType.connectToWorker.endpoint
-* since: v1.60
-- `endpoint` <[string]>
-
-A CDP websocket endpoint or http url to connect to. For example `http://localhost:9229/` or `ws://127.0.0.1:9229/something`.
-
-### option: BrowserType.connectToWorker.timeout
-* since: v1.60
-- `timeout` <[float]>
-
-Maximum time in milliseconds to wait for the connection to be established. Defaults to
-`30000` (30 seconds). Pass `0` to disable timeout.
-
-
 ## method: BrowserType.executablePath
 * since: v1.8
 - returns: <[string]>
@@ -437,7 +405,7 @@ const { chromium } = require('playwright');  // Or 'webkit' or 'firefox'.
 * since: v1.45
 - `host` <[string]>
 
-Host to use for the web socket. It is optional and if it is omitted, the server will accept connections on the unspecified IPv6 address (::) when IPv6 is available, or the unspecified IPv4 address (0.0.0.0) otherwise. Consider hardening it with picking a specific interface.
+Host to use for the web socket. It is optional and defaults to `localhost`, accepting connections only from the loopback interface. Pass an explicit address (e.g. `0.0.0.0`) to accept connections from the network — be aware this exposes the browser RPC to anything that can reach the listening port.
 
 ### option: BrowserType.launchServer.port
 * since: v1.8
@@ -457,6 +425,26 @@ Any process or web page (including those running in Playwright) with knowledge
 of the `wsPath` can take control of the OS user. For this reason, you should
 use an unguessable token when using this option.
 :::
+
+### option: BrowserType.launchServer.allowClientNetwork
+* since: v1.60
+- `allowClientNetwork` <[string]>
+
+This option allows the connecting client to expose its local network to the browser via
+[`option: BrowserType.connect.exposeNetwork`]. The value is the maximum set of network rules
+the server will accept; the client must request a subset of these rules through `exposeNetwork`,
+otherwise its requests will be served directly from the server. Consists of a list of rules
+separated by comma.
+
+Available rules:
+1. Hostname pattern, for example: `example.com`, `*.org:99`, `x.*.y.com`, `*foo.org`.
+1. IP literal, for example: `127.0.0.1`, `0.0.0.0:99`, `[::1]`, `[0:0::1]:99`.
+1. `<loopback>` that matches local loopback interfaces: `localhost`, `*.localhost`, `127.0.0.1`, `[::1]`.
+
+Some common examples:
+1. `"*"` to allow exposing any network.
+1. `"<loopback>"` to allow exposing localhost network.
+1. `"*.test.internal-domain,*.staging.internal-domain,<loopback>"` to allow exposing test/staging deployments and localhost.
 
 ## method: BrowserType.name
 * since: v1.8

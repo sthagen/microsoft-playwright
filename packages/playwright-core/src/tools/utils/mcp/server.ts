@@ -38,9 +38,6 @@ export type ClientInfo = {
   clientName: string;
 };
 
-export type ProgressParams = { message?: string, progress?: number, total?: number };
-export type ProgressCallback = (params: ProgressParams) => void;
-
 class BackendManager {
   private _backends = new Map<ServerBackend, ServerBackendFactory>();
 
@@ -65,7 +62,7 @@ const backendManager = new BackendManager();
 
 export interface ServerBackend {
   initialize?(clientInfo: ClientInfo): Promise<void>;
-  callTool(name: string, args: CallToolRequest['params']['arguments'], progress: ProgressCallback): Promise<CallToolResult & { isClose?: boolean }>;
+  callTool(name: string, args: CallToolRequest['params']['arguments'], signal: AbortSignal): Promise<CallToolResult & { isClose?: boolean }>;
   dispose?(): Promise<void>;
 }
 
@@ -103,21 +100,6 @@ export function createServer(name: string, version: string, factory: ServerBacke
   server.setRequestHandler(CallToolRequestSchema, async (request, extra) => {
     serverDebug('callTool', request);
 
-    const progressToken = request.params._meta?.progressToken;
-    let progressCounter = 0;
-
-    const progress = progressToken ? (params: ProgressParams) => {
-      extra.sendNotification({
-        method: 'notifications/progress',
-        params: {
-          progressToken,
-          progress: params.progress ?? ++progressCounter,
-          total: params.total,
-          message: params.message,
-        },
-      }).catch(e => serverDebug('notification', e));
-    } : () => {};
-
     try {
       if (!backendPromise) {
         backendPromise = initializeServer(server, factory, runHeartbeat).catch(e => {
@@ -127,7 +109,7 @@ export function createServer(name: string, version: string, factory: ServerBacke
       }
 
       const backend = await backendPromise;
-      const toolResult = await backend.callTool(request.params.name, request.params.arguments || {}, progress);
+      const toolResult = await backend.callTool(request.params.name, request.params.arguments || {}, extra.signal);
       if (toolResult.isClose) {
         await backendManager.disposeBackend(backend).catch(serverDebug);
         backendPromise = undefined;
@@ -194,7 +176,11 @@ function addServerListener(server: ServerType, event: 'close' | 'initialized', l
 
 export async function start(serverBackendFactory: ServerBackendFactory, options: { host?: string; port?: number, allowedHosts?: string[], socketPath?: string } = {}) {
   if (options.port === undefined) {
-    await connect(serverBackendFactory, new StdioServerTransport(), false);
+    const transport = new StdioServerTransport();
+    // The SDK's StdioServerTransport doesn't detect peer disconnect — it never listens for stdin
+    // end-of-stream. Wire it up so callTool requests can be cancelled when the client goes away.
+    process.stdin.on('end', () => void transport.close());
+    await connect(serverBackendFactory, transport, false);
     return;
   }
 

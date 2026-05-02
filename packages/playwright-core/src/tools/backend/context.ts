@@ -15,12 +15,14 @@
  */
 
 import fs from 'fs';
+import os from 'os';
 import path from 'path';
 
 import debug from 'debug';
 import { escapeWithQuotes } from '@isomorphic/stringUtils';
 import { disposeAll } from '@isomorphic/disposable';
 import { eventsHelper } from '@utils/eventsHelper';
+import { isPathInside, isSystemDirectory, isWritable } from '@utils/fileUtils';
 import { playwright } from '../../inprocess';
 
 import { Tab } from './tab';
@@ -386,7 +388,10 @@ export async function workspaceFile(options: ContextOptions, fileName: string, p
 export function outputDir(options: ContextOptions): string {
   if (options.config.outputDir)
     return path.resolve(options.config.outputDir);
-  return path.resolve(options.cwd, options.config.skillMode ? '.playwright-cli' : '.playwright-mcp');
+  const baseName = options.config.skillMode ? '.playwright-cli' : '.playwright-mcp';
+  if (isSystemDirectory(options.cwd) || !isWritable(options.cwd))
+    return path.join(os.tmpdir(), baseName);
+  return path.join(options.cwd, baseName);
 }
 
 export async function outputFile(options: ContextOptions, fileName: string, flags: { origin: 'code' | 'llm' }): Promise<string> {
@@ -405,7 +410,6 @@ async function checkFile(options: ContextOptions, resolvedFilename: string, flag
   // Trust llm to use valid characters in file names.
   const output = outputDir(options);
   const workspace = options.cwd;
-  const withinDir = (root: string) => resolvedFilename === root || resolvedFilename.startsWith(root + path.sep);
-  if (!withinDir(output) && !withinDir(workspace))
+  if (!isPathInside(output, resolvedFilename) && !isPathInside(workspace, resolvedFilename))
     throw new Error(`File access denied: ${resolvedFilename} is outside allowed roots. Allowed roots: ${output}, ${workspace}`);
 }

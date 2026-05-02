@@ -28,9 +28,12 @@ import { findChromiumChannelBestEffort, registryDirectory } from '../../server/r
 import { minimist } from '../cli-client/minimist';
 import { saveOutputFile } from '../trace/traceUtils';
 import { DashboardConnection } from './dashboardController';
+import { RegistrySessionProvider } from './registrySessionProvider';
+import { IdentitySessionProvider } from './identitySessionProvider';
 
 import type * as api from '../../..';
 import type { AnnotationData } from '@dashboard/dashboardChannel';
+import type { SessionProvider } from './sessionProvider';
 
 // HMR: build-time flag — `true` in watch builds, `false` in release. esbuild
 // replaces the identifier via `define`, so the static branch pays zero runtime
@@ -42,9 +45,10 @@ type DashboardServer = {
   reveal: (options: DashboardOptions) => void;
   triggerAnnotate: () => void;
   registerAnnotateWaiter: (socket: net.Socket) => void;
+  close: () => Promise<void>;
 };
 
-async function startDashboardServer(options: DashboardOptions): Promise<DashboardServer> {
+async function startDashboardServer(provider: SessionProvider, options: DashboardOptions): Promise<DashboardServer> {
   const httpServer = new HttpServer();
   const dashboardDir = libPath('vite', 'dashboard');
 
@@ -67,8 +71,10 @@ async function startDashboardServer(options: DashboardOptions): Promise<Dashboar
   httpServer.createWebSocket(() => {
     let connection: DashboardConnection;
     // eslint-disable-next-line prefer-const
-    connection = new DashboardConnection(() => connections.delete(connection), () => {
-      if (currentReveal.sessionName)
+    connection = new DashboardConnection(provider, () => connections.delete(connection), () => {
+      if (currentReveal.pageId)
+        connection.revealPage(currentReveal.pageId);
+      else if (currentReveal.sessionName)
         connection.revealSession(currentReveal.sessionName, currentReveal.workspaceDir);
       if (pendingAnnotate) {
         pendingAnnotate = false;
@@ -77,7 +83,15 @@ async function startDashboardServer(options: DashboardOptions): Promise<Dashboar
     }, submitAnnotation);
     connections.add(connection);
     return connection;
-  }, 'ws');
+  });
+
+  const wsGuid = httpServer.wsGuid()!;
+  httpServer.routePath('/', (_, response) => {
+    response.statusCode = 302;
+    response.setHeader('Location', `/index.html?ws=${wsGuid}`);
+    response.end();
+    return true;
+  });
 
   // HMR: watch builds serve the dashboard through an embedded Vite dev server
   // so edits to packages/dashboard/src/* reload live. Release builds always
@@ -91,6 +105,11 @@ async function startDashboardServer(options: DashboardOptions): Promise<Dashboar
 
   const reveal = (next: DashboardOptions) => {
     currentReveal = next;
+    if (next.pageId) {
+      for (const connection of connections)
+        connection.revealPage(next.pageId);
+      return;
+    }
     if (!next.sessionName)
       return;
     for (const connection of connections)
@@ -124,7 +143,8 @@ async function startDashboardServer(options: DashboardOptions): Promise<Dashboar
     socket.on('error', cleanup);
   };
 
-  return { url: httpServer.urlPrefix('human-readable'), reveal, triggerAnnotate, registerAnnotateWaiter };
+  const close = () => httpServer.stop();
+  return { url: httpServer.urlPrefix('human-readable'), reveal, triggerAnnotate, registerAnnotateWaiter, close };
 }
 
 function attachDashboardStaticServer(httpServer: HttpServer, dashboardDir: string) {
@@ -150,13 +170,13 @@ async function attachDashboardDevServer(httpServer: HttpServer) {
 // HMR end
 
 async function innerOpenDashboardApp(options: DashboardOptions): Promise<{ page: api.Page; server: DashboardServer }> {
-  const server = await startDashboardServer(options);
-  const { page } = await launchApp('dashboard');
+  const server = await startDashboardServer(new RegistrySessionProvider(), options);
+  const { page } = await launchApp('dashboard', { onClose: () => gracefullyProcessExitDoNotHang(0) });
   await page.goto(server.url);
   return { page, server };
 }
 
-async function launchApp(appName: string) {
+async function launchApp(appName: string, options?: { onClose?: () => void }) {
   const channel = findChromiumChannelBestEffort('javascript');
   const context = await playwright.chromium.launchPersistentContext('', {
     ignoreDefaultArgs: ['--enable-automation'],
@@ -185,9 +205,7 @@ async function launchApp(appName: string) {
     });
   }
 
-  page.on('close', () => {
-    gracefullyProcessExitDoNotHang(0);
-  });
+  page.on('close', () => options?.onClose?.());
 
   const image = await fs.promises.readFile(libPath('tools', 'dashboard', 'appIcon.png'));
   // This is local Playwright, so I can access private methods.
@@ -228,23 +246,27 @@ function dashboardSocketPath() {
 }
 
 type DashboardOptions = {
-  sessionName: string;
-  workspaceDir: string;
+  sessionName?: string;
+  workspaceDir?: string;
+  pageId?: string;
   kill?: boolean;
   annotate?: boolean;
+  json?: boolean;
   port?: number;
   host?: string;
 };
 
 function parseOpenArgs(): DashboardOptions {
-  const args = minimist(process.argv.slice(2), { string: ['sessionName', 'workspaceDir', 'host'], boolean: ['annotate', 'kill'] });
+  const args = minimist(process.argv.slice(2), { string: ['sessionName', 'workspaceDir', 'host', 'pageId'], boolean: ['annotate', 'kill', 'json'] });
   const portStr = args.port as string | undefined;
   return {
-    sessionName: args.sessionName as string,
-    workspaceDir: args.workspaceDir as string,
+    sessionName: args.sessionName as string | undefined,
+    workspaceDir: args.workspaceDir as string | undefined,
+    pageId: args.pageId as string | undefined,
     port: portStr !== undefined ? Number(portStr) : undefined,
     host: args.host as string | undefined,
     annotate: !!args.annotate,
+    json: !!args.json,
     kill: !!args.kill,
   };
 }
@@ -288,7 +310,7 @@ export async function openDashboardApp() {
     console.error('Unhandled promise rejection:', error);
   });
   if (options.port !== undefined) {
-    const { url } = await startDashboardServer(options);
+    const { url } = await startDashboardServer(new RegistrySessionProvider(), options);
     // eslint-disable-next-line no-console
     console.log(`Listening on ${url}`);
     selfDestructOnParentGone();
@@ -341,6 +363,22 @@ export async function openDashboardApp() {
   await statePromise;
 }
 
+export async function openDashboardForContext(context: api.BrowserContext): Promise<void> {
+  const server = await startDashboardServer(new IdentitySessionProvider(context), {});
+
+  let closed = false;
+  const close = async () => {
+    if (closed)
+      return;
+    closed = true;
+    await server.close();
+  };
+
+  const { page } = await launchApp('dashboard', { onClose: () => { void close(); } });
+  context.on('close', () => { void close(); });
+  await page.goto(server.url);
+}
+
 async function runKillClient(): Promise<void> {
   const socketPath = dashboardSocketPath();
   await new Promise<void>(resolve => {
@@ -388,6 +426,11 @@ async function runAnnotateClient(options: DashboardOptions): Promise<void> {
   const text = Buffer.concat(chunks).toString();
   if (!text)
     return;
+  if (options.json) {
+    // eslint-disable-next-line no-console
+    console.log(text);
+    return;
+  }
   const { png, annotations, ariaSnapshot } = JSON.parse(text) as { png: string; annotations: AnnotationData[], ariaSnapshot: string };
   for (const a of annotations) {
     // eslint-disable-next-line no-console

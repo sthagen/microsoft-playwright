@@ -21,6 +21,7 @@ import mime from 'mime';
 import { WebSocketServer as wsServer } from 'ws';
 import { assert } from '@isomorphic/assert';
 import { createGuid } from './crypto';
+import { isPathInside } from './fileUtils';
 import { createHttpServer, startHttpServer } from './network';
 
 import type http from 'http';
@@ -51,6 +52,8 @@ export class HttpServer {
   private _started = false;
   private _routes: { prefix?: string, exact?: string, handler: ServerRouteHandler }[] = [];
   private _wsGuid: string | undefined;
+  // Allowed Host headers; null disables the check (host bound to a public address).
+  private _allowedHosts: Set<string> | null = null;
 
   constructor() {
     this._server = createHttpServer(this._onRequest.bind(this));
@@ -169,6 +172,7 @@ export class HttpServer {
       const resolvedHost = address.family === 'IPv4' ? address.address : `[${address.address}]`;
       this._urlPrefixPrecise = `http://${resolvedHost}:${address.port}`;
       this._urlPrefixHumanReadable = `http://${host ?? 'localhost'}:${address.port}`;
+      this._allowedHosts = computeAllowedHosts(host, address.address);
     }
   }
 
@@ -258,6 +262,16 @@ export class HttpServer {
       return;
     }
 
+    if (this._allowedHosts) {
+      const host = request.headers.host?.toLowerCase();
+      const hostname = host ? hostnameFromHostHeader(host) : undefined;
+      if (!hostname || !this._allowedHosts.has(hostname)) {
+        response.statusCode = 403;
+        response.end();
+        return;
+      }
+    }
+
     request.on('error', () => response.end());
     try {
       if (!request.url) {
@@ -279,14 +293,43 @@ export class HttpServer {
   }
 }
 
+export function computeAllowedHosts(requested: string | undefined, bound: string): Set<string> | null {
+  const loopback = new Set(['127.0.0.1', '::1', 'localhost']);
+  const isLoopback = (h: string | undefined) => h !== undefined && loopback.has(h.toLowerCase());
+  if (!isLoopback(requested) && requested !== undefined)
+    return null;
+  if (!isLoopback(bound) && requested === undefined)
+    return null;
+  return new Set(['localhost', '127.0.0.1', '[::1]']);
+}
+
+export function hostnameFromHostHeader(host: string): string {
+  if (host.startsWith('[')) {
+    const end = host.indexOf(']');
+    return end < 0 ? host : host.substring(0, end + 1);
+  }
+  const colon = host.indexOf(':');
+  return colon < 0 ? host : host.substring(0, colon);
+}
+
 export function serveFolder(folder: string): HttpServer {
   const server = new HttpServer();
+  const folderRoot = path.resolve(folder);
   server.routePrefix('/', (request, response) => {
     let relativePath = new URL('http://localhost' + request.url).pathname;
     if (relativePath.startsWith('/trace/file')) {
       const url = new URL('http://localhost' + request.url!);
+      const requested = url.searchParams.get('path');
+      if (!requested)
+        return false;
+      const resolved = path.resolve(requested);
+      if (!isPathInside(folderRoot, resolved)) {
+        response.statusCode = 403;
+        response.end();
+        return true;
+      }
       try {
-        return server.serveFile(request, response, url.searchParams.get('path')!);
+        return server.serveFile(request, response, resolved);
       } catch (e) {
         return false;
       }

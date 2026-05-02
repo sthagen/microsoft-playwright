@@ -46,13 +46,14 @@ export type PlaywrightDispatcherOptions = {
 export class PlaywrightDispatcher extends Dispatcher<Playwright, channels.PlaywrightChannel, RootDispatcher> implements channels.PlaywrightChannel {
   _type_Playwright;
   private _browserDispatcher: BrowserDispatcher | undefined;
+  private _denyLaunch: boolean;
 
   constructor(scope: RootDispatcher, playwright: Playwright, options: PlaywrightDispatcherOptions = {}) {
     const denyLaunch = options.denyLaunch ?? false;
     const chromium = new BrowserTypeDispatcher(scope, playwright.chromium, denyLaunch);
     const firefox = new BrowserTypeDispatcher(scope, playwright.firefox, denyLaunch);
     const webkit = new BrowserTypeDispatcher(scope, playwright.webkit, denyLaunch);
-    const android = new AndroidDispatcher(scope, playwright.android);
+    const android = new AndroidDispatcher(scope, playwright.android, denyLaunch);
     const initializer: channels.PlaywrightInitializer = {
       chromium,
       firefox,
@@ -78,9 +79,12 @@ export class PlaywrightDispatcher extends Dispatcher<Playwright, channels.Playwr
     super(scope, playwright, 'Playwright', initializer);
     this._type_Playwright = true;
     this._browserDispatcher = browserDispatcher;
+    this._denyLaunch = denyLaunch;
   }
 
   async newRequest(params: channels.PlaywrightNewRequestParams, progress: Progress): Promise<channels.PlaywrightNewRequestResult> {
+    if (this._denyLaunch)
+      throw new Error(`Creating new API request contexts is not allowed.`);
     const request = new GlobalAPIRequestContext(this._object, params);
     return { request: APIRequestContextDispatcher.from(this.parentScope(), request) };
   }

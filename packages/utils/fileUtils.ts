@@ -45,6 +45,24 @@ export function canAccessFile(file: string) {
   }
 }
 
+export function isWritable(file: string): boolean {
+  try {
+    fs.accessSync(file, fs.constants.W_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function isSystemDirectory(dir: string): boolean {
+  const resolved = path.resolve(dir);
+  if (process.platform === 'win32') {
+    const systemRoot = path.resolve(process.env.SystemRoot || 'C:\\Windows');
+    return isPathInside(systemRoot.toLowerCase(), resolved.toLowerCase());
+  }
+  return resolved === '/';
+}
+
 export async function copyFileAndMakeWritable(from: string, to: string) {
   await fs.promises.copyFile(from, to);
   await fs.promises.chmod(to, 0o664);
@@ -58,6 +76,21 @@ export function addSuffixToFilePath(filePath: string, suffix: string): string {
 
 export function sanitizeForFilePath(s: string) {
   return s.replace(/[\x00-\x2C\x2E-\x2F\x3A-\x40\x5B-\x60\x7B-\x7F]+/g, '-');
+}
+
+export function isPathInside(root: string, candidate: string): boolean {
+  const resolvedRoot = path.resolve(root);
+  const resolvedCandidate = path.resolve(candidate);
+  if (resolvedCandidate === resolvedRoot)
+    return true;
+  return resolvedCandidate.startsWith(resolvedRoot + path.sep);
+}
+
+export function resolveWithinRoot(root: string, fileName: string): string | null {
+  if (path.isAbsolute(fileName))
+    return null;
+  const resolvedFile = path.resolve(root, fileName);
+  return isPathInside(root, resolvedFile) ? resolvedFile : null;
 }
 
 export function toPosixPath(aPath: string): string {

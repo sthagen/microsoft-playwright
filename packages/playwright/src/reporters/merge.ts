@@ -17,6 +17,7 @@
 import fs from 'fs';
 import path from 'path';
 
+import { isPathInside } from '@utils/fileUtils';
 import { ZipFile } from '@utils/zipFile';
 
 import {  currentBlobReportVersion } from './blob';
@@ -494,11 +495,16 @@ class AttachmentPathPatcher {
   }
 
   private _patchAttachments(attachments: JsonAttachment[]) {
+    const resourceRoot = path.resolve(this._resourceDir);
     for (const attachment of attachments) {
       if (!attachment.path)
         continue;
-
-      attachment.path = path.join(this._resourceDir, attachment.path);
+      const joined = path.resolve(resourceRoot, attachment.path);
+      if (!isPathInside(resourceRoot, joined)) {
+        attachment.path = undefined;
+        continue;
+      }
+      attachment.path = joined;
     }
   }
 }

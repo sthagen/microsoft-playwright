@@ -23,6 +23,8 @@ export { browserTools, filteredTools } from './backend/tools';
 export { start } from './utils/mcp/server';
 export { createConnection } from './mcp/index';
 export { resolveCLIConfigForCLI, resolveCLIConfigForMCP } from './mcp/config';
+export { outputDir } from './backend/context';
+export { isSystemDirectory } from '@utils/fileUtils';
 export { isProfileLocked } from './mcp/browserFactory';
 export { compareSemver } from './utils/socketConnection';
 export { extractTrace, DirTraceLoaderBackend } from './trace/traceParser';
@@ -30,7 +32,7 @@ export { decorateMCPCommand } from './mcp/program';
 export { program as cliProgram } from './cli-client/program';
 export { generateHelp, generateHelpJSON } from './cli-daemon/helpGenerator';
 export { decorateProgram as decorateCliDaemonProgram } from './cli-daemon/program';
-export { openDashboardApp } from './dashboard/dashboardApp';
+export { openDashboardApp, openDashboardForContext } from './dashboard/dashboardApp';
 
 export type { ContextConfig } from './backend/context';
 export type { CallToolRequest, CallToolResult, Tool } from './backend/tool';

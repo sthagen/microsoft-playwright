@@ -1,4 +1,3 @@
-page/elementhandle-bounding-box.spec.ts › should return null for invisible elements [fail]
 page/elementhandle-click.spec.ts › should double click the button [fail]
 page/elementhandle-click.spec.ts › should work for TextNodes [fail]
 page/elementhandle-content-frame.spec.ts › should work for cross-frame evaluations [fail]
@@ -11,7 +10,6 @@ page/elementhandle-scroll-into-view.spec.ts › should wait for display:none to 
 page/elementhandle-scroll-into-view.spec.ts › should wait for nested display:none to become visible [fail]
 page/elementhandle-scroll-into-view.spec.ts › should work @smoke [fail]
 page/frame-evaluate.spec.ts › should allow cross-frame element handles [fail]
-page/frame-evaluate.spec.ts › should not allow cross-frame element handles when frames do not script each other [fail]
 page/frame-evaluate.spec.ts › should dispose context on cross-origin navigation [fail]
 page/frame-evaluate.spec.ts › should dispose context on navigation [fail]
 page/frame-hierarchy.spec.ts › should support framesets [fail]

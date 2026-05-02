@@ -22,23 +22,20 @@ import { isPlaywrightExtensionInstalled, playwrightExtensionInstallUrl } from '.
 import { CDPRelayServer } from './cdpRelay';
 
 import type * as playwrightTypes from '../../..';
-import type { FullConfig } from './config';
 
 const debugLogger = debug('pw:mcp:relay');
 
-export async function createExtensionBrowser(config: FullConfig, clientName: string): Promise<playwrightTypes.Browser> {
-  const channel = config.browser.launchOptions.channel || 'chrome';
-  const userDataDir = config.browser.userDataDir ?? defaultUserDataDirForChannel(channel);
-  if (userDataDir && !await isPlaywrightExtensionInstalled(userDataDir))
-    throw new Error(`Playwright Extension not found in "${userDataDir}". Install it from ${playwrightExtensionInstallUrl}`);
+export async function createExtensionBrowser(channel: string, executablePath: string | undefined, clientName: string): Promise<playwrightTypes.Browser> {
+  // Custom executablePath may target a browser in a different filesystem (e.g. Windows chrome.exe from WSL2), so the local profile path is not meaningful.
+  if (!executablePath) {
+    const userDataDir = process.env.PWTEST_EXTENSION_USER_DATA_DIR ?? defaultUserDataDirForChannel(channel);
+    if (userDataDir && !await isPlaywrightExtensionInstalled(userDataDir))
+      throw new Error(`Playwright Extension not found in "${userDataDir}". Install it from ${playwrightExtensionInstallUrl}`);
+  }
 
   const httpServer = createHttpServer();
   await startHttpServer(httpServer, {});
-  const relay = new CDPRelayServer(
-      httpServer,
-      channel,
-      config.browser.userDataDir,
-      config.browser.launchOptions.executablePath);
+  const relay = new CDPRelayServer(httpServer, channel, executablePath);
   debugLogger(`CDP relay server started, extension endpoint: ${relay.extensionEndpoint()}.`);
 
   try {

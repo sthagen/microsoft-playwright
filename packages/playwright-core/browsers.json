@@ -3,30 +3,30 @@
   "browsers": [
     {
       "name": "chromium",
-      "revision": "1219",
+      "revision": "1222",
       "installByDefault": true,
-      "browserVersion": "147.0.7727.49",
+      "browserVersion": "148.0.7778.56",
       "title": "Chrome for Testing"
     },
     {
       "name": "chromium-headless-shell",
-      "revision": "1219",
+      "revision": "1222",
       "installByDefault": true,
-      "browserVersion": "147.0.7727.49",
+      "browserVersion": "148.0.7778.56",
       "title": "Chrome Headless Shell"
     },
     {
       "name": "chromium-tip-of-tree",
-      "revision": "1421",
+      "revision": "1425",
       "installByDefault": false,
-      "browserVersion": "149.0.7790.0",
+      "browserVersion": "149.0.7812.3",
       "title": "Chrome Canary for Testing"
     },
     {
       "name": "chromium-tip-of-tree-headless-shell",
-      "revision": "1421",
+      "revision": "1425",
       "installByDefault": false,
-      "browserVersion": "149.0.7790.0",
+      "browserVersion": "149.0.7812.3",
       "title": "Chrome Canary Headless Shell"
     },
     {
@@ -45,7 +45,7 @@
     },
     {
       "name": "webkit",
-      "revision": "2284",
+      "revision": "2285",
       "installByDefault": true,
       "revisionOverrides": {
         "mac14": "2251",

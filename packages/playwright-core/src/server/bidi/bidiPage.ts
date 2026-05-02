@@ -255,7 +255,7 @@ export class BidiPage implements PageDelegate {
     if (!originPage)
       return;
 
-    this._browserContext._browser.downloadCreated(originPage, event.navigation, event.url, event.suggestedFilename, event.suggestedFilename);
+    this._browserContext._browser.downloadCreated(originPage, event.navigation, event.url, event.suggestedFilename);
   }
 
   private _onDownloadEnded(event: bidi.BrowsingContext.DownloadEndParams) {
@@ -517,7 +517,7 @@ export class BidiPage implements PageDelegate {
 
   async getBoundingBox(handle: dom.ElementHandle): Promise<types.Rect | null> {
     const box = await handle.evaluate(element => {
-      if (!(element instanceof Element))
+      if (!(element instanceof Element) || element.getClientRects().length === 0)
         return null;
       const rect = element.getBoundingClientRect();
       return { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
@@ -615,7 +615,11 @@ export class BidiPage implements PageDelegate {
     const fromContext = toBidiExecutionContext(handle._context);
     const nodeId = await fromContext.nodeIdForElementHandle(handle);
     const executionContext = toBidiExecutionContext(to);
-    return await executionContext.remoteObjectForNodeId(to, nodeId) as dom.ElementHandle<T>;
+    try {
+      return await executionContext.remoteObjectForNodeId(to, nodeId) as dom.ElementHandle<T>;
+    } catch {
+      throw new Error(dom.kUnableToAdoptErrorMessage);
+    }
   }
 
   async inputActionEpilogue(): Promise<void> {
