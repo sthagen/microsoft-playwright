@@ -16002,26 +16002,6 @@ export interface BrowserType<Unused = {}> {
    */
   launchServer(options?: {
     /**
-     * This option allows the connecting client to expose its local network to the browser via
-     * [`exposeNetwork`](https://playwright.dev/docs/api/class-browsertype#browser-type-connect-option-expose-network).
-     * The value is the maximum set of network rules the server will accept; the client must request a subset of these
-     * rules through `exposeNetwork`, otherwise its requests will be served directly from the server. Consists of a list
-     * of rules separated by comma.
-     *
-     * Available rules:
-     * 1. Hostname pattern, for example: `example.com`, `*.org:99`, `x.*.y.com`, `*foo.org`.
-     * 1. IP literal, for example: `127.0.0.1`, `0.0.0.0:99`, `[::1]`, `[0:0::1]:99`.
-     * 1. `<loopback>` that matches local loopback interfaces: `localhost`, `*.localhost`, `127.0.0.1`, `[::1]`.
-     *
-     * Some common examples:
-     * 1. `"*"` to allow exposing any network.
-     * 1. `"<loopback>"` to allow exposing localhost network.
-     * 1. `"*.test.internal-domain,*.staging.internal-domain,<loopback>"` to allow exposing test/staging deployments
-     *    and localhost.
-     */
-    allowClientNetwork?: string;
-
-    /**
      * **NOTE** Use custom browser args at your own risk, as some of them may break Playwright functionality.
      *
      * Additional arguments to pass to the browser instance. The list of Chromium flags can be found
@@ -19716,10 +19696,20 @@ export interface ConsoleMessage {
     /**
      * 0-based line number in the resource.
      */
-    lineNumber: number;
+    line: number;
 
     /**
      * 0-based column number in the resource.
+     */
+    column: number;
+
+    /**
+     * 0-based line number in the resource. Deprecated, use `line` instead.
+     */
+    lineNumber: number;
+
+    /**
+     * 0-based column number in the resource. Deprecated, use `column` instead.
      */
     columnNumber: number;
   };
@@ -22919,10 +22909,15 @@ export interface ConnectOverCDPOptions {
   isLocal?: boolean;
 
   /**
-   * When true, Playwright will not send default overrides to the browser on the default context. This includes
-   * `Browser.setDownloadBehavior`, `Emulation.setFocusEmulationEnabled`, and `Emulation.setEmulatedMedia`. Useful when
-   * attaching to a user's daily-driver browser where these overrides would interfere with existing browser state. New
-   * contexts created via
+   * When true, Playwright will not apply its default overrides to the existing default browser context. Specifically,
+   * [`acceptDownloads`](https://playwright.dev/docs/api/class-browser#browser-new-context-option-accept-downloads) is
+   * left at the browser's setting, focus emulation is not enabled, and media emulation options (such as
+   * [`colorScheme`](https://playwright.dev/docs/api/class-browser#browser-new-context-option-color-scheme),
+   * [`reducedMotion`](https://playwright.dev/docs/api/class-browser#browser-new-context-option-reduced-motion),
+   * [`forcedColors`](https://playwright.dev/docs/api/class-browser#browser-new-context-option-forced-colors), and
+   * [`contrast`](https://playwright.dev/docs/api/class-browser#browser-new-context-option-contrast)) are not applied.
+   * Useful when attaching to a user's daily-driver browser where these overrides would interfere with existing browser
+   * state. New contexts created via
    * [browser.newContext([options])](https://playwright.dev/docs/api/class-browser#browser-new-context) are not
    * affected. Defaults to `false`.
    */

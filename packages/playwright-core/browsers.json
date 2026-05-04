@@ -3,49 +3,49 @@
   "browsers": [
     {
       "name": "chromium",
-      "revision": "1222",
+      "revision": "1223",
       "installByDefault": true,
-      "browserVersion": "148.0.7778.56",
+      "browserVersion": "148.0.7778.96",
       "title": "Chrome for Testing"
     },
     {
       "name": "chromium-headless-shell",
-      "revision": "1222",
+      "revision": "1223",
       "installByDefault": true,
-      "browserVersion": "148.0.7778.56",
+      "browserVersion": "148.0.7778.96",
       "title": "Chrome Headless Shell"
     },
     {
       "name": "chromium-tip-of-tree",
-      "revision": "1425",
+      "revision": "1426",
       "installByDefault": false,
-      "browserVersion": "149.0.7812.3",
+      "browserVersion": "149.0.7816.0",
       "title": "Chrome Canary for Testing"
     },
     {
       "name": "chromium-tip-of-tree-headless-shell",
-      "revision": "1425",
+      "revision": "1426",
       "installByDefault": false,
-      "browserVersion": "149.0.7812.3",
+      "browserVersion": "149.0.7816.0",
       "title": "Chrome Canary Headless Shell"
     },
     {
       "name": "firefox",
-      "revision": "1515",
+      "revision": "1518",
       "installByDefault": true,
       "browserVersion": "149.0",
       "title": "Firefox"
     },
     {
       "name": "firefox-beta",
-      "revision": "1509",
+      "revision": "1511",
       "installByDefault": false,
       "browserVersion": "148.0b9",
       "title": "Firefox Beta"
     },
     {
       "name": "webkit",
-      "revision": "2285",
+      "revision": "2286",
       "installByDefault": true,
       "revisionOverrides": {
         "mac14": "2251",
