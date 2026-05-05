@@ -165,6 +165,11 @@ export const Dashboard: React.FC<DashboardProps> = ({ model }) => {
   const selectedTab = tabs?.find(t => t.selected);
   const ready = !!selectedTab;
 
+  const [omniboxValue, setOmniboxValue] = React.useState(selectedTab?.url ?? '');
+  React.useEffect(() => {
+    setOmniboxValue(selectedTab?.url ?? '');
+  }, [selectedTab?.url]);
+
   function imgCoords(e: React.MouseEvent): { x: number; y: number } {
     const vw = liveFrame?.viewportWidth ?? 0;
     const vh = liveFrame?.viewportHeight ?? 0;
@@ -331,8 +336,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ model }) => {
                     placeholder='Search or enter URL'
                     spellCheck={false}
                     autoComplete='off'
-                    value={selectedTab?.url}
-                    onChange={() => {}}
+                    value={omniboxValue}
+                    onChange={e => setOmniboxValue(e.target.value)}
                     onKeyDown={e => {
                       if (!interactive)
                         return;

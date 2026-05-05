@@ -376,7 +376,7 @@ const snapshot = declareCommand({
   options: z.object({
     filename: z.string().optional().describe('Save snapshot to markdown file instead of returning it in the response.'),
     depth: numberArg.optional().describe('Limit snapshot depth, unlimited by default.'),
-    boxes: z.boolean().optional().describe('Include each element\'s bounding box as [box=x,y,width,height] in the snapshot.'),
+    boxes: z.boolean().optional().describe('Include each element\'s bounding box as [box=x,y,width,height] in the snapshot. Coordinates are viewport-relative, in CSS pixels (Element.getBoundingClientRect).'),
   }),
   toolName: 'browser_snapshot',
   toolParams: ({ filename, target, depth, boxes }) => ({ filename, target, depth, boxes }),
@@ -973,6 +973,7 @@ const dashboardShow = declareCommand({
   name: 'show',
   description: 'Show Playwright Dashboard',
   category: 'devtools',
+  raw: true,
   args: z.object({}),
   options: z.object({
     port: numberArg.optional().describe('Start as a blocking HTTP server on this port (use 0 for a random port)'),
@@ -980,7 +981,7 @@ const dashboardShow = declareCommand({
     annotate: z.boolean().optional().describe('Switch the dashboard into annotation mode.'),
     kill: z.boolean().optional().describe('Kill the dashboard daemon.'),
   }),
-  toolName: '',
+  toolName: ({ annotate }) => annotate ? 'browser_annotate' : '',
   toolParams: () => ({}),
 });
 

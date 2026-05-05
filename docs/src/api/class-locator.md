@@ -150,21 +150,6 @@ var button = page.GetByRole(AriaRole.Button).And(page.GetByTitle("Subscribe"));
 
 Additional locator to match.
 
-## async method: Locator.ariaRef
-* since: v1.60
-* langs: js
-- returns: <[null]|[string]>
-
-Returns the aria ref (for example `e1`, `e2`) assigned to this element by the most recent aria snapshot, or `null`
-if no ref has been assigned yet. Call [`method: Locator.ariaSnapshot`] or [`method: Page.ariaSnapshot`] before this
-method to ensure a ref is available.
-
-### option: Locator.ariaRef.timeout = %%-input-timeout-%%
-* since: v1.60
-
-### option: Locator.ariaRef.timeout = %%-input-timeout-js-%%
-* since: v1.60
-
 ## async method: Locator.ariaSnapshot
 * since: v1.49
 - returns: <[string]>
@@ -248,7 +233,9 @@ When specified, limits the depth of the snapshot.
 * since: v1.60
 - `boxes` <[boolean]>
 
-When `true`, appends each element's bounding box as `[box=x,y,width,height]` to the snapshot. Defaults to `false`.
+When `true`, appends each element's bounding box as `[box=x,y,width,height]` to the snapshot. Coordinates are
+relative to the viewport, in CSS pixels, as returned by [`Element.getBoundingClientRect()`](https://developer.mozilla.org/en-US/docs/Web/API/Element/getBoundingClientRect).
+Defaults to `false`.
 
 ## async method: Locator.blur
 * since: v1.28
@@ -1489,7 +1476,7 @@ Attribute name to get the value for.
 ## async method: Locator.hideHighlight
 * since: v1.60
 
-Hide element highlight added with Highlight the corresponding element(s) on the screen. Useful for debugging, don't commit the code that uses [`method: Locator.highlight`].
+Hides the element highlight previously added by [`method: Locator.highlight`].
 
 ## async method: Locator.highlight
 * since: v1.20
@@ -1500,13 +1487,13 @@ Highlight the corresponding element(s) on the screen. Useful for debugging, don'
 ### option: Locator.highlight.style
 * since: v1.60
 * langs: js
-- `style` <[string]|[Object]<[string], [any]>>
+- `style` <[string]|[Object]<[string], [string]|[number]>>
 
 Inline CSS applied to the highlight overlay, e.g.
 
 ```js
-await locator.highlight('outline: 2px dashed red');
-await locator.highlight({ color: 'red' });
+await locator.highlight({ style: 'outline: 2px dashed red' });
+await locator.highlight({ style: { color: 'red' } });
 ```
 
 ### option: Locator.highlight.style

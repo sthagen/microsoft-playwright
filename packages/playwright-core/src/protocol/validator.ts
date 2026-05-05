@@ -20,545 +20,138 @@ import { scheme, tOptional, tObject, tBoolean, tInt, tFloat, tString, tAny, tEnu
 export type { Validator, ValidatorContext } from './validatorPrimitives';
 export { ValidationError, findValidator, maybeFindValidator, createMetadataValidator } from './validatorPrimitives';
 
-scheme.StackFrame = tObject({
-  file: tString,
-  line: tInt,
-  column: tInt,
-  function: tOptional(tString),
+scheme.AndroidInitializer = tOptional(tObject({}));
+scheme.AndroidDevicesParams = tObject({
+  host: tOptional(tString),
+  port: tOptional(tInt),
+  omitDriverInstall: tOptional(tBoolean),
 });
-scheme.Metadata = tObject({
-  location: tOptional(tObject({
-    file: tString,
-    line: tOptional(tInt),
-    column: tOptional(tInt),
-  })),
-  title: tOptional(tString),
-  internal: tOptional(tBoolean),
-  stepId: tOptional(tString),
+scheme.AndroidDevicesResult = tObject({
+  devices: tArray(tChannel(['AndroidDevice'])),
 });
-scheme.ClientSideCallMetadata = tObject({
-  id: tInt,
-  stack: tOptional(tArray(tType('StackFrame'))),
-});
-scheme.Point = tObject({
-  x: tFloat,
-  y: tFloat,
-});
-scheme.Rect = tObject({
-  x: tFloat,
-  y: tFloat,
-  width: tFloat,
-  height: tFloat,
-});
-scheme.SerializedValue = tObject({
-  n: tOptional(tFloat),
-  b: tOptional(tBoolean),
-  s: tOptional(tString),
-  v: tOptional(tEnum(['null', 'undefined', 'NaN', 'Infinity', '-Infinity', '-0'])),
-  d: tOptional(tString),
-  u: tOptional(tString),
-  bi: tOptional(tString),
-  ta: tOptional(tObject({
-    b: tBinary,
-    k: tEnum(['i8', 'ui8', 'ui8c', 'i16', 'ui16', 'i32', 'ui32', 'f32', 'f64', 'bi64', 'bui64']),
-  })),
-  e: tOptional(tObject({
-    m: tString,
-    n: tString,
-    s: tString,
-  })),
-  r: tOptional(tObject({
-    p: tString,
-    f: tString,
-  })),
-  a: tOptional(tArray(tType('SerializedValue'))),
-  o: tOptional(tArray(tObject({
-    k: tString,
-    v: tType('SerializedValue'),
-  }))),
-  h: tOptional(tInt),
-  id: tOptional(tInt),
-  ref: tOptional(tInt),
-});
-scheme.SerializedArgument = tObject({
-  value: tType('SerializedValue'),
-  handles: tArray(tChannel('*')),
-});
-scheme.ExpectedTextValue = tObject({
-  string: tOptional(tString),
-  regexSource: tOptional(tString),
-  regexFlags: tOptional(tString),
-  matchSubstring: tOptional(tBoolean),
-  ignoreCase: tOptional(tBoolean),
-  normalizeWhiteSpace: tOptional(tBoolean),
-});
-scheme.SelectorEngine = tObject({
-  name: tString,
-  source: tString,
-  contentScript: tOptional(tBoolean),
-});
-scheme.URLPattern = tObject({
-  hash: tString,
-  hostname: tString,
-  password: tString,
-  pathname: tString,
-  port: tString,
-  protocol: tString,
-  search: tString,
-  username: tString,
-});
-scheme.SetNetworkCookie = tObject({
-  name: tString,
-  value: tString,
-  url: tOptional(tString),
-  domain: tOptional(tString),
-  path: tOptional(tString),
-  expires: tOptional(tFloat),
-  httpOnly: tOptional(tBoolean),
-  secure: tOptional(tBoolean),
-  sameSite: tOptional(tEnum(['Strict', 'Lax', 'None'])),
-  partitionKey: tOptional(tString),
-  _crHasCrossSiteAncestor: tOptional(tBoolean),
-});
-scheme.NetworkCookie = tObject({
-  name: tString,
-  value: tString,
-  domain: tString,
-  path: tString,
-  expires: tFloat,
-  httpOnly: tBoolean,
-  secure: tBoolean,
-  sameSite: tEnum(['Strict', 'Lax', 'None']),
-  partitionKey: tOptional(tString),
-  _crHasCrossSiteAncestor: tOptional(tBoolean),
-});
-scheme.NameValue = tObject({
-  name: tString,
-  value: tString,
-});
-scheme.IndexedDBDatabase = tObject({
-  name: tString,
-  version: tInt,
-  stores: tArray(tObject({
-    name: tString,
-    autoIncrement: tBoolean,
-    keyPath: tOptional(tString),
-    keyPathArray: tOptional(tArray(tString)),
-    records: tArray(tObject({
-      key: tOptional(tAny),
-      keyEncoded: tOptional(tAny),
-      value: tOptional(tAny),
-      valueEncoded: tOptional(tAny),
-    })),
-    indexes: tArray(tObject({
-      name: tString,
-      keyPath: tOptional(tString),
-      keyPathArray: tOptional(tArray(tString)),
-      multiEntry: tBoolean,
-      unique: tBoolean,
-    })),
-  })),
-});
-scheme.SetOriginStorage = tObject({
-  origin: tString,
-  localStorage: tArray(tType('NameValue')),
-  indexedDB: tOptional(tArray(tType('IndexedDBDatabase'))),
-});
-scheme.OriginStorage = tObject({
-  origin: tString,
-  localStorage: tArray(tType('NameValue')),
-  indexedDB: tOptional(tArray(tType('IndexedDBDatabase'))),
-});
-scheme.SerializedError = tObject({
-  error: tOptional(tObject({
-    message: tString,
-    name: tString,
-    stack: tOptional(tString),
-  })),
-  value: tOptional(tType('SerializedValue')),
-});
-scheme.RecordHarOptions = tObject({
-  content: tOptional(tEnum(['embed', 'attach', 'omit'])),
-  mode: tOptional(tEnum(['full', 'minimal'])),
-  urlGlob: tOptional(tString),
-  urlRegexSource: tOptional(tString),
-  urlRegexFlags: tOptional(tString),
-  harPath: tOptional(tString),
-  resourcesDir: tOptional(tString),
-});
-scheme.FormField = tObject({
-  name: tString,
-  value: tOptional(tString),
-  file: tOptional(tObject({
-    name: tString,
-    mimeType: tOptional(tString),
-    buffer: tBinary,
-  })),
-});
-scheme.SDKLanguage = tEnum(['javascript', 'python', 'java', 'csharp']);
-scheme.APIRequestContextInitializer = tObject({
-  tracing: tChannel(['Tracing']),
-});
-scheme.APIRequestContextFetchParams = tObject({
-  url: tString,
-  encodedParams: tOptional(tString),
-  params: tOptional(tArray(tType('NameValue'))),
-  method: tOptional(tString),
-  headers: tOptional(tArray(tType('NameValue'))),
-  postData: tOptional(tBinary),
-  jsonData: tOptional(tString),
-  formData: tOptional(tArray(tType('NameValue'))),
-  multipartData: tOptional(tArray(tType('FormField'))),
-  timeout: tFloat,
-  failOnStatusCode: tOptional(tBoolean),
-  ignoreHTTPSErrors: tOptional(tBoolean),
-  maxRedirects: tOptional(tInt),
-  maxRetries: tOptional(tInt),
-});
-scheme.APIRequestContextFetchResult = tObject({
-  response: tType('APIResponse'),
-});
-scheme.APIRequestContextFetchResponseBodyParams = tObject({
-  fetchUid: tString,
-});
-scheme.APIRequestContextFetchResponseBodyResult = tObject({
-  binary: tOptional(tBinary),
-});
-scheme.APIRequestContextFetchLogParams = tObject({
-  fetchUid: tString,
-});
-scheme.APIRequestContextFetchLogResult = tObject({
-  log: tArray(tString),
-});
-scheme.APIRequestContextStorageStateParams = tObject({
-  indexedDB: tOptional(tBoolean),
-});
-scheme.APIRequestContextStorageStateResult = tObject({
-  cookies: tArray(tType('NetworkCookie')),
-  origins: tArray(tType('OriginStorage')),
-});
-scheme.APIRequestContextDisposeAPIResponseParams = tObject({
-  fetchUid: tString,
-});
-scheme.APIRequestContextDisposeAPIResponseResult = tOptional(tObject({}));
-scheme.APIRequestContextDisposeParams = tObject({
-  reason: tOptional(tString),
-});
-scheme.APIRequestContextDisposeResult = tOptional(tObject({}));
-scheme.APIResponse = tObject({
-  fetchUid: tString,
-  url: tString,
-  status: tInt,
-  statusText: tString,
-  headers: tArray(tType('NameValue')),
-});
-scheme.LifecycleEvent = tEnum(['load', 'domcontentloaded', 'networkidle', 'commit']);
-scheme.ConsoleMessagesFilter = tEnum(['all', 'since-navigation']);
-scheme.LocalUtilsInitializer = tObject({
-  deviceDescriptors: tArray(tObject({
-    name: tString,
-    descriptor: tObject({
-      userAgent: tString,
-      viewport: tObject({
-        width: tInt,
-        height: tInt,
-      }),
-      screen: tOptional(tObject({
-        width: tInt,
-        height: tInt,
-      })),
-      deviceScaleFactor: tFloat,
-      isMobile: tBoolean,
-      hasTouch: tBoolean,
-      defaultBrowserType: tEnum(['chromium', 'firefox', 'webkit']),
-    }),
-  })),
-});
-scheme.LocalUtilsZipParams = tObject({
-  zipFile: tString,
-  entries: tArray(tType('NameValue')),
-  stacksId: tOptional(tString),
-  mode: tEnum(['write', 'append']),
-  includeSources: tBoolean,
-  additionalSources: tOptional(tArray(tString)),
-});
-scheme.LocalUtilsZipResult = tOptional(tObject({}));
-scheme.LocalUtilsHarOpenParams = tObject({
-  file: tString,
-});
-scheme.LocalUtilsHarOpenResult = tObject({
-  harId: tOptional(tString),
-  error: tOptional(tString),
-});
-scheme.LocalUtilsHarLookupParams = tObject({
-  harId: tString,
-  url: tString,
-  method: tString,
-  headers: tArray(tType('NameValue')),
-  postData: tOptional(tBinary),
-  isNavigationRequest: tBoolean,
-});
-scheme.LocalUtilsHarLookupResult = tObject({
-  action: tEnum(['error', 'redirect', 'fulfill', 'noentry']),
-  message: tOptional(tString),
-  redirectURL: tOptional(tString),
-  status: tOptional(tInt),
-  headers: tOptional(tArray(tType('NameValue'))),
-  body: tOptional(tBinary),
-});
-scheme.LocalUtilsHarCloseParams = tObject({
-  harId: tString,
-});
-scheme.LocalUtilsHarCloseResult = tOptional(tObject({}));
-scheme.LocalUtilsHarUnzipParams = tObject({
-  zipFile: tString,
-  harFile: tString,
-  resourcesDir: tOptional(tString),
-});
-scheme.LocalUtilsHarUnzipResult = tOptional(tObject({}));
-scheme.LocalUtilsConnectParams = tObject({
-  endpoint: tString,
-  headers: tOptional(tAny),
-  exposeNetwork: tOptional(tString),
-  slowMo: tOptional(tFloat),
-  timeout: tFloat,
-  socksProxyRedirectPortForTest: tOptional(tInt),
-});
-scheme.LocalUtilsConnectResult = tObject({
-  pipe: tChannel(['JsonPipe']),
-  headers: tArray(tType('NameValue')),
-});
-scheme.LocalUtilsTracingStartedParams = tObject({
-  tracesDir: tOptional(tString),
-  traceName: tString,
-  live: tOptional(tBoolean),
-});
-scheme.LocalUtilsTracingStartedResult = tObject({
-  stacksId: tString,
-});
-scheme.LocalUtilsAddStackToTracingNoReplyParams = tObject({
-  callData: tType('ClientSideCallMetadata'),
-});
-scheme.LocalUtilsAddStackToTracingNoReplyResult = tOptional(tObject({}));
-scheme.LocalUtilsTraceDiscardedParams = tObject({
-  stacksId: tString,
-});
-scheme.LocalUtilsTraceDiscardedResult = tOptional(tObject({}));
-scheme.LocalUtilsGlobToRegexParams = tObject({
-  glob: tString,
-  baseURL: tOptional(tString),
-  webSocketUrl: tOptional(tBoolean),
-});
-scheme.LocalUtilsGlobToRegexResult = tObject({
-  regex: tString,
-});
-scheme.RootInitializer = tOptional(tObject({}));
-scheme.RootInitializeParams = tObject({
-  sdkLanguage: tType('SDKLanguage'),
-});
-scheme.RootInitializeResult = tObject({
-  playwright: tChannel(['Playwright']),
-});
-scheme.PlaywrightInitializer = tObject({
-  chromium: tChannel(['BrowserType']),
-  firefox: tChannel(['BrowserType']),
-  webkit: tChannel(['BrowserType']),
-  android: tChannel(['Android']),
-  utils: tOptional(tChannel(['LocalUtils'])),
-  preLaunchedBrowser: tOptional(tChannel(['Browser'])),
-  preConnectedAndroidDevice: tOptional(tChannel(['AndroidDevice'])),
-  socksSupport: tOptional(tChannel(['SocksSupport'])),
-});
-scheme.PlaywrightNewRequestParams = tObject({
-  baseURL: tOptional(tString),
-  userAgent: tOptional(tString),
-  ignoreHTTPSErrors: tOptional(tBoolean),
-  extraHTTPHeaders: tOptional(tArray(tType('NameValue'))),
-  failOnStatusCode: tOptional(tBoolean),
-  clientCertificates: tOptional(tArray(tObject({
-    origin: tString,
-    cert: tOptional(tBinary),
-    key: tOptional(tBinary),
-    passphrase: tOptional(tString),
-    pfx: tOptional(tBinary),
-  }))),
-  maxRedirects: tOptional(tInt),
-  httpCredentials: tOptional(tObject({
-    username: tString,
-    password: tString,
-    origin: tOptional(tString),
-    send: tOptional(tEnum(['always', 'unauthorized'])),
-  })),
-  proxy: tOptional(tObject({
-    server: tString,
-    bypass: tOptional(tString),
-    username: tOptional(tString),
-    password: tOptional(tString),
-  })),
-  storageState: tOptional(tObject({
-    cookies: tOptional(tArray(tType('NetworkCookie'))),
-    origins: tOptional(tArray(tType('SetOriginStorage'))),
-  })),
-  tracesDir: tOptional(tString),
-});
-scheme.PlaywrightNewRequestResult = tObject({
-  request: tChannel(['APIRequestContext']),
-});
-scheme.RecorderSource = tObject({
-  isRecorded: tBoolean,
-  id: tString,
-  label: tString,
-  text: tString,
-  language: tString,
-  highlight: tArray(tObject({
-    line: tInt,
-    type: tString,
-  })),
-  revealLine: tOptional(tInt),
-  group: tOptional(tString),
-});
-scheme.DebugControllerInitializer = tOptional(tObject({}));
-scheme.DebugControllerInspectRequestedEvent = tObject({
-  selector: tString,
-  locator: tString,
-  ariaSnapshot: tString,
-});
-scheme.DebugControllerSetModeRequestedEvent = tObject({
-  mode: tString,
-});
-scheme.DebugControllerStateChangedEvent = tObject({
-  pageCount: tInt,
-});
-scheme.DebugControllerSourceChangedEvent = tObject({
-  text: tString,
-  header: tOptional(tString),
-  footer: tOptional(tString),
-  actions: tOptional(tArray(tString)),
-});
-scheme.DebugControllerPausedEvent = tObject({
-  paused: tBoolean,
-});
-scheme.DebugControllerInitializeParams = tObject({
-  codegenId: tString,
-  sdkLanguage: tType('SDKLanguage'),
-});
-scheme.DebugControllerInitializeResult = tOptional(tObject({}));
-scheme.DebugControllerSetReportStateChangedParams = tObject({
-  enabled: tBoolean,
-});
-scheme.DebugControllerSetReportStateChangedResult = tOptional(tObject({}));
-scheme.DebugControllerSetRecorderModeParams = tObject({
-  mode: tEnum(['inspecting', 'recording', 'none']),
-  testIdAttributeName: tOptional(tString),
-  generateAutoExpect: tOptional(tBoolean),
-});
-scheme.DebugControllerSetRecorderModeResult = tOptional(tObject({}));
-scheme.DebugControllerHighlightParams = tObject({
-  selector: tOptional(tString),
-  ariaTemplate: tOptional(tString),
-});
-scheme.DebugControllerHighlightResult = tOptional(tObject({}));
-scheme.DebugControllerHideHighlightParams = tOptional(tObject({}));
-scheme.DebugControllerHideHighlightResult = tOptional(tObject({}));
-scheme.DebugControllerResumeParams = tOptional(tObject({}));
-scheme.DebugControllerResumeResult = tOptional(tObject({}));
-scheme.DebugControllerKillParams = tOptional(tObject({}));
-scheme.DebugControllerKillResult = tOptional(tObject({}));
-scheme.SocksSupportInitializer = tOptional(tObject({}));
-scheme.SocksSupportSocksRequestedEvent = tObject({
-  uid: tString,
-  host: tString,
-  port: tInt,
-});
-scheme.SocksSupportSocksDataEvent = tObject({
-  uid: tString,
+scheme.AndroidSocketInitializer = tOptional(tObject({}));
+scheme.AndroidSocketDataEvent = tObject({
   data: tBinary,
 });
-scheme.SocksSupportSocksClosedEvent = tObject({
-  uid: tString,
-});
-scheme.SocksSupportSocksConnectedParams = tObject({
-  uid: tString,
-  host: tString,
-  port: tInt,
-});
-scheme.SocksSupportSocksConnectedResult = tOptional(tObject({}));
-scheme.SocksSupportSocksFailedParams = tObject({
-  uid: tString,
-  errorCode: tString,
-});
-scheme.SocksSupportSocksFailedResult = tOptional(tObject({}));
-scheme.SocksSupportSocksDataParams = tObject({
-  uid: tString,
+scheme.AndroidSocketCloseEvent = tOptional(tObject({}));
+scheme.AndroidSocketWriteParams = tObject({
   data: tBinary,
 });
-scheme.SocksSupportSocksDataResult = tOptional(tObject({}));
-scheme.SocksSupportSocksErrorParams = tObject({
-  uid: tString,
-  error: tString,
+scheme.AndroidSocketWriteResult = tOptional(tObject({}));
+scheme.AndroidSocketCloseParams = tOptional(tObject({}));
+scheme.AndroidSocketCloseResult = tOptional(tObject({}));
+scheme.AndroidDeviceInitializer = tObject({
+  model: tString,
+  serial: tString,
 });
-scheme.SocksSupportSocksErrorResult = tOptional(tObject({}));
-scheme.SocksSupportSocksEndParams = tObject({
-  uid: tString,
+scheme.AndroidDeviceCloseEvent = tOptional(tObject({}));
+scheme.AndroidDeviceWebViewAddedEvent = tObject({
+  webView: tType('AndroidWebView'),
 });
-scheme.SocksSupportSocksEndResult = tOptional(tObject({}));
-scheme.BrowserTypeInitializer = tObject({
-  executablePath: tString,
-  name: tString,
+scheme.AndroidDeviceWebViewRemovedEvent = tObject({
+  socketName: tString,
 });
-scheme.BrowserTypeLaunchParams = tObject({
-  channel: tOptional(tString),
-  executablePath: tOptional(tString),
-  args: tOptional(tArray(tString)),
-  ignoreAllDefaultArgs: tOptional(tBoolean),
-  ignoreDefaultArgs: tOptional(tArray(tString)),
-  handleSIGINT: tOptional(tBoolean),
-  handleSIGTERM: tOptional(tBoolean),
-  handleSIGHUP: tOptional(tBoolean),
+scheme.AndroidDeviceWaitParams = tObject({
+  androidSelector: tType('AndroidSelector'),
+  state: tOptional(tEnum(['gone'])),
   timeout: tFloat,
-  env: tOptional(tArray(tType('NameValue'))),
-  headless: tOptional(tBoolean),
-  proxy: tOptional(tObject({
-    server: tString,
-    bypass: tOptional(tString),
-    username: tOptional(tString),
-    password: tOptional(tString),
-  })),
-  downloadsPath: tOptional(tString),
-  tracesDir: tOptional(tString),
-  artifactsDir: tOptional(tString),
-  chromiumSandbox: tOptional(tBoolean),
-  firefoxUserPrefs: tOptional(tAny),
-  cdpPort: tOptional(tInt),
-  slowMo: tOptional(tFloat),
 });
-scheme.BrowserTypeLaunchResult = tObject({
-  browser: tChannel(['Browser']),
-});
-scheme.BrowserTypeLaunchPersistentContextParams = tObject({
-  channel: tOptional(tString),
-  executablePath: tOptional(tString),
-  args: tOptional(tArray(tString)),
-  ignoreAllDefaultArgs: tOptional(tBoolean),
-  ignoreDefaultArgs: tOptional(tArray(tString)),
-  handleSIGINT: tOptional(tBoolean),
-  handleSIGTERM: tOptional(tBoolean),
-  handleSIGHUP: tOptional(tBoolean),
+scheme.AndroidDeviceWaitResult = tOptional(tObject({}));
+scheme.AndroidDeviceFillParams = tObject({
+  androidSelector: tType('AndroidSelector'),
+  text: tString,
   timeout: tFloat,
-  env: tOptional(tArray(tType('NameValue'))),
-  headless: tOptional(tBoolean),
-  proxy: tOptional(tObject({
-    server: tString,
-    bypass: tOptional(tString),
-    username: tOptional(tString),
-    password: tOptional(tString),
-  })),
-  downloadsPath: tOptional(tString),
-  tracesDir: tOptional(tString),
-  artifactsDir: tOptional(tString),
-  chromiumSandbox: tOptional(tBoolean),
-  firefoxUserPrefs: tOptional(tAny),
-  cdpPort: tOptional(tInt),
+});
+scheme.AndroidDeviceFillResult = tOptional(tObject({}));
+scheme.AndroidDeviceTapParams = tObject({
+  androidSelector: tType('AndroidSelector'),
+  duration: tOptional(tFloat),
+  timeout: tFloat,
+});
+scheme.AndroidDeviceTapResult = tOptional(tObject({}));
+scheme.AndroidDeviceDragParams = tObject({
+  androidSelector: tType('AndroidSelector'),
+  dest: tType('Point'),
+  speed: tOptional(tFloat),
+  timeout: tFloat,
+});
+scheme.AndroidDeviceDragResult = tOptional(tObject({}));
+scheme.AndroidDeviceFlingParams = tObject({
+  androidSelector: tType('AndroidSelector'),
+  direction: tEnum(['up', 'down', 'left', 'right']),
+  speed: tOptional(tFloat),
+  timeout: tFloat,
+});
+scheme.AndroidDeviceFlingResult = tOptional(tObject({}));
+scheme.AndroidDeviceLongTapParams = tObject({
+  androidSelector: tType('AndroidSelector'),
+  timeout: tFloat,
+});
+scheme.AndroidDeviceLongTapResult = tOptional(tObject({}));
+scheme.AndroidDevicePinchCloseParams = tObject({
+  androidSelector: tType('AndroidSelector'),
+  percent: tFloat,
+  speed: tOptional(tFloat),
+  timeout: tFloat,
+});
+scheme.AndroidDevicePinchCloseResult = tOptional(tObject({}));
+scheme.AndroidDevicePinchOpenParams = tObject({
+  androidSelector: tType('AndroidSelector'),
+  percent: tFloat,
+  speed: tOptional(tFloat),
+  timeout: tFloat,
+});
+scheme.AndroidDevicePinchOpenResult = tOptional(tObject({}));
+scheme.AndroidDeviceScrollParams = tObject({
+  androidSelector: tType('AndroidSelector'),
+  direction: tEnum(['up', 'down', 'left', 'right']),
+  percent: tFloat,
+  speed: tOptional(tFloat),
+  timeout: tFloat,
+});
+scheme.AndroidDeviceScrollResult = tOptional(tObject({}));
+scheme.AndroidDeviceSwipeParams = tObject({
+  androidSelector: tType('AndroidSelector'),
+  direction: tEnum(['up', 'down', 'left', 'right']),
+  percent: tFloat,
+  speed: tOptional(tFloat),
+  timeout: tFloat,
+});
+scheme.AndroidDeviceSwipeResult = tOptional(tObject({}));
+scheme.AndroidDeviceInfoParams = tObject({
+  androidSelector: tType('AndroidSelector'),
+});
+scheme.AndroidDeviceInfoResult = tObject({
+  info: tType('AndroidElementInfo'),
+});
+scheme.AndroidDeviceScreenshotParams = tOptional(tObject({}));
+scheme.AndroidDeviceScreenshotResult = tObject({
+  binary: tBinary,
+});
+scheme.AndroidDeviceInputTypeParams = tObject({
+  text: tString,
+});
+scheme.AndroidDeviceInputTypeResult = tOptional(tObject({}));
+scheme.AndroidDeviceInputPressParams = tObject({
+  key: tString,
+});
+scheme.AndroidDeviceInputPressResult = tOptional(tObject({}));
+scheme.AndroidDeviceInputTapParams = tObject({
+  point: tType('Point'),
+});
+scheme.AndroidDeviceInputTapResult = tOptional(tObject({}));
+scheme.AndroidDeviceInputSwipeParams = tObject({
+  segments: tArray(tType('Point')),
+  steps: tInt,
+});
+scheme.AndroidDeviceInputSwipeResult = tOptional(tObject({}));
+scheme.AndroidDeviceInputDragParams = tObject({
+  from: tType('Point'),
+  to: tType('Point'),
+  steps: tInt,
+});
+scheme.AndroidDeviceInputDragResult = tOptional(tObject({}));
+scheme.AndroidDeviceLaunchBrowserParams = tObject({
   noDefaultViewport: tOptional(tBoolean),
   viewport: tOptional(tObject({
     width: tInt,
@@ -620,32 +213,195 @@ scheme.BrowserTypeLaunchPersistentContextParams = tObject({
   serviceWorkers: tOptional(tEnum(['allow', 'block'])),
   selectorEngines: tOptional(tArray(tType('SelectorEngine'))),
   testIdAttributeName: tOptional(tString),
-  userDataDir: tString,
-  slowMo: tOptional(tFloat),
+  pkg: tOptional(tString),
+  args: tOptional(tArray(tString)),
+  proxy: tOptional(tObject({
+    server: tString,
+    bypass: tOptional(tString),
+    username: tOptional(tString),
+    password: tOptional(tString),
+  })),
 });
-scheme.BrowserTypeLaunchPersistentContextResult = tObject({
-  browser: tChannel(['Browser']),
+scheme.AndroidDeviceLaunchBrowserResult = tObject({
   context: tChannel(['BrowserContext']),
 });
-scheme.BrowserTypeConnectOverCDPParams = tObject({
-  endpointURL: tString,
+scheme.AndroidDeviceOpenParams = tObject({
+  command: tString,
+});
+scheme.AndroidDeviceOpenResult = tObject({
+  socket: tChannel(['AndroidSocket']),
+});
+scheme.AndroidDeviceShellParams = tObject({
+  command: tString,
+});
+scheme.AndroidDeviceShellResult = tObject({
+  result: tBinary,
+});
+scheme.AndroidDeviceInstallApkParams = tObject({
+  file: tBinary,
+  args: tOptional(tArray(tString)),
+});
+scheme.AndroidDeviceInstallApkResult = tOptional(tObject({}));
+scheme.AndroidDevicePushParams = tObject({
+  file: tBinary,
+  path: tString,
+  mode: tOptional(tInt),
+});
+scheme.AndroidDevicePushResult = tOptional(tObject({}));
+scheme.AndroidDeviceConnectToWebViewParams = tObject({
+  socketName: tString,
+});
+scheme.AndroidDeviceConnectToWebViewResult = tObject({
+  context: tChannel(['BrowserContext']),
+});
+scheme.AndroidDeviceCloseParams = tOptional(tObject({}));
+scheme.AndroidDeviceCloseResult = tOptional(tObject({}));
+scheme.AndroidWebView = tObject({
+  pid: tInt,
+  pkg: tString,
+  socketName: tString,
+});
+scheme.AndroidSelector = tObject({
+  checkable: tOptional(tBoolean),
+  checked: tOptional(tBoolean),
+  clazz: tOptional(tString),
+  clickable: tOptional(tBoolean),
+  depth: tOptional(tInt),
+  desc: tOptional(tString),
+  enabled: tOptional(tBoolean),
+  focusable: tOptional(tBoolean),
+  focused: tOptional(tBoolean),
+  hasChild: tOptional(tObject({
+    androidSelector: tType('AndroidSelector'),
+  })),
+  hasDescendant: tOptional(tObject({
+    androidSelector: tType('AndroidSelector'),
+    maxDepth: tOptional(tInt),
+  })),
+  longClickable: tOptional(tBoolean),
+  pkg: tOptional(tString),
+  res: tOptional(tString),
+  scrollable: tOptional(tBoolean),
+  selected: tOptional(tBoolean),
+  text: tOptional(tString),
+});
+scheme.AndroidElementInfo = tObject({
+  children: tOptional(tArray(tType('AndroidElementInfo'))),
+  clazz: tString,
+  desc: tString,
+  res: tString,
+  pkg: tString,
+  text: tString,
+  bounds: tType('Rect'),
+  checkable: tBoolean,
+  checked: tBoolean,
+  clickable: tBoolean,
+  enabled: tBoolean,
+  focusable: tBoolean,
+  focused: tBoolean,
+  longClickable: tBoolean,
+  scrollable: tBoolean,
+  selected: tBoolean,
+});
+scheme.APIRequestContextInitializer = tObject({
+  tracing: tChannel(['Tracing']),
+});
+scheme.APIRequestContextFetchParams = tObject({
+  url: tString,
+  encodedParams: tOptional(tString),
+  params: tOptional(tArray(tType('NameValue'))),
+  method: tOptional(tString),
   headers: tOptional(tArray(tType('NameValue'))),
-  slowMo: tOptional(tFloat),
+  postData: tOptional(tBinary),
+  jsonData: tOptional(tString),
+  formData: tOptional(tArray(tType('NameValue'))),
+  multipartData: tOptional(tArray(tType('FormField'))),
   timeout: tFloat,
-  isLocal: tOptional(tBoolean),
-  noDefaults: tOptional(tBoolean),
+  failOnStatusCode: tOptional(tBoolean),
+  ignoreHTTPSErrors: tOptional(tBoolean),
+  maxRedirects: tOptional(tInt),
+  maxRetries: tOptional(tInt),
 });
-scheme.BrowserTypeConnectOverCDPResult = tObject({
-  browser: tChannel(['Browser']),
-  defaultContext: tOptional(tChannel(['BrowserContext'])),
+scheme.APIRequestContextFetchResult = tObject({
+  response: tType('APIResponse'),
 });
-scheme.BrowserTypeConnectToWorkerParams = tObject({
-  endpoint: tString,
-  timeout: tFloat,
+scheme.APIRequestContextFetchResponseBodyParams = tObject({
+  fetchUid: tString,
 });
-scheme.BrowserTypeConnectToWorkerResult = tObject({
-  worker: tChannel(['Worker']),
+scheme.APIRequestContextFetchResponseBodyResult = tObject({
+  binary: tOptional(tBinary),
 });
+scheme.APIRequestContextFetchLogParams = tObject({
+  fetchUid: tString,
+});
+scheme.APIRequestContextFetchLogResult = tObject({
+  log: tArray(tString),
+});
+scheme.APIRequestContextStorageStateParams = tObject({
+  indexedDB: tOptional(tBoolean),
+});
+scheme.APIRequestContextStorageStateResult = tObject({
+  cookies: tArray(tType('NetworkCookie')),
+  origins: tArray(tType('OriginStorage')),
+});
+scheme.APIRequestContextDisposeAPIResponseParams = tObject({
+  fetchUid: tString,
+});
+scheme.APIRequestContextDisposeAPIResponseResult = tOptional(tObject({}));
+scheme.APIRequestContextDisposeParams = tObject({
+  reason: tOptional(tString),
+});
+scheme.APIRequestContextDisposeResult = tOptional(tObject({}));
+scheme.APIResponse = tObject({
+  fetchUid: tString,
+  url: tString,
+  status: tInt,
+  statusText: tString,
+  headers: tArray(tType('NameValue')),
+});
+scheme.ArtifactInitializer = tObject({
+  absolutePath: tString,
+});
+scheme.ArtifactPathAfterFinishedParams = tOptional(tObject({}));
+scheme.ArtifactPathAfterFinishedResult = tObject({
+  value: tString,
+});
+scheme.ArtifactSaveAsParams = tObject({
+  path: tString,
+});
+scheme.ArtifactSaveAsResult = tOptional(tObject({}));
+scheme.ArtifactSaveAsStreamParams = tOptional(tObject({}));
+scheme.ArtifactSaveAsStreamResult = tObject({
+  stream: tChannel(['Stream']),
+});
+scheme.ArtifactFailureParams = tOptional(tObject({}));
+scheme.ArtifactFailureResult = tObject({
+  error: tOptional(tString),
+});
+scheme.ArtifactStreamParams = tOptional(tObject({}));
+scheme.ArtifactStreamResult = tObject({
+  stream: tChannel(['Stream']),
+});
+scheme.ArtifactCancelParams = tOptional(tObject({}));
+scheme.ArtifactCancelResult = tOptional(tObject({}));
+scheme.ArtifactDeleteParams = tOptional(tObject({}));
+scheme.ArtifactDeleteResult = tOptional(tObject({}));
+scheme.StreamInitializer = tOptional(tObject({}));
+scheme.StreamReadParams = tObject({
+  size: tOptional(tInt),
+});
+scheme.StreamReadResult = tObject({
+  binary: tBinary,
+});
+scheme.StreamCloseParams = tOptional(tObject({}));
+scheme.StreamCloseResult = tOptional(tObject({}));
+scheme.WritableStreamInitializer = tOptional(tObject({}));
+scheme.WritableStreamWriteParams = tObject({
+  binary: tBinary,
+});
+scheme.WritableStreamWriteResult = tOptional(tObject({}));
+scheme.WritableStreamCloseParams = tOptional(tObject({}));
+scheme.WritableStreamCloseResult = tOptional(tObject({}));
 scheme.BrowserInitializer = tObject({
   version: tString,
   name: tString,
@@ -847,29 +603,6 @@ scheme.BrowserStopTracingParams = tOptional(tObject({}));
 scheme.BrowserStopTracingResult = tObject({
   artifact: tChannel(['Artifact']),
 });
-scheme.EventTargetInitializer = tOptional(tObject({}));
-scheme.EventTargetWaitForEventInfoParams = tObject({
-  info: tObject({
-    waitId: tString,
-    phase: tEnum(['before', 'after', 'log']),
-    event: tOptional(tString),
-    message: tOptional(tString),
-    error: tOptional(tString),
-  }),
-});
-scheme.BrowserContextWaitForEventInfoParams = tType('EventTargetWaitForEventInfoParams');
-scheme.PageWaitForEventInfoParams = tType('EventTargetWaitForEventInfoParams');
-scheme.WorkerWaitForEventInfoParams = tType('EventTargetWaitForEventInfoParams');
-scheme.WebSocketWaitForEventInfoParams = tType('EventTargetWaitForEventInfoParams');
-scheme.DebuggerWaitForEventInfoParams = tType('EventTargetWaitForEventInfoParams');
-scheme.AndroidDeviceWaitForEventInfoParams = tType('EventTargetWaitForEventInfoParams');
-scheme.EventTargetWaitForEventInfoResult = tOptional(tObject({}));
-scheme.BrowserContextWaitForEventInfoResult = tType('EventTargetWaitForEventInfoResult');
-scheme.PageWaitForEventInfoResult = tType('EventTargetWaitForEventInfoResult');
-scheme.WorkerWaitForEventInfoResult = tType('EventTargetWaitForEventInfoResult');
-scheme.WebSocketWaitForEventInfoResult = tType('EventTargetWaitForEventInfoResult');
-scheme.DebuggerWaitForEventInfoResult = tType('EventTargetWaitForEventInfoResult');
-scheme.AndroidDeviceWaitForEventInfoResult = tType('EventTargetWaitForEventInfoResult');
 scheme.BrowserContextInitializer = tObject({
   debugger: tChannel(['Debugger']),
   requestContext: tChannel(['APIRequestContext']),
@@ -1194,6 +927,1224 @@ scheme.BrowserContextClockSetSystemTimeParams = tObject({
   timeString: tOptional(tString),
 });
 scheme.BrowserContextClockSetSystemTimeResult = tOptional(tObject({}));
+scheme.BrowserTypeInitializer = tObject({
+  executablePath: tString,
+  name: tString,
+});
+scheme.BrowserTypeLaunchParams = tObject({
+  channel: tOptional(tString),
+  executablePath: tOptional(tString),
+  args: tOptional(tArray(tString)),
+  ignoreAllDefaultArgs: tOptional(tBoolean),
+  ignoreDefaultArgs: tOptional(tArray(tString)),
+  handleSIGINT: tOptional(tBoolean),
+  handleSIGTERM: tOptional(tBoolean),
+  handleSIGHUP: tOptional(tBoolean),
+  timeout: tFloat,
+  env: tOptional(tArray(tType('NameValue'))),
+  headless: tOptional(tBoolean),
+  proxy: tOptional(tObject({
+    server: tString,
+    bypass: tOptional(tString),
+    username: tOptional(tString),
+    password: tOptional(tString),
+  })),
+  downloadsPath: tOptional(tString),
+  tracesDir: tOptional(tString),
+  artifactsDir: tOptional(tString),
+  chromiumSandbox: tOptional(tBoolean),
+  firefoxUserPrefs: tOptional(tAny),
+  cdpPort: tOptional(tInt),
+  slowMo: tOptional(tFloat),
+});
+scheme.BrowserTypeLaunchResult = tObject({
+  browser: tChannel(['Browser']),
+});
+scheme.BrowserTypeLaunchPersistentContextParams = tObject({
+  channel: tOptional(tString),
+  executablePath: tOptional(tString),
+  args: tOptional(tArray(tString)),
+  ignoreAllDefaultArgs: tOptional(tBoolean),
+  ignoreDefaultArgs: tOptional(tArray(tString)),
+  handleSIGINT: tOptional(tBoolean),
+  handleSIGTERM: tOptional(tBoolean),
+  handleSIGHUP: tOptional(tBoolean),
+  timeout: tFloat,
+  env: tOptional(tArray(tType('NameValue'))),
+  headless: tOptional(tBoolean),
+  proxy: tOptional(tObject({
+    server: tString,
+    bypass: tOptional(tString),
+    username: tOptional(tString),
+    password: tOptional(tString),
+  })),
+  downloadsPath: tOptional(tString),
+  tracesDir: tOptional(tString),
+  artifactsDir: tOptional(tString),
+  chromiumSandbox: tOptional(tBoolean),
+  firefoxUserPrefs: tOptional(tAny),
+  cdpPort: tOptional(tInt),
+  noDefaultViewport: tOptional(tBoolean),
+  viewport: tOptional(tObject({
+    width: tInt,
+    height: tInt,
+  })),
+  screen: tOptional(tObject({
+    width: tInt,
+    height: tInt,
+  })),
+  ignoreHTTPSErrors: tOptional(tBoolean),
+  clientCertificates: tOptional(tArray(tObject({
+    origin: tString,
+    cert: tOptional(tBinary),
+    key: tOptional(tBinary),
+    passphrase: tOptional(tString),
+    pfx: tOptional(tBinary),
+  }))),
+  javaScriptEnabled: tOptional(tBoolean),
+  bypassCSP: tOptional(tBoolean),
+  userAgent: tOptional(tString),
+  locale: tOptional(tString),
+  timezoneId: tOptional(tString),
+  geolocation: tOptional(tObject({
+    longitude: tFloat,
+    latitude: tFloat,
+    accuracy: tOptional(tFloat),
+  })),
+  permissions: tOptional(tArray(tString)),
+  extraHTTPHeaders: tOptional(tArray(tType('NameValue'))),
+  offline: tOptional(tBoolean),
+  httpCredentials: tOptional(tObject({
+    username: tString,
+    password: tString,
+    origin: tOptional(tString),
+    send: tOptional(tEnum(['always', 'unauthorized'])),
+  })),
+  deviceScaleFactor: tOptional(tFloat),
+  isMobile: tOptional(tBoolean),
+  hasTouch: tOptional(tBoolean),
+  colorScheme: tOptional(tEnum(['dark', 'light', 'no-preference', 'no-override'])),
+  reducedMotion: tOptional(tEnum(['reduce', 'no-preference', 'no-override'])),
+  forcedColors: tOptional(tEnum(['active', 'none', 'no-override'])),
+  acceptDownloads: tOptional(tEnum(['accept', 'deny', 'internal-browser-default'])),
+  contrast: tOptional(tEnum(['no-preference', 'more', 'no-override'])),
+  baseURL: tOptional(tString),
+  recordVideo: tOptional(tObject({
+    dir: tOptional(tString),
+    size: tOptional(tObject({
+      width: tInt,
+      height: tInt,
+    })),
+    showActions: tOptional(tObject({
+      duration: tOptional(tFloat),
+      position: tOptional(tEnum(['top-left', 'top', 'top-right', 'bottom-left', 'bottom', 'bottom-right'])),
+      fontSize: tOptional(tInt),
+    })),
+  })),
+  strictSelectors: tOptional(tBoolean),
+  serviceWorkers: tOptional(tEnum(['allow', 'block'])),
+  selectorEngines: tOptional(tArray(tType('SelectorEngine'))),
+  testIdAttributeName: tOptional(tString),
+  userDataDir: tString,
+  slowMo: tOptional(tFloat),
+});
+scheme.BrowserTypeLaunchPersistentContextResult = tObject({
+  browser: tChannel(['Browser']),
+  context: tChannel(['BrowserContext']),
+});
+scheme.BrowserTypeConnectOverCDPParams = tObject({
+  endpointURL: tString,
+  headers: tOptional(tArray(tType('NameValue'))),
+  slowMo: tOptional(tFloat),
+  timeout: tFloat,
+  isLocal: tOptional(tBoolean),
+  noDefaults: tOptional(tBoolean),
+});
+scheme.BrowserTypeConnectOverCDPResult = tObject({
+  browser: tChannel(['Browser']),
+  defaultContext: tOptional(tChannel(['BrowserContext'])),
+});
+scheme.BrowserTypeConnectToWorkerParams = tObject({
+  endpoint: tString,
+  timeout: tFloat,
+});
+scheme.BrowserTypeConnectToWorkerResult = tObject({
+  worker: tChannel(['Worker']),
+});
+scheme.Metadata = tObject({
+  location: tOptional(tObject({
+    file: tString,
+    line: tOptional(tInt),
+    column: tOptional(tInt),
+  })),
+  title: tOptional(tString),
+  internal: tOptional(tBoolean),
+  stepId: tOptional(tString),
+});
+scheme.ClientSideCallMetadata = tObject({
+  id: tInt,
+  stack: tOptional(tArray(tType('StackFrame'))),
+});
+scheme.SDKLanguage = tEnum(['javascript', 'python', 'java', 'csharp']);
+scheme.DisposableInitializer = tOptional(tObject({}));
+scheme.DisposableDisposeParams = tOptional(tObject({}));
+scheme.DisposableDisposeResult = tOptional(tObject({}));
+scheme.EventTargetInitializer = tOptional(tObject({}));
+scheme.EventTargetWaitForEventInfoParams = tObject({
+  info: tObject({
+    waitId: tString,
+    phase: tEnum(['before', 'after', 'log']),
+    event: tOptional(tString),
+    message: tOptional(tString),
+    error: tOptional(tString),
+  }),
+});
+scheme.AndroidDeviceWaitForEventInfoParams = tType('EventTargetWaitForEventInfoParams');
+scheme.BrowserContextWaitForEventInfoParams = tType('EventTargetWaitForEventInfoParams');
+scheme.WebSocketWaitForEventInfoParams = tType('EventTargetWaitForEventInfoParams');
+scheme.PageWaitForEventInfoParams = tType('EventTargetWaitForEventInfoParams');
+scheme.DebuggerWaitForEventInfoParams = tType('EventTargetWaitForEventInfoParams');
+scheme.WorkerWaitForEventInfoParams = tType('EventTargetWaitForEventInfoParams');
+scheme.EventTargetWaitForEventInfoResult = tOptional(tObject({}));
+scheme.AndroidDeviceWaitForEventInfoResult = tType('EventTargetWaitForEventInfoResult');
+scheme.BrowserContextWaitForEventInfoResult = tType('EventTargetWaitForEventInfoResult');
+scheme.WebSocketWaitForEventInfoResult = tType('EventTargetWaitForEventInfoResult');
+scheme.PageWaitForEventInfoResult = tType('EventTargetWaitForEventInfoResult');
+scheme.DebuggerWaitForEventInfoResult = tType('EventTargetWaitForEventInfoResult');
+scheme.WorkerWaitForEventInfoResult = tType('EventTargetWaitForEventInfoResult');
+scheme.FrameInitializer = tObject({
+  url: tString,
+  name: tString,
+  parentFrame: tOptional(tChannel(['Frame'])),
+  loadStates: tArray(tType('LifecycleEvent')),
+});
+scheme.FrameLoadstateEvent = tObject({
+  add: tOptional(tType('LifecycleEvent')),
+  remove: tOptional(tType('LifecycleEvent')),
+});
+scheme.FrameNavigatedEvent = tObject({
+  url: tString,
+  name: tString,
+  newDocument: tOptional(tObject({
+    request: tOptional(tChannel(['Request'])),
+  })),
+  error: tOptional(tString),
+});
+scheme.FrameEvalOnSelectorParams = tObject({
+  selector: tString,
+  strict: tOptional(tBoolean),
+  expression: tString,
+  isFunction: tOptional(tBoolean),
+  arg: tType('SerializedArgument'),
+});
+scheme.FrameEvalOnSelectorResult = tObject({
+  value: tType('SerializedValue'),
+});
+scheme.FrameEvalOnSelectorAllParams = tObject({
+  selector: tString,
+  expression: tString,
+  isFunction: tOptional(tBoolean),
+  arg: tType('SerializedArgument'),
+});
+scheme.FrameEvalOnSelectorAllResult = tObject({
+  value: tType('SerializedValue'),
+});
+scheme.FrameAddScriptTagParams = tObject({
+  url: tOptional(tString),
+  content: tOptional(tString),
+  type: tOptional(tString),
+});
+scheme.FrameAddScriptTagResult = tObject({
+  element: tChannel(['ElementHandle']),
+});
+scheme.FrameAddStyleTagParams = tObject({
+  url: tOptional(tString),
+  content: tOptional(tString),
+});
+scheme.FrameAddStyleTagResult = tObject({
+  element: tChannel(['ElementHandle']),
+});
+scheme.FrameAriaSnapshotParams = tObject({
+  mode: tOptional(tEnum(['ai', 'default'])),
+  track: tOptional(tString),
+  selector: tOptional(tString),
+  depth: tOptional(tInt),
+  boxes: tOptional(tBoolean),
+  timeout: tFloat,
+});
+scheme.FrameAriaSnapshotResult = tObject({
+  snapshot: tString,
+});
+scheme.FrameBlurParams = tObject({
+  selector: tString,
+  strict: tOptional(tBoolean),
+  timeout: tFloat,
+});
+scheme.FrameBlurResult = tOptional(tObject({}));
+scheme.FrameCheckParams = tObject({
+  selector: tString,
+  strict: tOptional(tBoolean),
+  force: tOptional(tBoolean),
+  position: tOptional(tType('Point')),
+  timeout: tFloat,
+  trial: tOptional(tBoolean),
+});
+scheme.FrameCheckResult = tOptional(tObject({}));
+scheme.FrameClickParams = tObject({
+  selector: tString,
+  strict: tOptional(tBoolean),
+  force: tOptional(tBoolean),
+  noWaitAfter: tOptional(tBoolean),
+  modifiers: tOptional(tArray(tEnum(['Alt', 'Control', 'ControlOrMeta', 'Meta', 'Shift']))),
+  position: tOptional(tType('Point')),
+  delay: tOptional(tFloat),
+  button: tOptional(tEnum(['left', 'right', 'middle'])),
+  clickCount: tOptional(tInt),
+  timeout: tFloat,
+  trial: tOptional(tBoolean),
+  steps: tOptional(tInt),
+});
+scheme.FrameClickResult = tOptional(tObject({}));
+scheme.FrameContentParams = tOptional(tObject({}));
+scheme.FrameContentResult = tObject({
+  value: tString,
+});
+scheme.FrameDragAndDropParams = tObject({
+  source: tString,
+  target: tString,
+  force: tOptional(tBoolean),
+  timeout: tFloat,
+  trial: tOptional(tBoolean),
+  sourcePosition: tOptional(tType('Point')),
+  targetPosition: tOptional(tType('Point')),
+  strict: tOptional(tBoolean),
+  steps: tOptional(tInt),
+});
+scheme.FrameDragAndDropResult = tOptional(tObject({}));
+scheme.FrameDropParams = tObject({
+  selector: tString,
+  strict: tOptional(tBoolean),
+  position: tOptional(tType('Point')),
+  payloads: tOptional(tArray(tObject({
+    name: tString,
+    mimeType: tOptional(tString),
+    buffer: tBinary,
+  }))),
+  localPaths: tOptional(tArray(tString)),
+  streams: tOptional(tArray(tChannel(['WritableStream']))),
+  data: tOptional(tArray(tObject({
+    mimeType: tString,
+    value: tString,
+  }))),
+  timeout: tFloat,
+});
+scheme.FrameDropResult = tOptional(tObject({}));
+scheme.FrameDblclickParams = tObject({
+  selector: tString,
+  strict: tOptional(tBoolean),
+  force: tOptional(tBoolean),
+  modifiers: tOptional(tArray(tEnum(['Alt', 'Control', 'ControlOrMeta', 'Meta', 'Shift']))),
+  position: tOptional(tType('Point')),
+  delay: tOptional(tFloat),
+  button: tOptional(tEnum(['left', 'right', 'middle'])),
+  timeout: tFloat,
+  trial: tOptional(tBoolean),
+  steps: tOptional(tInt),
+});
+scheme.FrameDblclickResult = tOptional(tObject({}));
+scheme.FrameDispatchEventParams = tObject({
+  selector: tString,
+  strict: tOptional(tBoolean),
+  type: tString,
+  eventInit: tType('SerializedArgument'),
+  timeout: tFloat,
+});
+scheme.FrameDispatchEventResult = tOptional(tObject({}));
+scheme.FrameEvaluateExpressionParams = tObject({
+  expression: tString,
+  isFunction: tOptional(tBoolean),
+  arg: tType('SerializedArgument'),
+});
+scheme.FrameEvaluateExpressionResult = tObject({
+  value: tType('SerializedValue'),
+});
+scheme.FrameEvaluateExpressionHandleParams = tObject({
+  expression: tString,
+  isFunction: tOptional(tBoolean),
+  arg: tType('SerializedArgument'),
+});
+scheme.FrameEvaluateExpressionHandleResult = tObject({
+  handle: tChannel(['ElementHandle', 'JSHandle']),
+});
+scheme.FrameFillParams = tObject({
+  selector: tString,
+  strict: tOptional(tBoolean),
+  value: tString,
+  force: tOptional(tBoolean),
+  timeout: tFloat,
+});
+scheme.FrameFillResult = tOptional(tObject({}));
+scheme.FrameFocusParams = tObject({
+  selector: tString,
+  strict: tOptional(tBoolean),
+  timeout: tFloat,
+});
+scheme.FrameFocusResult = tOptional(tObject({}));
+scheme.FrameFrameElementParams = tOptional(tObject({}));
+scheme.FrameFrameElementResult = tObject({
+  element: tChannel(['ElementHandle']),
+});
+scheme.FrameResolveSelectorParams = tObject({
+  selector: tString,
+});
+scheme.FrameResolveSelectorResult = tObject({
+  resolvedSelector: tString,
+});
+scheme.FrameHighlightParams = tObject({
+  selector: tString,
+  style: tOptional(tString),
+});
+scheme.FrameHighlightResult = tOptional(tObject({}));
+scheme.FrameHideHighlightParams = tObject({
+  selector: tString,
+});
+scheme.FrameHideHighlightResult = tOptional(tObject({}));
+scheme.FrameGetAttributeParams = tObject({
+  selector: tString,
+  strict: tOptional(tBoolean),
+  name: tString,
+  timeout: tFloat,
+});
+scheme.FrameGetAttributeResult = tObject({
+  value: tOptional(tString),
+});
+scheme.FrameGotoParams = tObject({
+  url: tString,
+  timeout: tFloat,
+  waitUntil: tOptional(tType('LifecycleEvent')),
+  referer: tOptional(tString),
+});
+scheme.FrameGotoResult = tObject({
+  response: tOptional(tChannel(['Response'])),
+});
+scheme.FrameHoverParams = tObject({
+  selector: tString,
+  strict: tOptional(tBoolean),
+  force: tOptional(tBoolean),
+  modifiers: tOptional(tArray(tEnum(['Alt', 'Control', 'ControlOrMeta', 'Meta', 'Shift']))),
+  position: tOptional(tType('Point')),
+  timeout: tFloat,
+  trial: tOptional(tBoolean),
+});
+scheme.FrameHoverResult = tOptional(tObject({}));
+scheme.FrameInnerHTMLParams = tObject({
+  selector: tString,
+  strict: tOptional(tBoolean),
+  timeout: tFloat,
+});
+scheme.FrameInnerHTMLResult = tObject({
+  value: tString,
+});
+scheme.FrameInnerTextParams = tObject({
+  selector: tString,
+  strict: tOptional(tBoolean),
+  timeout: tFloat,
+});
+scheme.FrameInnerTextResult = tObject({
+  value: tString,
+});
+scheme.FrameInputValueParams = tObject({
+  selector: tString,
+  strict: tOptional(tBoolean),
+  timeout: tFloat,
+});
+scheme.FrameInputValueResult = tObject({
+  value: tString,
+});
+scheme.FrameIsCheckedParams = tObject({
+  selector: tString,
+  strict: tOptional(tBoolean),
+  timeout: tFloat,
+});
+scheme.FrameIsCheckedResult = tObject({
+  value: tBoolean,
+});
+scheme.FrameIsDisabledParams = tObject({
+  selector: tString,
+  strict: tOptional(tBoolean),
+  timeout: tFloat,
+});
+scheme.FrameIsDisabledResult = tObject({
+  value: tBoolean,
+});
+scheme.FrameIsEnabledParams = tObject({
+  selector: tString,
+  strict: tOptional(tBoolean),
+  timeout: tFloat,
+});
+scheme.FrameIsEnabledResult = tObject({
+  value: tBoolean,
+});
+scheme.FrameIsHiddenParams = tObject({
+  selector: tString,
+  strict: tOptional(tBoolean),
+});
+scheme.FrameIsHiddenResult = tObject({
+  value: tBoolean,
+});
+scheme.FrameIsVisibleParams = tObject({
+  selector: tString,
+  strict: tOptional(tBoolean),
+});
+scheme.FrameIsVisibleResult = tObject({
+  value: tBoolean,
+});
+scheme.FrameIsEditableParams = tObject({
+  selector: tString,
+  strict: tOptional(tBoolean),
+  timeout: tFloat,
+});
+scheme.FrameIsEditableResult = tObject({
+  value: tBoolean,
+});
+scheme.FramePressParams = tObject({
+  selector: tString,
+  strict: tOptional(tBoolean),
+  key: tString,
+  delay: tOptional(tFloat),
+  noWaitAfter: tOptional(tBoolean),
+  timeout: tFloat,
+});
+scheme.FramePressResult = tOptional(tObject({}));
+scheme.FrameQuerySelectorParams = tObject({
+  selector: tString,
+  strict: tOptional(tBoolean),
+});
+scheme.FrameQuerySelectorResult = tObject({
+  element: tOptional(tChannel(['ElementHandle'])),
+});
+scheme.FrameQuerySelectorAllParams = tObject({
+  selector: tString,
+});
+scheme.FrameQuerySelectorAllResult = tObject({
+  elements: tArray(tChannel(['ElementHandle'])),
+});
+scheme.FrameQueryCountParams = tObject({
+  selector: tString,
+});
+scheme.FrameQueryCountResult = tObject({
+  value: tInt,
+});
+scheme.FrameSelectOptionParams = tObject({
+  selector: tString,
+  strict: tOptional(tBoolean),
+  elements: tOptional(tArray(tChannel(['ElementHandle']))),
+  options: tOptional(tArray(tObject({
+    valueOrLabel: tOptional(tString),
+    value: tOptional(tString),
+    label: tOptional(tString),
+    index: tOptional(tInt),
+  }))),
+  force: tOptional(tBoolean),
+  timeout: tFloat,
+});
+scheme.FrameSelectOptionResult = tObject({
+  values: tArray(tString),
+});
+scheme.FrameSetContentParams = tObject({
+  html: tString,
+  timeout: tFloat,
+  waitUntil: tOptional(tType('LifecycleEvent')),
+});
+scheme.FrameSetContentResult = tOptional(tObject({}));
+scheme.FrameSetInputFilesParams = tObject({
+  selector: tString,
+  strict: tOptional(tBoolean),
+  payloads: tOptional(tArray(tObject({
+    name: tString,
+    mimeType: tOptional(tString),
+    buffer: tBinary,
+  }))),
+  localDirectory: tOptional(tString),
+  directoryStream: tOptional(tChannel(['WritableStream'])),
+  localPaths: tOptional(tArray(tString)),
+  streams: tOptional(tArray(tChannel(['WritableStream']))),
+  timeout: tFloat,
+});
+scheme.FrameSetInputFilesResult = tOptional(tObject({}));
+scheme.FrameTapParams = tObject({
+  selector: tString,
+  strict: tOptional(tBoolean),
+  force: tOptional(tBoolean),
+  modifiers: tOptional(tArray(tEnum(['Alt', 'Control', 'ControlOrMeta', 'Meta', 'Shift']))),
+  position: tOptional(tType('Point')),
+  timeout: tFloat,
+  trial: tOptional(tBoolean),
+});
+scheme.FrameTapResult = tOptional(tObject({}));
+scheme.FrameTextContentParams = tObject({
+  selector: tString,
+  strict: tOptional(tBoolean),
+  timeout: tFloat,
+});
+scheme.FrameTextContentResult = tObject({
+  value: tOptional(tString),
+});
+scheme.FrameTitleParams = tOptional(tObject({}));
+scheme.FrameTitleResult = tObject({
+  value: tString,
+});
+scheme.FrameTypeParams = tObject({
+  selector: tString,
+  strict: tOptional(tBoolean),
+  text: tString,
+  delay: tOptional(tFloat),
+  timeout: tFloat,
+});
+scheme.FrameTypeResult = tOptional(tObject({}));
+scheme.FrameUncheckParams = tObject({
+  selector: tString,
+  strict: tOptional(tBoolean),
+  force: tOptional(tBoolean),
+  position: tOptional(tType('Point')),
+  timeout: tFloat,
+  trial: tOptional(tBoolean),
+});
+scheme.FrameUncheckResult = tOptional(tObject({}));
+scheme.FrameWaitForTimeoutParams = tObject({
+  waitTimeout: tFloat,
+});
+scheme.FrameWaitForTimeoutResult = tOptional(tObject({}));
+scheme.FrameWaitForFunctionParams = tObject({
+  expression: tString,
+  isFunction: tOptional(tBoolean),
+  arg: tType('SerializedArgument'),
+  timeout: tFloat,
+  pollingInterval: tOptional(tFloat),
+});
+scheme.FrameWaitForFunctionResult = tObject({
+  handle: tChannel(['ElementHandle', 'JSHandle']),
+});
+scheme.FrameWaitForSelectorParams = tObject({
+  selector: tString,
+  strict: tOptional(tBoolean),
+  timeout: tFloat,
+  state: tOptional(tEnum(['attached', 'detached', 'visible', 'hidden'])),
+  omitReturnValue: tOptional(tBoolean),
+});
+scheme.FrameWaitForSelectorResult = tObject({
+  element: tOptional(tChannel(['ElementHandle'])),
+});
+scheme.FrameExpectParams = tObject({
+  selector: tOptional(tString),
+  expression: tString,
+  expressionArg: tOptional(tAny),
+  pseudo: tOptional(tEnum(['before', 'after'])),
+  expectedText: tOptional(tArray(tType('ExpectedTextValue'))),
+  expectedNumber: tOptional(tFloat),
+  expectedValue: tOptional(tType('SerializedArgument')),
+  useInnerText: tOptional(tBoolean),
+  isNot: tBoolean,
+  timeout: tFloat,
+});
+scheme.FrameExpectResult = tObject({
+  matches: tBoolean,
+  received: tOptional(tObject({
+    value: tOptional(tType('SerializedValue')),
+    ariaSnapshot: tOptional(tString),
+  })),
+  timedOut: tOptional(tBoolean),
+  errorMessage: tOptional(tString),
+  log: tOptional(tArray(tString)),
+});
+scheme.JSHandleInitializer = tObject({
+  preview: tString,
+});
+scheme.JSHandlePreviewUpdatedEvent = tObject({
+  preview: tString,
+});
+scheme.ElementHandlePreviewUpdatedEvent = tType('JSHandlePreviewUpdatedEvent');
+scheme.JSHandleDisposeParams = tOptional(tObject({}));
+scheme.ElementHandleDisposeParams = tType('JSHandleDisposeParams');
+scheme.JSHandleDisposeResult = tOptional(tObject({}));
+scheme.ElementHandleDisposeResult = tType('JSHandleDisposeResult');
+scheme.JSHandleEvaluateExpressionParams = tObject({
+  expression: tString,
+  isFunction: tOptional(tBoolean),
+  arg: tType('SerializedArgument'),
+});
+scheme.ElementHandleEvaluateExpressionParams = tType('JSHandleEvaluateExpressionParams');
+scheme.JSHandleEvaluateExpressionResult = tObject({
+  value: tType('SerializedValue'),
+});
+scheme.ElementHandleEvaluateExpressionResult = tType('JSHandleEvaluateExpressionResult');
+scheme.JSHandleEvaluateExpressionHandleParams = tObject({
+  expression: tString,
+  isFunction: tOptional(tBoolean),
+  arg: tType('SerializedArgument'),
+});
+scheme.ElementHandleEvaluateExpressionHandleParams = tType('JSHandleEvaluateExpressionHandleParams');
+scheme.JSHandleEvaluateExpressionHandleResult = tObject({
+  handle: tChannel(['ElementHandle', 'JSHandle']),
+});
+scheme.ElementHandleEvaluateExpressionHandleResult = tType('JSHandleEvaluateExpressionHandleResult');
+scheme.JSHandleGetPropertyListParams = tOptional(tObject({}));
+scheme.ElementHandleGetPropertyListParams = tType('JSHandleGetPropertyListParams');
+scheme.JSHandleGetPropertyListResult = tObject({
+  properties: tArray(tObject({
+    name: tString,
+    value: tChannel(['ElementHandle', 'JSHandle']),
+  })),
+});
+scheme.ElementHandleGetPropertyListResult = tType('JSHandleGetPropertyListResult');
+scheme.JSHandleGetPropertyParams = tObject({
+  name: tString,
+});
+scheme.ElementHandleGetPropertyParams = tType('JSHandleGetPropertyParams');
+scheme.JSHandleGetPropertyResult = tObject({
+  handle: tChannel(['ElementHandle', 'JSHandle']),
+});
+scheme.ElementHandleGetPropertyResult = tType('JSHandleGetPropertyResult');
+scheme.JSHandleJsonValueParams = tOptional(tObject({}));
+scheme.ElementHandleJsonValueParams = tType('JSHandleJsonValueParams');
+scheme.JSHandleJsonValueResult = tObject({
+  value: tType('SerializedValue'),
+});
+scheme.ElementHandleJsonValueResult = tType('JSHandleJsonValueResult');
+scheme.ElementHandleInitializer = tObject({
+  preview: tString,
+});
+scheme.ElementHandleEvalOnSelectorParams = tObject({
+  selector: tString,
+  strict: tOptional(tBoolean),
+  expression: tString,
+  isFunction: tOptional(tBoolean),
+  arg: tType('SerializedArgument'),
+});
+scheme.ElementHandleEvalOnSelectorResult = tObject({
+  value: tType('SerializedValue'),
+});
+scheme.ElementHandleEvalOnSelectorAllParams = tObject({
+  selector: tString,
+  expression: tString,
+  isFunction: tOptional(tBoolean),
+  arg: tType('SerializedArgument'),
+});
+scheme.ElementHandleEvalOnSelectorAllResult = tObject({
+  value: tType('SerializedValue'),
+});
+scheme.ElementHandleBoundingBoxParams = tOptional(tObject({}));
+scheme.ElementHandleBoundingBoxResult = tObject({
+  value: tOptional(tType('Rect')),
+});
+scheme.ElementHandleCheckParams = tObject({
+  force: tOptional(tBoolean),
+  position: tOptional(tType('Point')),
+  timeout: tFloat,
+  trial: tOptional(tBoolean),
+});
+scheme.ElementHandleCheckResult = tOptional(tObject({}));
+scheme.ElementHandleClickParams = tObject({
+  force: tOptional(tBoolean),
+  noWaitAfter: tOptional(tBoolean),
+  modifiers: tOptional(tArray(tEnum(['Alt', 'Control', 'ControlOrMeta', 'Meta', 'Shift']))),
+  position: tOptional(tType('Point')),
+  delay: tOptional(tFloat),
+  button: tOptional(tEnum(['left', 'right', 'middle'])),
+  clickCount: tOptional(tInt),
+  timeout: tFloat,
+  trial: tOptional(tBoolean),
+  steps: tOptional(tInt),
+});
+scheme.ElementHandleClickResult = tOptional(tObject({}));
+scheme.ElementHandleContentFrameParams = tOptional(tObject({}));
+scheme.ElementHandleContentFrameResult = tObject({
+  frame: tOptional(tChannel(['Frame'])),
+});
+scheme.ElementHandleDblclickParams = tObject({
+  force: tOptional(tBoolean),
+  modifiers: tOptional(tArray(tEnum(['Alt', 'Control', 'ControlOrMeta', 'Meta', 'Shift']))),
+  position: tOptional(tType('Point')),
+  delay: tOptional(tFloat),
+  button: tOptional(tEnum(['left', 'right', 'middle'])),
+  timeout: tFloat,
+  trial: tOptional(tBoolean),
+  steps: tOptional(tInt),
+});
+scheme.ElementHandleDblclickResult = tOptional(tObject({}));
+scheme.ElementHandleDispatchEventParams = tObject({
+  type: tString,
+  eventInit: tType('SerializedArgument'),
+});
+scheme.ElementHandleDispatchEventResult = tOptional(tObject({}));
+scheme.ElementHandleFillParams = tObject({
+  value: tString,
+  force: tOptional(tBoolean),
+  timeout: tFloat,
+});
+scheme.ElementHandleFillResult = tOptional(tObject({}));
+scheme.ElementHandleFocusParams = tOptional(tObject({}));
+scheme.ElementHandleFocusResult = tOptional(tObject({}));
+scheme.ElementHandleGetAttributeParams = tObject({
+  name: tString,
+});
+scheme.ElementHandleGetAttributeResult = tObject({
+  value: tOptional(tString),
+});
+scheme.ElementHandleHoverParams = tObject({
+  force: tOptional(tBoolean),
+  modifiers: tOptional(tArray(tEnum(['Alt', 'Control', 'ControlOrMeta', 'Meta', 'Shift']))),
+  position: tOptional(tType('Point')),
+  timeout: tFloat,
+  trial: tOptional(tBoolean),
+});
+scheme.ElementHandleHoverResult = tOptional(tObject({}));
+scheme.ElementHandleInnerHTMLParams = tOptional(tObject({}));
+scheme.ElementHandleInnerHTMLResult = tObject({
+  value: tString,
+});
+scheme.ElementHandleInnerTextParams = tOptional(tObject({}));
+scheme.ElementHandleInnerTextResult = tObject({
+  value: tString,
+});
+scheme.ElementHandleInputValueParams = tOptional(tObject({}));
+scheme.ElementHandleInputValueResult = tObject({
+  value: tString,
+});
+scheme.ElementHandleIsCheckedParams = tOptional(tObject({}));
+scheme.ElementHandleIsCheckedResult = tObject({
+  value: tBoolean,
+});
+scheme.ElementHandleIsDisabledParams = tOptional(tObject({}));
+scheme.ElementHandleIsDisabledResult = tObject({
+  value: tBoolean,
+});
+scheme.ElementHandleIsEditableParams = tOptional(tObject({}));
+scheme.ElementHandleIsEditableResult = tObject({
+  value: tBoolean,
+});
+scheme.ElementHandleIsEnabledParams = tOptional(tObject({}));
+scheme.ElementHandleIsEnabledResult = tObject({
+  value: tBoolean,
+});
+scheme.ElementHandleIsHiddenParams = tOptional(tObject({}));
+scheme.ElementHandleIsHiddenResult = tObject({
+  value: tBoolean,
+});
+scheme.ElementHandleIsVisibleParams = tOptional(tObject({}));
+scheme.ElementHandleIsVisibleResult = tObject({
+  value: tBoolean,
+});
+scheme.ElementHandleOwnerFrameParams = tOptional(tObject({}));
+scheme.ElementHandleOwnerFrameResult = tObject({
+  frame: tOptional(tChannel(['Frame'])),
+});
+scheme.ElementHandlePressParams = tObject({
+  key: tString,
+  delay: tOptional(tFloat),
+  timeout: tFloat,
+  noWaitAfter: tOptional(tBoolean),
+});
+scheme.ElementHandlePressResult = tOptional(tObject({}));
+scheme.ElementHandleQuerySelectorParams = tObject({
+  selector: tString,
+  strict: tOptional(tBoolean),
+});
+scheme.ElementHandleQuerySelectorResult = tObject({
+  element: tOptional(tChannel(['ElementHandle'])),
+});
+scheme.ElementHandleQuerySelectorAllParams = tObject({
+  selector: tString,
+});
+scheme.ElementHandleQuerySelectorAllResult = tObject({
+  elements: tArray(tChannel(['ElementHandle'])),
+});
+scheme.ElementHandleScreenshotParams = tObject({
+  timeout: tFloat,
+  type: tOptional(tEnum(['png', 'jpeg'])),
+  quality: tOptional(tInt),
+  omitBackground: tOptional(tBoolean),
+  caret: tOptional(tEnum(['hide', 'initial'])),
+  animations: tOptional(tEnum(['disabled', 'allow'])),
+  scale: tOptional(tEnum(['css', 'device'])),
+  mask: tOptional(tArray(tObject({
+    frame: tChannel(['Frame']),
+    selector: tString,
+  }))),
+  maskColor: tOptional(tString),
+  style: tOptional(tString),
+});
+scheme.ElementHandleScreenshotResult = tObject({
+  binary: tBinary,
+});
+scheme.ElementHandleScrollIntoViewIfNeededParams = tObject({
+  timeout: tFloat,
+});
+scheme.ElementHandleScrollIntoViewIfNeededResult = tOptional(tObject({}));
+scheme.ElementHandleSelectOptionParams = tObject({
+  elements: tOptional(tArray(tChannel(['ElementHandle']))),
+  options: tOptional(tArray(tObject({
+    valueOrLabel: tOptional(tString),
+    value: tOptional(tString),
+    label: tOptional(tString),
+    index: tOptional(tInt),
+  }))),
+  force: tOptional(tBoolean),
+  timeout: tFloat,
+});
+scheme.ElementHandleSelectOptionResult = tObject({
+  values: tArray(tString),
+});
+scheme.ElementHandleSelectTextParams = tObject({
+  force: tOptional(tBoolean),
+  timeout: tFloat,
+});
+scheme.ElementHandleSelectTextResult = tOptional(tObject({}));
+scheme.ElementHandleSetInputFilesParams = tObject({
+  payloads: tOptional(tArray(tObject({
+    name: tString,
+    mimeType: tOptional(tString),
+    buffer: tBinary,
+  }))),
+  localDirectory: tOptional(tString),
+  directoryStream: tOptional(tChannel(['WritableStream'])),
+  localPaths: tOptional(tArray(tString)),
+  streams: tOptional(tArray(tChannel(['WritableStream']))),
+  timeout: tFloat,
+});
+scheme.ElementHandleSetInputFilesResult = tOptional(tObject({}));
+scheme.ElementHandleTapParams = tObject({
+  force: tOptional(tBoolean),
+  modifiers: tOptional(tArray(tEnum(['Alt', 'Control', 'ControlOrMeta', 'Meta', 'Shift']))),
+  position: tOptional(tType('Point')),
+  timeout: tFloat,
+  trial: tOptional(tBoolean),
+});
+scheme.ElementHandleTapResult = tOptional(tObject({}));
+scheme.ElementHandleTextContentParams = tOptional(tObject({}));
+scheme.ElementHandleTextContentResult = tObject({
+  value: tOptional(tString),
+});
+scheme.ElementHandleTypeParams = tObject({
+  text: tString,
+  delay: tOptional(tFloat),
+  timeout: tFloat,
+});
+scheme.ElementHandleTypeResult = tOptional(tObject({}));
+scheme.ElementHandleUncheckParams = tObject({
+  force: tOptional(tBoolean),
+  position: tOptional(tType('Point')),
+  timeout: tFloat,
+  trial: tOptional(tBoolean),
+});
+scheme.ElementHandleUncheckResult = tOptional(tObject({}));
+scheme.ElementHandleWaitForElementStateParams = tObject({
+  state: tEnum(['visible', 'hidden', 'stable', 'enabled', 'disabled', 'editable']),
+  timeout: tFloat,
+});
+scheme.ElementHandleWaitForElementStateResult = tOptional(tObject({}));
+scheme.ElementHandleWaitForSelectorParams = tObject({
+  selector: tString,
+  strict: tOptional(tBoolean),
+  timeout: tFloat,
+  state: tOptional(tEnum(['attached', 'detached', 'visible', 'hidden'])),
+});
+scheme.ElementHandleWaitForSelectorResult = tObject({
+  element: tOptional(tChannel(['ElementHandle'])),
+});
+scheme.LocalUtilsInitializer = tObject({
+  deviceDescriptors: tArray(tObject({
+    name: tString,
+    descriptor: tObject({
+      userAgent: tString,
+      viewport: tObject({
+        width: tInt,
+        height: tInt,
+      }),
+      screen: tOptional(tObject({
+        width: tInt,
+        height: tInt,
+      })),
+      deviceScaleFactor: tFloat,
+      isMobile: tBoolean,
+      hasTouch: tBoolean,
+      defaultBrowserType: tEnum(['chromium', 'firefox', 'webkit']),
+    }),
+  })),
+});
+scheme.LocalUtilsZipParams = tObject({
+  zipFile: tString,
+  entries: tArray(tType('NameValue')),
+  stacksId: tOptional(tString),
+  mode: tEnum(['write', 'append']),
+  includeSources: tBoolean,
+  additionalSources: tOptional(tArray(tString)),
+});
+scheme.LocalUtilsZipResult = tOptional(tObject({}));
+scheme.LocalUtilsHarOpenParams = tObject({
+  file: tString,
+});
+scheme.LocalUtilsHarOpenResult = tObject({
+  harId: tOptional(tString),
+  error: tOptional(tString),
+});
+scheme.LocalUtilsHarLookupParams = tObject({
+  harId: tString,
+  url: tString,
+  method: tString,
+  headers: tArray(tType('NameValue')),
+  postData: tOptional(tBinary),
+  isNavigationRequest: tBoolean,
+});
+scheme.LocalUtilsHarLookupResult = tObject({
+  action: tEnum(['error', 'redirect', 'fulfill', 'noentry']),
+  message: tOptional(tString),
+  redirectURL: tOptional(tString),
+  status: tOptional(tInt),
+  headers: tOptional(tArray(tType('NameValue'))),
+  body: tOptional(tBinary),
+});
+scheme.LocalUtilsHarCloseParams = tObject({
+  harId: tString,
+});
+scheme.LocalUtilsHarCloseResult = tOptional(tObject({}));
+scheme.LocalUtilsHarUnzipParams = tObject({
+  zipFile: tString,
+  harFile: tString,
+  resourcesDir: tOptional(tString),
+});
+scheme.LocalUtilsHarUnzipResult = tOptional(tObject({}));
+scheme.LocalUtilsConnectParams = tObject({
+  endpoint: tString,
+  headers: tOptional(tAny),
+  exposeNetwork: tOptional(tString),
+  slowMo: tOptional(tFloat),
+  timeout: tFloat,
+  socksProxyRedirectPortForTest: tOptional(tInt),
+});
+scheme.LocalUtilsConnectResult = tObject({
+  pipe: tChannel(['JsonPipe']),
+  headers: tArray(tType('NameValue')),
+});
+scheme.LocalUtilsTracingStartedParams = tObject({
+  tracesDir: tOptional(tString),
+  traceName: tString,
+  live: tOptional(tBoolean),
+});
+scheme.LocalUtilsTracingStartedResult = tObject({
+  stacksId: tString,
+});
+scheme.LocalUtilsAddStackToTracingNoReplyParams = tObject({
+  callData: tType('ClientSideCallMetadata'),
+});
+scheme.LocalUtilsAddStackToTracingNoReplyResult = tOptional(tObject({}));
+scheme.LocalUtilsTraceDiscardedParams = tObject({
+  stacksId: tString,
+});
+scheme.LocalUtilsTraceDiscardedResult = tOptional(tObject({}));
+scheme.LocalUtilsGlobToRegexParams = tObject({
+  glob: tString,
+  baseURL: tOptional(tString),
+  webSocketUrl: tOptional(tBoolean),
+});
+scheme.LocalUtilsGlobToRegexResult = tObject({
+  regex: tString,
+});
+scheme.SetNetworkCookie = tObject({
+  name: tString,
+  value: tString,
+  url: tOptional(tString),
+  domain: tOptional(tString),
+  path: tOptional(tString),
+  expires: tOptional(tFloat),
+  httpOnly: tOptional(tBoolean),
+  secure: tOptional(tBoolean),
+  sameSite: tOptional(tEnum(['Strict', 'Lax', 'None'])),
+  partitionKey: tOptional(tString),
+  _crHasCrossSiteAncestor: tOptional(tBoolean),
+});
+scheme.NetworkCookie = tObject({
+  name: tString,
+  value: tString,
+  domain: tString,
+  path: tString,
+  expires: tFloat,
+  httpOnly: tBoolean,
+  secure: tBoolean,
+  sameSite: tEnum(['Strict', 'Lax', 'None']),
+  partitionKey: tOptional(tString),
+  _crHasCrossSiteAncestor: tOptional(tBoolean),
+});
+scheme.RequestInitializer = tObject({
+  frame: tOptional(tChannel(['Frame'])),
+  serviceWorker: tOptional(tChannel(['Worker'])),
+  url: tString,
+  resourceType: tString,
+  method: tString,
+  postData: tOptional(tBinary),
+  headers: tArray(tType('NameValue')),
+  isNavigationRequest: tBoolean,
+  redirectedFrom: tOptional(tChannel(['Request'])),
+});
+scheme.RequestResponseParams = tOptional(tObject({}));
+scheme.RequestResponseResult = tObject({
+  response: tOptional(tChannel(['Response'])),
+});
+scheme.RequestRawRequestHeadersParams = tOptional(tObject({}));
+scheme.RequestRawRequestHeadersResult = tObject({
+  headers: tArray(tType('NameValue')),
+});
+scheme.RouteInitializer = tObject({
+  request: tChannel(['Request']),
+});
+scheme.RouteRedirectNavigationRequestParams = tObject({
+  url: tString,
+});
+scheme.RouteRedirectNavigationRequestResult = tOptional(tObject({}));
+scheme.RouteAbortParams = tObject({
+  errorCode: tOptional(tString),
+});
+scheme.RouteAbortResult = tOptional(tObject({}));
+scheme.RouteContinueParams = tObject({
+  url: tOptional(tString),
+  method: tOptional(tString),
+  headers: tOptional(tArray(tType('NameValue'))),
+  postData: tOptional(tBinary),
+  isFallback: tBoolean,
+});
+scheme.RouteContinueResult = tOptional(tObject({}));
+scheme.RouteFulfillParams = tObject({
+  status: tOptional(tInt),
+  headers: tOptional(tArray(tType('NameValue'))),
+  body: tOptional(tString),
+  isBase64: tOptional(tBoolean),
+  fetchResponseUid: tOptional(tString),
+});
+scheme.RouteFulfillResult = tOptional(tObject({}));
+scheme.WebSocketRouteInitializer = tObject({
+  url: tString,
+  protocols: tArray(tString),
+});
+scheme.WebSocketRouteMessageFromPageEvent = tObject({
+  message: tString,
+  isBase64: tBoolean,
+});
+scheme.WebSocketRouteMessageFromServerEvent = tObject({
+  message: tString,
+  isBase64: tBoolean,
+});
+scheme.WebSocketRouteClosePageEvent = tObject({
+  code: tOptional(tInt),
+  reason: tOptional(tString),
+  wasClean: tBoolean,
+});
+scheme.WebSocketRouteCloseServerEvent = tObject({
+  code: tOptional(tInt),
+  reason: tOptional(tString),
+  wasClean: tBoolean,
+});
+scheme.WebSocketRouteConnectParams = tOptional(tObject({}));
+scheme.WebSocketRouteConnectResult = tOptional(tObject({}));
+scheme.WebSocketRouteEnsureOpenedParams = tOptional(tObject({}));
+scheme.WebSocketRouteEnsureOpenedResult = tOptional(tObject({}));
+scheme.WebSocketRouteSendToPageParams = tObject({
+  message: tString,
+  isBase64: tBoolean,
+});
+scheme.WebSocketRouteSendToPageResult = tOptional(tObject({}));
+scheme.WebSocketRouteSendToServerParams = tObject({
+  message: tString,
+  isBase64: tBoolean,
+});
+scheme.WebSocketRouteSendToServerResult = tOptional(tObject({}));
+scheme.WebSocketRouteClosePageParams = tObject({
+  code: tOptional(tInt),
+  reason: tOptional(tString),
+  wasClean: tBoolean,
+});
+scheme.WebSocketRouteClosePageResult = tOptional(tObject({}));
+scheme.WebSocketRouteCloseServerParams = tObject({
+  code: tOptional(tInt),
+  reason: tOptional(tString),
+  wasClean: tBoolean,
+});
+scheme.WebSocketRouteCloseServerResult = tOptional(tObject({}));
+scheme.ResourceTiming = tObject({
+  startTime: tFloat,
+  domainLookupStart: tFloat,
+  domainLookupEnd: tFloat,
+  connectStart: tFloat,
+  secureConnectionStart: tFloat,
+  connectEnd: tFloat,
+  requestStart: tFloat,
+  responseStart: tFloat,
+});
+scheme.ResponseInitializer = tObject({
+  request: tChannel(['Request']),
+  url: tString,
+  status: tInt,
+  statusText: tString,
+  headers: tArray(tType('NameValue')),
+  timing: tType('ResourceTiming'),
+  fromServiceWorker: tBoolean,
+});
+scheme.ResponseBodyParams = tOptional(tObject({}));
+scheme.ResponseBodyResult = tObject({
+  binary: tBinary,
+});
+scheme.ResponseSecurityDetailsParams = tOptional(tObject({}));
+scheme.ResponseSecurityDetailsResult = tObject({
+  value: tOptional(tType('SecurityDetails')),
+});
+scheme.ResponseServerAddrParams = tOptional(tObject({}));
+scheme.ResponseServerAddrResult = tObject({
+  value: tOptional(tType('RemoteAddr')),
+});
+scheme.ResponseRawResponseHeadersParams = tOptional(tObject({}));
+scheme.ResponseRawResponseHeadersResult = tObject({
+  headers: tArray(tType('NameValue')),
+});
+scheme.ResponseHttpVersionParams = tOptional(tObject({}));
+scheme.ResponseHttpVersionResult = tObject({
+  value: tString,
+});
+scheme.ResponseSizesParams = tOptional(tObject({}));
+scheme.ResponseSizesResult = tObject({
+  sizes: tType('RequestSizes'),
+});
+scheme.SecurityDetails = tObject({
+  issuer: tOptional(tString),
+  protocol: tOptional(tString),
+  subjectName: tOptional(tString),
+  validFrom: tOptional(tFloat),
+  validTo: tOptional(tFloat),
+});
+scheme.RequestSizes = tObject({
+  requestBodySize: tInt,
+  requestHeadersSize: tInt,
+  responseBodySize: tInt,
+  responseHeadersSize: tInt,
+});
+scheme.RemoteAddr = tObject({
+  ipAddress: tString,
+  port: tInt,
+});
+scheme.WebSocketInitializer = tObject({
+  url: tString,
+});
+scheme.WebSocketOpenEvent = tOptional(tObject({}));
+scheme.WebSocketFrameSentEvent = tObject({
+  opcode: tInt,
+  data: tString,
+});
+scheme.WebSocketFrameReceivedEvent = tObject({
+  opcode: tInt,
+  data: tString,
+});
+scheme.WebSocketSocketErrorEvent = tObject({
+  error: tString,
+});
+scheme.WebSocketCloseEvent = tOptional(tObject({}));
 scheme.PageInitializer = tObject({
   mainFrame: tChannel(['Frame']),
   viewportSize: tOptional(tObject({
@@ -1603,966 +2554,250 @@ scheme.PageSetDockTileParams = tObject({
   image: tBinary,
 });
 scheme.PageSetDockTileResult = tOptional(tObject({}));
-scheme.FrameInitializer = tObject({
-  url: tString,
-  name: tString,
-  parentFrame: tOptional(tChannel(['Frame'])),
-  loadStates: tArray(tType('LifecycleEvent')),
+scheme.RootInitializer = tOptional(tObject({}));
+scheme.RootInitializeParams = tObject({
+  sdkLanguage: tType('SDKLanguage'),
 });
-scheme.FrameLoadstateEvent = tObject({
-  add: tOptional(tType('LifecycleEvent')),
-  remove: tOptional(tType('LifecycleEvent')),
+scheme.RootInitializeResult = tObject({
+  playwright: tChannel(['Playwright']),
 });
-scheme.FrameNavigatedEvent = tObject({
-  url: tString,
-  name: tString,
-  newDocument: tOptional(tObject({
-    request: tOptional(tChannel(['Request'])),
+scheme.PlaywrightInitializer = tObject({
+  chromium: tChannel(['BrowserType']),
+  firefox: tChannel(['BrowserType']),
+  webkit: tChannel(['BrowserType']),
+  android: tChannel(['Android']),
+  utils: tOptional(tChannel(['LocalUtils'])),
+  preLaunchedBrowser: tOptional(tChannel(['Browser'])),
+  preConnectedAndroidDevice: tOptional(tChannel(['AndroidDevice'])),
+  socksSupport: tOptional(tChannel(['SocksSupport'])),
+});
+scheme.PlaywrightNewRequestParams = tObject({
+  baseURL: tOptional(tString),
+  userAgent: tOptional(tString),
+  ignoreHTTPSErrors: tOptional(tBoolean),
+  extraHTTPHeaders: tOptional(tArray(tType('NameValue'))),
+  failOnStatusCode: tOptional(tBoolean),
+  clientCertificates: tOptional(tArray(tObject({
+    origin: tString,
+    cert: tOptional(tBinary),
+    key: tOptional(tBinary),
+    passphrase: tOptional(tString),
+    pfx: tOptional(tBinary),
+  }))),
+  maxRedirects: tOptional(tInt),
+  httpCredentials: tOptional(tObject({
+    username: tString,
+    password: tString,
+    origin: tOptional(tString),
+    send: tOptional(tEnum(['always', 'unauthorized'])),
   })),
-  error: tOptional(tString),
-});
-scheme.FrameEvalOnSelectorParams = tObject({
-  selector: tString,
-  strict: tOptional(tBoolean),
-  expression: tString,
-  isFunction: tOptional(tBoolean),
-  arg: tType('SerializedArgument'),
-});
-scheme.FrameEvalOnSelectorResult = tObject({
-  value: tType('SerializedValue'),
-});
-scheme.FrameEvalOnSelectorAllParams = tObject({
-  selector: tString,
-  expression: tString,
-  isFunction: tOptional(tBoolean),
-  arg: tType('SerializedArgument'),
-});
-scheme.FrameEvalOnSelectorAllResult = tObject({
-  value: tType('SerializedValue'),
-});
-scheme.FrameAddScriptTagParams = tObject({
-  url: tOptional(tString),
-  content: tOptional(tString),
-  type: tOptional(tString),
-});
-scheme.FrameAddScriptTagResult = tObject({
-  element: tChannel(['ElementHandle']),
-});
-scheme.FrameAddStyleTagParams = tObject({
-  url: tOptional(tString),
-  content: tOptional(tString),
-});
-scheme.FrameAddStyleTagResult = tObject({
-  element: tChannel(['ElementHandle']),
-});
-scheme.FrameAriaRefParams = tObject({
-  selector: tString,
-  timeout: tFloat,
-});
-scheme.FrameAriaRefResult = tObject({
-  ref: tOptional(tString),
-});
-scheme.FrameAriaSnapshotParams = tObject({
-  mode: tOptional(tEnum(['ai', 'default'])),
-  track: tOptional(tString),
-  selector: tOptional(tString),
-  depth: tOptional(tInt),
-  boxes: tOptional(tBoolean),
-  timeout: tFloat,
-});
-scheme.FrameAriaSnapshotResult = tObject({
-  snapshot: tString,
-});
-scheme.FrameBlurParams = tObject({
-  selector: tString,
-  strict: tOptional(tBoolean),
-  timeout: tFloat,
-});
-scheme.FrameBlurResult = tOptional(tObject({}));
-scheme.FrameCheckParams = tObject({
-  selector: tString,
-  strict: tOptional(tBoolean),
-  force: tOptional(tBoolean),
-  position: tOptional(tType('Point')),
-  timeout: tFloat,
-  trial: tOptional(tBoolean),
-});
-scheme.FrameCheckResult = tOptional(tObject({}));
-scheme.FrameClickParams = tObject({
-  selector: tString,
-  strict: tOptional(tBoolean),
-  force: tOptional(tBoolean),
-  noWaitAfter: tOptional(tBoolean),
-  modifiers: tOptional(tArray(tEnum(['Alt', 'Control', 'ControlOrMeta', 'Meta', 'Shift']))),
-  position: tOptional(tType('Point')),
-  delay: tOptional(tFloat),
-  button: tOptional(tEnum(['left', 'right', 'middle'])),
-  clickCount: tOptional(tInt),
-  timeout: tFloat,
-  trial: tOptional(tBoolean),
-  steps: tOptional(tInt),
-});
-scheme.FrameClickResult = tOptional(tObject({}));
-scheme.FrameContentParams = tOptional(tObject({}));
-scheme.FrameContentResult = tObject({
-  value: tString,
-});
-scheme.FrameDragAndDropParams = tObject({
-  source: tString,
-  target: tString,
-  force: tOptional(tBoolean),
-  timeout: tFloat,
-  trial: tOptional(tBoolean),
-  sourcePosition: tOptional(tType('Point')),
-  targetPosition: tOptional(tType('Point')),
-  strict: tOptional(tBoolean),
-  steps: tOptional(tInt),
-});
-scheme.FrameDragAndDropResult = tOptional(tObject({}));
-scheme.FrameDropParams = tObject({
-  selector: tString,
-  strict: tOptional(tBoolean),
-  position: tOptional(tType('Point')),
-  payloads: tOptional(tArray(tObject({
-    name: tString,
-    mimeType: tOptional(tString),
-    buffer: tBinary,
-  }))),
-  localPaths: tOptional(tArray(tString)),
-  streams: tOptional(tArray(tChannel(['WritableStream']))),
-  data: tOptional(tArray(tObject({
-    mimeType: tString,
-    value: tString,
-  }))),
-  timeout: tFloat,
-});
-scheme.FrameDropResult = tOptional(tObject({}));
-scheme.FrameDblclickParams = tObject({
-  selector: tString,
-  strict: tOptional(tBoolean),
-  force: tOptional(tBoolean),
-  modifiers: tOptional(tArray(tEnum(['Alt', 'Control', 'ControlOrMeta', 'Meta', 'Shift']))),
-  position: tOptional(tType('Point')),
-  delay: tOptional(tFloat),
-  button: tOptional(tEnum(['left', 'right', 'middle'])),
-  timeout: tFloat,
-  trial: tOptional(tBoolean),
-  steps: tOptional(tInt),
-});
-scheme.FrameDblclickResult = tOptional(tObject({}));
-scheme.FrameDispatchEventParams = tObject({
-  selector: tString,
-  strict: tOptional(tBoolean),
-  type: tString,
-  eventInit: tType('SerializedArgument'),
-  timeout: tFloat,
-});
-scheme.FrameDispatchEventResult = tOptional(tObject({}));
-scheme.FrameEvaluateExpressionParams = tObject({
-  expression: tString,
-  isFunction: tOptional(tBoolean),
-  arg: tType('SerializedArgument'),
-});
-scheme.FrameEvaluateExpressionResult = tObject({
-  value: tType('SerializedValue'),
-});
-scheme.FrameEvaluateExpressionHandleParams = tObject({
-  expression: tString,
-  isFunction: tOptional(tBoolean),
-  arg: tType('SerializedArgument'),
-});
-scheme.FrameEvaluateExpressionHandleResult = tObject({
-  handle: tChannel(['ElementHandle', 'JSHandle']),
-});
-scheme.FrameFillParams = tObject({
-  selector: tString,
-  strict: tOptional(tBoolean),
-  value: tString,
-  force: tOptional(tBoolean),
-  timeout: tFloat,
-});
-scheme.FrameFillResult = tOptional(tObject({}));
-scheme.FrameFocusParams = tObject({
-  selector: tString,
-  strict: tOptional(tBoolean),
-  timeout: tFloat,
-});
-scheme.FrameFocusResult = tOptional(tObject({}));
-scheme.FrameFrameElementParams = tOptional(tObject({}));
-scheme.FrameFrameElementResult = tObject({
-  element: tChannel(['ElementHandle']),
-});
-scheme.FrameResolveSelectorParams = tObject({
-  selector: tString,
-});
-scheme.FrameResolveSelectorResult = tObject({
-  resolvedSelector: tString,
-});
-scheme.FrameHighlightParams = tObject({
-  selector: tString,
-  style: tOptional(tString),
-});
-scheme.FrameHighlightResult = tOptional(tObject({}));
-scheme.FrameHideHighlightParams = tObject({
-  selector: tString,
-});
-scheme.FrameHideHighlightResult = tOptional(tObject({}));
-scheme.FrameGetAttributeParams = tObject({
-  selector: tString,
-  strict: tOptional(tBoolean),
-  name: tString,
-  timeout: tFloat,
-});
-scheme.FrameGetAttributeResult = tObject({
-  value: tOptional(tString),
-});
-scheme.FrameGotoParams = tObject({
-  url: tString,
-  timeout: tFloat,
-  waitUntil: tOptional(tType('LifecycleEvent')),
-  referer: tOptional(tString),
-});
-scheme.FrameGotoResult = tObject({
-  response: tOptional(tChannel(['Response'])),
-});
-scheme.FrameHoverParams = tObject({
-  selector: tString,
-  strict: tOptional(tBoolean),
-  force: tOptional(tBoolean),
-  modifiers: tOptional(tArray(tEnum(['Alt', 'Control', 'ControlOrMeta', 'Meta', 'Shift']))),
-  position: tOptional(tType('Point')),
-  timeout: tFloat,
-  trial: tOptional(tBoolean),
-});
-scheme.FrameHoverResult = tOptional(tObject({}));
-scheme.FrameInnerHTMLParams = tObject({
-  selector: tString,
-  strict: tOptional(tBoolean),
-  timeout: tFloat,
-});
-scheme.FrameInnerHTMLResult = tObject({
-  value: tString,
-});
-scheme.FrameInnerTextParams = tObject({
-  selector: tString,
-  strict: tOptional(tBoolean),
-  timeout: tFloat,
-});
-scheme.FrameInnerTextResult = tObject({
-  value: tString,
-});
-scheme.FrameInputValueParams = tObject({
-  selector: tString,
-  strict: tOptional(tBoolean),
-  timeout: tFloat,
-});
-scheme.FrameInputValueResult = tObject({
-  value: tString,
-});
-scheme.FrameIsCheckedParams = tObject({
-  selector: tString,
-  strict: tOptional(tBoolean),
-  timeout: tFloat,
-});
-scheme.FrameIsCheckedResult = tObject({
-  value: tBoolean,
-});
-scheme.FrameIsDisabledParams = tObject({
-  selector: tString,
-  strict: tOptional(tBoolean),
-  timeout: tFloat,
-});
-scheme.FrameIsDisabledResult = tObject({
-  value: tBoolean,
-});
-scheme.FrameIsEnabledParams = tObject({
-  selector: tString,
-  strict: tOptional(tBoolean),
-  timeout: tFloat,
-});
-scheme.FrameIsEnabledResult = tObject({
-  value: tBoolean,
-});
-scheme.FrameIsHiddenParams = tObject({
-  selector: tString,
-  strict: tOptional(tBoolean),
-});
-scheme.FrameIsHiddenResult = tObject({
-  value: tBoolean,
-});
-scheme.FrameIsVisibleParams = tObject({
-  selector: tString,
-  strict: tOptional(tBoolean),
-});
-scheme.FrameIsVisibleResult = tObject({
-  value: tBoolean,
-});
-scheme.FrameIsEditableParams = tObject({
-  selector: tString,
-  strict: tOptional(tBoolean),
-  timeout: tFloat,
-});
-scheme.FrameIsEditableResult = tObject({
-  value: tBoolean,
-});
-scheme.FramePressParams = tObject({
-  selector: tString,
-  strict: tOptional(tBoolean),
-  key: tString,
-  delay: tOptional(tFloat),
-  noWaitAfter: tOptional(tBoolean),
-  timeout: tFloat,
-});
-scheme.FramePressResult = tOptional(tObject({}));
-scheme.FrameQuerySelectorParams = tObject({
-  selector: tString,
-  strict: tOptional(tBoolean),
-});
-scheme.FrameQuerySelectorResult = tObject({
-  element: tOptional(tChannel(['ElementHandle'])),
-});
-scheme.FrameQuerySelectorAllParams = tObject({
-  selector: tString,
-});
-scheme.FrameQuerySelectorAllResult = tObject({
-  elements: tArray(tChannel(['ElementHandle'])),
-});
-scheme.FrameQueryCountParams = tObject({
-  selector: tString,
-});
-scheme.FrameQueryCountResult = tObject({
-  value: tInt,
-});
-scheme.FrameSelectOptionParams = tObject({
-  selector: tString,
-  strict: tOptional(tBoolean),
-  elements: tOptional(tArray(tChannel(['ElementHandle']))),
-  options: tOptional(tArray(tObject({
-    valueOrLabel: tOptional(tString),
-    value: tOptional(tString),
-    label: tOptional(tString),
-    index: tOptional(tInt),
-  }))),
-  force: tOptional(tBoolean),
-  timeout: tFloat,
-});
-scheme.FrameSelectOptionResult = tObject({
-  values: tArray(tString),
-});
-scheme.FrameSetContentParams = tObject({
-  html: tString,
-  timeout: tFloat,
-  waitUntil: tOptional(tType('LifecycleEvent')),
-});
-scheme.FrameSetContentResult = tOptional(tObject({}));
-scheme.FrameSetInputFilesParams = tObject({
-  selector: tString,
-  strict: tOptional(tBoolean),
-  payloads: tOptional(tArray(tObject({
-    name: tString,
-    mimeType: tOptional(tString),
-    buffer: tBinary,
-  }))),
-  localDirectory: tOptional(tString),
-  directoryStream: tOptional(tChannel(['WritableStream'])),
-  localPaths: tOptional(tArray(tString)),
-  streams: tOptional(tArray(tChannel(['WritableStream']))),
-  timeout: tFloat,
-});
-scheme.FrameSetInputFilesResult = tOptional(tObject({}));
-scheme.FrameTapParams = tObject({
-  selector: tString,
-  strict: tOptional(tBoolean),
-  force: tOptional(tBoolean),
-  modifiers: tOptional(tArray(tEnum(['Alt', 'Control', 'ControlOrMeta', 'Meta', 'Shift']))),
-  position: tOptional(tType('Point')),
-  timeout: tFloat,
-  trial: tOptional(tBoolean),
-});
-scheme.FrameTapResult = tOptional(tObject({}));
-scheme.FrameTextContentParams = tObject({
-  selector: tString,
-  strict: tOptional(tBoolean),
-  timeout: tFloat,
-});
-scheme.FrameTextContentResult = tObject({
-  value: tOptional(tString),
-});
-scheme.FrameTitleParams = tOptional(tObject({}));
-scheme.FrameTitleResult = tObject({
-  value: tString,
-});
-scheme.FrameTypeParams = tObject({
-  selector: tString,
-  strict: tOptional(tBoolean),
-  text: tString,
-  delay: tOptional(tFloat),
-  timeout: tFloat,
-});
-scheme.FrameTypeResult = tOptional(tObject({}));
-scheme.FrameUncheckParams = tObject({
-  selector: tString,
-  strict: tOptional(tBoolean),
-  force: tOptional(tBoolean),
-  position: tOptional(tType('Point')),
-  timeout: tFloat,
-  trial: tOptional(tBoolean),
-});
-scheme.FrameUncheckResult = tOptional(tObject({}));
-scheme.FrameWaitForTimeoutParams = tObject({
-  waitTimeout: tFloat,
-});
-scheme.FrameWaitForTimeoutResult = tOptional(tObject({}));
-scheme.FrameWaitForFunctionParams = tObject({
-  expression: tString,
-  isFunction: tOptional(tBoolean),
-  arg: tType('SerializedArgument'),
-  timeout: tFloat,
-  pollingInterval: tOptional(tFloat),
-});
-scheme.FrameWaitForFunctionResult = tObject({
-  handle: tChannel(['ElementHandle', 'JSHandle']),
-});
-scheme.FrameWaitForSelectorParams = tObject({
-  selector: tString,
-  strict: tOptional(tBoolean),
-  timeout: tFloat,
-  state: tOptional(tEnum(['attached', 'detached', 'visible', 'hidden'])),
-  omitReturnValue: tOptional(tBoolean),
-});
-scheme.FrameWaitForSelectorResult = tObject({
-  element: tOptional(tChannel(['ElementHandle'])),
-});
-scheme.FrameExpectParams = tObject({
-  selector: tOptional(tString),
-  expression: tString,
-  expressionArg: tOptional(tAny),
-  pseudo: tOptional(tEnum(['before', 'after'])),
-  expectedText: tOptional(tArray(tType('ExpectedTextValue'))),
-  expectedNumber: tOptional(tFloat),
-  expectedValue: tOptional(tType('SerializedArgument')),
-  useInnerText: tOptional(tBoolean),
-  isNot: tBoolean,
-  timeout: tFloat,
-});
-scheme.FrameExpectResult = tObject({
-  matches: tBoolean,
-  received: tOptional(tObject({
-    value: tOptional(tType('SerializedValue')),
-    ariaSnapshot: tOptional(tString),
+  proxy: tOptional(tObject({
+    server: tString,
+    bypass: tOptional(tString),
+    username: tOptional(tString),
+    password: tOptional(tString),
   })),
-  timedOut: tOptional(tBoolean),
-  errorMessage: tOptional(tString),
-  log: tOptional(tArray(tString)),
+  storageState: tOptional(tObject({
+    cookies: tOptional(tArray(tType('NetworkCookie'))),
+    origins: tOptional(tArray(tType('SetOriginStorage'))),
+  })),
+  tracesDir: tOptional(tString),
 });
-scheme.WorkerInitializer = tObject({
-  url: tString,
+scheme.PlaywrightNewRequestResult = tObject({
+  request: tChannel(['APIRequestContext']),
 });
-scheme.WorkerConsoleEvent = tObject({
-  type: tString,
+scheme.DebugControllerInitializer = tOptional(tObject({}));
+scheme.DebugControllerInspectRequestedEvent = tObject({
+  selector: tString,
+  locator: tString,
+  ariaSnapshot: tString,
+});
+scheme.DebugControllerSetModeRequestedEvent = tObject({
+  mode: tString,
+});
+scheme.DebugControllerStateChangedEvent = tObject({
+  pageCount: tInt,
+});
+scheme.DebugControllerSourceChangedEvent = tObject({
   text: tString,
-  args: tArray(tChannel(['ElementHandle', 'JSHandle'])),
-  location: tObject({
-    url: tString,
-    lineNumber: tInt,
-    columnNumber: tInt,
-  }),
-  timestamp: tFloat,
+  header: tOptional(tString),
+  footer: tOptional(tString),
+  actions: tOptional(tArray(tString)),
 });
-scheme.WorkerCloseEvent = tOptional(tObject({}));
-scheme.WorkerDisconnectParams = tObject({
-  reason: tOptional(tString),
+scheme.DebugControllerPausedEvent = tObject({
+  paused: tBoolean,
 });
-scheme.WorkerDisconnectResult = tOptional(tObject({}));
-scheme.WorkerEvaluateExpressionParams = tObject({
-  expression: tString,
-  isFunction: tOptional(tBoolean),
-  arg: tType('SerializedArgument'),
+scheme.DebugControllerInitializeParams = tObject({
+  codegenId: tString,
+  sdkLanguage: tType('SDKLanguage'),
 });
-scheme.WorkerEvaluateExpressionResult = tObject({
-  value: tType('SerializedValue'),
-});
-scheme.WorkerEvaluateExpressionHandleParams = tObject({
-  expression: tString,
-  isFunction: tOptional(tBoolean),
-  arg: tType('SerializedArgument'),
-});
-scheme.WorkerEvaluateExpressionHandleResult = tObject({
-  handle: tChannel(['ElementHandle', 'JSHandle']),
-});
-scheme.WorkerUpdateSubscriptionParams = tObject({
-  event: tEnum(['console']),
+scheme.DebugControllerInitializeResult = tOptional(tObject({}));
+scheme.DebugControllerSetReportStateChangedParams = tObject({
   enabled: tBoolean,
 });
-scheme.WorkerUpdateSubscriptionResult = tOptional(tObject({}));
-scheme.DisposableInitializer = tOptional(tObject({}));
-scheme.DisposableDisposeParams = tOptional(tObject({}));
-scheme.DisposableDisposeResult = tOptional(tObject({}));
-scheme.JSHandleInitializer = tObject({
-  preview: tString,
+scheme.DebugControllerSetReportStateChangedResult = tOptional(tObject({}));
+scheme.DebugControllerSetRecorderModeParams = tObject({
+  mode: tEnum(['inspecting', 'recording', 'none']),
+  testIdAttributeName: tOptional(tString),
+  generateAutoExpect: tOptional(tBoolean),
 });
-scheme.JSHandlePreviewUpdatedEvent = tObject({
-  preview: tString,
+scheme.DebugControllerSetRecorderModeResult = tOptional(tObject({}));
+scheme.DebugControllerHighlightParams = tObject({
+  selector: tOptional(tString),
+  ariaTemplate: tOptional(tString),
 });
-scheme.ElementHandlePreviewUpdatedEvent = tType('JSHandlePreviewUpdatedEvent');
-scheme.JSHandleDisposeParams = tOptional(tObject({}));
-scheme.ElementHandleDisposeParams = tType('JSHandleDisposeParams');
-scheme.JSHandleDisposeResult = tOptional(tObject({}));
-scheme.ElementHandleDisposeResult = tType('JSHandleDisposeResult');
-scheme.JSHandleEvaluateExpressionParams = tObject({
-  expression: tString,
-  isFunction: tOptional(tBoolean),
-  arg: tType('SerializedArgument'),
+scheme.DebugControllerHighlightResult = tOptional(tObject({}));
+scheme.DebugControllerHideHighlightParams = tOptional(tObject({}));
+scheme.DebugControllerHideHighlightResult = tOptional(tObject({}));
+scheme.DebugControllerResumeParams = tOptional(tObject({}));
+scheme.DebugControllerResumeResult = tOptional(tObject({}));
+scheme.DebugControllerKillParams = tOptional(tObject({}));
+scheme.DebugControllerKillResult = tOptional(tObject({}));
+scheme.SocksSupportInitializer = tOptional(tObject({}));
+scheme.SocksSupportSocksRequestedEvent = tObject({
+  uid: tString,
+  host: tString,
+  port: tInt,
 });
-scheme.ElementHandleEvaluateExpressionParams = tType('JSHandleEvaluateExpressionParams');
-scheme.JSHandleEvaluateExpressionResult = tObject({
-  value: tType('SerializedValue'),
+scheme.SocksSupportSocksDataEvent = tObject({
+  uid: tString,
+  data: tBinary,
 });
-scheme.ElementHandleEvaluateExpressionResult = tType('JSHandleEvaluateExpressionResult');
-scheme.JSHandleEvaluateExpressionHandleParams = tObject({
-  expression: tString,
-  isFunction: tOptional(tBoolean),
-  arg: tType('SerializedArgument'),
+scheme.SocksSupportSocksClosedEvent = tObject({
+  uid: tString,
 });
-scheme.ElementHandleEvaluateExpressionHandleParams = tType('JSHandleEvaluateExpressionHandleParams');
-scheme.JSHandleEvaluateExpressionHandleResult = tObject({
-  handle: tChannel(['ElementHandle', 'JSHandle']),
+scheme.SocksSupportSocksConnectedParams = tObject({
+  uid: tString,
+  host: tString,
+  port: tInt,
 });
-scheme.ElementHandleEvaluateExpressionHandleResult = tType('JSHandleEvaluateExpressionHandleResult');
-scheme.JSHandleGetPropertyListParams = tOptional(tObject({}));
-scheme.ElementHandleGetPropertyListParams = tType('JSHandleGetPropertyListParams');
-scheme.JSHandleGetPropertyListResult = tObject({
-  properties: tArray(tObject({
-    name: tString,
-    value: tChannel(['ElementHandle', 'JSHandle']),
-  })),
+scheme.SocksSupportSocksConnectedResult = tOptional(tObject({}));
+scheme.SocksSupportSocksFailedParams = tObject({
+  uid: tString,
+  errorCode: tString,
 });
-scheme.ElementHandleGetPropertyListResult = tType('JSHandleGetPropertyListResult');
-scheme.JSHandleGetPropertyParams = tObject({
+scheme.SocksSupportSocksFailedResult = tOptional(tObject({}));
+scheme.SocksSupportSocksDataParams = tObject({
+  uid: tString,
+  data: tBinary,
+});
+scheme.SocksSupportSocksDataResult = tOptional(tObject({}));
+scheme.SocksSupportSocksErrorParams = tObject({
+  uid: tString,
+  error: tString,
+});
+scheme.SocksSupportSocksErrorResult = tOptional(tObject({}));
+scheme.SocksSupportSocksEndParams = tObject({
+  uid: tString,
+});
+scheme.SocksSupportSocksEndResult = tOptional(tObject({}));
+scheme.JsonPipeInitializer = tOptional(tObject({}));
+scheme.JsonPipeMessageEvent = tObject({
+  message: tAny,
+});
+scheme.JsonPipeClosedEvent = tObject({
+  reason: tOptional(tString),
+});
+scheme.JsonPipeSendParams = tObject({
+  message: tAny,
+});
+scheme.JsonPipeSendResult = tOptional(tObject({}));
+scheme.JsonPipeCloseParams = tOptional(tObject({}));
+scheme.JsonPipeCloseResult = tOptional(tObject({}));
+scheme.ExpectedTextValue = tObject({
+  string: tOptional(tString),
+  regexSource: tOptional(tString),
+  regexFlags: tOptional(tString),
+  matchSubstring: tOptional(tBoolean),
+  ignoreCase: tOptional(tBoolean),
+  normalizeWhiteSpace: tOptional(tBoolean),
+});
+scheme.SelectorEngine = tObject({
   name: tString,
+  source: tString,
+  contentScript: tOptional(tBoolean),
 });
-scheme.ElementHandleGetPropertyParams = tType('JSHandleGetPropertyParams');
-scheme.JSHandleGetPropertyResult = tObject({
-  handle: tChannel(['ElementHandle', 'JSHandle']),
-});
-scheme.ElementHandleGetPropertyResult = tType('JSHandleGetPropertyResult');
-scheme.JSHandleJsonValueParams = tOptional(tObject({}));
-scheme.ElementHandleJsonValueParams = tType('JSHandleJsonValueParams');
-scheme.JSHandleJsonValueResult = tObject({
-  value: tType('SerializedValue'),
-});
-scheme.ElementHandleJsonValueResult = tType('JSHandleJsonValueResult');
-scheme.ElementHandleInitializer = tObject({
-  preview: tString,
-});
-scheme.ElementHandleEvalOnSelectorParams = tObject({
-  selector: tString,
-  strict: tOptional(tBoolean),
-  expression: tString,
-  isFunction: tOptional(tBoolean),
-  arg: tType('SerializedArgument'),
-});
-scheme.ElementHandleEvalOnSelectorResult = tObject({
-  value: tType('SerializedValue'),
-});
-scheme.ElementHandleEvalOnSelectorAllParams = tObject({
-  selector: tString,
-  expression: tString,
-  isFunction: tOptional(tBoolean),
-  arg: tType('SerializedArgument'),
-});
-scheme.ElementHandleEvalOnSelectorAllResult = tObject({
-  value: tType('SerializedValue'),
-});
-scheme.ElementHandleBoundingBoxParams = tOptional(tObject({}));
-scheme.ElementHandleBoundingBoxResult = tObject({
-  value: tOptional(tType('Rect')),
-});
-scheme.ElementHandleCheckParams = tObject({
-  force: tOptional(tBoolean),
-  position: tOptional(tType('Point')),
-  timeout: tFloat,
-  trial: tOptional(tBoolean),
-});
-scheme.ElementHandleCheckResult = tOptional(tObject({}));
-scheme.ElementHandleClickParams = tObject({
-  force: tOptional(tBoolean),
-  noWaitAfter: tOptional(tBoolean),
-  modifiers: tOptional(tArray(tEnum(['Alt', 'Control', 'ControlOrMeta', 'Meta', 'Shift']))),
-  position: tOptional(tType('Point')),
-  delay: tOptional(tFloat),
-  button: tOptional(tEnum(['left', 'right', 'middle'])),
-  clickCount: tOptional(tInt),
-  timeout: tFloat,
-  trial: tOptional(tBoolean),
-  steps: tOptional(tInt),
-});
-scheme.ElementHandleClickResult = tOptional(tObject({}));
-scheme.ElementHandleContentFrameParams = tOptional(tObject({}));
-scheme.ElementHandleContentFrameResult = tObject({
-  frame: tOptional(tChannel(['Frame'])),
-});
-scheme.ElementHandleDblclickParams = tObject({
-  force: tOptional(tBoolean),
-  modifiers: tOptional(tArray(tEnum(['Alt', 'Control', 'ControlOrMeta', 'Meta', 'Shift']))),
-  position: tOptional(tType('Point')),
-  delay: tOptional(tFloat),
-  button: tOptional(tEnum(['left', 'right', 'middle'])),
-  timeout: tFloat,
-  trial: tOptional(tBoolean),
-  steps: tOptional(tInt),
-});
-scheme.ElementHandleDblclickResult = tOptional(tObject({}));
-scheme.ElementHandleDispatchEventParams = tObject({
-  type: tString,
-  eventInit: tType('SerializedArgument'),
-});
-scheme.ElementHandleDispatchEventResult = tOptional(tObject({}));
-scheme.ElementHandleFillParams = tObject({
-  value: tString,
-  force: tOptional(tBoolean),
-  timeout: tFloat,
-});
-scheme.ElementHandleFillResult = tOptional(tObject({}));
-scheme.ElementHandleFocusParams = tOptional(tObject({}));
-scheme.ElementHandleFocusResult = tOptional(tObject({}));
-scheme.ElementHandleGetAttributeParams = tObject({
+scheme.FormField = tObject({
   name: tString,
-});
-scheme.ElementHandleGetAttributeResult = tObject({
   value: tOptional(tString),
-});
-scheme.ElementHandleHoverParams = tObject({
-  force: tOptional(tBoolean),
-  modifiers: tOptional(tArray(tEnum(['Alt', 'Control', 'ControlOrMeta', 'Meta', 'Shift']))),
-  position: tOptional(tType('Point')),
-  timeout: tFloat,
-  trial: tOptional(tBoolean),
-});
-scheme.ElementHandleHoverResult = tOptional(tObject({}));
-scheme.ElementHandleInnerHTMLParams = tOptional(tObject({}));
-scheme.ElementHandleInnerHTMLResult = tObject({
-  value: tString,
-});
-scheme.ElementHandleInnerTextParams = tOptional(tObject({}));
-scheme.ElementHandleInnerTextResult = tObject({
-  value: tString,
-});
-scheme.ElementHandleInputValueParams = tOptional(tObject({}));
-scheme.ElementHandleInputValueResult = tObject({
-  value: tString,
-});
-scheme.ElementHandleIsCheckedParams = tOptional(tObject({}));
-scheme.ElementHandleIsCheckedResult = tObject({
-  value: tBoolean,
-});
-scheme.ElementHandleIsDisabledParams = tOptional(tObject({}));
-scheme.ElementHandleIsDisabledResult = tObject({
-  value: tBoolean,
-});
-scheme.ElementHandleIsEditableParams = tOptional(tObject({}));
-scheme.ElementHandleIsEditableResult = tObject({
-  value: tBoolean,
-});
-scheme.ElementHandleIsEnabledParams = tOptional(tObject({}));
-scheme.ElementHandleIsEnabledResult = tObject({
-  value: tBoolean,
-});
-scheme.ElementHandleIsHiddenParams = tOptional(tObject({}));
-scheme.ElementHandleIsHiddenResult = tObject({
-  value: tBoolean,
-});
-scheme.ElementHandleIsVisibleParams = tOptional(tObject({}));
-scheme.ElementHandleIsVisibleResult = tObject({
-  value: tBoolean,
-});
-scheme.ElementHandleOwnerFrameParams = tOptional(tObject({}));
-scheme.ElementHandleOwnerFrameResult = tObject({
-  frame: tOptional(tChannel(['Frame'])),
-});
-scheme.ElementHandlePressParams = tObject({
-  key: tString,
-  delay: tOptional(tFloat),
-  timeout: tFloat,
-  noWaitAfter: tOptional(tBoolean),
-});
-scheme.ElementHandlePressResult = tOptional(tObject({}));
-scheme.ElementHandleQuerySelectorParams = tObject({
-  selector: tString,
-  strict: tOptional(tBoolean),
-});
-scheme.ElementHandleQuerySelectorResult = tObject({
-  element: tOptional(tChannel(['ElementHandle'])),
-});
-scheme.ElementHandleQuerySelectorAllParams = tObject({
-  selector: tString,
-});
-scheme.ElementHandleQuerySelectorAllResult = tObject({
-  elements: tArray(tChannel(['ElementHandle'])),
-});
-scheme.ElementHandleScreenshotParams = tObject({
-  timeout: tFloat,
-  type: tOptional(tEnum(['png', 'jpeg'])),
-  quality: tOptional(tInt),
-  omitBackground: tOptional(tBoolean),
-  caret: tOptional(tEnum(['hide', 'initial'])),
-  animations: tOptional(tEnum(['disabled', 'allow'])),
-  scale: tOptional(tEnum(['css', 'device'])),
-  mask: tOptional(tArray(tObject({
-    frame: tChannel(['Frame']),
-    selector: tString,
-  }))),
-  maskColor: tOptional(tString),
-  style: tOptional(tString),
-});
-scheme.ElementHandleScreenshotResult = tObject({
-  binary: tBinary,
-});
-scheme.ElementHandleScrollIntoViewIfNeededParams = tObject({
-  timeout: tFloat,
-});
-scheme.ElementHandleScrollIntoViewIfNeededResult = tOptional(tObject({}));
-scheme.ElementHandleSelectOptionParams = tObject({
-  elements: tOptional(tArray(tChannel(['ElementHandle']))),
-  options: tOptional(tArray(tObject({
-    valueOrLabel: tOptional(tString),
-    value: tOptional(tString),
-    label: tOptional(tString),
-    index: tOptional(tInt),
-  }))),
-  force: tOptional(tBoolean),
-  timeout: tFloat,
-});
-scheme.ElementHandleSelectOptionResult = tObject({
-  values: tArray(tString),
-});
-scheme.ElementHandleSelectTextParams = tObject({
-  force: tOptional(tBoolean),
-  timeout: tFloat,
-});
-scheme.ElementHandleSelectTextResult = tOptional(tObject({}));
-scheme.ElementHandleSetInputFilesParams = tObject({
-  payloads: tOptional(tArray(tObject({
+  file: tOptional(tObject({
     name: tString,
     mimeType: tOptional(tString),
     buffer: tBinary,
-  }))),
-  localDirectory: tOptional(tString),
-  directoryStream: tOptional(tChannel(['WritableStream'])),
-  localPaths: tOptional(tArray(tString)),
-  streams: tOptional(tArray(tChannel(['WritableStream']))),
-  timeout: tFloat,
+  })),
 });
-scheme.ElementHandleSetInputFilesResult = tOptional(tObject({}));
-scheme.ElementHandleTapParams = tObject({
-  force: tOptional(tBoolean),
-  modifiers: tOptional(tArray(tEnum(['Alt', 'Control', 'ControlOrMeta', 'Meta', 'Shift']))),
-  position: tOptional(tType('Point')),
-  timeout: tFloat,
-  trial: tOptional(tBoolean),
-});
-scheme.ElementHandleTapResult = tOptional(tObject({}));
-scheme.ElementHandleTextContentParams = tOptional(tObject({}));
-scheme.ElementHandleTextContentResult = tObject({
-  value: tOptional(tString),
-});
-scheme.ElementHandleTypeParams = tObject({
+scheme.LifecycleEvent = tEnum(['load', 'domcontentloaded', 'networkidle', 'commit']);
+scheme.ConsoleMessagesFilter = tEnum(['all', 'since-navigation']);
+scheme.RecorderSource = tObject({
+  isRecorded: tBoolean,
+  id: tString,
+  label: tString,
   text: tString,
-  delay: tOptional(tFloat),
-  timeout: tFloat,
+  language: tString,
+  highlight: tArray(tObject({
+    line: tInt,
+    type: tString,
+  })),
+  revealLine: tOptional(tInt),
+  group: tOptional(tString),
 });
-scheme.ElementHandleTypeResult = tOptional(tObject({}));
-scheme.ElementHandleUncheckParams = tObject({
-  force: tOptional(tBoolean),
-  position: tOptional(tType('Point')),
-  timeout: tFloat,
-  trial: tOptional(tBoolean),
+scheme.IndexedDBDatabase = tObject({
+  name: tString,
+  version: tInt,
+  stores: tArray(tObject({
+    name: tString,
+    autoIncrement: tBoolean,
+    keyPath: tOptional(tString),
+    keyPathArray: tOptional(tArray(tString)),
+    records: tArray(tObject({
+      key: tOptional(tAny),
+      keyEncoded: tOptional(tAny),
+      value: tOptional(tAny),
+      valueEncoded: tOptional(tAny),
+    })),
+    indexes: tArray(tObject({
+      name: tString,
+      keyPath: tOptional(tString),
+      keyPathArray: tOptional(tArray(tString)),
+      multiEntry: tBoolean,
+      unique: tBoolean,
+    })),
+  })),
 });
-scheme.ElementHandleUncheckResult = tOptional(tObject({}));
-scheme.ElementHandleWaitForElementStateParams = tObject({
-  state: tEnum(['visible', 'hidden', 'stable', 'enabled', 'disabled', 'editable']),
-  timeout: tFloat,
+scheme.SetOriginStorage = tObject({
+  origin: tString,
+  localStorage: tArray(tType('NameValue')),
+  indexedDB: tOptional(tArray(tType('IndexedDBDatabase'))),
 });
-scheme.ElementHandleWaitForElementStateResult = tOptional(tObject({}));
-scheme.ElementHandleWaitForSelectorParams = tObject({
-  selector: tString,
-  strict: tOptional(tBoolean),
-  timeout: tFloat,
-  state: tOptional(tEnum(['attached', 'detached', 'visible', 'hidden'])),
+scheme.OriginStorage = tObject({
+  origin: tString,
+  localStorage: tArray(tType('NameValue')),
+  indexedDB: tOptional(tArray(tType('IndexedDBDatabase'))),
 });
-scheme.ElementHandleWaitForSelectorResult = tObject({
-  element: tOptional(tChannel(['ElementHandle'])),
+scheme.RecordHarOptions = tObject({
+  content: tOptional(tEnum(['embed', 'attach', 'omit'])),
+  mode: tOptional(tEnum(['full', 'minimal'])),
+  urlGlob: tOptional(tString),
+  urlRegexSource: tOptional(tString),
+  urlRegexFlags: tOptional(tString),
+  harPath: tOptional(tString),
+  resourcesDir: tOptional(tString),
 });
-scheme.RequestInitializer = tObject({
-  frame: tOptional(tChannel(['Frame'])),
-  serviceWorker: tOptional(tChannel(['Worker'])),
-  url: tString,
-  resourceType: tString,
+scheme.CDPSessionInitializer = tOptional(tObject({}));
+scheme.CDPSessionEventEvent = tObject({
   method: tString,
-  postData: tOptional(tBinary),
-  headers: tArray(tType('NameValue')),
-  isNavigationRequest: tBoolean,
-  redirectedFrom: tOptional(tChannel(['Request'])),
+  params: tOptional(tAny),
 });
-scheme.RequestResponseParams = tOptional(tObject({}));
-scheme.RequestResponseResult = tObject({
-  response: tOptional(tChannel(['Response'])),
+scheme.CDPSessionCloseEvent = tOptional(tObject({}));
+scheme.CDPSessionSendParams = tObject({
+  method: tString,
+  params: tOptional(tAny),
 });
-scheme.RequestRawRequestHeadersParams = tOptional(tObject({}));
-scheme.RequestRawRequestHeadersResult = tObject({
-  headers: tArray(tType('NameValue')),
+scheme.CDPSessionSendResult = tObject({
+  result: tAny,
 });
-scheme.RouteInitializer = tObject({
-  request: tChannel(['Request']),
-});
-scheme.RouteRedirectNavigationRequestParams = tObject({
-  url: tString,
-});
-scheme.RouteRedirectNavigationRequestResult = tOptional(tObject({}));
-scheme.RouteAbortParams = tObject({
-  errorCode: tOptional(tString),
-});
-scheme.RouteAbortResult = tOptional(tObject({}));
-scheme.RouteContinueParams = tObject({
-  url: tOptional(tString),
-  method: tOptional(tString),
-  headers: tOptional(tArray(tType('NameValue'))),
-  postData: tOptional(tBinary),
-  isFallback: tBoolean,
-});
-scheme.RouteContinueResult = tOptional(tObject({}));
-scheme.RouteFulfillParams = tObject({
-  status: tOptional(tInt),
-  headers: tOptional(tArray(tType('NameValue'))),
-  body: tOptional(tString),
-  isBase64: tOptional(tBoolean),
-  fetchResponseUid: tOptional(tString),
-});
-scheme.RouteFulfillResult = tOptional(tObject({}));
-scheme.WebSocketRouteInitializer = tObject({
-  url: tString,
-  protocols: tArray(tString),
-});
-scheme.WebSocketRouteMessageFromPageEvent = tObject({
-  message: tString,
-  isBase64: tBoolean,
-});
-scheme.WebSocketRouteMessageFromServerEvent = tObject({
-  message: tString,
-  isBase64: tBoolean,
-});
-scheme.WebSocketRouteClosePageEvent = tObject({
-  code: tOptional(tInt),
-  reason: tOptional(tString),
-  wasClean: tBoolean,
-});
-scheme.WebSocketRouteCloseServerEvent = tObject({
-  code: tOptional(tInt),
-  reason: tOptional(tString),
-  wasClean: tBoolean,
-});
-scheme.WebSocketRouteConnectParams = tOptional(tObject({}));
-scheme.WebSocketRouteConnectResult = tOptional(tObject({}));
-scheme.WebSocketRouteEnsureOpenedParams = tOptional(tObject({}));
-scheme.WebSocketRouteEnsureOpenedResult = tOptional(tObject({}));
-scheme.WebSocketRouteSendToPageParams = tObject({
-  message: tString,
-  isBase64: tBoolean,
-});
-scheme.WebSocketRouteSendToPageResult = tOptional(tObject({}));
-scheme.WebSocketRouteSendToServerParams = tObject({
-  message: tString,
-  isBase64: tBoolean,
-});
-scheme.WebSocketRouteSendToServerResult = tOptional(tObject({}));
-scheme.WebSocketRouteClosePageParams = tObject({
-  code: tOptional(tInt),
-  reason: tOptional(tString),
-  wasClean: tBoolean,
-});
-scheme.WebSocketRouteClosePageResult = tOptional(tObject({}));
-scheme.WebSocketRouteCloseServerParams = tObject({
-  code: tOptional(tInt),
-  reason: tOptional(tString),
-  wasClean: tBoolean,
-});
-scheme.WebSocketRouteCloseServerResult = tOptional(tObject({}));
-scheme.ResourceTiming = tObject({
-  startTime: tFloat,
-  domainLookupStart: tFloat,
-  domainLookupEnd: tFloat,
-  connectStart: tFloat,
-  secureConnectionStart: tFloat,
-  connectEnd: tFloat,
-  requestStart: tFloat,
-  responseStart: tFloat,
-});
-scheme.ResponseInitializer = tObject({
-  request: tChannel(['Request']),
-  url: tString,
-  status: tInt,
-  statusText: tString,
-  headers: tArray(tType('NameValue')),
-  timing: tType('ResourceTiming'),
-  fromServiceWorker: tBoolean,
-});
-scheme.ResponseBodyParams = tOptional(tObject({}));
-scheme.ResponseBodyResult = tObject({
-  binary: tBinary,
-});
-scheme.ResponseSecurityDetailsParams = tOptional(tObject({}));
-scheme.ResponseSecurityDetailsResult = tObject({
-  value: tOptional(tType('SecurityDetails')),
-});
-scheme.ResponseServerAddrParams = tOptional(tObject({}));
-scheme.ResponseServerAddrResult = tObject({
-  value: tOptional(tType('RemoteAddr')),
-});
-scheme.ResponseRawResponseHeadersParams = tOptional(tObject({}));
-scheme.ResponseRawResponseHeadersResult = tObject({
-  headers: tArray(tType('NameValue')),
-});
-scheme.ResponseHttpVersionParams = tOptional(tObject({}));
-scheme.ResponseHttpVersionResult = tObject({
-  value: tString,
-});
-scheme.ResponseSizesParams = tOptional(tObject({}));
-scheme.ResponseSizesResult = tObject({
-  sizes: tType('RequestSizes'),
-});
-scheme.SecurityDetails = tObject({
-  issuer: tOptional(tString),
-  protocol: tOptional(tString),
-  subjectName: tOptional(tString),
-  validFrom: tOptional(tFloat),
-  validTo: tOptional(tFloat),
-});
-scheme.RequestSizes = tObject({
-  requestBodySize: tInt,
-  requestHeadersSize: tInt,
-  responseBodySize: tInt,
-  responseHeadersSize: tInt,
-});
-scheme.RemoteAddr = tObject({
-  ipAddress: tString,
-  port: tInt,
-});
-scheme.WebSocketInitializer = tObject({
-  url: tString,
-});
-scheme.WebSocketOpenEvent = tOptional(tObject({}));
-scheme.WebSocketFrameSentEvent = tObject({
-  opcode: tInt,
-  data: tString,
-});
-scheme.WebSocketFrameReceivedEvent = tObject({
-  opcode: tInt,
-  data: tString,
-});
-scheme.WebSocketSocketErrorEvent = tObject({
-  error: tString,
-});
-scheme.WebSocketCloseEvent = tOptional(tObject({}));
+scheme.CDPSessionDetachParams = tOptional(tObject({}));
+scheme.CDPSessionDetachResult = tOptional(tObject({}));
 scheme.BindingCallInitializer = tObject({
   frame: tChannel(['Frame']),
   name: tString,
@@ -2614,6 +2849,78 @@ scheme.DialogAcceptParams = tObject({
 scheme.DialogAcceptResult = tOptional(tObject({}));
 scheme.DialogDismissParams = tOptional(tObject({}));
 scheme.DialogDismissResult = tOptional(tObject({}));
+scheme.SerializedValue = tObject({
+  n: tOptional(tFloat),
+  b: tOptional(tBoolean),
+  s: tOptional(tString),
+  v: tOptional(tEnum(['null', 'undefined', 'NaN', 'Infinity', '-Infinity', '-0'])),
+  d: tOptional(tString),
+  u: tOptional(tString),
+  bi: tOptional(tString),
+  ta: tOptional(tObject({
+    b: tBinary,
+    k: tEnum(['i8', 'ui8', 'ui8c', 'i16', 'ui16', 'i32', 'ui32', 'f32', 'f64', 'bi64', 'bui64']),
+  })),
+  e: tOptional(tObject({
+    m: tString,
+    n: tString,
+    s: tString,
+  })),
+  r: tOptional(tObject({
+    p: tString,
+    f: tString,
+  })),
+  a: tOptional(tArray(tType('SerializedValue'))),
+  o: tOptional(tArray(tObject({
+    k: tString,
+    v: tType('SerializedValue'),
+  }))),
+  h: tOptional(tInt),
+  id: tOptional(tInt),
+  ref: tOptional(tInt),
+});
+scheme.SerializedArgument = tObject({
+  value: tType('SerializedValue'),
+  handles: tArray(tChannel('*')),
+});
+scheme.SerializedError = tObject({
+  error: tOptional(tObject({
+    message: tString,
+    name: tString,
+    stack: tOptional(tString),
+  })),
+  value: tOptional(tType('SerializedValue')),
+});
+scheme.StackFrame = tObject({
+  file: tString,
+  line: tInt,
+  column: tInt,
+  function: tOptional(tString),
+});
+scheme.Point = tObject({
+  x: tFloat,
+  y: tFloat,
+});
+scheme.Rect = tObject({
+  x: tFloat,
+  y: tFloat,
+  width: tFloat,
+  height: tFloat,
+});
+scheme.URLPattern = tObject({
+  hash: tString,
+  hostname: tString,
+  password: tString,
+  pathname: tString,
+  port: tString,
+  protocol: tString,
+  search: tString,
+  username: tString,
+});
+scheme.NameValue = tObject({
+  name: tString,
+  value: tString,
+});
 scheme.TracingInitializer = tOptional(tObject({}));
 scheme.TracingTracingStartParams = tObject({
   name: tOptional(tString),
@@ -2664,357 +2971,43 @@ scheme.TracingHarExportResult = tObject({
   artifact: tOptional(tChannel(['Artifact'])),
   entries: tOptional(tArray(tType('NameValue'))),
 });
-scheme.ArtifactInitializer = tObject({
-  absolutePath: tString,
+scheme.WorkerInitializer = tObject({
+  url: tString,
 });
-scheme.ArtifactPathAfterFinishedParams = tOptional(tObject({}));
-scheme.ArtifactPathAfterFinishedResult = tObject({
-  value: tString,
-});
-scheme.ArtifactSaveAsParams = tObject({
-  path: tString,
-});
-scheme.ArtifactSaveAsResult = tOptional(tObject({}));
-scheme.ArtifactSaveAsStreamParams = tOptional(tObject({}));
-scheme.ArtifactSaveAsStreamResult = tObject({
-  stream: tChannel(['Stream']),
-});
-scheme.ArtifactFailureParams = tOptional(tObject({}));
-scheme.ArtifactFailureResult = tObject({
-  error: tOptional(tString),
-});
-scheme.ArtifactStreamParams = tOptional(tObject({}));
-scheme.ArtifactStreamResult = tObject({
-  stream: tChannel(['Stream']),
-});
-scheme.ArtifactCancelParams = tOptional(tObject({}));
-scheme.ArtifactCancelResult = tOptional(tObject({}));
-scheme.ArtifactDeleteParams = tOptional(tObject({}));
-scheme.ArtifactDeleteResult = tOptional(tObject({}));
-scheme.StreamInitializer = tOptional(tObject({}));
-scheme.StreamReadParams = tObject({
-  size: tOptional(tInt),
-});
-scheme.StreamReadResult = tObject({
-  binary: tBinary,
-});
-scheme.StreamCloseParams = tOptional(tObject({}));
-scheme.StreamCloseResult = tOptional(tObject({}));
-scheme.WritableStreamInitializer = tOptional(tObject({}));
-scheme.WritableStreamWriteParams = tObject({
-  binary: tBinary,
-});
-scheme.WritableStreamWriteResult = tOptional(tObject({}));
-scheme.WritableStreamCloseParams = tOptional(tObject({}));
-scheme.WritableStreamCloseResult = tOptional(tObject({}));
-scheme.CDPSessionInitializer = tOptional(tObject({}));
-scheme.CDPSessionEventEvent = tObject({
-  method: tString,
-  params: tOptional(tAny),
-});
-scheme.CDPSessionCloseEvent = tOptional(tObject({}));
-scheme.CDPSessionSendParams = tObject({
-  method: tString,
-  params: tOptional(tAny),
-});
-scheme.CDPSessionSendResult = tObject({
-  result: tAny,
-});
-scheme.CDPSessionDetachParams = tOptional(tObject({}));
-scheme.CDPSessionDetachResult = tOptional(tObject({}));
-scheme.AndroidInitializer = tOptional(tObject({}));
-scheme.AndroidDevicesParams = tObject({
-  host: tOptional(tString),
-  port: tOptional(tInt),
-  omitDriverInstall: tOptional(tBoolean),
-});
-scheme.AndroidDevicesResult = tObject({
-  devices: tArray(tChannel(['AndroidDevice'])),
-});
-scheme.AndroidSocketInitializer = tOptional(tObject({}));
-scheme.AndroidSocketDataEvent = tObject({
-  data: tBinary,
-});
-scheme.AndroidSocketCloseEvent = tOptional(tObject({}));
-scheme.AndroidSocketWriteParams = tObject({
-  data: tBinary,
-});
-scheme.AndroidSocketWriteResult = tOptional(tObject({}));
-scheme.AndroidSocketCloseParams = tOptional(tObject({}));
-scheme.AndroidSocketCloseResult = tOptional(tObject({}));
-scheme.AndroidDeviceInitializer = tObject({
-  model: tString,
-  serial: tString,
-});
-scheme.AndroidDeviceCloseEvent = tOptional(tObject({}));
-scheme.AndroidDeviceWebViewAddedEvent = tObject({
-  webView: tType('AndroidWebView'),
-});
-scheme.AndroidDeviceWebViewRemovedEvent = tObject({
-  socketName: tString,
-});
-scheme.AndroidDeviceWaitParams = tObject({
-  androidSelector: tType('AndroidSelector'),
-  state: tOptional(tEnum(['gone'])),
-  timeout: tFloat,
-});
-scheme.AndroidDeviceWaitResult = tOptional(tObject({}));
-scheme.AndroidDeviceFillParams = tObject({
-  androidSelector: tType('AndroidSelector'),
+scheme.WorkerConsoleEvent = tObject({
+  type: tString,
   text: tString,
-  timeout: tFloat,
+  args: tArray(tChannel(['ElementHandle', 'JSHandle'])),
+  location: tObject({
+    url: tString,
+    lineNumber: tInt,
+    columnNumber: tInt,
+  }),
+  timestamp: tFloat,
 });
-scheme.AndroidDeviceFillResult = tOptional(tObject({}));
-scheme.AndroidDeviceTapParams = tObject({
-  androidSelector: tType('AndroidSelector'),
-  duration: tOptional(tFloat),
-  timeout: tFloat,
-});
-scheme.AndroidDeviceTapResult = tOptional(tObject({}));
-scheme.AndroidDeviceDragParams = tObject({
-  androidSelector: tType('AndroidSelector'),
-  dest: tType('Point'),
-  speed: tOptional(tFloat),
-  timeout: tFloat,
-});
-scheme.AndroidDeviceDragResult = tOptional(tObject({}));
-scheme.AndroidDeviceFlingParams = tObject({
-  androidSelector: tType('AndroidSelector'),
-  direction: tEnum(['up', 'down', 'left', 'right']),
-  speed: tOptional(tFloat),
-  timeout: tFloat,
-});
-scheme.AndroidDeviceFlingResult = tOptional(tObject({}));
-scheme.AndroidDeviceLongTapParams = tObject({
-  androidSelector: tType('AndroidSelector'),
-  timeout: tFloat,
-});
-scheme.AndroidDeviceLongTapResult = tOptional(tObject({}));
-scheme.AndroidDevicePinchCloseParams = tObject({
-  androidSelector: tType('AndroidSelector'),
-  percent: tFloat,
-  speed: tOptional(tFloat),
-  timeout: tFloat,
-});
-scheme.AndroidDevicePinchCloseResult = tOptional(tObject({}));
-scheme.AndroidDevicePinchOpenParams = tObject({
-  androidSelector: tType('AndroidSelector'),
-  percent: tFloat,
-  speed: tOptional(tFloat),
-  timeout: tFloat,
-});
-scheme.AndroidDevicePinchOpenResult = tOptional(tObject({}));
-scheme.AndroidDeviceScrollParams = tObject({
-  androidSelector: tType('AndroidSelector'),
-  direction: tEnum(['up', 'down', 'left', 'right']),
-  percent: tFloat,
-  speed: tOptional(tFloat),
-  timeout: tFloat,
-});
-scheme.AndroidDeviceScrollResult = tOptional(tObject({}));
-scheme.AndroidDeviceSwipeParams = tObject({
-  androidSelector: tType('AndroidSelector'),
-  direction: tEnum(['up', 'down', 'left', 'right']),
-  percent: tFloat,
-  speed: tOptional(tFloat),
-  timeout: tFloat,
-});
-scheme.AndroidDeviceSwipeResult = tOptional(tObject({}));
-scheme.AndroidDeviceInfoParams = tObject({
-  androidSelector: tType('AndroidSelector'),
-});
-scheme.AndroidDeviceInfoResult = tObject({
-  info: tType('AndroidElementInfo'),
-});
-scheme.AndroidDeviceScreenshotParams = tOptional(tObject({}));
-scheme.AndroidDeviceScreenshotResult = tObject({
-  binary: tBinary,
-});
-scheme.AndroidDeviceInputTypeParams = tObject({
-  text: tString,
-});
-scheme.AndroidDeviceInputTypeResult = tOptional(tObject({}));
-scheme.AndroidDeviceInputPressParams = tObject({
-  key: tString,
-});
-scheme.AndroidDeviceInputPressResult = tOptional(tObject({}));
-scheme.AndroidDeviceInputTapParams = tObject({
-  point: tType('Point'),
-});
-scheme.AndroidDeviceInputTapResult = tOptional(tObject({}));
-scheme.AndroidDeviceInputSwipeParams = tObject({
-  segments: tArray(tType('Point')),
-  steps: tInt,
-});
-scheme.AndroidDeviceInputSwipeResult = tOptional(tObject({}));
-scheme.AndroidDeviceInputDragParams = tObject({
-  from: tType('Point'),
-  to: tType('Point'),
-  steps: tInt,
-});
-scheme.AndroidDeviceInputDragResult = tOptional(tObject({}));
-scheme.AndroidDeviceLaunchBrowserParams = tObject({
-  noDefaultViewport: tOptional(tBoolean),
-  viewport: tOptional(tObject({
-    width: tInt,
-    height: tInt,
-  })),
-  screen: tOptional(tObject({
-    width: tInt,
-    height: tInt,
-  })),
-  ignoreHTTPSErrors: tOptional(tBoolean),
-  clientCertificates: tOptional(tArray(tObject({
-    origin: tString,
-    cert: tOptional(tBinary),
-    key: tOptional(tBinary),
-    passphrase: tOptional(tString),
-    pfx: tOptional(tBinary),
-  }))),
-  javaScriptEnabled: tOptional(tBoolean),
-  bypassCSP: tOptional(tBoolean),
-  userAgent: tOptional(tString),
-  locale: tOptional(tString),
-  timezoneId: tOptional(tString),
-  geolocation: tOptional(tObject({
-    longitude: tFloat,
-    latitude: tFloat,
-    accuracy: tOptional(tFloat),
-  })),
-  permissions: tOptional(tArray(tString)),
-  extraHTTPHeaders: tOptional(tArray(tType('NameValue'))),
-  offline: tOptional(tBoolean),
-  httpCredentials: tOptional(tObject({
-    username: tString,
-    password: tString,
-    origin: tOptional(tString),
-    send: tOptional(tEnum(['always', 'unauthorized'])),
-  })),
-  deviceScaleFactor: tOptional(tFloat),
-  isMobile: tOptional(tBoolean),
-  hasTouch: tOptional(tBoolean),
-  colorScheme: tOptional(tEnum(['dark', 'light', 'no-preference', 'no-override'])),
-  reducedMotion: tOptional(tEnum(['reduce', 'no-preference', 'no-override'])),
-  forcedColors: tOptional(tEnum(['active', 'none', 'no-override'])),
-  acceptDownloads: tOptional(tEnum(['accept', 'deny', 'internal-browser-default'])),
-  contrast: tOptional(tEnum(['no-preference', 'more', 'no-override'])),
-  baseURL: tOptional(tString),
-  recordVideo: tOptional(tObject({
-    dir: tOptional(tString),
-    size: tOptional(tObject({
-      width: tInt,
-      height: tInt,
-    })),
-    showActions: tOptional(tObject({
-      duration: tOptional(tFloat),
-      position: tOptional(tEnum(['top-left', 'top', 'top-right', 'bottom-left', 'bottom', 'bottom-right'])),
-      fontSize: tOptional(tInt),
-    })),
-  })),
-  strictSelectors: tOptional(tBoolean),
-  serviceWorkers: tOptional(tEnum(['allow', 'block'])),
-  selectorEngines: tOptional(tArray(tType('SelectorEngine'))),
-  testIdAttributeName: tOptional(tString),
-  pkg: tOptional(tString),
-  args: tOptional(tArray(tString)),
-  proxy: tOptional(tObject({
-    server: tString,
-    bypass: tOptional(tString),
-    username: tOptional(tString),
-    password: tOptional(tString),
-  })),
-});
-scheme.AndroidDeviceLaunchBrowserResult = tObject({
-  context: tChannel(['BrowserContext']),
-});
-scheme.AndroidDeviceOpenParams = tObject({
-  command: tString,
-});
-scheme.AndroidDeviceOpenResult = tObject({
-  socket: tChannel(['AndroidSocket']),
-});
-scheme.AndroidDeviceShellParams = tObject({
-  command: tString,
-});
-scheme.AndroidDeviceShellResult = tObject({
-  result: tBinary,
-});
-scheme.AndroidDeviceInstallApkParams = tObject({
-  file: tBinary,
-  args: tOptional(tArray(tString)),
-});
-scheme.AndroidDeviceInstallApkResult = tOptional(tObject({}));
-scheme.AndroidDevicePushParams = tObject({
-  file: tBinary,
-  path: tString,
-  mode: tOptional(tInt),
-});
-scheme.AndroidDevicePushResult = tOptional(tObject({}));
-scheme.AndroidDeviceConnectToWebViewParams = tObject({
-  socketName: tString,
-});
-scheme.AndroidDeviceConnectToWebViewResult = tObject({
-  context: tChannel(['BrowserContext']),
-});
-scheme.AndroidDeviceCloseParams = tOptional(tObject({}));
-scheme.AndroidDeviceCloseResult = tOptional(tObject({}));
-scheme.AndroidWebView = tObject({
-  pid: tInt,
-  pkg: tString,
-  socketName: tString,
-});
-scheme.AndroidSelector = tObject({
-  checkable: tOptional(tBoolean),
-  checked: tOptional(tBoolean),
-  clazz: tOptional(tString),
-  clickable: tOptional(tBoolean),
-  depth: tOptional(tInt),
-  desc: tOptional(tString),
-  enabled: tOptional(tBoolean),
-  focusable: tOptional(tBoolean),
-  focused: tOptional(tBoolean),
-  hasChild: tOptional(tObject({
-    androidSelector: tType('AndroidSelector'),
-  })),
-  hasDescendant: tOptional(tObject({
-    androidSelector: tType('AndroidSelector'),
-    maxDepth: tOptional(tInt),
-  })),
-  longClickable: tOptional(tBoolean),
-  pkg: tOptional(tString),
-  res: tOptional(tString),
-  scrollable: tOptional(tBoolean),
-  selected: tOptional(tBoolean),
-  text: tOptional(tString),
-});
-scheme.AndroidElementInfo = tObject({
-  children: tOptional(tArray(tType('AndroidElementInfo'))),
-  clazz: tString,
-  desc: tString,
-  res: tString,
-  pkg: tString,
-  text: tString,
-  bounds: tType('Rect'),
-  checkable: tBoolean,
-  checked: tBoolean,
-  clickable: tBoolean,
-  enabled: tBoolean,
-  focusable: tBoolean,
-  focused: tBoolean,
-  longClickable: tBoolean,
-  scrollable: tBoolean,
-  selected: tBoolean,
-});
-scheme.JsonPipeInitializer = tOptional(tObject({}));
-scheme.JsonPipeMessageEvent = tObject({
-  message: tAny,
-});
-scheme.JsonPipeClosedEvent = tObject({
+scheme.WorkerCloseEvent = tOptional(tObject({}));
+scheme.WorkerDisconnectParams = tObject({
   reason: tOptional(tString),
 });
-scheme.JsonPipeSendParams = tObject({
-  message: tAny,
+scheme.WorkerDisconnectResult = tOptional(tObject({}));
+scheme.WorkerEvaluateExpressionParams = tObject({
+  expression: tString,
+  isFunction: tOptional(tBoolean),
+  arg: tType('SerializedArgument'),
 });
-scheme.JsonPipeSendResult = tOptional(tObject({}));
-scheme.JsonPipeCloseParams = tOptional(tObject({}));
-scheme.JsonPipeCloseResult = tOptional(tObject({}));
+scheme.WorkerEvaluateExpressionResult = tObject({
+  value: tType('SerializedValue'),
+});
+scheme.WorkerEvaluateExpressionHandleParams = tObject({
+  expression: tString,
+  isFunction: tOptional(tBoolean),
+  arg: tType('SerializedArgument'),
+});
+scheme.WorkerEvaluateExpressionHandleResult = tObject({
+  handle: tChannel(['ElementHandle', 'JSHandle']),
+});
+scheme.WorkerUpdateSubscriptionParams = tObject({
+  event: tEnum(['console']),
+  enabled: tBoolean,
+});
+scheme.WorkerUpdateSubscriptionResult = tOptional(tObject({}));
