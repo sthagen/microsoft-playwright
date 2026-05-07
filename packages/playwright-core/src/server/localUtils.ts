@@ -25,7 +25,7 @@ import { serializeClientSideCallMetadata } from '@isomorphic/trace/traceUtils';
 import { assert } from '@isomorphic/assert';
 import { calculateSha1 } from '@utils/crypto';
 import { ZipFile } from '@utils/zipFile';
-import { removeFolders } from '@utils/fileUtils';
+import { removeFolders, resolveWithinRoot } from '@utils/fileUtils';
 import { HarBackend } from './harBackend';
 import type * as channels from '@protocol/channels';
 import type * as har from '@trace/har';
@@ -129,6 +129,7 @@ async function deleteStackSession(progress: Progress, stackSessions: Map<string,
   const session = stacksId ? stackSessions.get(stacksId) : undefined;
   if (!session)
     return;
+  await progress.race(session.writer);
   stackSessions.delete(stacksId!);
   if (session.tmpDir)
     await progress.race(removeFolders([session.tmpDir]));
@@ -187,7 +188,10 @@ export async function harUnzip(progress: Progress, params: channels.LocalUtilsHa
           await progress.race(fs.promises.mkdir(resourcesDir, { recursive: true }));
           resourcesDirCreated = true;
         }
-        await progress.race(fs.promises.writeFile(path.join(resourcesDir, entry), buffer));
+        const outPath = resolveWithinRoot(resourcesDir, entry);
+        if (!outPath)
+          throw new Error(`HAR zip entry '${entry}' escapes output directory`);
+        await progress.race(fs.promises.writeFile(outPath, buffer));
       }
     }
     await progress.race(fs.promises.unlink(params.zipFile));

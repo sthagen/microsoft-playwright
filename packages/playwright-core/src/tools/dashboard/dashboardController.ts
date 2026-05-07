@@ -27,7 +27,7 @@ import { SessionProviderEvent } from './sessionProvider';
 
 import type * as api from '../../..';
 import type { Transport } from '@utils/httpServer';
-import type { AnnotationData, Tab } from '@dashboard/dashboardChannel';
+import type { SubmittedAnnotationFrame, Tab } from '@dashboard/dashboardChannel';
 import type { BrowserDescriptor } from '../../serverRegistry';
 import type { SessionProvider } from './sessionProvider';
 
@@ -39,7 +39,7 @@ export class DashboardConnection implements Transport {
   private _attachedPage: AttachedPage | undefined;
   private _onclose: () => void;
   private _onconnected?: () => void;
-  private _onAnnotationSubmit?: (base64Png: string | undefined, ariaSnapshot: string, annotations: AnnotationData[]) => void;
+  private _onAnnotationSubmit?: (frames: SubmittedAnnotationFrame[], feedback: string) => void;
   private _pushTabsScheduled = false;
   private _visible = true;
   private _pendingReveal: { sessionName?: string; workspaceDir?: string; pageId?: string } | undefined;
@@ -48,7 +48,7 @@ export class DashboardConnection implements Transport {
   _recordingDir: string;
   _streams = new Map<string, { handle: fs.promises.FileHandle; path: string }>();
 
-  constructor(provider: SessionProvider, onclose: () => void, onconnected?: () => void, onAnnotationSubmit?: (base64Png: string | undefined, ariaSnapshot: string, annotations: AnnotationData[]) => void) {
+  constructor(provider: SessionProvider, onclose: () => void, onconnected?: () => void, onAnnotationSubmit?: (frames: SubmittedAnnotationFrame[], feedback: string) => void) {
     this._provider = provider;
     this._onclose = onclose;
     this._onconnected = onconnected;
@@ -163,8 +163,12 @@ export class DashboardConnection implements Transport {
     this._pushTabs();
   }
 
-  async submitAnnotation(params: { data: string | undefined; ariaSnapshot: string; annotations: AnnotationData[] }) {
-    this._onAnnotationSubmit?.(params.data, params.ariaSnapshot, params.annotations);
+  async submitAnnotation(params: { frames: SubmittedAnnotationFrame[]; feedback: string }) {
+    this._onAnnotationSubmit?.(params.frames, params.feedback);
+  }
+
+  async cancelAnnotation() {
+    this._onAnnotationSubmit?.([], '');
   }
 
   async reveal(params: { path: string }) {
@@ -425,10 +429,10 @@ class AttachedPage {
     return { streamId };
   }
 
-  async screenshot(): Promise<{ data: string; viewportWidth: number; viewportHeight: number, ariaSnapshot: string }> {
+  async screenshot(): Promise<{ data: string; viewportWidth: number; viewportHeight: number; ariaSnapshot: string }> {
     const buffer = await this._page.screenshot({ type: 'png' });
-    const vp = await this._viewportSize();
     const ariaSnapshot = await this._page.ariaSnapshot({ boxes: true, mode: 'ai' });
+    const vp = await this._viewportSize();
     return {
       data: buffer.toString('base64'),
       viewportWidth: vp.width,
@@ -448,11 +452,10 @@ class AttachedPage {
 
   private async _startScreencast(page: api.Page) {
     await page.screencast.start({
-      onFrame: ({ data }: { data: Buffer }) => {
+      onFrame: ({ data, viewportWidth, viewportHeight }) => {
         if (this._disposed)
           return;
-        const vp = page.viewportSize();
-        this._owner.emitFrame(data.toString('base64'), vp?.width ?? 0, vp?.height ?? 0);
+        this._owner.emitFrame(data.toString('base64'), viewportWidth, viewportHeight);
       },
       size: { width: 1280, height: 800 },
       ...(this._recordingPath ? { path: this._recordingPath } : {}),

@@ -22,17 +22,17 @@ import http from 'http';
 import { HttpServer } from '@utils/httpServer';
 import { makeSocketPath } from '@utils/fileUtils';
 import { gracefullyProcessExitDoNotHang } from '@utils/processLauncher';
+import { monotonicTime } from '@isomorphic/time';
 import { libPath } from '../../package';
 import { playwright } from '../../inprocess';
 import { findChromiumChannelBestEffort, registryDirectory } from '../../server/registry/index';
 import { minimist } from '../cli-client/minimist';
-import { saveOutputFile } from '../trace/traceUtils';
 import { DashboardConnection } from './dashboardController';
 import { RegistrySessionProvider } from './registrySessionProvider';
 import { IdentitySessionProvider } from './identitySessionProvider';
 
 import type * as api from '../../..';
-import type { AnnotationData } from '@dashboard/dashboardChannel';
+import type { SubmittedAnnotationFrame } from '@dashboard/dashboardChannel';
 import type { SessionProvider } from './sessionProvider';
 
 // HMR: build-time flag — `true` in watch builds, `false` in release. esbuild
@@ -57,10 +57,10 @@ async function startDashboardServer(provider: SessionProvider, options: Dashboar
   let pendingAnnotate = false;
   const waitingSockets = new Set<net.Socket>();
 
-  const submitAnnotation = (base64Png: string | undefined, ariaSnapshot: string, annotations: AnnotationData[]) => {
+  const submitAnnotation = (frames: SubmittedAnnotationFrame[], feedback: string) => {
     if (waitingSockets.size === 0)
       return;
-    const payload = JSON.stringify({ png: base64Png, ariaSnapshot, annotations });
+    const payload = JSON.stringify({ frames, feedback });
     for (const socket of waitingSockets) {
       socket.write(payload);
       socket.end();
@@ -251,13 +251,12 @@ type DashboardOptions = {
   pageId?: string;
   kill?: boolean;
   annotate?: boolean;
-  json?: boolean;
   port?: number;
   host?: string;
 };
 
 function parseOpenArgs(): DashboardOptions {
-  const args = minimist(process.argv.slice(2), { string: ['sessionName', 'workspaceDir', 'host', 'pageId'], boolean: ['annotate', 'kill', 'json'] });
+  const args = minimist(process.argv.slice(2), { string: ['sessionName', 'workspaceDir', 'host', 'pageId'], boolean: ['annotate', 'kill'] });
   const portStr = args.port as string | undefined;
   return {
     sessionName: args.sessionName as string | undefined,
@@ -266,7 +265,6 @@ function parseOpenArgs(): DashboardOptions {
     port: portStr !== undefined ? Number(portStr) : undefined,
     host: args.host as string | undefined,
     annotate: !!args.annotate,
-    json: !!args.json,
     kill: !!args.kill,
   };
 }
@@ -280,9 +278,7 @@ async function acquireSingleton(options: DashboardOptions): Promise<net.Server> 
     const server = net.createServer();
     server.listen(socketPath, () => resolve(server));
     server.on('error', (err: NodeJS.ErrnoException) => {
-      const isInUse = err.code === 'EADDRINUSE'
-          || (process.platform === 'win32' && err.code === 'EBUSY');
-      if (!isInUse)
+      if (err.code !== 'EADDRINUSE')
         return reject(err);
       const client = net.connect(socketPath, () => {
         client.write(JSON.stringify(options) + '\n');
@@ -345,16 +341,21 @@ export async function openDashboardApp() {
         socket.end();
         return;
       }
+      if (parsed.kill) {
+        // Write our PID so the kill client can wait for the process to fully exit,
+        // which guarantees the named pipe is released (especially on Windows).
+        // Start graceful shutdown only after the socket data has been flushed, so the
+        // kill client is guaranteed to receive the PID before we begin tearing down.
+        server?.close();
+        socket.end(JSON.stringify({ pid: process.pid }) + '\n', () => gracefullyProcessExitDoNotHang(0));
+        return;
+      }
       void statePromise.then(({ page, server: dashboard }) => {
         if (parsed.annotate) {
           page?.bringToFront().catch(() => {});
           dashboard.reveal(parsed);
           dashboard.triggerAnnotate();
           dashboard.registerAnnotateWaiter(socket);
-        } else if (parsed.kill) {
-          server?.close();
-          socket.end();
-          gracefullyProcessExitDoNotHang(0);
         } else {
           page?.bringToFront().catch(() => {});
           dashboard.reveal(parsed);
@@ -384,14 +385,37 @@ export async function openDashboardForContext(context: api.BrowserContext): Prom
 
 async function runKillClient(): Promise<void> {
   const socketPath = dashboardSocketPath();
-  await new Promise<void>(resolve => {
+  const pid = await new Promise<number | undefined>((resolve, reject) => {
     const client = net.connect(socketPath);
+    let data = '';
     client.once('connect', () => {
       client.write(JSON.stringify({ kill: true }) + '\n');
     });
-    client.once('end', () => resolve());
-    client.once('error', () => resolve());
+    client.on('data', chunk => { data += chunk; });
+    client.once('end', () => {
+      let pid: number | undefined;
+      try { pid = JSON.parse(data.trim()).pid; } catch { }
+      if (pid === undefined)
+        reject(new Error('Dashboard did not return its PID'));
+      else
+        resolve(pid);
+    });
+    client.once('error', () => resolve(undefined));
   });
+  if (pid === undefined)
+    return;
+  // Poll until the daemon process exits — at that point the OS has released all
+  // its handles, including the named pipe, so the next acquisition won't see a stale pipe.
+  const deadline = monotonicTime() + 35000;
+  while (monotonicTime() < deadline) {
+    try {
+      process.kill(pid, 0);
+    } catch {
+      return;
+    }
+    await new Promise(r => setTimeout(r, 50));
+  }
+  throw new Error(`Dashboard process ${pid} did not exit within the deadline`);
 }
 
 async function runAnnotateClient(options: DashboardOptions): Promise<void> {
@@ -429,27 +453,8 @@ async function runAnnotateClient(options: DashboardOptions): Promise<void> {
   const text = Buffer.concat(chunks).toString();
   if (!text)
     return;
-  if (options.json) {
-    // eslint-disable-next-line no-console
-    console.log(text);
-    return;
-  }
-  const { png, annotations, ariaSnapshot } = JSON.parse(text) as { png: string; annotations: AnnotationData[], ariaSnapshot: string };
-  for (const a of annotations) {
-    // eslint-disable-next-line no-console
-    console.log(`{ x: ${a.x}, y: ${a.y}, width: ${a.width}, height: ${a.height} }: ${a.text}`);
-  }
-  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-  if (png) {
-    const filePath = await saveOutputFile(`annotations-${timestamp}.png`, Buffer.from(png, 'base64'));
-    // eslint-disable-next-line no-console
-    console.log(`image: ${path.relative(process.cwd(), filePath)}`);
-  }
-  if (ariaSnapshot) {
-    const filePath = await saveOutputFile(`annotations-${timestamp}.yaml`, ariaSnapshot);
-    // eslint-disable-next-line no-console
-    console.log(`snapshot: ${path.relative(process.cwd(), filePath)}`);
-  }
+  // eslint-disable-next-line no-console
+  console.log(text);
 }
 
 function selfDestructOnParentGone() {
