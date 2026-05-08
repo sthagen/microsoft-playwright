@@ -60,7 +60,7 @@ export const test = baseTest.extend<{
       return page;
     });
   },
-  connectToDashboard: [async ({ cli, playwright }, use) => {
+  connectToDashboard: async ({ cli, playwright }, use) => {
     await use(async (bindTitle: string) => {
       let endpoint = '';
       await expect(async () => {
@@ -72,7 +72,7 @@ export const test = baseTest.extend<{
       return await playwright.chromium.connect(endpoint);
     });
     await cli('show', '--kill');
-  }, { timeout: 60000 }],
+  },
 
   cli: async ({ mcpBrowser, mcpHeadless, childProcess }, use) => {
     await fs.promises.mkdir(test.info().outputPath('.playwright'), { recursive: true });
@@ -81,7 +81,10 @@ export const test = baseTest.extend<{
     await use(async (...args: string[]) => {
       const cliArgs = args.filter(arg => typeof arg === 'string');
       const cliOptions = args.findLast(arg => typeof arg === 'object') || {};
-      const result = await runCli(childProcess, cliArgs, cliOptions, { mcpBrowser, mcpHeadless });
+      const result = await test.step(
+          `cli ${cliArgs.join(' ')}`,
+          () => runCli(childProcess, cliArgs, cliOptions, { mcpBrowser, mcpHeadless })
+      );
       if (result.daemonPid)
         allPids.push(result.daemonPid);
       if (result.dashboardPid)
