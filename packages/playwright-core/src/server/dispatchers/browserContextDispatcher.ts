@@ -19,6 +19,7 @@ import path from 'path';
 
 import { deserializeURLMatch, urlMatches } from '@isomorphic/urlMatch';
 import { createGuid } from '@utils/crypto';
+import { throwingResolveWithinRoot } from '@utils/fileUtils';
 import { BrowserContext } from '../browserContext';
 import { CDPSessionDispatcher } from './cdpSessionDispatcher';
 import { DebuggerDispatcher } from './debuggerDispatcher';
@@ -50,7 +51,6 @@ import type { Progress } from '@protocol/progress';
 import type { URLMatch } from '@isomorphic/urlMatch';
 
 export class BrowserContextDispatcher extends Dispatcher<BrowserContext, channels.BrowserContextChannel, DispatcherScope> implements channels.BrowserContextChannel {
-  _type_EventTarget = true;
   _type_BrowserContext = true;
   private _context: BrowserContext;
   private _subscriptions = new Set<channels.BrowserContextUpdateSubscriptionParams['event']>();
@@ -232,8 +232,9 @@ export class BrowserContextDispatcher extends Dispatcher<BrowserContext, channel
     return {
       rootDir: params.rootDirName ? new WritableStreamDispatcher(this, tempDirWithRootName) : undefined,
       writableStreams: await Promise.all(params.items.map(async item => {
-        await progress.race(fs.promises.mkdir(path.dirname(path.join(tempDirWithRootName, item.name)), { recursive: true }));
-        const file = fs.createWriteStream(path.join(tempDirWithRootName, item.name));
+        const itemPath = throwingResolveWithinRoot(tempDirWithRootName, item.name);
+        await progress.race(fs.promises.mkdir(path.dirname(itemPath), { recursive: true }));
+        const file = fs.createWriteStream(itemPath);
         return new WritableStreamDispatcher(this, file, item.lastModifiedMs);
       }))
     };

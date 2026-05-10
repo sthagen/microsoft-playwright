@@ -172,6 +172,10 @@ export class Connection extends EventEmitter {
   }
 
   async sendMessageToServer(object: ChannelOwner, method: string, params: any, options: { apiName?: string, title?: string, internal?: boolean, frames?: channels.StackFrame[], stepId?: string }): Promise<any> {
+    // Fire-and-forget: server intentionally never replies to __waitInfo__,
+    // so silently drop it after the connection is closed or the object was collected.
+    if (method === '__waitInfo__' && (this._closedError || object._wasCollected))
+      return;
     if (this._closedError)
       throw this._closedError;
     if (object._wasCollected)
@@ -192,6 +196,9 @@ export class Connection extends EventEmitter {
     // We need to exit zones before calling into the server, otherwise
     // when we receive events from the server, we would be in an API zone.
     this._platform.zones.empty.run(() => this.onmessage({ ...message, metadata }));
+    // Fire-and-forget: server intentionally never replies to __waitInfo__.
+    if (method === '__waitInfo__')
+      return;
     return await new Promise((resolve, reject) => this._callbacks.set(id, { resolve, reject, title: options.title, type, method }));
   }
 
