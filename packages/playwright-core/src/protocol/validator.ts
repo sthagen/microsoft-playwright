@@ -1059,6 +1059,7 @@ scheme.BrowserTypeConnectOverCDPParams = tObject({
   timeout: tFloat,
   isLocal: tOptional(tBoolean),
   noDefaults: tOptional(tBoolean),
+  artifactsDir: tOptional(tString),
 });
 scheme.BrowserTypeConnectOverCDPResult = tObject({
   browser: tChannel(['Browser']),
@@ -2281,10 +2282,11 @@ scheme.PageAddInitScriptResult = tObject({
   disposable: tChannel(['Disposable']),
 });
 scheme.PageCloseParams = tObject({
-  runBeforeUnload: tOptional(tBoolean),
   reason: tOptional(tString),
 });
 scheme.PageCloseResult = tOptional(tObject({}));
+scheme.PageRunBeforeUnloadParams = tOptional(tObject({}));
+scheme.PageRunBeforeUnloadResult = tOptional(tObject({}));
 scheme.PageClearConsoleMessagesParams = tOptional(tObject({}));
 scheme.PageClearConsoleMessagesResult = tOptional(tObject({}));
 scheme.PageConsoleMessagesParams = tObject({

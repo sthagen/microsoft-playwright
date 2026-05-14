@@ -33,7 +33,6 @@ import { minimist } from './minimist';
 import type { ListData, ListedBrowser, Output } from './output';
 import type { ClientInfo, SessionFile } from './registry';
 import type { MinimistArgs } from './minimist';
-import type { Readable } from 'stream';
 
 type GlobalOptions = {
   help?: boolean;
@@ -230,36 +229,30 @@ export async function program(options?: { embedderVersion?: string}) {
       const foreground = args.port !== undefined;
       const child = spawn(process.execPath, daemonArgs, {
         detached: !foreground,
-        stdio: foreground ? 'inherit' : ['ignore', 'ignore', 'ignore', 'pipe'],
+        stdio: foreground ? 'inherit' : ['pipe', 'pipe', 'ignore'],
       });
       if (foreground) {
         await new Promise<void>(resolve => child.on('exit', () => resolve()));
         return;
       }
-      const readyStream = (child.stdio as unknown as Readable[])[3];
+      const timer = setTimeout(() => child.stdin!.destroy(), 60_000);
+      child.unref();
       try {
         await new Promise<void>((resolve, reject) => {
-          const settle = (err?: Error) => {
-            clearTimeout(timer);
-            readyStream.destroy();
-            if (err)
-              reject(err);
-            else
+          let outLog = '';
+          child.stdout!.on('data', data => {
+            outLog += data.toString();
+            if (outLog.includes('Dashboard is running'))
               resolve();
-          };
-          const timer = setTimeout(() => settle(new Error('Dashboard daemon did not spin up within 60s, killing it')), 60_000);
-          readyStream.once('data', () => settle());
-          readyStream.once('error', err => settle(err));
-          child.once('exit', (code, signal) => settle(new Error(`Dashboard daemon exited (code=${code}, signal=${signal}) before signaling READY`)));
+          });
+          child.once('exit', (code, signal) => reject(new Error(`Dashboard daemon exited (code=${code}, signal=${signal}) before signaling READY${outLog ? '\n' + outLog : ''}`)));
         });
-      } catch (err) {
-        if (child.exitCode === null && child.signalCode === null) {
-          child.kill('SIGKILL');
-          await new Promise<void>(resolve => child.once('exit', () => resolve()));
-        }
-        throw err;
+      } finally {
+        clearTimeout(timer);
+        child.removeAllListeners('exit');
+        child.stdin!.destroy();
+        child.stdout!.destroy();
       }
-      child.unref();
       output.show(sessionName, child.pid);
       return;
     }

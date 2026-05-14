@@ -39,8 +39,13 @@ Page:
     close:
       title: Close page
       parameters:
-        runBeforeUnload: boolean?
         reason: string?
+      flags:
+        pause: true
+        potentiallyClosesScope: true
+
+    runBeforeUnload:
+      title: Run beforeunload
       flags:
         pause: true
 
