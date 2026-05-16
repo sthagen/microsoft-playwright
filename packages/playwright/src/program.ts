@@ -25,7 +25,7 @@ import { builtInReporters, config, configLoader } from './common';
 import { runTests, clearCache, runTestServerAction } from './cli/testActions';
 import { showReport, mergeReports } from './cli/reportActions';
 import { TestServerBackend, testServerBackendTools } from './mcp/test/testBackend';
-import { ClaudeGenerator, OpencodeGenerator, VSCodeGenerator, CopilotGenerator } from './agents/generateAgents';
+import { ClaudeGenerator, CodexGenerator, OpencodeGenerator, VSCodeGenerator, CopilotGenerator } from './agents/generateAgents';
 import { packageJSON } from './package';
 
 export { program };
@@ -51,8 +51,14 @@ function addTestCommand(program: Command) {
     return command;
   });
   command.action(async (args, opts) => {
+    // Args supplied after `--` are appended to the variadic [test-filter...]
+    // by commander. Strip them so they aren't used as filter regexes; users
+    // who need to read them go through FullConfig.argv (full process.argv).
+    const dashDashIndex = process.argv.indexOf('--');
+    const postDashCount = dashDashIndex >= 0 ? process.argv.length - 1 - dashDashIndex : 0;
+    const testFilters = args.slice(0, args.length - postDashCount);
     try {
-      await runTests(args, opts);
+      await runTests(testFilters, opts);
     } catch (e) {
       console.error(e);
       gracefullyProcessExitDoNotHang(1);
@@ -155,7 +161,7 @@ function addInitAgentsCommand(program: Command) {
   const command = program.command('init-agents');
   command.description('Initialize repository agents');
   const option = command.createOption('--loop <loop>', 'Agentic loop provider');
-  option.choices(['claude', 'copilot', 'opencode', 'vscode', 'vscode-legacy']);
+  option.choices(['claude', 'codex', 'copilot', 'opencode', 'vscode', 'vscode-legacy']);
   command.addOption(option);
   command.option('-c, --config <file>', `Configuration file to find a project to use for seed test`);
   command.option('--project <project>', 'Project to use for seed test');
@@ -168,6 +174,8 @@ function addInitAgentsCommand(program: Command) {
       await VSCodeGenerator.init(loadedConfig, opts.project);
     } else if (opts.loop === 'claude') {
       await ClaudeGenerator.init(loadedConfig, opts.project, opts.prompts);
+    } else if (opts.loop === 'codex') {
+      await CodexGenerator.init(loadedConfig, opts.project, opts.prompts);
     } else {
       await CopilotGenerator.init(loadedConfig, opts.project, opts.prompts);
       return;
@@ -175,7 +183,7 @@ function addInitAgentsCommand(program: Command) {
   });
 }
 
-const kTraceModes: TraceMode[] = ['on', 'off', 'on-first-retry', 'on-all-retries', 'retain-on-failure', 'retain-on-first-failure', 'retain-on-failure-and-retries'];
+const kTraceModes: TraceMode[] = ['on', 'off', 'on-first-retry', 'on-all-retries', 'retain-on-failure', 'retain-on-first-failure', 'retain-on-failure-and-retries', 'retain-all-failures'];
 
 // Note: update docs/src/test-cli-js.md when you update this, program is the source of truth.
 

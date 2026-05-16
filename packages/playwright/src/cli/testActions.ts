@@ -28,6 +28,7 @@ import type { TestRunOptions } from '../runner/tasks';
 export async function runTests(args: string[], opts: { [key: string]: any }) {
   await startProfiling();
   const cliOverrides = overridesFromOptions(opts);
+  cliOverrides.argv = process.argv;
 
   const config = await configLoader.loadConfigFromFile(opts.config, cliOverrides, opts.deps === false);
   const options: TestRunOptions = {
