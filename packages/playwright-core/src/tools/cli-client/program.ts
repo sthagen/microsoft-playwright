@@ -204,9 +204,16 @@ export async function program(options?: { embedderVersion?: string}) {
       const daemonScript = libPath('entry', 'dashboardApp.js');
       const daemonArgs = [
         daemonScript,
-        `--sessionName=${sessionName}`,
         `--workspaceDir=${clientInfo.workspaceDir ?? ''}`,
       ];
+      // Only pass --sessionName when the user explicitly requested a session
+      // (via -s/--session or PLAYWRIGHT_CLI_SESSION). Bare `playwright cli show`
+      // opens the dashboard generically, with no specific session to reveal,
+      // so the daemon should ack as soon as it's ready rather than waiting for
+      // a reveal that was never asked for.
+      const explicit = explicitSessionName(args.session as string);
+      if (explicit)
+        daemonArgs.push(`--sessionName=${explicit}`);
       if (args.port !== undefined)
         daemonArgs.push(`--port=${args.port}`);
       if (args.host !== undefined)
@@ -237,13 +244,17 @@ export async function program(options?: { embedderVersion?: string}) {
       }
       const timer = setTimeout(() => child.stdin!.destroy(), 60_000);
       child.unref();
+      let daemonPid: number;
       try {
         await new Promise<void>((resolve, reject) => {
           let outLog = '';
           child.stdout!.on('data', data => {
             outLog += data.toString();
-            if (outLog.includes('Dashboard is running'))
+            const match = outLog.match(/Dashboard is running pid=(\d+)/);
+            if (match) {
+              daemonPid = Number(match[1]);
               resolve();
+            }
           });
           child.once('exit', (code, signal) => reject(new Error(`Dashboard daemon exited (code=${code}, signal=${signal}) before signaling READY${outLog ? '\n' + outLog : ''}`)));
         });
@@ -253,7 +264,7 @@ export async function program(options?: { embedderVersion?: string}) {
         child.stdin!.destroy();
         child.stdout!.destroy();
       }
-      output.show(sessionName, child.pid);
+      output.show(sessionName, daemonPid!);
       return;
     }
     default: {

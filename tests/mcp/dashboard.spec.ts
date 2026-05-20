@@ -30,7 +30,7 @@ function displayPath(p: string): string {
 }
 
 test.beforeEach(({}, testInfo) => {
-  process.env.PLAYWRIGHT_SERVER_REGISTRY = testInfo.outputPath('registry');
+  process.env.PWTEST_SERVER_REGISTRY = testInfo.outputPath('registry');
 });
 
 test('should show browser session chip', async ({ cli, server, startDashboardServer }) => {
@@ -177,4 +177,11 @@ test('save recording streams WebM bytes to the chosen file', async ({ cli, serve
   const bytes = await awaitBytes();
   // WebM files start with the EBML magic bytes.
   expect(bytes.subarray(0, 4)).toEqual(Buffer.from([0x1a, 0x45, 0xdf, 0xa3]));
+});
+
+test('two concurrent cli show invocations both succeed', async ({ cli }) => {
+  const bindTitle = `--playwright-internal--${crypto.randomUUID()}`;
+  const [first, second] = await Promise.all([cli('show', { bindTitle }), cli('show', { bindTitle })]);
+  expect(first.dashboardPid).toBe(second.dashboardPid);
+  await cli('show', '--kill');
 });
