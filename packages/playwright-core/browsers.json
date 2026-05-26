@@ -3,16 +3,16 @@
   "browsers": [
     {
       "name": "chromium",
-      "revision": "1225",
+      "revision": "1226",
       "installByDefault": true,
-      "browserVersion": "149.0.7827.14",
+      "browserVersion": "149.0.7827.22",
       "title": "Chrome for Testing"
     },
     {
       "name": "chromium-headless-shell",
-      "revision": "1225",
+      "revision": "1226",
       "installByDefault": true,
-      "browserVersion": "149.0.7827.14",
+      "browserVersion": "149.0.7827.22",
       "title": "Chrome Headless Shell"
     },
     {
@@ -31,9 +31,9 @@
     },
     {
       "name": "firefox",
-      "revision": "1522",
+      "revision": "1525",
       "installByDefault": true,
-      "browserVersion": "150.0.2",
+      "browserVersion": "151.0",
       "title": "Firefox"
     },
     {
@@ -45,7 +45,7 @@
     },
     {
       "name": "webkit",
-      "revision": "2293",
+      "revision": "2296",
       "installByDefault": true,
       "revisionOverrides": {
         "mac14": "2251",

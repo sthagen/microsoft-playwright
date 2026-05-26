@@ -359,6 +359,8 @@ scheme.APIResponse = tObject({
   status: tInt,
   statusText: tString,
   headers: tArray(tType('NameValue')),
+  securityDetails: tOptional(tType('SecurityDetails')),
+  serverAddr: tOptional(tType('RemoteAddr')),
 });
 scheme.ArtifactInitializer = tObject({
   absolutePath: tString,
@@ -1094,6 +1096,13 @@ scheme.BrowserTypeConnectOverCDPParams = tObject({
   artifactsDir: tOptional(tString),
 });
 scheme.BrowserTypeConnectOverCDPResult = tObject({
+  browser: tChannel(['Browser']),
+  defaultContext: tOptional(tChannel(['BrowserContext'])),
+});
+scheme.BrowserTypeConnectOverCDPTransportParams = tObject({
+  transport: tBinary,
+});
+scheme.BrowserTypeConnectOverCDPTransportResult = tObject({
   browser: tChannel(['Browser']),
   defaultContext: tOptional(tChannel(['BrowserContext'])),
 });

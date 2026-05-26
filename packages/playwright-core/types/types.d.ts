@@ -4530,8 +4530,8 @@ export interface Page {
    * [`timeout`](https://playwright.dev/docs/api/class-page#page-tap-option-timeout), this method throws a
    * [TimeoutError](https://playwright.dev/docs/api/class-timeouterror). Passing zero timeout disables this.
    *
-   * **NOTE** [page.tap(selector[, options])](https://playwright.dev/docs/api/class-page#page-tap) the method will throw
-   * if [`hasTouch`](https://playwright.dev/docs/api/class-browser#browser-new-context-option-has-touch) option of the
+   * **NOTE** [page.tap(selector[, options])](https://playwright.dev/docs/api/class-page#page-tap) will throw if the
+   * [`hasTouch`](https://playwright.dev/docs/api/class-browser#browser-new-context-option-has-touch) option of the
    * browser context is false.
    *
    * @param selector A selector to search for an element. If there are multiple elements satisfying the selector, the first will be
@@ -15415,6 +15415,32 @@ export interface BrowserType<Unused = {}> {
    */
   connectOverCDP(options: ConnectOverCDPOptions & { wsEndpoint?: string }): Promise<Browser>;
   /**
+   * This method attaches Playwright to an existing browser instance using the Chrome DevTools Protocol.
+   *
+   * The default browser context is accessible via
+   * [browser.contexts()](https://playwright.dev/docs/api/class-browser#browser-contexts).
+   *
+   * **NOTE** Connecting over the Chrome DevTools Protocol is only supported for Chromium-based browsers.
+   *
+   * **NOTE** This connection is significantly lower fidelity than the Playwright protocol connection via
+   * [browserType.connect(endpoint[, options])](https://playwright.dev/docs/api/class-browsertype#browser-type-connect).
+   * If you are experiencing issues or attempting to use advanced functionality, you probably want to use
+   * [browserType.connect(endpoint[, options])](https://playwright.dev/docs/api/class-browsertype#browser-type-connect).
+   *
+   * **Usage**
+   *
+   * ```js
+   * const browser = await playwright.chromium.connectOverCDP('http://localhost:9222');
+   * const defaultContext = browser.contexts()[0];
+   * const page = defaultContext.pages()[0];
+   * ```
+   *
+   * @param endpointURL A CDP websocket endpoint or http url to connect to. For example `http://localhost:9222/` or
+   * `ws://127.0.0.1:9222/devtools/browser/387adf4c-243f-4051-a181-46798f4a46f4`.
+   * @param options
+   */
+  connectOverCDP(transport: ConnectionTransport): Promise<Browser>;
+  /**
    * This method attaches Playwright to an existing browser instance created via `BrowserType.launchServer` in Node.js.
    *
    * **NOTE** The major and minor version of the Playwright instance that connects needs to match the version of
@@ -16192,6 +16218,13 @@ export interface BrowserType<Unused = {}> {
    * Returns browser name. For example: `'chromium'`, `'webkit'` or `'firefox'`.
    */
   name(): string;
+}
+
+export interface ConnectionTransport {
+  send(message: object): void;
+  close(): void;
+  onmessage?: (message: object) => void;
+  onclose?: (reason?: string) => void;
 }
 
 /**
@@ -18827,6 +18860,52 @@ export interface APIResponse {
    * Contains a boolean stating whether the response was successful (status in the range 200-299) or not.
    */
   ok(): boolean;
+
+  /**
+   * Returns SSL and other security information. Resolves to `null` for non-HTTPS responses. For redirected requests,
+   * returns the information for the last request in the redirect chain.
+   */
+  securityDetails(): Promise<null|{
+    /**
+     * Common Name component of the Issuer field. from the certificate. This should only be used for informational
+     * purposes. Optional.
+     */
+    issuer?: string;
+
+    /**
+     * The specific TLS protocol used. (e.g. `TLS 1.3`). Optional.
+     */
+    protocol?: string;
+
+    /**
+     * Common Name component of the Subject field from the certificate. This should only be used for informational
+     * purposes. Optional.
+     */
+    subjectName?: string;
+
+    /**
+     * Unix timestamp (in seconds) specifying when this cert becomes valid. Optional.
+     */
+    validFrom?: number;
+
+    /**
+     * Unix timestamp (in seconds) specifying when this cert becomes invalid. Optional.
+     */
+    validTo?: number;
+  }>;
+
+  /**
+   * Returns the IP address and port of the server. Resolves to `null` if the server address is not available. For
+   * redirected requests, returns the information for the last request in the redirect chain.
+   */
+  serverAddr(): Promise<null|{
+    /**
+     * IPv4 or IPV6 address of the server.
+     */
+    ipAddress: string;
+
+    port: number;
+  }>;
 
   /**
    * Contains the status code of the response (e.g., 200 for a success).
@@ -21502,8 +21581,8 @@ export interface Touchscreen {
    * Dispatches a `touchstart` and `touchend` event with a single touch at the position
    * ([`x`](https://playwright.dev/docs/api/class-touchscreen#touchscreen-tap-option-x),[`y`](https://playwright.dev/docs/api/class-touchscreen#touchscreen-tap-option-y)).
    *
-   * **NOTE** [page.tap(selector[, options])](https://playwright.dev/docs/api/class-page#page-tap) the method will throw
-   * if [`hasTouch`](https://playwright.dev/docs/api/class-browser#browser-new-context-option-has-touch) option of the
+   * **NOTE** [touchscreen.tap(x, y)](https://playwright.dev/docs/api/class-touchscreen#touchscreen-tap) will throw if
+   * the [`hasTouch`](https://playwright.dev/docs/api/class-browser#browser-new-context-option-has-touch) option of the
    * browser context is false.
    *
    * @param x X coordinate relative to the main frame's viewport in CSS pixels.
@@ -22195,6 +22274,35 @@ export interface WebStorage {
  * - Ensure that `nodeCliInspect`
  *   ([FuseV1Options.EnableNodeCliInspectArguments](https://www.electronjs.org/docs/latest/tutorial/fuses#nodecliinspect))
  *   fuse is **not** set to `false`.
+ *
+ * **Mocking native dialogs:**
+ *
+ * Playwright does not intercept the native Electron [dialog](https://www.electronjs.org/docs/latest/api/dialog) API
+ * (`dialog.showOpenDialog`, `dialog.showSaveDialog`, `dialog.showMessageBox`, etc.) because those calls happen in the
+ * Electron main process and go straight to OS APIs. Use
+ * [electronApplication.evaluate(pageFunction[, arg])](https://playwright.dev/docs/api/class-electronapplication#electron-application-evaluate)
+ * to replace the relevant methods in the main process so tests run deterministically without any OS-level UI:
+ *
+ * ```js
+ * // Stub the open dialog to always return a fixed path.
+ * await electronApp.evaluate(({ dialog }, filePaths) => {
+ *   dialog.showOpenDialog = () => Promise.resolve({ canceled: false, filePaths });
+ * }, ['/path/to/file.txt']);
+ *
+ * // Stub the save dialog.
+ * await electronApp.evaluate(({ dialog }, filePath) => {
+ *   dialog.showSaveDialog = () => Promise.resolve({ canceled: false, filePath });
+ * }, '/path/to/saved.txt');
+ *
+ * // Stub showMessageBox to click the first button.
+ * await electronApp.evaluate(({ dialog }) => {
+ *   dialog.showMessageBox = () => Promise.resolve({ response: 0, checkboxChecked: false });
+ * });
+ * ```
+ *
+ * The replacement persists until the application is closed. Synchronous variants (`showOpenDialogSync`,
+ * `showSaveDialogSync`, `showMessageBoxSync`) can be stubbed the same way — just return the value directly instead of
+ * a `Promise`.
  */
 export interface Electron {
   /**
@@ -24651,6 +24759,22 @@ type Devices = {
   "Galaxy Tab S4 landscape": DeviceDescriptor;
   "Galaxy Tab S9": DeviceDescriptor;
   "Galaxy Tab S9 landscape": DeviceDescriptor;
+  "Galaxy Z Fold 6": DeviceDescriptor;
+  "Galaxy Z Fold 6 landscape": DeviceDescriptor;
+  "Galaxy Z Fold 6 Cover": DeviceDescriptor;
+  "Galaxy Z Fold 6 Cover landscape": DeviceDescriptor;
+  "Galaxy Z Fold 7": DeviceDescriptor;
+  "Galaxy Z Fold 7 landscape": DeviceDescriptor;
+  "Galaxy Z Fold 7 Cover": DeviceDescriptor;
+  "Galaxy Z Fold 7 Cover landscape": DeviceDescriptor;
+  "Galaxy Z Flip 6": DeviceDescriptor;
+  "Galaxy Z Flip 6 landscape": DeviceDescriptor;
+  "Galaxy Z Flip 6 Cover": DeviceDescriptor;
+  "Galaxy Z Flip 6 Cover landscape": DeviceDescriptor;
+  "Galaxy Z Flip 7": DeviceDescriptor;
+  "Galaxy Z Flip 7 landscape": DeviceDescriptor;
+  "Galaxy Z Flip 7 Cover": DeviceDescriptor;
+  "Galaxy Z Flip 7 Cover landscape": DeviceDescriptor;
   "iPad (gen 5)": DeviceDescriptor;
   "iPad (gen 5) landscape": DeviceDescriptor;
   "iPad (gen 6)": DeviceDescriptor;
@@ -24721,6 +24845,26 @@ type Devices = {
   "iPhone 15 Pro landscape": DeviceDescriptor;
   "iPhone 15 Pro Max": DeviceDescriptor;
   "iPhone 15 Pro Max landscape": DeviceDescriptor;
+  "iPhone 16": DeviceDescriptor;
+  "iPhone 16 landscape": DeviceDescriptor;
+  "iPhone 16 Plus": DeviceDescriptor;
+  "iPhone 16 Plus landscape": DeviceDescriptor;
+  "iPhone 16 Pro": DeviceDescriptor;
+  "iPhone 16 Pro landscape": DeviceDescriptor;
+  "iPhone 16 Pro Max": DeviceDescriptor;
+  "iPhone 16 Pro Max landscape": DeviceDescriptor;
+  "iPhone 16e": DeviceDescriptor;
+  "iPhone 16e landscape": DeviceDescriptor;
+  "iPhone 17": DeviceDescriptor;
+  "iPhone 17 landscape": DeviceDescriptor;
+  "iPhone Air": DeviceDescriptor;
+  "iPhone Air landscape": DeviceDescriptor;
+  "iPhone 17 Pro": DeviceDescriptor;
+  "iPhone 17 Pro landscape": DeviceDescriptor;
+  "iPhone 17 Pro Max": DeviceDescriptor;
+  "iPhone 17 Pro Max landscape": DeviceDescriptor;
+  "iPhone 17e": DeviceDescriptor;
+  "iPhone 17e landscape": DeviceDescriptor;
   "Kindle Fire HDX": DeviceDescriptor;
   "Kindle Fire HDX landscape": DeviceDescriptor;
   "LG Optimus L70": DeviceDescriptor;
