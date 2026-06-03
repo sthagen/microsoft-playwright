@@ -17,7 +17,7 @@
 
 import { PNG } from 'pngjs';
 import jpegjs from 'jpeg-js';
-import { headersArrayToObject } from '@isomorphic/headers';
+import { headersArrayToObject, headersObjectToArray } from '@isomorphic/headers';
 import { splitErrorMessage } from '@isomorphic/stackTrace';
 import { eventsHelper } from '@utils/eventsHelper';
 import { hostPlatform } from '@utils/hostPlatform';
@@ -31,7 +31,7 @@ import { Page, PageBinding } from '../page';
 import { WKSession } from './wkConnection';
 import { createHandle, WKExecutionContext } from './wkExecutionContext';
 import { RawKeyboardImpl, RawMouseImpl, RawTouchscreenImpl } from './wkInput';
-import { WKInterceptableRequest, WKRouteImpl } from './wkInterceptableRequest';
+import { WKInterceptableRequest, WKRouteImpl, wkSetCookieSeparator } from './wkInterceptableRequest';
 import { WKProvisionalPage } from './wkProvisionalPage';
 import { WKWorkers } from './wkWorkers';
 import { translatePathToWSL } from './webkit';
@@ -73,8 +73,8 @@ export class WKPage implements PageDelegate {
   private _firstNonInitialNavigationCommittedFulfill = () => {};
   _firstNonInitialNavigationCommittedReject = (e: Error) => {};
   private _lastConsoleMessage: { derivedType: string, text: string, handles: JSHandle[]; count: number, location: types.ConsoleMessageLocation; } | null = null;
-
   private readonly _requestIdToResponseReceivedPayloadEvent = new Map<string, Protocol.Network.responseReceivedPayload>();
+  private _timestampBaselineForWebSocket = new Map<string, number>();
   // Holds window features for the next popup being opened via window.open,
   // until the popup page proxy arrives.
   private _nextWindowOpenPopupFeatures?: string[];
@@ -397,11 +397,11 @@ export class WKPage implements PageDelegate {
       eventsHelper.addEventListener(this._session, 'Network.loadingFinished', e => this._onLoadingFinished(e)),
       eventsHelper.addEventListener(this._session, 'Network.loadingFailed', e => this._onLoadingFailed(this._session, e)),
       eventsHelper.addEventListener(this._session, 'Network.webSocketCreated', e => this._page.frameManager.onWebSocketCreated(e.requestId, e.url)),
-      eventsHelper.addEventListener(this._session, 'Network.webSocketWillSendHandshakeRequest', e => this._page.frameManager.onWebSocketRequest(e.requestId)),
-      eventsHelper.addEventListener(this._session, 'Network.webSocketHandshakeResponseReceived', e => this._page.frameManager.onWebSocketResponse(e.requestId, e.response.status, e.response.statusText)),
-      eventsHelper.addEventListener(this._session, 'Network.webSocketFrameSent', e => e.response.payloadData && this._page.frameManager.onWebSocketFrameSent(e.requestId, e.response.opcode, e.response.payloadData)),
-      eventsHelper.addEventListener(this._session, 'Network.webSocketFrameReceived', e => e.response.payloadData && this._page.frameManager.webSocketFrameReceived(e.requestId, e.response.opcode, e.response.payloadData)),
-      eventsHelper.addEventListener(this._session, 'Network.webSocketClosed', e => this._page.frameManager.webSocketClosed(e.requestId)),
+      eventsHelper.addEventListener(this._session, 'Network.webSocketWillSendHandshakeRequest', event => this._onWebSocketWillSendHandshakeRequest(event)),
+      eventsHelper.addEventListener(this._session, 'Network.webSocketHandshakeResponseReceived', e => this._page.frameManager.onWebSocketResponse(e.requestId, e.response.status, e.response.statusText, headersObjectToArray(e.response.headers, ',', wkSetCookieSeparator))),
+      eventsHelper.addEventListener(this._session, 'Network.webSocketFrameSent', e => e.response.payloadData && this._page.frameManager.onWebSocketFrameSent(e.requestId, e.response.opcode, e.response.payloadData, this._timestampToWallTimeMsForWebSocket(e.requestId, e.timestamp))),
+      eventsHelper.addEventListener(this._session, 'Network.webSocketFrameReceived', e => e.response.payloadData && this._page.frameManager.webSocketFrameReceived(e.requestId, e.response.opcode, e.response.payloadData, this._timestampToWallTimeMsForWebSocket(e.requestId, e.timestamp))),
+      eventsHelper.addEventListener(this._session, 'Network.webSocketClosed', event => this._onWebSocketClosed(event)),
       eventsHelper.addEventListener(this._session, 'Network.webSocketFrameError', e => this._page.frameManager.webSocketError(e.requestId, e.errorMessage)),
     ];
   }
@@ -1210,6 +1210,21 @@ export class WKPage implements PageDelegate {
     this._requestIdToRequest.delete(event.requestId);
     request.request._setFailureText(event.errorText);
     this._page.frameManager.requestFailed(request.request, event.errorText.includes('cancelled'));
+  }
+
+  _onWebSocketWillSendHandshakeRequest(event: Protocol.Network.webSocketWillSendHandshakeRequestPayload) {
+    const wallTimeMs = event.walltime * 1000;
+    this._timestampBaselineForWebSocket.set(event.requestId, wallTimeMs - event.timestamp);
+    this._page.frameManager.onWebSocketRequest(event.requestId, headersObjectToArray(event.request.headers), wallTimeMs);
+  }
+
+  _onWebSocketClosed(event: Protocol.Network.webSocketClosedPayload) {
+    this._timestampBaselineForWebSocket.delete(event.requestId);
+    this._page.frameManager.webSocketClosed(event.requestId);
+  }
+
+  _timestampToWallTimeMsForWebSocket(requestId: string, timestamp: number): number {
+    return this._timestampBaselineForWebSocket.get(requestId)! + timestamp;
   }
 
   async _grantPermissions(origin: string, permissions: string[]) {

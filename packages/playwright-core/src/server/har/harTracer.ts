@@ -15,6 +15,7 @@
  */
 
 import mime from 'mime';
+import { base64ByteLength } from '@isomorphic/base64';
 import { ManualPromise } from '@isomorphic/manualPromise';
 import { eventsHelper } from '@utils/eventsHelper';
 import { assert } from '@isomorphic/assert';
@@ -30,9 +31,10 @@ import { helper } from '../helper';
 import * as network from '../network';
 import { nullProgress } from '../progress';
 
+import { Page } from '../page';
+
 import type { RegisteredListener } from '@utils/eventsHelper';
 import type { APIRequestEvent, APIRequestFinishedEvent } from '../fetch';
-import type { Page } from '../page';
 import type { Worker } from '../page';
 import type { HeadersArray, LifecycleEvent } from '../types';
 import type * as har from '@trace/har';
@@ -102,7 +104,10 @@ export class HarTracer {
     ];
     if (this._context instanceof BrowserContext) {
       this._eventListeners.push(
-          eventsHelper.addEventListener(this._context, BrowserContext.Events.Page, (page: Page) => this._createPageEntryIfNeeded(page)),
+          eventsHelper.addEventListener(this._context, BrowserContext.Events.Page, (page: Page) => {
+            this._addPageEventListeners(page);
+            this._createPageEntryIfNeeded(page);
+          }),
           eventsHelper.addEventListener(this._context, BrowserContext.Events.Request, (request: network.Request) => this._onRequest(request)),
           eventsHelper.addEventListener(this._context, BrowserContext.Events.RequestFinished, ({ request, response }) => this._onRequestFinished(request, response).catch(() => {})),
           eventsHelper.addEventListener(this._context, BrowserContext.Events.RequestFailed, request => this._onRequestFailed(request)),
@@ -111,9 +116,19 @@ export class HarTracer {
           eventsHelper.addEventListener(this._context, BrowserContext.Events.RequestFulfilled, request => this._onRequestFulfilled(request)),
           eventsHelper.addEventListener(this._context, BrowserContext.Events.RequestContinued, request => this._onRequestContinued(request)),
       );
-      for (const page of this._context.pages())
+      for (const page of this._context.pages()) {
+        this._addPageEventListeners(page);
         this._createPageEntryIfNeeded(page);
+      }
     }
+  }
+
+  private _addPageEventListeners(page: Page) {
+    if (this._page && page !== this._page)
+      return;
+    this._eventListeners.push(
+        eventsHelper.addEventListener(page, Page.Events.WebSocket, (webSocket: network.WebSocket) => this._onWebSocket(page, webSocket)),
+    );
   }
 
   private _shouldIncludeEntryWithUrl(urlString: string) {
@@ -270,7 +285,8 @@ export class HarTracer {
       return;
 
     const pageEntry = this._createPageEntryIfNeeded(page);
-    const harEntry = createHarEntry(pageEntry?.id, request.method(), url, request.frame()?.guid, this._options);
+    const harEntry = createHarEntry(pageEntry?.id, request.method(), url, request.frame()?.guid, this._options, request.wallTimeMs());
+    harEntry._resourceType = request.resourceType();
     this._recordRequestHeadersAndCookies(harEntry, request.headers());
     harEntry.request.postData = this._postDataForRequest(request, this._options.content);
     if (!this._options.omitSizes)
@@ -418,6 +434,92 @@ export class HarTracer {
       harEntry._wasContinued = true;
   }
 
+  private _onWebSocket(page: Page, webSocket: network.WebSocket) {
+    if (!this._shouldIncludeEntryWithUrl(webSocket.url()))
+      return;
+    const url = network.parseURL(webSocket.url());
+    if (!url)
+      return;
+
+    const method = 'GET';
+    const pageEntry = this._createPageEntryIfNeeded(page);
+    const harEntry = createHarEntry(pageEntry?.id, method, url, page.mainFrame().guid, this._options, webSocket.wallTimeMs());
+    harEntry._resourceType = 'websocket';
+    harEntry._webSocketMessages = [];
+
+    let oldestWallTimeMs = Infinity;
+    let newestWallTimeMs = -Infinity;
+    const updateTime = (wallTimeMs: number) => {
+      if (this._options.omitTiming)
+        return;
+
+      if (wallTimeMs >= oldestWallTimeMs && wallTimeMs <= newestWallTimeMs)
+        return;
+
+      if (wallTimeMs < oldestWallTimeMs)
+        oldestWallTimeMs = wallTimeMs;
+      if (wallTimeMs > newestWallTimeMs)
+        newestWallTimeMs = wallTimeMs;
+      if (oldestWallTimeMs === newestWallTimeMs)
+        return;
+
+      harEntry.time = newestWallTimeMs - oldestWallTimeMs;
+    };
+
+    const eventListeners = [
+      eventsHelper.addEventListener(webSocket, network.WebSocket.Events.Request, ({ headers }: { headers: HeadersArray }) => {
+        this._recordRequestHeadersAndCookies(harEntry, headers);
+        if (!this._options.omitSizes)
+          harEntry.request.headersSize = network.requestHeadersSize(headers, webSocket.url(), method);
+      }),
+      eventsHelper.addEventListener(webSocket, network.WebSocket.Events.Response, ({ status, statusText, headers }: { status: number, statusText: string, headers: HeadersArray }) => {
+        harEntry.response.status = status;
+        harEntry.response.statusText = statusText;
+        this._recordResponseHeaders(harEntry, headers);
+        if (!this._options.omitSizes) {
+          harEntry.response.headersSize = network.responseHeadersSize(headers, statusText);
+          harEntry.response._transferSize = Math.max(0, harEntry.response._transferSize!) + harEntry.response.headersSize;
+        }
+      }),
+      eventsHelper.addEventListener(webSocket, network.WebSocket.Events.FrameSent, ({ opcode, data, wallTimeMs }: { opcode: number, data: string, wallTimeMs: number }) => {
+        harEntry._webSocketMessages!.push({ type: 'send', time: this._options.omitTiming ? -1 : wallTimeMs, opcode, data });
+        updateTime(wallTimeMs);
+      }),
+      eventsHelper.addEventListener(webSocket, network.WebSocket.Events.FrameReceived, ({ opcode, data, wallTimeMs }: { opcode: number, data: string, wallTimeMs: number }) => {
+        harEntry._webSocketMessages!.push({ type: 'receive', time: this._options.omitTiming ? -1 : wallTimeMs, opcode, data });
+        updateTime(wallTimeMs);
+        if (!this._options.omitSizes) {
+          const length = (opcode === 1) ? Buffer.byteLength(data, 'utf8') : base64ByteLength(data);
+
+          // According to <https://www.rfc-editor.org/info/rfc6455/#section-5.2>:
+          // - there are always 16 bits at the beginning of every frame: FIN RSV1 RSV2 RSV3 opcode(4) mask length(7)
+          // - there are always 4 bytes for the masking key (see <https://www.rfc-editor.org/info/rfc6455/#section-5.1>)
+          // - there may be an additional 16 or 64 bits for payload length if it's too long to fit in the above 7 bits (or if it also can't fit in 16 bits)
+          let headerSize = 6;
+          if (length > 2 ** 16)
+            headerSize += 8;
+          else if (length > 125)
+            headerSize += 2;
+
+          harEntry.response._transferSize = Math.max(0, harEntry.response._transferSize!) + headerSize + length;
+        }
+      }),
+      eventsHelper.addEventListener(webSocket, network.WebSocket.Events.SocketError, (errorMessage: string) => {
+        harEntry.response._failureText = errorMessage;
+      }),
+      eventsHelper.addEventListener(webSocket, network.WebSocket.Events.Close, () => {
+        eventsHelper.removeEventListeners(eventListeners);
+
+        if (this._started)
+          this._delegate.onEntryFinished(harEntry);
+      }),
+    ];
+    this._eventListeners.push(...eventListeners);
+
+    if (this._started)
+      this._delegate.onEntryStarted(harEntry);
+  }
+
   private _storeResponseContent(buffer: Buffer | undefined, content: har.Content, resourceType: string) {
     if (!buffer) {
       content.size = 0;
@@ -477,6 +579,11 @@ export class HarTracer {
       const timing = response.timing();
       if (pageEntry && startDateTime > timing.startTime)
         pageEntry.startedDateTime = new Date(timing.startTime).toISOString();
+      if (request.wallTimeMs() === undefined && timing.startTime > 0) {
+        const startedDateTime = safeDateToISOString(timing.startTime);
+        if (startedDateTime)
+          harEntry.startedDateTime = startedDateTime;
+      }
       const dns = timing.domainLookupEnd !== -1 ? helper.millisToRoundishMillis(timing.domainLookupEnd - timing.domainLookupStart) : -1;
       const connect = timing.connectEnd !== -1 ? helper.millisToRoundishMillis(timing.connectEnd - timing.connectStart) : -1;
       const ssl = timing.connectEnd !== -1 ? helper.millisToRoundishMillis(timing.connectEnd - timing.secureConnectionStart) : -1;
@@ -612,10 +719,11 @@ export class HarTracer {
 
 }
 
-function createHarEntry(pageRef: string | undefined, method: string, url: URL, frameref: string | undefined, options: HarTracerOptions): har.Entry {
+function createHarEntry(pageRef: string | undefined, method: string, url: URL, frameref: string | undefined, options: HarTracerOptions, wallTime?: number): har.Entry {
+  const startedDateTime = (wallTime && safeDateToISOString(wallTime)) || new Date().toISOString();
   const harEntry: har.Entry = {
     pageref: pageRef,
-    startedDateTime: new Date().toISOString(),
+    startedDateTime,
     time: -1,
     request: {
       method: method,
