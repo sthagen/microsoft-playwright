@@ -28,7 +28,7 @@ import { Coverage } from './coverage';
 import { DisposableObject, DisposableStub } from './disposable';
 import { Download } from './download';
 import { ElementHandle, determineScreenshotType } from './elementHandle';
-import { TargetClosedError, isTargetClosedError, parseError, serializeError } from './errors';
+import { PlaywrightError, TargetClosedError, isTargetClosedError, parseError, serializeError } from './errors';
 import { Events } from './events';
 import { FileChooser } from './fileChooser';
 import { Frame, verifyLoadState } from './frame';
@@ -449,7 +449,7 @@ export class Page extends ChannelOwner<channels.PageChannel> implements api.Page
     };
     const trimmedUrl = trimUrl(urlOrPredicate);
     const logLine = trimmedUrl ? `waiting for request ${trimmedUrl}` : undefined;
-    return await this._waitForEvent(Events.Page.Request, { predicate, timeout: options.timeout }, logLine);
+    return await this._waitForEvent(Events.Page.Request, { predicate, timeout: options.timeout, signal: options.signal }, logLine);
   }
 
   async waitForResponse(urlOrPredicate: string | RegExp | ((r: Response) => boolean | Promise<boolean>), options: TimeoutOptions = {}): Promise<Response> {
@@ -460,7 +460,7 @@ export class Page extends ChannelOwner<channels.PageChannel> implements api.Page
     };
     const trimmedUrl = trimUrl(urlOrPredicate);
     const logLine = trimmedUrl ? `waiting for response ${trimmedUrl}` : undefined;
-    return await this._waitForEvent(Events.Page.Response, { predicate, timeout: options.timeout }, logLine);
+    return await this._waitForEvent(Events.Page.Response, { predicate, timeout: options.timeout, signal: options.signal }, logLine);
   }
 
   async waitForEvent(event: string, optionsOrPredicate: WaitForEventOptions = {}): Promise<any> {
@@ -475,10 +475,12 @@ export class Page extends ChannelOwner<channels.PageChannel> implements api.Page
     return await this._wrapApiCall(async () => {
       const timeout = this._timeoutSettings.timeout(typeof optionsOrPredicate === 'function' ? {} : optionsOrPredicate);
       const predicate = typeof optionsOrPredicate === 'function' ? optionsOrPredicate : optionsOrPredicate.predicate;
+      const signal = typeof optionsOrPredicate === 'function' ? undefined : (optionsOrPredicate as TimeoutOptions).signal;
       const waiter = Waiter.createForEvent(this, event);
       if (logLine)
         waiter.log(logLine);
       waiter.rejectOnTimeout(timeout, `Timeout ${timeout}ms exceeded while waiting for event "${event}"`);
+      waiter.rejectOnSignal(signal);
       if (event !== Events.Page.Crash)
         waiter.rejectOnEvent(this, Events.Page.Crash, new Error('Page crashed'));
       if (event !== Events.Page.Close)
@@ -625,12 +627,20 @@ export class Page extends ChannelOwner<channels.PageChannel> implements api.Page
       frame: (options.locator as Locator)._frame._channel,
       selector: (options.locator as Locator)._selector,
     } : undefined;
-    return await this._channel.expectScreenshot({
-      ...options,
-      isNot: !!options.isNot,
-      locator,
-      mask,
-    });
+    try {
+      const result = await this._channel.expectScreenshot({
+        ...options,
+        isNot: !!options.isNot,
+        locator,
+        mask,
+      });
+      return { actual: result.actual };
+    } catch (e) {
+      if (!(e instanceof PlaywrightError))
+        throw e;
+      const details = e.details as channels.PageExpectScreenshotErrorDetails;
+      return { ...details, errorMessage: details.customErrorMessage };
+    }
   }
 
   async title(): Promise<string> {

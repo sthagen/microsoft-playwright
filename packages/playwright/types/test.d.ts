@@ -130,54 +130,6 @@ interface TestProject<TestArgs = {}, WorkerArgs = {}> {
    */
   use?: UseOptions<TestArgs, WorkerArgs>;
   /**
-   * Launch a development web server (or multiple) before running tests in this project. See
-   * [testConfig.webServer](https://playwright.dev/docs/api/class-testconfig#test-config-web-server) for the shape of
-   * each entry.
-   *
-   * A per-project `webServer` is only launched when the project is selected (either directly via `--project` or
-   * indirectly through dependencies). This is useful when only a subset of your projects need a local backend, while
-   * others run against a deployed environment.
-   *
-   * Per-project web servers are launched in addition to any top-level
-   * [testConfig.webServer](https://playwright.dev/docs/api/class-testconfig#test-config-web-server).
-   *
-   * **Usage**
-   *
-   * ```js
-   * // playwright.config.ts
-   * import { defineConfig } from '@playwright/test';
-   *
-   * export default defineConfig({
-   *   projects: [
-   *     {
-   *       name: 'functional',
-   *       grepInvert: /@smoke/,
-   *       use: { baseURL: 'http://localhost:3000' },
-   *       webServer: [
-   *         {
-   *           command: 'npm run start',
-   *           url: 'http://localhost:3000',
-   *           reuseExistingServer: !process.env.CI,
-   *         },
-   *         {
-   *           command: 'npm run mock-server',
-   *           port: 3001,
-   *           reuseExistingServer: !process.env.CI,
-   *         },
-   *       ],
-   *     },
-   *     {
-   *       name: 'smoke',
-   *       grep: /@smoke/,
-   *       use: { baseURL: 'https://production.app.com' },
-   *     },
-   *   ],
-   * });
-   * ```
-   *
-   */
-  webServer?: TestConfigWebServer | TestConfigWebServer[];
-  /**
    * List of projects that need to run before any test in this project runs. Dependencies can be useful for configuring
    * the global setup actions in a way that every action is in a form of a test. Passing `--no-deps` argument ignores
    * the dependencies and behaves as if they were not specified.
@@ -6990,15 +6942,21 @@ export interface PlaywrightWorkerOptions {
    */
   screenshot: ScreenshotMode | { mode: ScreenshotMode } & Pick<PageScreenshotOptions, 'fullPage' | 'omitBackground'>;
   /**
-   * Whether to record trace for each test. Defaults to `'off'`.
+   * Whether to record trace for each test. Defaults to `'off'`. The initial run of a test is the "first run";
+   * subsequent runs caused by [retries](https://playwright.dev/docs/test-retries) are "retries".
    * - `'off'`: Do not record trace.
-   * - `'on'`: Record trace for each test.
-   * - `'on-first-retry'`: Record trace only when retrying a test for the first time.
-   * - `'on-all-retries'`: Record trace only when retrying a test.
-   * - `'retain-on-failure'`: Record trace for each test. When test run passes, remove the recorded trace.
-   * - `'retain-on-first-failure'`: Record trace for the first run of each test, but not for retries. When test run
-   *   passes, remove the recorded trace.
-   * - `'retain-on-failure-and-retries'`: Record trace for each test run. Retains all traces when an attempt fails.
+   * - `'on'`: Record and keep a trace for every run.
+   * - `'on-first-retry'`: Record and keep a trace only for the first retry of a test.
+   * - `'on-all-retries'`: Record and keep a trace for every retry.
+   * - `'retain-on-failure'`: Record a trace for every run, but keep it only for runs that failed. A failed run's
+   *   trace is kept even when a later retry passes.
+   * - `'retain-on-first-failure'`: Record a trace only for the first run of a test (not for retries), and keep it
+   *   only if that run failed.
+   * - `'retain-on-failure-and-retries'`: Record a trace for every run, and keep it for any run that failed or that is
+   *   a retry.
+   *
+   * See [trace modes](https://playwright.dev/docs/test-use-options#trace-modes) for a side-by-side comparison of what each mode records and
+   * keeps.
    *
    * For more control, pass an object that specifies `mode` and trace features to enable.
    *
@@ -7019,15 +6977,21 @@ export interface PlaywrightWorkerOptions {
    */
   trace: TraceMode | /** deprecated */ 'retry-with-trace' | { mode: TraceMode, snapshots?: boolean, screenshots?: boolean, sources?: boolean, attachments?: boolean };
   /**
-   * Whether to record video for each test. Defaults to `'off'`.
+   * Whether to record video for each test. Defaults to `'off'`. The initial run of a test is the "first run";
+   * subsequent runs caused by [retries](https://playwright.dev/docs/test-retries) are "retries".
    * - `'off'`: Do not record video.
-   * - `'on'`: Record video for each test.
-   * - `'on-first-retry'`: Record video only when retrying a test for the first time.
-   * - `'on-all-retries'`: Record video only when retrying a test.
-   * - `'retain-on-failure'`: Record video for each test. When test run passes, remove the recorded video.
-   * - `'retain-on-first-failure'`: Record video for the first run of each test, but not for retries. When test run
-   *   passes, remove the recorded video.
-   * - `'retain-on-failure-and-retries'`: Record video for each test run. Retains all videos when an attempt fails.
+   * - `'on'`: Record and keep a video for every run.
+   * - `'on-first-retry'`: Record and keep a video only for the first retry of a test.
+   * - `'on-all-retries'`: Record and keep a video for every retry.
+   * - `'retain-on-failure'`: Record a video for every run, but keep it only for runs that failed. A failed run's
+   *   video is kept even when a later retry passes.
+   * - `'retain-on-first-failure'`: Record a video only for the first run of a test (not for retries), and keep it
+   *   only if that run failed.
+   * - `'retain-on-failure-and-retries'`: Record a video for every run, and keep it for any run that failed or that is
+   *   a retry.
+   *
+   * See [video modes](https://playwright.dev/docs/test-use-options#video-modes) for a side-by-side comparison of what each mode records and
+   * keeps.
    *
    * To control video size, pass an object with `mode` and `size` properties. If video size is not specified, it will be
    * equal to [testOptions.viewport](https://playwright.dev/docs/api/class-testoptions#test-options-viewport) scaled
