@@ -1366,7 +1366,6 @@ export interface BrowserContextChannel extends BrowserContextEventTarget, Channe
   credentialsCreate(params: BrowserContextCredentialsCreateParams, progress?: Progress): Promise<BrowserContextCredentialsCreateResult>;
   credentialsGet(params: BrowserContextCredentialsGetParams, progress?: Progress): Promise<BrowserContextCredentialsGetResult>;
   credentialsDelete(params: BrowserContextCredentialsDeleteParams, progress?: Progress): Promise<BrowserContextCredentialsDeleteResult>;
-  credentialsSetUserVerified(params: BrowserContextCredentialsSetUserVerifiedParams, progress?: Progress): Promise<BrowserContextCredentialsSetUserVerifiedResult>;
 }
 export type BrowserContextBindingCallEvent = {
   binding: BindingCallChannel,
@@ -1785,13 +1784,6 @@ export type BrowserContextCredentialsDeleteOptions = {
 
 };
 export type BrowserContextCredentialsDeleteResult = void;
-export type BrowserContextCredentialsSetUserVerifiedParams = {
-  value: boolean,
-};
-export type BrowserContextCredentialsSetUserVerifiedOptions = {
-
-};
-export type BrowserContextCredentialsSetUserVerifiedResult = void;
 
 export interface BrowserContextEvents {
   'bindingCall': BrowserContextBindingCallEvent;
@@ -2949,13 +2941,11 @@ export type FrameTypeParams = {
   strict?: boolean,
   text: string,
   delay?: number,
-  namedKeys?: boolean,
   timeout: number,
 };
 export type FrameTypeOptions = {
   strict?: boolean,
   delay?: number,
-  namedKeys?: boolean,
 };
 export type FrameTypeResult = void;
 export type FrameUncheckParams = {
@@ -4140,6 +4130,7 @@ export type PageRouteEvent = {
 };
 export type PageScreencastFrameEvent = {
   data: Binary,
+  timestamp: number,
   viewportWidth: number,
   viewportHeight: number,
 };
@@ -4435,11 +4426,9 @@ export type PageKeyboardInsertTextResult = void;
 export type PageKeyboardTypeParams = {
   text: string,
   delay?: number,
-  namedKeys?: boolean,
 };
 export type PageKeyboardTypeOptions = {
   delay?: number,
-  namedKeys?: boolean,
 };
 export type PageKeyboardTypeResult = void;
 export type PageKeyboardPressParams = {

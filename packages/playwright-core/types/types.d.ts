@@ -4787,7 +4787,7 @@ export interface Page {
   /**
    * Emitted when the page closes.
    */
-  waitForEvent(event: 'close', optionsOrPredicate?: { predicate?: (page: Page) => boolean | Promise<boolean>, timeout?: number, signal?: AbortSignal } | ((page: Page) => boolean | Promise<boolean>)): Promise<Page>;
+  waitForEvent(event: 'close', optionsOrPredicate?: { predicate?: (page: Page) => boolean | Promise<boolean>, timeout?: number } | ((page: Page) => boolean | Promise<boolean>)): Promise<Page>;
 
   /**
    * Emitted when JavaScript within the page calls one of console API methods, e.g. `console.log` or `console.dir`.
@@ -4808,7 +4808,7 @@ export interface Page {
    * ```
    *
    */
-  waitForEvent(event: 'console', optionsOrPredicate?: { predicate?: (consoleMessage: ConsoleMessage) => boolean | Promise<boolean>, timeout?: number, signal?: AbortSignal } | ((consoleMessage: ConsoleMessage) => boolean | Promise<boolean>)): Promise<ConsoleMessage>;
+  waitForEvent(event: 'console', optionsOrPredicate?: { predicate?: (consoleMessage: ConsoleMessage) => boolean | Promise<boolean>, timeout?: number } | ((consoleMessage: ConsoleMessage) => boolean | Promise<boolean>)): Promise<ConsoleMessage>;
 
   /**
    * Emitted when the page crashes. Browser pages might crash if they try to allocate too much memory. When the page
@@ -4828,7 +4828,7 @@ export interface Page {
    * ```
    *
    */
-  waitForEvent(event: 'crash', optionsOrPredicate?: { predicate?: (page: Page) => boolean | Promise<boolean>, timeout?: number, signal?: AbortSignal } | ((page: Page) => boolean | Promise<boolean>)): Promise<Page>;
+  waitForEvent(event: 'crash', optionsOrPredicate?: { predicate?: (page: Page) => boolean | Promise<boolean>, timeout?: number } | ((page: Page) => boolean | Promise<boolean>)): Promise<Page>;
 
   /**
    * Emitted when a JavaScript dialog appears, such as `alert`, `prompt`, `confirm` or `beforeunload`. Listener **must**
@@ -4848,19 +4848,19 @@ export interface Page {
    * listeners are present, all dialogs are automatically dismissed.
    *
    */
-  waitForEvent(event: 'dialog', optionsOrPredicate?: { predicate?: (dialog: Dialog) => boolean | Promise<boolean>, timeout?: number, signal?: AbortSignal } | ((dialog: Dialog) => boolean | Promise<boolean>)): Promise<Dialog>;
+  waitForEvent(event: 'dialog', optionsOrPredicate?: { predicate?: (dialog: Dialog) => boolean | Promise<boolean>, timeout?: number } | ((dialog: Dialog) => boolean | Promise<boolean>)): Promise<Dialog>;
 
   /**
    * Emitted when the JavaScript
    * [`DOMContentLoaded`](https://developer.mozilla.org/en-US/docs/Web/Events/DOMContentLoaded) event is dispatched.
    */
-  waitForEvent(event: 'domcontentloaded', optionsOrPredicate?: { predicate?: (page: Page) => boolean | Promise<boolean>, timeout?: number, signal?: AbortSignal } | ((page: Page) => boolean | Promise<boolean>)): Promise<Page>;
+  waitForEvent(event: 'domcontentloaded', optionsOrPredicate?: { predicate?: (page: Page) => boolean | Promise<boolean>, timeout?: number } | ((page: Page) => boolean | Promise<boolean>)): Promise<Page>;
 
   /**
    * Emitted when attachment download started. User can access basic file operations on downloaded content via the
    * passed [Download](https://playwright.dev/docs/api/class-download) instance.
    */
-  waitForEvent(event: 'download', optionsOrPredicate?: { predicate?: (download: Download) => boolean | Promise<boolean>, timeout?: number, signal?: AbortSignal } | ((download: Download) => boolean | Promise<boolean>)): Promise<Download>;
+  waitForEvent(event: 'download', optionsOrPredicate?: { predicate?: (download: Download) => boolean | Promise<boolean>, timeout?: number } | ((download: Download) => boolean | Promise<boolean>)): Promise<Download>;
 
   /**
    * Emitted when a file chooser is supposed to appear, such as after clicking the  `<input type=file>`. Playwright can
@@ -4875,27 +4875,27 @@ export interface Page {
    * ```
    *
    */
-  waitForEvent(event: 'filechooser', optionsOrPredicate?: { predicate?: (fileChooser: FileChooser) => boolean | Promise<boolean>, timeout?: number, signal?: AbortSignal } | ((fileChooser: FileChooser) => boolean | Promise<boolean>)): Promise<FileChooser>;
+  waitForEvent(event: 'filechooser', optionsOrPredicate?: { predicate?: (fileChooser: FileChooser) => boolean | Promise<boolean>, timeout?: number } | ((fileChooser: FileChooser) => boolean | Promise<boolean>)): Promise<FileChooser>;
 
   /**
    * Emitted when a frame is attached.
    */
-  waitForEvent(event: 'frameattached', optionsOrPredicate?: { predicate?: (frame: Frame) => boolean | Promise<boolean>, timeout?: number, signal?: AbortSignal } | ((frame: Frame) => boolean | Promise<boolean>)): Promise<Frame>;
+  waitForEvent(event: 'frameattached', optionsOrPredicate?: { predicate?: (frame: Frame) => boolean | Promise<boolean>, timeout?: number } | ((frame: Frame) => boolean | Promise<boolean>)): Promise<Frame>;
 
   /**
    * Emitted when a frame is detached.
    */
-  waitForEvent(event: 'framedetached', optionsOrPredicate?: { predicate?: (frame: Frame) => boolean | Promise<boolean>, timeout?: number, signal?: AbortSignal } | ((frame: Frame) => boolean | Promise<boolean>)): Promise<Frame>;
+  waitForEvent(event: 'framedetached', optionsOrPredicate?: { predicate?: (frame: Frame) => boolean | Promise<boolean>, timeout?: number } | ((frame: Frame) => boolean | Promise<boolean>)): Promise<Frame>;
 
   /**
    * Emitted when a frame is navigated to a new url.
    */
-  waitForEvent(event: 'framenavigated', optionsOrPredicate?: { predicate?: (frame: Frame) => boolean | Promise<boolean>, timeout?: number, signal?: AbortSignal } | ((frame: Frame) => boolean | Promise<boolean>)): Promise<Frame>;
+  waitForEvent(event: 'framenavigated', optionsOrPredicate?: { predicate?: (frame: Frame) => boolean | Promise<boolean>, timeout?: number } | ((frame: Frame) => boolean | Promise<boolean>)): Promise<Frame>;
 
   /**
    * Emitted when the JavaScript [`load`](https://developer.mozilla.org/en-US/docs/Web/Events/load) event is dispatched.
    */
-  waitForEvent(event: 'load', optionsOrPredicate?: { predicate?: (page: Page) => boolean | Promise<boolean>, timeout?: number, signal?: AbortSignal } | ((page: Page) => boolean | Promise<boolean>)): Promise<Page>;
+  waitForEvent(event: 'load', optionsOrPredicate?: { predicate?: (page: Page) => boolean | Promise<boolean>, timeout?: number } | ((page: Page) => boolean | Promise<boolean>)): Promise<Page>;
 
   /**
    * Emitted when an uncaught exception happens within the page.
@@ -4911,7 +4911,7 @@ export interface Page {
    * ```
    *
    */
-  waitForEvent(event: 'pageerror', optionsOrPredicate?: { predicate?: (error: Error) => boolean | Promise<boolean>, timeout?: number, signal?: AbortSignal } | ((error: Error) => boolean | Promise<boolean>)): Promise<Error>;
+  waitForEvent(event: 'pageerror', optionsOrPredicate?: { predicate?: (error: Error) => boolean | Promise<boolean>, timeout?: number } | ((error: Error) => boolean | Promise<boolean>)): Promise<Error>;
 
   /**
    * Emitted when the page opens a new tab or window. This event is emitted in addition to the
@@ -4940,14 +4940,14 @@ export interface Page {
    * wait until the page gets to a particular state (you should not need it in most cases).
    *
    */
-  waitForEvent(event: 'popup', optionsOrPredicate?: { predicate?: (page: Page) => boolean | Promise<boolean>, timeout?: number, signal?: AbortSignal } | ((page: Page) => boolean | Promise<boolean>)): Promise<Page>;
+  waitForEvent(event: 'popup', optionsOrPredicate?: { predicate?: (page: Page) => boolean | Promise<boolean>, timeout?: number } | ((page: Page) => boolean | Promise<boolean>)): Promise<Page>;
 
   /**
    * Emitted when a page issues a request. The [request] object is read-only. In order to intercept and mutate requests,
    * see [page.route(url, handler[, options])](https://playwright.dev/docs/api/class-page#page-route) or
    * [browserContext.route(url, handler[, options])](https://playwright.dev/docs/api/class-browsercontext#browser-context-route).
    */
-  waitForEvent(event: 'request', optionsOrPredicate?: { predicate?: (request: Request) => boolean | Promise<boolean>, timeout?: number, signal?: AbortSignal } | ((request: Request) => boolean | Promise<boolean>)): Promise<Request>;
+  waitForEvent(event: 'request', optionsOrPredicate?: { predicate?: (request: Request) => boolean | Promise<boolean>, timeout?: number } | ((request: Request) => boolean | Promise<boolean>)): Promise<Request>;
 
   /**
    * Emitted when a request fails, for example by timing out.
@@ -4966,30 +4966,30 @@ export interface Page {
    * error net::ERR_FAILED.
    *
    */
-  waitForEvent(event: 'requestfailed', optionsOrPredicate?: { predicate?: (request: Request) => boolean | Promise<boolean>, timeout?: number, signal?: AbortSignal } | ((request: Request) => boolean | Promise<boolean>)): Promise<Request>;
+  waitForEvent(event: 'requestfailed', optionsOrPredicate?: { predicate?: (request: Request) => boolean | Promise<boolean>, timeout?: number } | ((request: Request) => boolean | Promise<boolean>)): Promise<Request>;
 
   /**
    * Emitted when a request finishes successfully after downloading the response body. For a successful response, the
    * sequence of events is `request`, `response` and `requestfinished`.
    */
-  waitForEvent(event: 'requestfinished', optionsOrPredicate?: { predicate?: (request: Request) => boolean | Promise<boolean>, timeout?: number, signal?: AbortSignal } | ((request: Request) => boolean | Promise<boolean>)): Promise<Request>;
+  waitForEvent(event: 'requestfinished', optionsOrPredicate?: { predicate?: (request: Request) => boolean | Promise<boolean>, timeout?: number } | ((request: Request) => boolean | Promise<boolean>)): Promise<Request>;
 
   /**
    * Emitted when [response] status and headers are received for a request. For a successful response, the sequence of
    * events is `request`, `response` and `requestfinished`.
    */
-  waitForEvent(event: 'response', optionsOrPredicate?: { predicate?: (response: Response) => boolean | Promise<boolean>, timeout?: number, signal?: AbortSignal } | ((response: Response) => boolean | Promise<boolean>)): Promise<Response>;
+  waitForEvent(event: 'response', optionsOrPredicate?: { predicate?: (response: Response) => boolean | Promise<boolean>, timeout?: number } | ((response: Response) => boolean | Promise<boolean>)): Promise<Response>;
 
   /**
    * Emitted when [WebSocket](https://playwright.dev/docs/api/class-websocket) request is sent.
    */
-  waitForEvent(event: 'websocket', optionsOrPredicate?: { predicate?: (webSocket: WebSocket) => boolean | Promise<boolean>, timeout?: number, signal?: AbortSignal } | ((webSocket: WebSocket) => boolean | Promise<boolean>)): Promise<WebSocket>;
+  waitForEvent(event: 'websocket', optionsOrPredicate?: { predicate?: (webSocket: WebSocket) => boolean | Promise<boolean>, timeout?: number } | ((webSocket: WebSocket) => boolean | Promise<boolean>)): Promise<WebSocket>;
 
   /**
    * Emitted when a dedicated [WebWorker](https://developer.mozilla.org/en-US/docs/Web/API/Web_Workers_API) is spawned
    * by the page.
    */
-  waitForEvent(event: 'worker', optionsOrPredicate?: { predicate?: (worker: Worker) => boolean | Promise<boolean>, timeout?: number, signal?: AbortSignal } | ((worker: Worker) => boolean | Promise<boolean>)): Promise<Worker>;
+  waitForEvent(event: 'worker', optionsOrPredicate?: { predicate?: (worker: Worker) => boolean | Promise<boolean>, timeout?: number } | ((worker: Worker) => boolean | Promise<boolean>)): Promise<Worker>;
 
 
   /**
@@ -5027,14 +5027,6 @@ export interface Page {
    */
   waitForLoadState(state?: "load"|"domcontentloaded"|"networkidle", options?: {
     /**
-     * Allows to cancel the waiting using an
-     * [`AbortSignal`](https://developer.mozilla.org/en-US/docs/Web/API/AbortSignal). If the signal is aborted, the
-     * waiting will be aborted and the operation will throw an error. Note that providing a signal does not disable the
-     * default timeout; pass `timeout: 0` to disable the timeout entirely.
-     */
-    signal?: AbortSignal;
-
-    /**
      * Maximum operation time in milliseconds. Defaults to `0` - no timeout. The default value can be changed via
      * `navigationTimeout` option in the config, or by using the
      * [browserContext.setDefaultNavigationTimeout(timeout)](https://playwright.dev/docs/api/class-browsercontext#browser-context-set-default-navigation-timeout),
@@ -5071,14 +5063,6 @@ export interface Page {
    * @param options
    */
   waitForNavigation(options?: {
-    /**
-     * Allows to cancel the waiting using an
-     * [`AbortSignal`](https://developer.mozilla.org/en-US/docs/Web/API/AbortSignal). If the signal is aborted, the
-     * waiting will be aborted and the operation will throw an error. Note that providing a signal does not disable the
-     * default timeout; pass `timeout: 0` to disable the timeout entirely.
-     */
-    signal?: AbortSignal;
-
     /**
      * Maximum operation time in milliseconds. Defaults to `0` - no timeout. The default value can be changed via
      * `navigationTimeout` option in the config, or by using the
@@ -5133,14 +5117,6 @@ export interface Page {
    */
   waitForRequest(urlOrPredicate: string|RegExp|((request: Request) => boolean|Promise<boolean>), options?: {
     /**
-     * Allows to cancel the waiting using an
-     * [`AbortSignal`](https://developer.mozilla.org/en-US/docs/Web/API/AbortSignal). If the signal is aborted, the
-     * waiting will be aborted and the operation will throw an error. Note that providing a signal does not disable the
-     * default timeout; pass `timeout: 0` to disable the timeout entirely.
-     */
-    signal?: AbortSignal;
-
-    /**
      * Maximum wait time in milliseconds, defaults to 30 seconds, pass `0` to disable the timeout. The default value can
      * be changed by using the
      * [page.setDefaultTimeout(timeout)](https://playwright.dev/docs/api/class-page#page-set-default-timeout) method.
@@ -5176,14 +5152,6 @@ export interface Page {
    * @param options
    */
   waitForResponse(urlOrPredicate: string|RegExp|((response: Response) => boolean|Promise<boolean>), options?: {
-    /**
-     * Allows to cancel the waiting using an
-     * [`AbortSignal`](https://developer.mozilla.org/en-US/docs/Web/API/AbortSignal). If the signal is aborted, the
-     * waiting will be aborted and the operation will throw an error. Note that providing a signal does not disable the
-     * default timeout; pass `timeout: 0` to disable the timeout entirely.
-     */
-    signal?: AbortSignal;
-
     /**
      * Maximum wait time in milliseconds, defaults to 30 seconds, pass `0` to disable the timeout. The default value can
      * be changed by using the
@@ -5230,14 +5198,6 @@ export interface Page {
    * @param options
    */
   waitForURL(url: string|RegExp|URLPattern|((url: URL) => boolean), options?: {
-    /**
-     * Allows to cancel the waiting using an
-     * [`AbortSignal`](https://developer.mozilla.org/en-US/docs/Web/API/AbortSignal). If the signal is aborted, the
-     * waiting will be aborted and the operation will throw an error. Note that providing a signal does not disable the
-     * default timeout; pass `timeout: 0` to disable the timeout entirely.
-     */
-    signal?: AbortSignal;
-
     /**
      * Maximum operation time in milliseconds. Defaults to `0` - no timeout. The default value can be changed via
      * `navigationTimeout` option in the config, or by using the
@@ -8064,14 +8024,6 @@ export interface Frame {
    */
   waitForLoadState(state?: "load"|"domcontentloaded"|"networkidle", options?: {
     /**
-     * Allows to cancel the waiting using an
-     * [`AbortSignal`](https://developer.mozilla.org/en-US/docs/Web/API/AbortSignal). If the signal is aborted, the
-     * waiting will be aborted and the operation will throw an error. Note that providing a signal does not disable the
-     * default timeout; pass `timeout: 0` to disable the timeout entirely.
-     */
-    signal?: AbortSignal;
-
-    /**
      * Maximum operation time in milliseconds. Defaults to `0` - no timeout. The default value can be changed via
      * `navigationTimeout` option in the config, or by using the
      * [browserContext.setDefaultNavigationTimeout(timeout)](https://playwright.dev/docs/api/class-browsercontext#browser-context-set-default-navigation-timeout),
@@ -8107,14 +8059,6 @@ export interface Frame {
    * @param options
    */
   waitForNavigation(options?: {
-    /**
-     * Allows to cancel the waiting using an
-     * [`AbortSignal`](https://developer.mozilla.org/en-US/docs/Web/API/AbortSignal). If the signal is aborted, the
-     * waiting will be aborted and the operation will throw an error. Note that providing a signal does not disable the
-     * default timeout; pass `timeout: 0` to disable the timeout entirely.
-     */
-    signal?: AbortSignal;
-
     /**
      * Maximum operation time in milliseconds. Defaults to `0` - no timeout. The default value can be changed via
      * `navigationTimeout` option in the config, or by using the
@@ -8173,14 +8117,6 @@ export interface Frame {
    * @param options
    */
   waitForURL(url: string|RegExp|URLPattern|((url: URL) => boolean), options?: {
-    /**
-     * Allows to cancel the waiting using an
-     * [`AbortSignal`](https://developer.mozilla.org/en-US/docs/Web/API/AbortSignal). If the signal is aborted, the
-     * waiting will be aborted and the operation will throw an error. Note that providing a signal does not disable the
-     * default timeout; pass `timeout: 0` to disable the timeout entirely.
-     */
-    signal?: AbortSignal;
-
     /**
      * Maximum operation time in milliseconds. Defaults to `0` - no timeout. The default value can be changed via
      * `navigationTimeout` option in the config, or by using the
@@ -9787,7 +9723,7 @@ export interface BrowserContext {
   /**
    * This event is not emitted.
    */
-  waitForEvent(event: 'backgroundpage', optionsOrPredicate?: { predicate?: (page: Page) => boolean | Promise<boolean>, timeout?: number, signal?: AbortSignal } | ((page: Page) => boolean | Promise<boolean>)): Promise<Page>;
+  waitForEvent(event: 'backgroundpage', optionsOrPredicate?: { predicate?: (page: Page) => boolean | Promise<boolean>, timeout?: number } | ((page: Page) => boolean | Promise<boolean>)): Promise<Page>;
 
   /**
    * Emitted when Browser context gets closed. This might happen because of one of the following:
@@ -9795,7 +9731,7 @@ export interface BrowserContext {
    * - Browser application is closed or crashed.
    * - The [browser.close([options])](https://playwright.dev/docs/api/class-browser#browser-close) method was called.
    */
-  waitForEvent(event: 'close', optionsOrPredicate?: { predicate?: (browserContext: BrowserContext) => boolean | Promise<boolean>, timeout?: number, signal?: AbortSignal } | ((browserContext: BrowserContext) => boolean | Promise<boolean>)): Promise<BrowserContext>;
+  waitForEvent(event: 'close', optionsOrPredicate?: { predicate?: (browserContext: BrowserContext) => boolean | Promise<boolean>, timeout?: number } | ((browserContext: BrowserContext) => boolean | Promise<boolean>)): Promise<BrowserContext>;
 
   /**
    * Emitted when JavaScript within the page calls one of console API methods, e.g. `console.log` or `console.dir`.
@@ -9816,7 +9752,7 @@ export interface BrowserContext {
    * ```
    *
    */
-  waitForEvent(event: 'console', optionsOrPredicate?: { predicate?: (consoleMessage: ConsoleMessage) => boolean | Promise<boolean>, timeout?: number, signal?: AbortSignal } | ((consoleMessage: ConsoleMessage) => boolean | Promise<boolean>)): Promise<ConsoleMessage>;
+  waitForEvent(event: 'console', optionsOrPredicate?: { predicate?: (consoleMessage: ConsoleMessage) => boolean | Promise<boolean>, timeout?: number } | ((consoleMessage: ConsoleMessage) => boolean | Promise<boolean>)): Promise<ConsoleMessage>;
 
   /**
    * Emitted when a JavaScript dialog appears, such as `alert`, `prompt`, `confirm` or `beforeunload`. Listener **must**
@@ -9838,7 +9774,7 @@ export interface BrowserContext {
    * listeners are present, all dialogs are automatically dismissed.
    *
    */
-  waitForEvent(event: 'dialog', optionsOrPredicate?: { predicate?: (dialog: Dialog) => boolean | Promise<boolean>, timeout?: number, signal?: AbortSignal } | ((dialog: Dialog) => boolean | Promise<boolean>)): Promise<Dialog>;
+  waitForEvent(event: 'dialog', optionsOrPredicate?: { predicate?: (dialog: Dialog) => boolean | Promise<boolean>, timeout?: number } | ((dialog: Dialog) => boolean | Promise<boolean>)): Promise<Dialog>;
 
   /**
    * Emitted when attachment download started in any page belonging to this context. User can access basic file
@@ -9846,28 +9782,28 @@ export interface BrowserContext {
    * instance. See also [page.on('download')](https://playwright.dev/docs/api/class-page#page-event-download) to receive
    * events about a specific page.
    */
-  waitForEvent(event: 'download', optionsOrPredicate?: { predicate?: (download: Download) => boolean | Promise<boolean>, timeout?: number, signal?: AbortSignal } | ((download: Download) => boolean | Promise<boolean>)): Promise<Download>;
+  waitForEvent(event: 'download', optionsOrPredicate?: { predicate?: (download: Download) => boolean | Promise<boolean>, timeout?: number } | ((download: Download) => boolean | Promise<boolean>)): Promise<Download>;
 
   /**
    * Emitted when a frame is attached in any page belonging to this context. See also
    * [page.on('frameattached')](https://playwright.dev/docs/api/class-page#page-event-frame-attached) to receive events
    * about a specific page.
    */
-  waitForEvent(event: 'frameattached', optionsOrPredicate?: { predicate?: (frame: Frame) => boolean | Promise<boolean>, timeout?: number, signal?: AbortSignal } | ((frame: Frame) => boolean | Promise<boolean>)): Promise<Frame>;
+  waitForEvent(event: 'frameattached', optionsOrPredicate?: { predicate?: (frame: Frame) => boolean | Promise<boolean>, timeout?: number } | ((frame: Frame) => boolean | Promise<boolean>)): Promise<Frame>;
 
   /**
    * Emitted when a frame is detached in any page belonging to this context. See also
    * [page.on('framedetached')](https://playwright.dev/docs/api/class-page#page-event-frame-detached) to receive events
    * about a specific page.
    */
-  waitForEvent(event: 'framedetached', optionsOrPredicate?: { predicate?: (frame: Frame) => boolean | Promise<boolean>, timeout?: number, signal?: AbortSignal } | ((frame: Frame) => boolean | Promise<boolean>)): Promise<Frame>;
+  waitForEvent(event: 'framedetached', optionsOrPredicate?: { predicate?: (frame: Frame) => boolean | Promise<boolean>, timeout?: number } | ((frame: Frame) => boolean | Promise<boolean>)): Promise<Frame>;
 
   /**
    * Emitted when a frame is navigated to a new url in any page belonging to this context. See also
    * [page.on('framenavigated')](https://playwright.dev/docs/api/class-page#page-event-frame-navigated) to receive
    * events about navigations in a specific page.
    */
-  waitForEvent(event: 'framenavigated', optionsOrPredicate?: { predicate?: (frame: Frame) => boolean | Promise<boolean>, timeout?: number, signal?: AbortSignal } | ((frame: Frame) => boolean | Promise<boolean>)): Promise<Frame>;
+  waitForEvent(event: 'framenavigated', optionsOrPredicate?: { predicate?: (frame: Frame) => boolean | Promise<boolean>, timeout?: number } | ((frame: Frame) => boolean | Promise<boolean>)): Promise<Frame>;
 
   /**
    * The event is emitted when a new Page is created in the BrowserContext. The page may still be loading. The event
@@ -9896,14 +9832,14 @@ export interface BrowserContext {
    * wait until the page gets to a particular state (you should not need it in most cases).
    *
    */
-  waitForEvent(event: 'page', optionsOrPredicate?: { predicate?: (page: Page) => boolean | Promise<boolean>, timeout?: number, signal?: AbortSignal } | ((page: Page) => boolean | Promise<boolean>)): Promise<Page>;
+  waitForEvent(event: 'page', optionsOrPredicate?: { predicate?: (page: Page) => boolean | Promise<boolean>, timeout?: number } | ((page: Page) => boolean | Promise<boolean>)): Promise<Page>;
 
   /**
    * Emitted when a page in this context is closed. See also
    * [page.on('close')](https://playwright.dev/docs/api/class-page#page-event-close) to receive events about a specific
    * page.
    */
-  waitForEvent(event: 'pageclose', optionsOrPredicate?: { predicate?: (page: Page) => boolean | Promise<boolean>, timeout?: number, signal?: AbortSignal } | ((page: Page) => boolean | Promise<boolean>)): Promise<Page>;
+  waitForEvent(event: 'pageclose', optionsOrPredicate?: { predicate?: (page: Page) => boolean | Promise<boolean>, timeout?: number } | ((page: Page) => boolean | Promise<boolean>)): Promise<Page>;
 
   /**
    * Emitted when the JavaScript [`load`](https://developer.mozilla.org/en-US/docs/Web/Events/load) event is dispatched
@@ -9911,7 +9847,7 @@ export interface BrowserContext {
    * [page.on('load')](https://playwright.dev/docs/api/class-page#page-event-load) to receive events about a specific
    * page.
    */
-  waitForEvent(event: 'pageload', optionsOrPredicate?: { predicate?: (page: Page) => boolean | Promise<boolean>, timeout?: number, signal?: AbortSignal } | ((page: Page) => boolean | Promise<boolean>)): Promise<Page>;
+  waitForEvent(event: 'pageload', optionsOrPredicate?: { predicate?: (page: Page) => boolean | Promise<boolean>, timeout?: number } | ((page: Page) => boolean | Promise<boolean>)): Promise<Page>;
 
   /**
    * Emitted when a request is issued from any pages created through this context. The [request] object is read-only. To
@@ -9922,7 +9858,7 @@ export interface BrowserContext {
    * [browserContext.route(url, handler[, options])](https://playwright.dev/docs/api/class-browsercontext#browser-context-route)
    * or [page.route(url, handler[, options])](https://playwright.dev/docs/api/class-page#page-route).
    */
-  waitForEvent(event: 'request', optionsOrPredicate?: { predicate?: (request: Request) => boolean | Promise<boolean>, timeout?: number, signal?: AbortSignal } | ((request: Request) => boolean | Promise<boolean>)): Promise<Request>;
+  waitForEvent(event: 'request', optionsOrPredicate?: { predicate?: (request: Request) => boolean | Promise<boolean>, timeout?: number } | ((request: Request) => boolean | Promise<boolean>)): Promise<Request>;
 
   /**
    * Emitted when a request fails, for example by timing out. To only listen for failed requests from a particular page,
@@ -9935,7 +9871,7 @@ export interface BrowserContext {
    * [browserContext.on('requestfailed')](https://playwright.dev/docs/api/class-browsercontext#browser-context-event-request-failed).
    *
    */
-  waitForEvent(event: 'requestfailed', optionsOrPredicate?: { predicate?: (request: Request) => boolean | Promise<boolean>, timeout?: number, signal?: AbortSignal } | ((request: Request) => boolean | Promise<boolean>)): Promise<Request>;
+  waitForEvent(event: 'requestfailed', optionsOrPredicate?: { predicate?: (request: Request) => boolean | Promise<boolean>, timeout?: number } | ((request: Request) => boolean | Promise<boolean>)): Promise<Request>;
 
   /**
    * Emitted when a request finishes successfully after downloading the response body. For a successful response, the
@@ -9943,27 +9879,27 @@ export interface BrowserContext {
    * particular page, use
    * [page.on('requestfinished')](https://playwright.dev/docs/api/class-page#page-event-request-finished).
    */
-  waitForEvent(event: 'requestfinished', optionsOrPredicate?: { predicate?: (request: Request) => boolean | Promise<boolean>, timeout?: number, signal?: AbortSignal } | ((request: Request) => boolean | Promise<boolean>)): Promise<Request>;
+  waitForEvent(event: 'requestfinished', optionsOrPredicate?: { predicate?: (request: Request) => boolean | Promise<boolean>, timeout?: number } | ((request: Request) => boolean | Promise<boolean>)): Promise<Request>;
 
   /**
    * Emitted when [response] status and headers are received for a request. For a successful response, the sequence of
    * events is `request`, `response` and `requestfinished`. To listen for response events from a particular page, use
    * [page.on('response')](https://playwright.dev/docs/api/class-page#page-event-response).
    */
-  waitForEvent(event: 'response', optionsOrPredicate?: { predicate?: (response: Response) => boolean | Promise<boolean>, timeout?: number, signal?: AbortSignal } | ((response: Response) => boolean | Promise<boolean>)): Promise<Response>;
+  waitForEvent(event: 'response', optionsOrPredicate?: { predicate?: (response: Response) => boolean | Promise<boolean>, timeout?: number } | ((response: Response) => boolean | Promise<boolean>)): Promise<Response>;
 
   /**
    * **NOTE** Service workers are only supported on Chromium-based browsers.
    *
    * Emitted when new service worker is created in the context.
    */
-  waitForEvent(event: 'serviceworker', optionsOrPredicate?: { predicate?: (worker: Worker) => boolean | Promise<boolean>, timeout?: number, signal?: AbortSignal } | ((worker: Worker) => boolean | Promise<boolean>)): Promise<Worker>;
+  waitForEvent(event: 'serviceworker', optionsOrPredicate?: { predicate?: (worker: Worker) => boolean | Promise<boolean>, timeout?: number } | ((worker: Worker) => boolean | Promise<boolean>)): Promise<Worker>;
 
   /**
    * Emitted when exception is unhandled in any of the pages in this context. To listen for errors from a particular
    * page, use [page.on('pageerror')](https://playwright.dev/docs/api/class-page#page-event-page-error) instead.
    */
-  waitForEvent(event: 'weberror', optionsOrPredicate?: { predicate?: (webError: WebError) => boolean | Promise<boolean>, timeout?: number, signal?: AbortSignal } | ((webError: WebError) => boolean | Promise<boolean>)): Promise<WebError>;
+  waitForEvent(event: 'weberror', optionsOrPredicate?: { predicate?: (webError: WebError) => boolean | Promise<boolean>, timeout?: number } | ((webError: WebError) => boolean | Promise<boolean>)): Promise<WebError>;
 
 
   /**
@@ -10930,12 +10866,12 @@ export interface Worker {
    * Emitted when this dedicated [WebWorker](https://developer.mozilla.org/en-US/docs/Web/API/Web_Workers_API) is
    * terminated.
    */
-  waitForEvent(event: 'close', optionsOrPredicate?: { predicate?: (worker: Worker) => boolean | Promise<boolean>, timeout?: number, signal?: AbortSignal } | ((worker: Worker) => boolean | Promise<boolean>)): Promise<Worker>;
+  waitForEvent(event: 'close', optionsOrPredicate?: { predicate?: (worker: Worker) => boolean | Promise<boolean>, timeout?: number } | ((worker: Worker) => boolean | Promise<boolean>)): Promise<Worker>;
 
   /**
    * Emitted when JavaScript within the worker calls one of console API methods, e.g. `console.log` or `console.dir`.
    */
-  waitForEvent(event: 'console', optionsOrPredicate?: { predicate?: (consoleMessage: ConsoleMessage) => boolean | Promise<boolean>, timeout?: number, signal?: AbortSignal } | ((consoleMessage: ConsoleMessage) => boolean | Promise<boolean>)): Promise<ConsoleMessage>;
+  waitForEvent(event: 'console', optionsOrPredicate?: { predicate?: (consoleMessage: ConsoleMessage) => boolean | Promise<boolean>, timeout?: number } | ((consoleMessage: ConsoleMessage) => boolean | Promise<boolean>)): Promise<ConsoleMessage>;
 
 }
 
@@ -14795,10 +14731,6 @@ export interface Locator {
    * Focuses the element, and then sends a `keydown`, `keypress`/`input`, and `keyup` event for each character in the
    * text.
    *
-   * When [`namedKeys`](https://playwright.dev/docs/api/class-locator#locator-press-sequentially-option-named-keys) is
-   * `true`, anything inside `{}` is treated as a key name (same format as
-   * [locator.press(key[, options])](https://playwright.dev/docs/api/class-locator#locator-press)).
-   *
    * To press a special key, like `Control` or `ArrowDown`, use
    * [locator.press(key[, options])](https://playwright.dev/docs/api/class-locator#locator-press).
    *
@@ -14807,11 +14739,6 @@ export interface Locator {
    * ```js
    * await locator.pressSequentially('Hello'); // Types instantly
    * await locator.pressSequentially('World', { delay: 100 }); // Types slower, like a user
-   *
-   * // Mix characters and named keys
-   * await locator.pressSequentially('Hello{Enter}World', { namedKeys: true });
-   * // Use modifier combos
-   * await locator.pressSequentially('{Control+A}{Delete}Hello', { namedKeys: true });
    * ```
    *
    * An example of typing into a text field and then submitting the form:
@@ -14822,10 +14749,7 @@ export interface Locator {
    * await locator.press('Enter');
    * ```
    *
-   * @param text String of characters to sequentially press into a focused element. When
-   * [`namedKeys`](https://playwright.dev/docs/api/class-locator#locator-press-sequentially-option-named-keys) is
-   * `true`, anything inside `{}` is treated as a key name (same format as
-   * [locator.press(key[, options])](https://playwright.dev/docs/api/class-locator#locator-press)).
+   * @param text String of characters to sequentially press into a focused element.
    * @param options
    */
   pressSequentially(text: string, options?: {
@@ -14833,14 +14757,6 @@ export interface Locator {
      * Time to wait between key presses in milliseconds. Defaults to 0.
      */
     delay?: number;
-
-    /**
-     * When [`namedKeys`](https://playwright.dev/docs/api/class-locator#locator-press-sequentially-option-named-keys) is
-     * `true`, anything inside `{}` is treated as a key name (same format as
-     * [locator.press(key[, options])](https://playwright.dev/docs/api/class-locator#locator-press)). Use `{{` to type a
-     * literal brace character. Defaults to `false`.
-     */
-    namedKeys?: boolean;
 
     /**
      * This option has no effect.
@@ -16706,8 +16622,8 @@ export interface Screencast {
    * ```js
    * // Capture frames
    * await page.screencast.start({
-   *   onFrame: ({ data, viewportWidth, viewportHeight }) => {
-   *     console.log(`frame size: ${data.length} (${viewportWidth}x${viewportHeight})`);
+   *   onFrame: ({ data, timestamp, viewportWidth, viewportHeight }) => {
+   *     console.log(`frame size: ${data.length} (${viewportWidth}x${viewportHeight}) at ${timestamp}`);
    *   },
    *   size: { width: 800, height: 600 },
    * });
@@ -16718,7 +16634,7 @@ export interface Screencast {
    * @param options
    */
   start(options?: {
-    onFrame?: (frame: { data: Buffer, viewportWidth: number, viewportHeight: number }) => Promise<any>|any;
+    onFrame?: (frame: { data: Buffer, timestamp: number, viewportWidth: number, viewportHeight: number }) => Promise<any>|any;
     path?: string;
     size?: {
       width: number;
@@ -16917,47 +16833,7 @@ export interface ElectronApplication {
    * @param arg Optional argument to pass to
    * [`pageFunction`](https://playwright.dev/docs/api/class-electronapplication#electron-application-evaluate-option-expression).
    */
-  /**
-   * Returns the return value of
-   * [`pageFunction`](https://playwright.dev/docs/api/class-electronapplication#electron-application-evaluate-option-expression).
-   *
-   * If the function passed to the
-   * [electronApplication.evaluate(pageFunction[, arg])](https://playwright.dev/docs/api/class-electronapplication#electron-application-evaluate)
-   * returns a [Promise], then
-   * [electronApplication.evaluate(pageFunction[, arg])](https://playwright.dev/docs/api/class-electronapplication#electron-application-evaluate)
-   * would wait for the promise to resolve and return its value.
-   *
-   * If the function passed to the
-   * [electronApplication.evaluate(pageFunction[, arg])](https://playwright.dev/docs/api/class-electronapplication#electron-application-evaluate)
-   * returns a non-[Serializable] value, then
-   * [electronApplication.evaluate(pageFunction[, arg])](https://playwright.dev/docs/api/class-electronapplication#electron-application-evaluate)
-   * returns `undefined`. Playwright also supports transferring some additional values that are not serializable by
-   * `JSON`: `-0`, `NaN`, `Infinity`, `-Infinity`.
-   * @param pageFunction Function to be evaluated in the main Electron process.
-   * @param arg Optional argument to pass to
-   * [`pageFunction`](https://playwright.dev/docs/api/class-electronapplication#electron-application-evaluate-option-expression).
-   */
   evaluate<R, Arg>(pageFunction: PageFunctionOn<ElectronType, Arg, R>, arg: Arg): Promise<R>;
-  /**
-   * Returns the return value of
-   * [`pageFunction`](https://playwright.dev/docs/api/class-electronapplication#electron-application-evaluate-option-expression).
-   *
-   * If the function passed to the
-   * [electronApplication.evaluate(pageFunction[, arg])](https://playwright.dev/docs/api/class-electronapplication#electron-application-evaluate)
-   * returns a [Promise], then
-   * [electronApplication.evaluate(pageFunction[, arg])](https://playwright.dev/docs/api/class-electronapplication#electron-application-evaluate)
-   * would wait for the promise to resolve and return its value.
-   *
-   * If the function passed to the
-   * [electronApplication.evaluate(pageFunction[, arg])](https://playwright.dev/docs/api/class-electronapplication#electron-application-evaluate)
-   * returns a non-[Serializable] value, then
-   * [electronApplication.evaluate(pageFunction[, arg])](https://playwright.dev/docs/api/class-electronapplication#electron-application-evaluate)
-   * returns `undefined`. Playwright also supports transferring some additional values that are not serializable by
-   * `JSON`: `-0`, `NaN`, `Infinity`, `-Infinity`.
-   * @param pageFunction Function to be evaluated in the main Electron process.
-   * @param arg Optional argument to pass to
-   * [`pageFunction`](https://playwright.dev/docs/api/class-electronapplication#electron-application-evaluate-option-expression).
-   */
   /**
    * Returns the return value of
    * [`pageFunction`](https://playwright.dev/docs/api/class-electronapplication#electron-application-evaluate-option-expression).
@@ -17002,51 +16878,7 @@ export interface ElectronApplication {
    * @param arg Optional argument to pass to
    * [`pageFunction`](https://playwright.dev/docs/api/class-electronapplication#electron-application-evaluate-handle-option-expression).
    */
-  /**
-   * Returns the return value of
-   * [`pageFunction`](https://playwright.dev/docs/api/class-electronapplication#electron-application-evaluate-handle-option-expression)
-   * as a [JSHandle](https://playwright.dev/docs/api/class-jshandle).
-   *
-   * The only difference between
-   * [electronApplication.evaluate(pageFunction[, arg])](https://playwright.dev/docs/api/class-electronapplication#electron-application-evaluate)
-   * and
-   * [electronApplication.evaluateHandle(pageFunction[, arg])](https://playwright.dev/docs/api/class-electronapplication#electron-application-evaluate-handle)
-   * is that
-   * [electronApplication.evaluateHandle(pageFunction[, arg])](https://playwright.dev/docs/api/class-electronapplication#electron-application-evaluate-handle)
-   * returns [JSHandle](https://playwright.dev/docs/api/class-jshandle).
-   *
-   * If the function passed to the
-   * [electronApplication.evaluateHandle(pageFunction[, arg])](https://playwright.dev/docs/api/class-electronapplication#electron-application-evaluate-handle)
-   * returns a [Promise], then
-   * [electronApplication.evaluateHandle(pageFunction[, arg])](https://playwright.dev/docs/api/class-electronapplication#electron-application-evaluate-handle)
-   * would wait for the promise to resolve and return its value.
-   * @param pageFunction Function to be evaluated in the main Electron process.
-   * @param arg Optional argument to pass to
-   * [`pageFunction`](https://playwright.dev/docs/api/class-electronapplication#electron-application-evaluate-handle-option-expression).
-   */
   evaluateHandle<R, Arg>(pageFunction: PageFunctionOn<ElectronType, Arg, R>, arg: Arg): Promise<SmartHandle<R>>;
-  /**
-   * Returns the return value of
-   * [`pageFunction`](https://playwright.dev/docs/api/class-electronapplication#electron-application-evaluate-handle-option-expression)
-   * as a [JSHandle](https://playwright.dev/docs/api/class-jshandle).
-   *
-   * The only difference between
-   * [electronApplication.evaluate(pageFunction[, arg])](https://playwright.dev/docs/api/class-electronapplication#electron-application-evaluate)
-   * and
-   * [electronApplication.evaluateHandle(pageFunction[, arg])](https://playwright.dev/docs/api/class-electronapplication#electron-application-evaluate-handle)
-   * is that
-   * [electronApplication.evaluateHandle(pageFunction[, arg])](https://playwright.dev/docs/api/class-electronapplication#electron-application-evaluate-handle)
-   * returns [JSHandle](https://playwright.dev/docs/api/class-jshandle).
-   *
-   * If the function passed to the
-   * [electronApplication.evaluateHandle(pageFunction[, arg])](https://playwright.dev/docs/api/class-electronapplication#electron-application-evaluate-handle)
-   * returns a [Promise], then
-   * [electronApplication.evaluateHandle(pageFunction[, arg])](https://playwright.dev/docs/api/class-electronapplication#electron-application-evaluate-handle)
-   * would wait for the promise to resolve and return its value.
-   * @param pageFunction Function to be evaluated in the main Electron process.
-   * @param arg Optional argument to pass to
-   * [`pageFunction`](https://playwright.dev/docs/api/class-electronapplication#electron-application-evaluate-handle-option-expression).
-   */
   /**
    * Returns the return value of
    * [`pageFunction`](https://playwright.dev/docs/api/class-electronapplication#electron-application-evaluate-handle-option-expression)
@@ -17262,7 +17094,7 @@ export interface ElectronApplication {
   /**
    * This event is issued when the application process has been terminated.
    */
-  waitForEvent(event: 'close', optionsOrPredicate?: { predicate?: () => boolean | Promise<boolean>, timeout?: number, signal?: AbortSignal } | (() => boolean | Promise<boolean>)): Promise<void>;
+  waitForEvent(event: 'close', optionsOrPredicate?: { predicate?: () => boolean | Promise<boolean>, timeout?: number } | (() => boolean | Promise<boolean>)): Promise<void>;
 
   /**
    * Emitted when JavaScript within the Electron main process calls one of console API methods, e.g. `console.log` or
@@ -17284,13 +17116,13 @@ export interface ElectronApplication {
    * ```
    *
    */
-  waitForEvent(event: 'console', optionsOrPredicate?: { predicate?: (consoleMessage: ConsoleMessage) => boolean | Promise<boolean>, timeout?: number, signal?: AbortSignal } | ((consoleMessage: ConsoleMessage) => boolean | Promise<boolean>)): Promise<ConsoleMessage>;
+  waitForEvent(event: 'console', optionsOrPredicate?: { predicate?: (consoleMessage: ConsoleMessage) => boolean | Promise<boolean>, timeout?: number } | ((consoleMessage: ConsoleMessage) => boolean | Promise<boolean>)): Promise<ConsoleMessage>;
 
   /**
    * This event is issued for every window that is created **and loaded** in Electron. It contains a
    * [Page](https://playwright.dev/docs/api/class-page) that can be used for Playwright automation.
    */
-  waitForEvent(event: 'window', optionsOrPredicate?: { predicate?: (page: Page) => boolean | Promise<boolean>, timeout?: number, signal?: AbortSignal } | ((page: Page) => boolean | Promise<boolean>)): Promise<Page>;
+  waitForEvent(event: 'window', optionsOrPredicate?: { predicate?: (page: Page) => boolean | Promise<boolean>, timeout?: number } | ((page: Page) => boolean | Promise<boolean>)): Promise<Page>;
 
 
   /**
@@ -17408,450 +17240,6 @@ export type AndroidKey =
 
 export const _electron: Electron;
 export const _android: Android;
-
-//@ts-ignore this will be any if electron is not installed
-type ElectronType = typeof import('electron');
-
-/**
- * Electron application representation. You can use
- * [electron.launch([options])](https://playwright.dev/docs/api/class-electron#electron-launch) to obtain the
- * application instance. This instance you can control main electron process as well as work with Electron windows:
- *
- * ```js
- * const { _electron: electron } = require('playwright');
- *
- * (async () => {
- *   // Launch Electron app.
- *   const electronApp = await electron.launch({ args: ['main.js'] });
- *
- *   // Evaluation expression in the Electron context.
- *   const appPath = await electronApp.evaluate(async ({ app }) => {
- *     // This runs in the main Electron process, parameter here is always
- *     // the result of the require('electron') in the main app script.
- *     return app.getAppPath();
- *   });
- *   console.log(appPath);
- *
- *   // Get the first window that the app opens, wait if necessary.
- *   const window = await electronApp.firstWindow();
- *   // Print the title.
- *   console.log(await window.title());
- *   // Capture a screenshot.
- *   await window.screenshot({ path: 'intro.png' });
- *   // Direct Electron console to Node terminal.
- *   window.on('console', console.log);
- *   // Click button.
- *   await window.click('text=Click me');
- *   // Exit app.
- *   await electronApp.close();
- * })();
- * ```
- *
- */
-export interface ElectronApplication {
-  /**
-   * Returns the return value of
-   * [`pageFunction`](https://playwright.dev/docs/api/class-electronapplication#electron-application-evaluate-option-expression).
-   *
-   * If the function passed to the
-   * [electronApplication.evaluate(pageFunction[, arg])](https://playwright.dev/docs/api/class-electronapplication#electron-application-evaluate)
-   * returns a [Promise], then
-   * [electronApplication.evaluate(pageFunction[, arg])](https://playwright.dev/docs/api/class-electronapplication#electron-application-evaluate)
-   * would wait for the promise to resolve and return its value.
-   *
-   * If the function passed to the
-   * [electronApplication.evaluate(pageFunction[, arg])](https://playwright.dev/docs/api/class-electronapplication#electron-application-evaluate)
-   * returns a non-[Serializable] value, then
-   * [electronApplication.evaluate(pageFunction[, arg])](https://playwright.dev/docs/api/class-electronapplication#electron-application-evaluate)
-   * returns `undefined`. Playwright also supports transferring some additional values that are not serializable by
-   * `JSON`: `-0`, `NaN`, `Infinity`, `-Infinity`.
-   * @param pageFunction Function to be evaluated in the main Electron process.
-   * @param arg Optional argument to pass to
-   * [`pageFunction`](https://playwright.dev/docs/api/class-electronapplication#electron-application-evaluate-option-expression).
-   */
-  /**
-   * Returns the return value of
-   * [`pageFunction`](https://playwright.dev/docs/api/class-electronapplication#electron-application-evaluate-option-expression).
-   *
-   * If the function passed to the
-   * [electronApplication.evaluate(pageFunction[, arg])](https://playwright.dev/docs/api/class-electronapplication#electron-application-evaluate)
-   * returns a [Promise], then
-   * [electronApplication.evaluate(pageFunction[, arg])](https://playwright.dev/docs/api/class-electronapplication#electron-application-evaluate)
-   * would wait for the promise to resolve and return its value.
-   *
-   * If the function passed to the
-   * [electronApplication.evaluate(pageFunction[, arg])](https://playwright.dev/docs/api/class-electronapplication#electron-application-evaluate)
-   * returns a non-[Serializable] value, then
-   * [electronApplication.evaluate(pageFunction[, arg])](https://playwright.dev/docs/api/class-electronapplication#electron-application-evaluate)
-   * returns `undefined`. Playwright also supports transferring some additional values that are not serializable by
-   * `JSON`: `-0`, `NaN`, `Infinity`, `-Infinity`.
-   * @param pageFunction Function to be evaluated in the main Electron process.
-   * @param arg Optional argument to pass to
-   * [`pageFunction`](https://playwright.dev/docs/api/class-electronapplication#electron-application-evaluate-option-expression).
-   */
-  evaluate<R, Arg>(pageFunction: PageFunctionOn<ElectronType, Arg, R>, arg: Arg): Promise<R>;
-  /**
-   * Returns the return value of
-   * [`pageFunction`](https://playwright.dev/docs/api/class-electronapplication#electron-application-evaluate-option-expression).
-   *
-   * If the function passed to the
-   * [electronApplication.evaluate(pageFunction[, arg])](https://playwright.dev/docs/api/class-electronapplication#electron-application-evaluate)
-   * returns a [Promise], then
-   * [electronApplication.evaluate(pageFunction[, arg])](https://playwright.dev/docs/api/class-electronapplication#electron-application-evaluate)
-   * would wait for the promise to resolve and return its value.
-   *
-   * If the function passed to the
-   * [electronApplication.evaluate(pageFunction[, arg])](https://playwright.dev/docs/api/class-electronapplication#electron-application-evaluate)
-   * returns a non-[Serializable] value, then
-   * [electronApplication.evaluate(pageFunction[, arg])](https://playwright.dev/docs/api/class-electronapplication#electron-application-evaluate)
-   * returns `undefined`. Playwright also supports transferring some additional values that are not serializable by
-   * `JSON`: `-0`, `NaN`, `Infinity`, `-Infinity`.
-   * @param pageFunction Function to be evaluated in the main Electron process.
-   * @param arg Optional argument to pass to
-   * [`pageFunction`](https://playwright.dev/docs/api/class-electronapplication#electron-application-evaluate-option-expression).
-   */
-  /**
-   * Returns the return value of
-   * [`pageFunction`](https://playwright.dev/docs/api/class-electronapplication#electron-application-evaluate-option-expression).
-   *
-   * If the function passed to the
-   * [electronApplication.evaluate(pageFunction[, arg])](https://playwright.dev/docs/api/class-electronapplication#electron-application-evaluate)
-   * returns a [Promise], then
-   * [electronApplication.evaluate(pageFunction[, arg])](https://playwright.dev/docs/api/class-electronapplication#electron-application-evaluate)
-   * would wait for the promise to resolve and return its value.
-   *
-   * If the function passed to the
-   * [electronApplication.evaluate(pageFunction[, arg])](https://playwright.dev/docs/api/class-electronapplication#electron-application-evaluate)
-   * returns a non-[Serializable] value, then
-   * [electronApplication.evaluate(pageFunction[, arg])](https://playwright.dev/docs/api/class-electronapplication#electron-application-evaluate)
-   * returns `undefined`. Playwright also supports transferring some additional values that are not serializable by
-   * `JSON`: `-0`, `NaN`, `Infinity`, `-Infinity`.
-   * @param pageFunction Function to be evaluated in the main Electron process.
-   * @param arg Optional argument to pass to
-   * [`pageFunction`](https://playwright.dev/docs/api/class-electronapplication#electron-application-evaluate-option-expression).
-   */
-  evaluate<R>(pageFunction: PageFunctionOn<ElectronType, void, R>, arg?: any): Promise<R>;
-
-  /**
-   * Returns the return value of
-   * [`pageFunction`](https://playwright.dev/docs/api/class-electronapplication#electron-application-evaluate-handle-option-expression)
-   * as a [JSHandle](https://playwright.dev/docs/api/class-jshandle).
-   *
-   * The only difference between
-   * [electronApplication.evaluate(pageFunction[, arg])](https://playwright.dev/docs/api/class-electronapplication#electron-application-evaluate)
-   * and
-   * [electronApplication.evaluateHandle(pageFunction[, arg])](https://playwright.dev/docs/api/class-electronapplication#electron-application-evaluate-handle)
-   * is that
-   * [electronApplication.evaluateHandle(pageFunction[, arg])](https://playwright.dev/docs/api/class-electronapplication#electron-application-evaluate-handle)
-   * returns [JSHandle](https://playwright.dev/docs/api/class-jshandle).
-   *
-   * If the function passed to the
-   * [electronApplication.evaluateHandle(pageFunction[, arg])](https://playwright.dev/docs/api/class-electronapplication#electron-application-evaluate-handle)
-   * returns a [Promise], then
-   * [electronApplication.evaluateHandle(pageFunction[, arg])](https://playwright.dev/docs/api/class-electronapplication#electron-application-evaluate-handle)
-   * would wait for the promise to resolve and return its value.
-   * @param pageFunction Function to be evaluated in the main Electron process.
-   * @param arg Optional argument to pass to
-   * [`pageFunction`](https://playwright.dev/docs/api/class-electronapplication#electron-application-evaluate-handle-option-expression).
-   */
-  /**
-   * Returns the return value of
-   * [`pageFunction`](https://playwright.dev/docs/api/class-electronapplication#electron-application-evaluate-handle-option-expression)
-   * as a [JSHandle](https://playwright.dev/docs/api/class-jshandle).
-   *
-   * The only difference between
-   * [electronApplication.evaluate(pageFunction[, arg])](https://playwright.dev/docs/api/class-electronapplication#electron-application-evaluate)
-   * and
-   * [electronApplication.evaluateHandle(pageFunction[, arg])](https://playwright.dev/docs/api/class-electronapplication#electron-application-evaluate-handle)
-   * is that
-   * [electronApplication.evaluateHandle(pageFunction[, arg])](https://playwright.dev/docs/api/class-electronapplication#electron-application-evaluate-handle)
-   * returns [JSHandle](https://playwright.dev/docs/api/class-jshandle).
-   *
-   * If the function passed to the
-   * [electronApplication.evaluateHandle(pageFunction[, arg])](https://playwright.dev/docs/api/class-electronapplication#electron-application-evaluate-handle)
-   * returns a [Promise], then
-   * [electronApplication.evaluateHandle(pageFunction[, arg])](https://playwright.dev/docs/api/class-electronapplication#electron-application-evaluate-handle)
-   * would wait for the promise to resolve and return its value.
-   * @param pageFunction Function to be evaluated in the main Electron process.
-   * @param arg Optional argument to pass to
-   * [`pageFunction`](https://playwright.dev/docs/api/class-electronapplication#electron-application-evaluate-handle-option-expression).
-   */
-  evaluateHandle<R, Arg>(pageFunction: PageFunctionOn<ElectronType, Arg, R>, arg: Arg): Promise<SmartHandle<R>>;
-  /**
-   * Returns the return value of
-   * [`pageFunction`](https://playwright.dev/docs/api/class-electronapplication#electron-application-evaluate-handle-option-expression)
-   * as a [JSHandle](https://playwright.dev/docs/api/class-jshandle).
-   *
-   * The only difference between
-   * [electronApplication.evaluate(pageFunction[, arg])](https://playwright.dev/docs/api/class-electronapplication#electron-application-evaluate)
-   * and
-   * [electronApplication.evaluateHandle(pageFunction[, arg])](https://playwright.dev/docs/api/class-electronapplication#electron-application-evaluate-handle)
-   * is that
-   * [electronApplication.evaluateHandle(pageFunction[, arg])](https://playwright.dev/docs/api/class-electronapplication#electron-application-evaluate-handle)
-   * returns [JSHandle](https://playwright.dev/docs/api/class-jshandle).
-   *
-   * If the function passed to the
-   * [electronApplication.evaluateHandle(pageFunction[, arg])](https://playwright.dev/docs/api/class-electronapplication#electron-application-evaluate-handle)
-   * returns a [Promise], then
-   * [electronApplication.evaluateHandle(pageFunction[, arg])](https://playwright.dev/docs/api/class-electronapplication#electron-application-evaluate-handle)
-   * would wait for the promise to resolve and return its value.
-   * @param pageFunction Function to be evaluated in the main Electron process.
-   * @param arg Optional argument to pass to
-   * [`pageFunction`](https://playwright.dev/docs/api/class-electronapplication#electron-application-evaluate-handle-option-expression).
-   */
-  /**
-   * Returns the return value of
-   * [`pageFunction`](https://playwright.dev/docs/api/class-electronapplication#electron-application-evaluate-handle-option-expression)
-   * as a [JSHandle](https://playwright.dev/docs/api/class-jshandle).
-   *
-   * The only difference between
-   * [electronApplication.evaluate(pageFunction[, arg])](https://playwright.dev/docs/api/class-electronapplication#electron-application-evaluate)
-   * and
-   * [electronApplication.evaluateHandle(pageFunction[, arg])](https://playwright.dev/docs/api/class-electronapplication#electron-application-evaluate-handle)
-   * is that
-   * [electronApplication.evaluateHandle(pageFunction[, arg])](https://playwright.dev/docs/api/class-electronapplication#electron-application-evaluate-handle)
-   * returns [JSHandle](https://playwright.dev/docs/api/class-jshandle).
-   *
-   * If the function passed to the
-   * [electronApplication.evaluateHandle(pageFunction[, arg])](https://playwright.dev/docs/api/class-electronapplication#electron-application-evaluate-handle)
-   * returns a [Promise], then
-   * [electronApplication.evaluateHandle(pageFunction[, arg])](https://playwright.dev/docs/api/class-electronapplication#electron-application-evaluate-handle)
-   * would wait for the promise to resolve and return its value.
-   * @param pageFunction Function to be evaluated in the main Electron process.
-   * @param arg Optional argument to pass to
-   * [`pageFunction`](https://playwright.dev/docs/api/class-electronapplication#electron-application-evaluate-handle-option-expression).
-   */
-  evaluateHandle<R>(pageFunction: PageFunctionOn<ElectronType, void, R>, arg?: any): Promise<SmartHandle<R>>;
-  /**
-   * This event is issued when the application process has been terminated.
-   */
-  on(event: 'close', listener: () => any): this;
-
-  /**
-   * Emitted when JavaScript within the Electron main process calls one of console API methods, e.g. `console.log` or
-   * `console.dir`.
-   *
-   * The arguments passed into `console.log` are available on the
-   * [ConsoleMessage](https://playwright.dev/docs/api/class-consolemessage) event handler argument.
-   *
-   * **Usage**
-   *
-   * ```js
-   * electronApp.on('console', async msg => {
-   *   const values = [];
-   *   for (const arg of msg.args())
-   *     values.push(await arg.jsonValue());
-   *   console.log(...values);
-   * });
-   * await electronApp.evaluate(() => console.log('hello', 5, { foo: 'bar' }));
-   * ```
-   *
-   */
-  on(event: 'console', listener: (consoleMessage: ConsoleMessage) => any): this;
-
-  /**
-   * This event is issued for every window that is created **and loaded** in Electron. It contains a
-   * [Page](https://playwright.dev/docs/api/class-page) that can be used for Playwright automation.
-   */
-  on(event: 'window', listener: (page: Page) => any): this;
-
-  /**
-   * Adds an event listener that will be automatically removed after it is triggered once. See `addListener` for more information about this event.
-   */
-  once(event: 'close', listener: () => any): this;
-
-  /**
-   * Adds an event listener that will be automatically removed after it is triggered once. See `addListener` for more information about this event.
-   */
-  once(event: 'console', listener: (consoleMessage: ConsoleMessage) => any): this;
-
-  /**
-   * Adds an event listener that will be automatically removed after it is triggered once. See `addListener` for more information about this event.
-   */
-  once(event: 'window', listener: (page: Page) => any): this;
-
-  /**
-   * This event is issued when the application process has been terminated.
-   */
-  addListener(event: 'close', listener: () => any): this;
-
-  /**
-   * Emitted when JavaScript within the Electron main process calls one of console API methods, e.g. `console.log` or
-   * `console.dir`.
-   *
-   * The arguments passed into `console.log` are available on the
-   * [ConsoleMessage](https://playwright.dev/docs/api/class-consolemessage) event handler argument.
-   *
-   * **Usage**
-   *
-   * ```js
-   * electronApp.on('console', async msg => {
-   *   const values = [];
-   *   for (const arg of msg.args())
-   *     values.push(await arg.jsonValue());
-   *   console.log(...values);
-   * });
-   * await electronApp.evaluate(() => console.log('hello', 5, { foo: 'bar' }));
-   * ```
-   *
-   */
-  addListener(event: 'console', listener: (consoleMessage: ConsoleMessage) => any): this;
-
-  /**
-   * This event is issued for every window that is created **and loaded** in Electron. It contains a
-   * [Page](https://playwright.dev/docs/api/class-page) that can be used for Playwright automation.
-   */
-  addListener(event: 'window', listener: (page: Page) => any): this;
-
-  /**
-   * Removes an event listener added by `on` or `addListener`.
-   */
-  removeListener(event: 'close', listener: () => any): this;
-
-  /**
-   * Removes an event listener added by `on` or `addListener`.
-   */
-  removeListener(event: 'console', listener: (consoleMessage: ConsoleMessage) => any): this;
-
-  /**
-   * Removes an event listener added by `on` or `addListener`.
-   */
-  removeListener(event: 'window', listener: (page: Page) => any): this;
-
-  /**
-   * Removes an event listener added by `on` or `addListener`.
-   */
-  off(event: 'close', listener: () => any): this;
-
-  /**
-   * Removes an event listener added by `on` or `addListener`.
-   */
-  off(event: 'console', listener: (consoleMessage: ConsoleMessage) => any): this;
-
-  /**
-   * Removes an event listener added by `on` or `addListener`.
-   */
-  off(event: 'window', listener: (page: Page) => any): this;
-
-  /**
-   * This event is issued when the application process has been terminated.
-   */
-  prependListener(event: 'close', listener: () => any): this;
-
-  /**
-   * Emitted when JavaScript within the Electron main process calls one of console API methods, e.g. `console.log` or
-   * `console.dir`.
-   *
-   * The arguments passed into `console.log` are available on the
-   * [ConsoleMessage](https://playwright.dev/docs/api/class-consolemessage) event handler argument.
-   *
-   * **Usage**
-   *
-   * ```js
-   * electronApp.on('console', async msg => {
-   *   const values = [];
-   *   for (const arg of msg.args())
-   *     values.push(await arg.jsonValue());
-   *   console.log(...values);
-   * });
-   * await electronApp.evaluate(() => console.log('hello', 5, { foo: 'bar' }));
-   * ```
-   *
-   */
-  prependListener(event: 'console', listener: (consoleMessage: ConsoleMessage) => any): this;
-
-  /**
-   * This event is issued for every window that is created **and loaded** in Electron. It contains a
-   * [Page](https://playwright.dev/docs/api/class-page) that can be used for Playwright automation.
-   */
-  prependListener(event: 'window', listener: (page: Page) => any): this;
-
-  /**
-   * Returns the BrowserWindow object that corresponds to the given Playwright page.
-   * @param page Page to retrieve the window for.
-   */
-  browserWindow(page: Page): Promise<JSHandle>;
-
-  /**
-   * Closes Electron application.
-   */
-  close(): Promise<void>;
-
-  /**
-   * This method returns browser context that can be used for setting up context-wide routing, etc.
-   */
-  context(): BrowserContext;
-
-  /**
-   * Convenience method that waits for the first application window to be opened.
-   *
-   * **Usage**
-   *
-   * ```js
-   * const electronApp = await electron.launch({
-   *   args: ['main.js']
-   * });
-   * const window = await electronApp.firstWindow();
-   * // ...
-   * ```
-   *
-   * @param options
-   */
-  firstWindow(options?: {
-    /**
-     * Maximum time to wait for in milliseconds. Defaults to `30000` (30 seconds). Pass `0` to disable timeout. The
-     * default value can be changed by using the
-     * [browserContext.setDefaultTimeout(timeout)](https://playwright.dev/docs/api/class-browsercontext#browser-context-set-default-timeout).
-     */
-    timeout?: number;
-  }): Promise<Page>;
-
-  /**
-   * Returns the main process for this Electron Application.
-   */
-  process(): ChildProcess;
-
-  /**
-   * This event is issued when the application process has been terminated.
-   */
-  waitForEvent(event: 'close', optionsOrPredicate?: { predicate?: () => boolean | Promise<boolean>, timeout?: number, signal?: AbortSignal } | (() => boolean | Promise<boolean>)): Promise<void>;
-
-  /**
-   * Emitted when JavaScript within the Electron main process calls one of console API methods, e.g. `console.log` or
-   * `console.dir`.
-   *
-   * The arguments passed into `console.log` are available on the
-   * [ConsoleMessage](https://playwright.dev/docs/api/class-consolemessage) event handler argument.
-   *
-   * **Usage**
-   *
-   * ```js
-   * electronApp.on('console', async msg => {
-   *   const values = [];
-   *   for (const arg of msg.args())
-   *     values.push(await arg.jsonValue());
-   *   console.log(...values);
-   * });
-   * await electronApp.evaluate(() => console.log('hello', 5, { foo: 'bar' }));
-   * ```
-   *
-   */
-  waitForEvent(event: 'console', optionsOrPredicate?: { predicate?: (consoleMessage: ConsoleMessage) => boolean | Promise<boolean>, timeout?: number, signal?: AbortSignal } | ((consoleMessage: ConsoleMessage) => boolean | Promise<boolean>)): Promise<ConsoleMessage>;
-
-  /**
-   * This event is issued for every window that is created **and loaded** in Electron. It contains a
-   * [Page](https://playwright.dev/docs/api/class-page) that can be used for Playwright automation.
-   */
-  waitForEvent(event: 'window', optionsOrPredicate?: { predicate?: (page: Page) => boolean | Promise<boolean>, timeout?: number, signal?: AbortSignal } | ((page: Page) => boolean | Promise<boolean>)): Promise<Page>;
-
-
-  /**
-   * Convenience method that returns all the opened windows.
-   */
-  windows(): Array<Page>;
-
-  [Symbol.asyncDispose](): Promise<void>;
-}
 
 // This is required to not export everything by default. See https://github.com/Microsoft/TypeScript/issues/19545#issuecomment-340490459
 export {};
@@ -19419,32 +18807,76 @@ export interface Coverage {
 }
 
 /**
- * `Credentials` provides a virtual WebAuthn authenticator scoped to a
- * [BrowserContext](https://playwright.dev/docs/api/class-browsercontext). It lets tests seed credentials, intercept
- * `navigator.credentials.create()` / `navigator.credentials.get()` calls in pages, and complete WebAuthn ceremonies
- * without a real authenticator.
+ * `Credentials` is a virtual WebAuthn authenticator scoped to a
+ * [BrowserContext](https://playwright.dev/docs/api/class-browsercontext). It lets tests register passkeys and answer
+ * `navigator.credentials.create()` / `navigator.credentials.get()` ceremonies in the page, without a real
+ * authenticator or hardware security key.
  *
- * Implemented in userland via an injected script, so it works across Chromium, Firefox and WebKit.
+ * There are two common ways to use it:
  *
- * **Usage**
+ * **Usage: seed a known credential**
  *
  * ```js
  * const context = await browser.newContext();
+ *
+ * // A passkey your backend already provisioned for a test user.
+ * await context.credentials.create({
+ *   rpId: 'example.com',
+ *   id: knownCredentialId, // base64url
+ *   userHandle: knownUserHandle, // base64url
+ *   privateKey: knownPrivateKey, // base64url PKCS#8 (DER)
+ *   publicKey: knownPublicKey, // base64url SPKI (DER)
+ * });
  * await context.credentials.install();
- * await context.credentials.create({ rpId: 'example.com' });
+ *
  * const page = await context.newPage();
  * await page.goto('https://example.com/login');
- * // Page's navigator.credentials.get() will be answered using the seeded credential.
+ * // The page's navigator.credentials.get() is answered with the seeded passkey.
  * ```
  *
+ * **Usage: capture a passkey, then reuse it**
+ *
+ * ```js
+ * // setup test: let the app register a passkey, then save it.
+ * const context = await browser.newContext();
+ * await context.credentials.install();
+ *
+ * const page = await context.newPage();
+ * await page.goto('https://example.com/register');
+ * await page.getByRole('button', { name: 'Create a passkey' }).click();
+ *
+ * // Read back the passkey the page registered — it includes the private key.
+ * const [credential] = await context.credentials.get({ rpId: 'example.com' });
+ * fs.writeFileSync('playwright/.auth/passkey.json', JSON.stringify(credential));
+ * ```
+ *
+ * ```js
+ * // later test: seed the captured passkey so the app starts already enrolled.
+ * const credential = JSON.parse(fs.readFileSync('playwright/.auth/passkey.json', 'utf8'));
+ * const context = await browser.newContext();
+ * await context.credentials.create(credential);
+ * await context.credentials.install();
+ *
+ * const page = await context.newPage();
+ * await page.goto('https://example.com/login');
+ * // navigator.credentials.get() resolves the captured passkey — already signed in.
+ * ```
+ *
+ * **Defaults**
  */
 export interface Credentials {
   /**
-   * Seeds a virtual WebAuthn credential. With only `rpId`, generates a fresh ECDSA P-256 keypair, credential id and
-   * user handle. To import a pre-registered credential (e.g. authenticating as an existing test user the server already
-   * knows about), supply all four of `id`, `userHandle`, `privateKey` and `publicKey` together. Call
-   * [credentials.install()](https://playwright.dev/docs/api/class-credentials#credentials-install) before navigating to
-   * a page that uses WebAuthn.
+   * Seeds a virtual WebAuthn credential and returns it.
+   *
+   * With only `rpId`, generates a fresh **ECDSA P-256** keypair, credential id and user handle. The seeded credential
+   * is discoverable (resident), so the page can resolve it from both username-then-passkey and usernameless passkey
+   * flows. The returned object carries the `privateKey` and `publicKey`, so it can be persisted to disk and re-seeded
+   * in a later test.
+   *
+   * To **import a known credential**, supply all four of `id`, `userHandle`, `privateKey` and `publicKey` together.
+   *
+   * Call [credentials.install()](https://playwright.dev/docs/api/class-credentials#credentials-install) before
+   * navigating to a page that uses WebAuthn.
    * @param options
    */
   create(options: {
@@ -19500,13 +18932,23 @@ export interface Credentials {
   }>;
 
   /**
-   * Removes a previously seeded credential.
+   * Removes a credential from the authenticator by its id. Works for any credential currently held — both those seeded
+   * with [credentials.create(options)](https://playwright.dev/docs/api/class-credentials#credentials-create) and those
+   * the page registered itself by calling `navigator.credentials.create()`.
    * @param id Base64url-encoded credential id.
    */
   delete(id: string): Promise<void>;
 
   /**
-   * Returns seeded credentials, optionally filtered by `rpId` or `id`.
+   * Returns every credential currently held by the authenticator, optionally filtered by `rpId` or `id`. This includes
+   * both credentials seeded with
+   * [credentials.create(options)](https://playwright.dev/docs/api/class-credentials#credentials-create) and credentials
+   * the page registered itself by calling `navigator.credentials.create()`.
+   *
+   * Each returned credential includes its `privateKey` and `publicKey`, so a passkey the app just registered can be
+   * saved and re-seeded into a later test with
+   * [credentials.create(options)](https://playwright.dev/docs/api/class-credentials#credentials-create) — see the
+   * second example in the class overview.
    * @param options
    */
   get(options?: {
@@ -19539,16 +18981,9 @@ export interface Credentials {
    * Required: until `install()` is called, no interception is in place and the page sees the platform's native (or
    * absent) WebAuthn behaviour. Seeding credentials with
    * [credentials.create(options)](https://playwright.dev/docs/api/class-credentials#credentials-create) without
-   * `install()` populates the registry but the page will never see those credentials.
+   * `install()` populates the authenticator, but the page will never see those credentials.
    */
   install(): Promise<void>;
-
-  /**
-   * Toggles whether the virtual authenticator auto-approves user-verification prompts. Useful for simulating a user
-   * denying biometric verification.
-   * @param value `true` to auto-approve user verification (default), `false` to refuse.
-   */
-  setUserVerified(value: boolean): Promise<void>;
 }
 
 /**
@@ -20508,10 +19943,6 @@ export interface Keyboard {
    *
    * Sends a `keydown`, `keypress`/`input`, and `keyup` event for each character in the text.
    *
-   * When [`namedKeys`](https://playwright.dev/docs/api/class-keyboard#keyboard-type-option-named-keys) is `true`,
-   * anything inside `{}` is treated as a key name (same format as
-   * [keyboard.press(key[, options])](https://playwright.dev/docs/api/class-keyboard#keyboard-press)).
-   *
    * To press a special key, like `Control` or `ArrowDown`, use
    * [keyboard.press(key[, options])](https://playwright.dev/docs/api/class-keyboard#keyboard-press).
    *
@@ -20520,9 +19951,6 @@ export interface Keyboard {
    * ```js
    * await page.keyboard.type('Hello'); // Types instantly
    * await page.keyboard.type('World', { delay: 100 }); // Types slower, like a user
-   *
-   * // Mix text and special keys
-   * await page.keyboard.type('Hello{Enter}World', { namedKeys: true });
    * ```
    *
    * **NOTE** Modifier keys DO NOT effect `keyboard.type`. Holding down `Shift` will not type the text in upper case.
@@ -20537,14 +19965,6 @@ export interface Keyboard {
      * Time to wait between key presses in milliseconds. Defaults to 0.
      */
     delay?: number;
-
-    /**
-     * When [`namedKeys`](https://playwright.dev/docs/api/class-keyboard#keyboard-type-option-named-keys) is `true`,
-     * anything inside `{}` is treated as a key name (same format as
-     * [keyboard.press(key[, options])](https://playwright.dev/docs/api/class-keyboard#keyboard-press)). Use `{{` to type
-     * a literal brace character. Defaults to `false`.
-     */
-    namedKeys?: boolean;
   }): Promise<void>;
 
   /**
@@ -22189,7 +21609,7 @@ export interface WebSocket {
   /**
    * Fired when the websocket closes.
    */
-  waitForEvent(event: 'close', optionsOrPredicate?: { predicate?: (webSocket: WebSocket) => boolean | Promise<boolean>, timeout?: number, signal?: AbortSignal } | ((webSocket: WebSocket) => boolean | Promise<boolean>)): Promise<WebSocket>;
+  waitForEvent(event: 'close', optionsOrPredicate?: { predicate?: (webSocket: WebSocket) => boolean | Promise<boolean>, timeout?: number } | ((webSocket: WebSocket) => boolean | Promise<boolean>)): Promise<WebSocket>;
 
   /**
    * Fired when the websocket receives a frame.
@@ -22199,7 +21619,7 @@ export interface WebSocket {
      * frame payload
      */
     payload: string|Buffer;
-  }) => boolean | Promise<boolean>, timeout?: number, signal?: AbortSignal } | ((data: {
+  }) => boolean | Promise<boolean>, timeout?: number } | ((data: {
     /**
      * frame payload
      */
@@ -22219,7 +21639,7 @@ export interface WebSocket {
      * frame payload
      */
     payload: string|Buffer;
-  }) => boolean | Promise<boolean>, timeout?: number, signal?: AbortSignal } | ((data: {
+  }) => boolean | Promise<boolean>, timeout?: number } | ((data: {
     /**
      * frame payload
      */
@@ -22234,7 +21654,7 @@ export interface WebSocket {
   /**
    * Fired when the websocket has an error.
    */
-  waitForEvent(event: 'socketerror', optionsOrPredicate?: { predicate?: (string: string) => boolean | Promise<boolean>, timeout?: number, signal?: AbortSignal } | ((string: string) => boolean | Promise<boolean>)): Promise<string>;
+  waitForEvent(event: 'socketerror', optionsOrPredicate?: { predicate?: (string: string) => boolean | Promise<boolean>, timeout?: number } | ((string: string) => boolean | Promise<boolean>)): Promise<string>;
 
 }
 
@@ -23581,12 +23001,12 @@ export interface AndroidDevice {
   /**
    * Emitted when the device connection gets closed.
    */
-  waitForEvent(event: 'close', optionsOrPredicate?: { predicate?: (androidDevice: AndroidDevice) => boolean | Promise<boolean>, timeout?: number, signal?: AbortSignal } | ((androidDevice: AndroidDevice) => boolean | Promise<boolean>)): Promise<AndroidDevice>;
+  waitForEvent(event: 'close', optionsOrPredicate?: { predicate?: (androidDevice: AndroidDevice) => boolean | Promise<boolean>, timeout?: number } | ((androidDevice: AndroidDevice) => boolean | Promise<boolean>)): Promise<AndroidDevice>;
 
   /**
    * Emitted when a new WebView instance is detected.
    */
-  waitForEvent(event: 'webview', optionsOrPredicate?: { predicate?: (androidWebView: AndroidWebView) => boolean | Promise<boolean>, timeout?: number, signal?: AbortSignal } | ((androidWebView: AndroidWebView) => boolean | Promise<boolean>)): Promise<AndroidWebView>;
+  waitForEvent(event: 'webview', optionsOrPredicate?: { predicate?: (androidWebView: AndroidWebView) => boolean | Promise<boolean>, timeout?: number } | ((androidWebView: AndroidWebView) => boolean | Promise<boolean>)): Promise<AndroidWebView>;
 
 
   /**

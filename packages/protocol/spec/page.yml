@@ -305,7 +305,6 @@ Page:
       parameters:
         text: string
         delay: float?
-        namedKeys: boolean?
       flags:
         slowMo: true
         snapshot: true
@@ -718,6 +717,7 @@ Page:
     screencastFrame:
       parameters:
         data: binary
+        timestamp: float
         viewportWidth: int
         viewportHeight: int
 

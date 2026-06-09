@@ -619,15 +619,12 @@ it('should have connection details', async ({ contextFactory, server, browserNam
   await page.goto(server.EMPTY_PAGE);
   const log = await getLog();
   const { serverIPAddress, _serverPort: port, _securityDetails: securityDetails } = log.entries[0];
-  if (!mode.startsWith('service')) {
-    expect(serverIPAddress).toMatch(/^127\.0\.0\.1|\[::1\]/);
-    expect(port).toBe(server.PORT);
-  }
+  expect(serverIPAddress).toMatch(/^127\.0\.0\.1|\[::1\]/);
+  expect(port).toBe(server.PORT);
   expect(securityDetails).toEqual({});
 });
 
 it('should have security details', async ({ contextFactory, httpsServer, browserName, platform, mode }, testInfo) => {
-  it.fail(browserName === 'webkit' && platform === 'linux', 'https://github.com/microsoft/playwright/issues/6759');
   it.fail(browserName === 'webkit' && platform === 'win32');
 
   const { page, getLog } = await pageWithHar(contextFactory, testInfo);
@@ -635,11 +632,9 @@ it('should have security details', async ({ contextFactory, httpsServer, browser
   await page.request.get(httpsServer.EMPTY_PAGE);
   const log = await getLog();
   const { serverIPAddress, _serverPort: port, _securityDetails: securityDetails } = log.entries[0];
-  if (!mode.startsWith('service')) {
-    expect(serverIPAddress).toMatch(/^127\.0\.0\.1|\[::1\]/);
-    expect(port).toBe(httpsServer.PORT);
-  }
-  if (browserName === 'webkit' && platform === 'darwin')
+  expect(serverIPAddress).toMatch(/^127\.0\.0\.1|\[::1\]/);
+  expect(port).toBe(httpsServer.PORT);
+  if (browserName === 'webkit')
     expect(securityDetails).toEqual({ protocol: 'TLS 1.3', subjectName: 'playwright-test', validFrom: 1691708270, validTo: 2007068270 });
   else
     expect(securityDetails).toEqual({ issuer: 'playwright-test', protocol: 'TLS 1.3', subjectName: 'playwright-test', validFrom: 1691708270, validTo: 2007068270 });
@@ -659,16 +654,14 @@ it('should have connection details for redirects', async ({ contextFactory, serv
   if (browserName === 'webkit') {
     expect(detailsFoo.serverIPAddress).toBeUndefined();
     expect(detailsFoo._serverPort).toBeUndefined();
-  } else if (!mode.startsWith('service')) {
+  } else {
     expect(detailsFoo.serverIPAddress).toMatch(/^127\.0\.0\.1|\[::1\]/);
     expect(detailsFoo._serverPort).toBe(server.PORT);
   }
 
-  if (!mode.startsWith('service')) {
-    const detailsEmpty = log.entries[1];
-    expect(detailsEmpty.serverIPAddress).toMatch(/^127\.0\.0\.1|\[::1\]/);
-    expect(detailsEmpty._serverPort).toBe(server.PORT);
-  }
+  const detailsEmpty = log.entries[1];
+  expect(detailsEmpty.serverIPAddress).toMatch(/^127\.0\.0\.1|\[::1\]/);
+  expect(detailsEmpty._serverPort).toBe(server.PORT);
 });
 
 it('should have connection details for failed requests', async ({ contextFactory, server, browserName, platform, mode }, testInfo) => {
@@ -679,25 +672,19 @@ it('should have connection details for failed requests', async ({ contextFactory
   const { page, getLog } = await pageWithHar(contextFactory, testInfo);
   await page.goto(server.PREFIX + '/one-style.html');
   const log = await getLog();
-  if (!mode.startsWith('service')) {
-    const { serverIPAddress, _serverPort: port } = log.entries[0];
-    expect(serverIPAddress).toMatch(/^127\.0\.0\.1|\[::1\]/);
-    expect(port).toBe(server.PORT);
-  }
+  const { serverIPAddress, _serverPort: port } = log.entries[0];
+  expect(serverIPAddress).toMatch(/^127\.0\.0\.1|\[::1\]/);
+  expect(port).toBe(server.PORT);
 });
 
 it('should return server address directly from response', async ({ page, server, mode }) => {
   const response = await page.goto(server.EMPTY_PAGE);
-  if (!mode.startsWith('service')) {
-    const { ipAddress, port } = (await response!.serverAddr())!;
-    expect(ipAddress).toMatch(/^127\.0\.0\.1|\[::1\]/);
-    expect(port).toBe(server.PORT);
-  }
+  const { ipAddress, port } = (await response!.serverAddr())!;
+  expect(ipAddress).toMatch(/^127\.0\.0\.1|\[::1\]/);
+  expect(port).toBe(server.PORT);
 });
 
 it('should return security details directly from response', async ({ contextFactory, httpsServer, browserName, platform, channel }) => {
-  it.fail(browserName === 'webkit' && (platform === 'linux' || channel === 'webkit-wsl'), 'https://github.com/microsoft/playwright/issues/6759');
-
   const context = await contextFactory({ ignoreHTTPSErrors: true });
   const page = await context.newPage();
   const response = await page.goto(httpsServer.EMPTY_PAGE);
