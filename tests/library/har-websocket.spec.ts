@@ -100,6 +100,7 @@ it('should include websocket handshake headers and status', async ({ contextFact
   const { page, getLog } = await pageWithHar(contextFactory, testInfo);
   await page.goto(server.EMPTY_PAGE);
 
+  const beforeMs = Date.now();
   const wsUrl = `ws://${server.HOST}/ws`;
   const closed = page.evaluate(url => new Promise<void>(resolve => {
     const ws = new WebSocket(url);
@@ -108,6 +109,7 @@ it('should include websocket handshake headers and status', async ({ contextFact
   }), wsUrl);
   await closed;
   const log = await getLog();
+  const afterMs = Date.now();
 
   const wsEntry = log.entries.find(e => e.request.url === wsUrl)! as Entry;
   expect(wsEntry._resourceType).toBe('websocket');
@@ -115,6 +117,10 @@ it('should include websocket handshake headers and status', async ({ contextFact
   expect(wsEntry.response.status).toBe(101);
   expect(wsEntry.response.statusText).toBe('Switching Protocols');
   expect(wsEntry.response.headersSize).toBe(responseHeadersSize(wsEntry.response.headers));
+
+  const wallTimeMs = new Date(wsEntry.startedDateTime).getTime();
+  expect(wallTimeMs).toBeGreaterThanOrEqual(beforeMs);
+  expect(wallTimeMs).toBeLessThanOrEqual(afterMs);
 
   const requestHeaderNames = wsEntry.request.headers.map(h => h.name.toLowerCase());
   expect(requestHeaderNames).toContain('upgrade');
@@ -130,17 +136,24 @@ it('should include websocket handshake headers and status', async ({ contextFact
   expect(responseHeaderNames).toContain('sec-websocket-accept');
 });
 
-async function testWebSocketMessages(contextFactory, server, testInfo, content) {
+async function testWebSocketMessages(contextFactory, server, testInfo, content, channel?) {
   const incomingText =   ['x'.repeat(125),             'x'.repeat(126),             'x'.repeat(2 ** 16)];
   const incomingBinary = [(new Array(125)).fill(0x01), (new Array(126)).fill(0x01), (new Array(2 ** 16)).fill(0x01)];
   const outgoingText =   ['y'.repeat(125),             'y'.repeat(126),             'y'.repeat(2 ** 16)];
   const outgoingBinary = [(new Array(125)).fill(0x02), (new Array(126)).fill(0x02), (new Array(2 ** 16)).fill(0x02)];
+  const incomingCount = incomingText.length + incomingBinary.length;
+  const outgoingCount = outgoingText.length + outgoingBinary.length;
+  const delayMs = 100;
 
-  server.onceWebSocketConnection(ws => {
-    for (const text of incomingText)
+  server.onceWebSocketConnection(async ws => {
+    for (const text of incomingText) {
       ws.send(text);
-    for (const binary of incomingBinary)
+      await new Promise(resolve => setTimeout(resolve, delayMs));
+    }
+    for (const binary of incomingBinary) {
+      await new Promise(resolve => setTimeout(resolve, delayMs));
       ws.send(Buffer.from(binary));
+    }
   });
 
   const outputPath = content === 'embed' ? undefined : 'test.har.zip';
@@ -149,20 +162,24 @@ async function testWebSocketMessages(contextFactory, server, testInfo, content) 
 
   const beforeMs = Date.now();
   const wsUrl = `ws://${server.HOST}/ws`;
-  const closed = page.evaluate(({ url, incomingCount, outgoingText, outgoingBinary }) => new Promise<void>(resolve => {
+  const closed = page.evaluate(({ url, incomingCount, outgoingText, outgoingBinary, delayMs }) => new Promise<void>(resolve => {
     let count = 0;
     const ws = new WebSocket(url);
-    ws.addEventListener('message', () => {
+    ws.addEventListener('message', async () => {
       if (++count < incomingCount)
         return;
-      for (const text of outgoingText)
+      for (const text of outgoingText) {
         ws.send(text);
-      for (const binary of outgoingBinary)
+        await new Promise(resolve => window.builtins.setTimeout(resolve, delayMs));
+      }
+      for (const binary of outgoingBinary) {
+        await new Promise(resolve => window.builtins.setTimeout(resolve, delayMs));
         ws.send(new Uint8Array(binary));
+      }
       ws.close();
     });
     ws.addEventListener('close', () => resolve());
-  }), { url: wsUrl, incomingCount: incomingText.length + incomingBinary.length, outgoingText, outgoingBinary });
+  }), { url: wsUrl, incomingCount, outgoingText, outgoingBinary, delayMs });
   await closed;
   const afterMs = Date.now();
 
@@ -198,23 +215,28 @@ async function testWebSocketMessages(contextFactory, server, testInfo, content) 
     ...outgoingText.map(m => ({ type: 'send', opcode: 1, data: m })),
     ...outgoingBinary.map(m => ({ type: 'send', opcode: 2, data: m })),
   ]);
-  for (const m of messages) {
-    expect(m.time).toBeGreaterThanOrEqual(beforeMs - 1);
-    expect(m.time).toBeLessThanOrEqual(afterMs + 1);
+  // The WSL VM clock drifts relative to the Windows host clock, so the browser-reported
+  // message times cannot be compared against the host wall clock.
+  if (channel !== 'webkit-wsl') {
+    for (const m of messages) {
+      expect(m.time).toBeGreaterThanOrEqual(beforeMs - 1);
+      expect(m.time).toBeLessThanOrEqual(afterMs + 1);
+    }
   }
   expect(messages[0].time).toBeLessThanOrEqual(messages[1].time);
   expect(wsEntry.time).toBeGreaterThanOrEqual(messages[messages.length - 1].time - messages[0].time);
+  expect(wsEntry.time).toBeGreaterThanOrEqual(delayMs * (incomingCount + outgoingCount));
 }
 
-it('should embed websocket messages', async ({ contextFactory, server }, testInfo) => {
-  await testWebSocketMessages(contextFactory, server, testInfo, 'embed');
+it('should embed websocket messages', async ({ contextFactory, server, channel }, testInfo) => {
+  await testWebSocketMessages(contextFactory, server, testInfo, 'embed', channel);
 });
 
-it('should attach websocket messages', async ({ contextFactory, server }, testInfo) => {
-  await testWebSocketMessages(contextFactory, server, testInfo, 'attach');
+it('should attach websocket messages', async ({ contextFactory, server, channel }, testInfo) => {
+  await testWebSocketMessages(contextFactory, server, testInfo, 'attach', channel);
 });
 
-it('should attach websocket messages for a still open websocket after stopping', async ({ contextFactory, server }, testInfo) => {
+it('should attach websocket messages for a still open websocket after stopping', async ({ contextFactory, server, channel }, testInfo) => {
   const incomingText = 'incoming';
   const incomingBinary = [0x01, 0x02, 0x03, 0x04];
   const outgoingText = 'outgoing';
@@ -271,9 +293,13 @@ it('should attach websocket messages for a still open websocket after stopping',
     { type: 'send',    opcode: 2, data: outgoingBinary },
     { type: 'receive', opcode: 2, data: incomingBinary },
   ]);
-  for (const m of messages) {
-    expect(m.time).toBeGreaterThanOrEqual(beforeMs - 1);
-    expect(m.time).toBeLessThanOrEqual(afterMs + 1);
+  // The WSL VM clock drifts relative to the Windows host clock, so the browser-reported
+  // message times cannot be compared against the host wall clock.
+  if (channel !== 'webkit-wsl') {
+    for (const m of messages) {
+      expect(m.time).toBeGreaterThanOrEqual(beforeMs - 1);
+      expect(m.time).toBeLessThanOrEqual(afterMs + 1);
+    }
   }
   expect(messages[0].time).toBeLessThanOrEqual(messages[1].time);
   expect(wsEntry.time).toBeGreaterThanOrEqual(messages[messages.length - 1].time - messages[0].time);
@@ -283,7 +309,8 @@ it('should omit websocket messages', async ({ contextFactory, server }, testInfo
   await testWebSocketMessages(contextFactory, server, testInfo, 'omit');
 });
 
-it('should record websocket connection failure', async ({ contextFactory, server }, testInfo) => {
+it('should record websocket connection failure', async ({ contextFactory, server, channel }, testInfo) => {
+  it.skip(channel === 'webkit-wsl', 'Connection to an unbound localhost port from WSL is not refused in mirrored networking mode');
   // Reserve a port and immediately release it so the WebSocket connect attempt is refused.
   const portReservation = net.createServer();
   await new Promise<void>(resolve => portReservation.listen(0, '127.0.0.1', () => resolve()));

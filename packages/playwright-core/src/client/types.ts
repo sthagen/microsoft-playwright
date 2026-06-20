@@ -16,7 +16,7 @@
  */
 
 import type { Size } from '@isomorphic/types';
-import type * as channels from '@protocol/channels';
+import type * as channels from './channels';
 export type { HeadersArray, Point, Quad, Rect, Size } from '@isomorphic/types';
 
 type LoggerSeverity = 'verbose' | 'info' | 'warning' | 'error';
@@ -45,7 +45,8 @@ export type StorageState = {
 };
 export type SetStorageState = {
   cookies?: channels.SetNetworkCookie[],
-  origins?: (Omit<channels.SetOriginStorage, 'indexedDB'> & { indexedDB?: unknown[] })[]
+  origins?: (Omit<channels.SetOriginStorage, 'indexedDB'> & { indexedDB?: unknown[] })[],
+  credentials?: unknown[],
 };
 
 export type LifecycleEvent = channels.LifecycleEvent;

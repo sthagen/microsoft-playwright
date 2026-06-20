@@ -28,7 +28,7 @@ import { makeWaitForNextTask } from '@utils/task';
 import { createGuid } from '@utils/crypto';
 import { BrowserContext } from './browserContext';
 import * as dom from './dom';
-import { TimeoutError } from './errors';
+import { TimeoutError, isTargetClosedError } from './errors';
 import { prepareFilesForUpload } from './fileUploadUtils';
 import { FrameSelectors } from './frameSelectors';
 import { helper } from './helper';
@@ -47,7 +47,7 @@ import type { Progress } from './progress';
 import type { ScreenshotOptions } from './screenshotter';
 import type { RegisteredListener } from '@utils/eventsHelper';
 import type { ParsedSelector } from '@isomorphic/selectorParser';
-import type * as channels from '@protocol/channels';
+import type * as channels from './channels';
 
 type ContextData = {
   contextPromise: ManualPromise<dom.FrameExecutionContext | { destroyedReason: string }>;
@@ -139,10 +139,10 @@ export class FrameManager {
       this.frameAttached(kDummyFrameId, null);
   }
 
-  dispose() {
+  dispose(error: Error) {
     for (const frame of this._frames.values()) {
       frame._stopNetworkIdleTimer();
-      frame.invalidateNonStallingEvaluations('Target crashed');
+      frame.invalidateNonStallingEvaluations(error);
     }
   }
 
@@ -321,9 +321,9 @@ export class FrameManager {
   }
 
   requestStarted(request: network.Request, route?: network.RouteDelegate) {
-    const frame = request.frame()!;
+    const frame = request.frame();
     this._inflightRequestStarted(request);
-    if (request._documentId)
+    if (frame && request._documentId)
       frame._setPendingDocument({ documentId: request._documentId, request });
     if (request._isFavicon) {
       // Abort favicon requests to avoid network access in case of interception.
@@ -350,9 +350,9 @@ export class FrameManager {
   }
 
   requestFailed(request: network.Request, canceled: boolean) {
-    const frame = request.frame()!;
+    const frame = request.frame();
     this._inflightRequestFinished(request);
-    if (frame.pendingDocument() && frame.pendingDocument()!.request === request) {
+    if (frame && frame.pendingDocument() && frame.pendingDocument()!.request === request) {
       let errorText = request.failure()!.errorText;
       if (canceled)
         errorText += '; maybe frame was detached?';
@@ -377,8 +377,8 @@ export class FrameManager {
   }
 
   private _inflightRequestFinished(request: network.Request) {
-    const frame = request.frame()!;
-    if (request._isFavicon)
+    const frame = request.frame();
+    if (request._isFavicon || !frame)
       return;
     if (!frame._inflightRequests.has(request))
       return;
@@ -388,8 +388,8 @@ export class FrameManager {
   }
 
   private _inflightRequestStarted(request: network.Request) {
-    const frame = request.frame()!;
-    if (request._isFavicon)
+    const frame = request.frame();
+    if (request._isFavicon || !frame)
       return;
     frame._inflightRequests.add(request);
     if (frame._inflightRequests.size === 1)
@@ -572,17 +572,16 @@ export class Frame extends SdkObject<FrameEventMap> {
   _setPendingDocument(documentInfo: DocumentInfo | undefined) {
     this._pendingDocument = documentInfo;
     if (documentInfo)
-      this.invalidateNonStallingEvaluations('Navigation interrupted the evaluation');
+      this.invalidateNonStallingEvaluations(new Error('Navigation interrupted the evaluation'));
   }
 
   pendingDocument(): DocumentInfo | undefined {
     return this._pendingDocument;
   }
 
-  invalidateNonStallingEvaluations(message: string) {
+  invalidateNonStallingEvaluations(error: Error) {
     if (!this._raceAgainstEvaluationStallingEventsPromises.size)
       return;
-    const error = new Error(message);
     for (const promise of this._raceAgainstEvaluationStallingEventsPromises)
       promise.reject(error);
   }
@@ -1551,6 +1550,8 @@ export class Frame extends SdkObject<FrameEventMap> {
         details.received = lastIntermediateResult.received;
         details.customErrorMessage = lastIntermediateResult.errorMessage;
       }
+      if (isTargetClosedError(e) || isSessionClosedError(e))
+        progress.log(e.message);
       if (e instanceof TimeoutError)
         details.timedOut = true;
       throw new ExpectError(details);
