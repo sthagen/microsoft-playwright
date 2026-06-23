@@ -188,7 +188,7 @@ export class WKPage implements PageDelegate {
 
     const contextOptions = this._browserContext._options;
     if (contextOptions.userAgent)
-      promises.push(this.updateUserAgent());
+      promises.push(session.send('Page.overrideUserAgent', { value: contextOptions.userAgent }));
     const emulatedMedia = this._page.emulatedMedia();
     if (emulatedMedia.media || emulatedMedia.colorScheme || emulatedMedia.reducedMotion || emulatedMedia.forcedColors || emulatedMedia.contrast)
       promises.push(WKPage._setEmulateMedia(session, emulatedMedia.media, emulatedMedia.colorScheme, emulatedMedia.reducedMotion, emulatedMedia.forcedColors, emulatedMedia.contrast));
@@ -205,7 +205,6 @@ export class WKPage implements PageDelegate {
         height: emulatedSize.screen.height,
       }));
     }
-    promises.push(this.updateEmulateMedia());
     promises.push(session.send('Network.setExtraHTTPHeaders', { headers: headersArrayToObject(this._calculateExtraHTTPHeaders(), false /* lowerCase */) }));
     if (contextOptions.offline)
       promises.push(session.send('Network.setEmulateOfflineState', { offline: true }));
@@ -695,7 +694,7 @@ export class WKPage implements PageDelegate {
 
   async updateUserAgent(): Promise<void> {
     const contextOptions = this._browserContext._options;
-    this._updateState('Page.overrideUserAgent', { value: contextOptions.userAgent });
+    await this._updateState('Page.overrideUserAgent', { value: contextOptions.userAgent });
   }
 
   async bringToFront(): Promise<void> {
