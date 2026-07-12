@@ -18,11 +18,12 @@ import colors from 'colors/safe';
 import { ManualPromise } from '@isomorphic/manualPromise';
 import { removeFolders } from '@utils/fileUtils';
 import { gracefullyCloseAll } from '@utils/processLauncher';
+import { filteredStackTrace } from '@utils/stackTrace';
 
 import { configLoader, fixtures, ipc, poolBuilder, ProcessRunner, suiteUtils, testLoader } from '../common';
 import * as globals from '../globals';
 import { setExpectConfig } from '../matchers/expect';
-import { debugTest, filteredStackTrace, relativeFilePath } from '../util';
+import { debugTest, relativeFilePath } from '../util';
 import { FixtureRunner } from './fixtureRunner';
 import { TestSkipError, TestInfoImpl, emtpyTestInfoCallbacks } from './testInfo';
 import { testInfoError } from './util';
@@ -222,6 +223,8 @@ export class WorkerMain extends ProcessRunner {
         suiteUtils.applyRepeatEachIndex(this._project, suite, this._params.repeatEachIndex);
       suiteUtils.filterTestsRemoveEmptySuites(suite, test => entries.has(test.id));
       const tests = suite.allTests();
+      for (const test of tests)
+        test.annotations.push(...entries.get(test.id)!.planAnnotations);
 
       // Collect test IDs that were not found in the worker
       // (e.g. test titles changed between runner and worker).

@@ -1,11 +1,10 @@
 [*]
 @isomorphic/**
+@protocol/**
 @utils/**
 ../generated/
 ../package.ts
-../protocol/
 ./
-./codegen/
 ./har/
 ./recorder/
 ./registry/

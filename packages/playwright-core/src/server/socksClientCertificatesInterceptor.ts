@@ -26,7 +26,7 @@ import { debugLogger } from '@utils/debugLogger';
 import { createSocket } from '@utils/happyEyeballs';
 import { escapeHTML } from '@isomorphic/stringUtils';
 import { generateSelfSignedCertificate } from '@utils/crypto';
-import { rewriteErrorMessage } from '@isomorphic/stackTrace';
+import { rewriteErrorMessage } from '@utils/stackTrace';
 import { createProxyAgent } from '@utils/network';
 import { verifyClientCertificates } from './browserContext';
 import type * as types from './types';
@@ -224,7 +224,6 @@ class SocksProxyConnection {
       if (browserDecrypted.alpnProtocol === 'h2') {
         // This method is available only in Node.js 20+
         if ('performServerHandshake' in http2) {
-          // @ts-expect-error
           const session: http2.ServerHttp2Session = http2.performServerHandshake(browserDecrypted);
           session.on('error', error => {
             this._browserEncrypted.destroy(error);

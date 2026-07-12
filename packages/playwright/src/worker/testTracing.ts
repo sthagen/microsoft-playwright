@@ -24,12 +24,11 @@ import { monotonicTime } from '@isomorphic/time';
 import { calculateSha1, createGuid } from '@utils/crypto';
 import { SerializedFS } from '@utils/serializedFS';
 import { getPlaywrightVersion } from 'playwright-core/lib/coreBundle';
-
-import { filteredStackTrace } from '../util';
+import { filteredStackTrace } from '@utils/stackTrace';
 
 import type { TestStepCategory, TestInfoImpl } from './testInfo';
 import type { PlaywrightWorkerOptions, TestInfo, TestInfoError, TraceMode } from '../../types/test';
-import type { StackFrame } from '@isomorphic/stackTrace';
+import type { StackFrame } from '@utils/stackTrace';
 import type * as trace from '@trace/trace';
 import type EventEmitter from 'events';
 

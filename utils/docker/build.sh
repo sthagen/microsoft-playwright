@@ -37,4 +37,16 @@ else
   exit 1
 fi
 
-docker build --platform "${PLATFORM}" -t "$3" -f "Dockerfile.$2" .
+SECRET_ARGS=()
+if [[ -n "${NPMRC_SECRET:-}" ]]; then
+  SECRET_ARGS+=(--secret "id=npmrc,src=${NPMRC_SECRET}")
+fi
+
+# Keep each arch image a plain single-platform manifest without the unknown/unknown platform entry.
+export BUILDX_NO_DEFAULT_ATTESTATIONS=1
+
+docker build --platform "${PLATFORM}" \
+  --build-arg ACR_CACHE_PREFIX="${ACR_CACHE_PREFIX}" \
+  --build-arg UBUNTU_MIRROR_PREFIX="${UBUNTU_MIRROR_PREFIX}" \
+  "${SECRET_ARGS[@]}" \
+  -t "$3" -f "Dockerfile.$2" .

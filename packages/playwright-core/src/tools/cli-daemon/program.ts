@@ -34,6 +34,8 @@ import type { Command } from 'commander';
 export function decorateProgram(program: Command) {
   program.argument('[session-name]', 'name of the session to create or connect to', 'default')
       .option('--headed', 'run in headed mode (non-headless)')
+      .option('--device <device>', 'emulate a specific device, for example "iPhone 15"')
+      .option('--mobile', 'emulate a generic mobile device (Pixel 10 for Chromium, iPhone 17 for WebKit)')
       .option('--extension', 'run with the extension')
       .option('--browser <name>', 'browser to use (chromium, chrome, firefox, webkit)')
       .option('--persistent', 'use a persistent browser context')
@@ -83,7 +85,7 @@ function globalConfigFile(): string {
   return path.join(process.env['PWTEST_CLI_GLOBAL_CONFIG'] ?? os.homedir(), '.playwright', 'cli.config.json');
 }
 
-async function initWorkspace(initSkills: string | undefined) {
+export async function initWorkspace(initSkills: string | undefined) {
   const cwd = process.cwd();
   const playwrightDir = path.join(cwd, '.playwright');
   await fs.promises.mkdir(playwrightDir, { recursive: true });
@@ -139,7 +141,7 @@ async function findOrInstallDefaultBrowser() {
 
 async function resolveAndInstall(nameOrChannel: string) {
   const executables = browserRegistry.resolveBrowsers([nameOrChannel], { shell: 'no' });
-  await browserRegistry.install(executables);
+  await browserRegistry.install(executables, { gc: false });
 }
 
 async function createDefaultConfig(channel: string) {

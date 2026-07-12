@@ -18,10 +18,8 @@
 
 import type { Progress } from './progress';
 
-export type Binary = Buffer;
-
-export interface Channel {
-}
+import type { Binary, Channel, AndroidWebView, AndroidSelector, AndroidElementInfo, APIResponse, Metadata, ClientSideCallMetadata, SDKLanguage, WaitInfo, SetNetworkCookie, NetworkCookie, ResourceTiming, SecurityDetails, RequestSizes, RemoteAddr, ExpectedTextValue, SelectorEngine, FormField, LifecycleEvent, ConsoleMessagesFilter, RecorderSource, IndexedDBDatabase, SetOriginStorage, OriginStorage, RecordHarOptions, SerializedValue, SerializedArgument, SerializedError, StackFrame, VirtualCredential, Point, Rect, URLPattern, NameValue } from '@protocol/structs';
+export type { Binary, Channel, AndroidWebView, AndroidSelector, AndroidElementInfo, APIResponse, Metadata, ClientSideCallMetadata, SDKLanguage, WaitInfo, SetNetworkCookie, NetworkCookie, ResourceTiming, SecurityDetails, RequestSizes, RemoteAddr, ExpectedTextValue, SelectorEngine, FormField, LifecycleEvent, ConsoleMessagesFilter, RecorderSource, IndexedDBDatabase, SetOriginStorage, OriginStorage, RecordHarOptions, SerializedValue, SerializedArgument, SerializedError, StackFrame, VirtualCredential, Point, Rect, URLPattern, NameValue } from '@protocol/structs';
 
 // ----------- Initializer Traits -----------
 export type InitializerTraits<T> =
@@ -587,56 +585,6 @@ export interface AndroidDeviceEvents {
   'webViewRemoved': AndroidDeviceWebViewRemovedEvent;
 }
 
-export type AndroidWebView = {
-  pid: number,
-  pkg: string,
-  socketName: string,
-};
-
-export type AndroidSelector = {
-  checkable?: boolean,
-  checked?: boolean,
-  clazz?: string,
-  clickable?: boolean,
-  depth?: number,
-  desc?: string,
-  enabled?: boolean,
-  focusable?: boolean,
-  focused?: boolean,
-  hasChild?: {
-    androidSelector: AndroidSelector,
-  },
-  hasDescendant?: {
-    androidSelector: AndroidSelector,
-    maxDepth?: number,
-  },
-  longClickable?: boolean,
-  pkg?: string,
-  res?: string,
-  scrollable?: boolean,
-  selected?: boolean,
-  text?: string,
-};
-
-export type AndroidElementInfo = {
-  children?: AndroidElementInfo[],
-  clazz: string,
-  desc: string,
-  res: string,
-  pkg: string,
-  text: string,
-  bounds: Rect,
-  checkable: boolean,
-  checked: boolean,
-  clickable: boolean,
-  enabled: boolean,
-  focusable: boolean,
-  focused: boolean,
-  longClickable: boolean,
-  scrollable: boolean,
-  selected: boolean,
-};
-
 // ----------- APIRequestContext -----------
 export type APIRequestContextInitializer = {
   tracing: TracingChannel,
@@ -730,16 +678,6 @@ export type APIRequestContextDisposeResult = void;
 
 export interface APIRequestContextEvents {
 }
-
-export type APIResponse = {
-  fetchUid: string,
-  url: string,
-  status: number,
-  statusText: string,
-  headers: NameValue[],
-  securityDetails?: SecurityDetails,
-  serverAddr?: RemoteAddr,
-};
 
 // ----------- Artifact -----------
 export type ArtifactInitializer = {
@@ -1347,6 +1285,8 @@ export interface BrowserContextChannel extends BrowserContextEventTarget, Channe
   setGeolocation(params: BrowserContextSetGeolocationParams, progress: Progress): Promise<BrowserContextSetGeolocationResult>;
   setHTTPCredentials(params: BrowserContextSetHTTPCredentialsParams, progress: Progress): Promise<BrowserContextSetHTTPCredentialsResult>;
   setNetworkInterceptionPatterns(params: BrowserContextSetNetworkInterceptionPatternsParams, progress: Progress): Promise<BrowserContextSetNetworkInterceptionPatternsResult>;
+  routeAPIRequestsFromHar(params: BrowserContextRouteAPIRequestsFromHarParams, progress: Progress): Promise<BrowserContextRouteAPIRequestsFromHarResult>;
+  unrouteAPIRequestsFromHar(params: BrowserContextUnrouteAPIRequestsFromHarParams, progress: Progress): Promise<BrowserContextUnrouteAPIRequestsFromHarResult>;
   setWebSocketInterceptionPatterns(params: BrowserContextSetWebSocketInterceptionPatternsParams, progress: Progress): Promise<BrowserContextSetWebSocketInterceptionPatternsResult>;
   setOffline(params: BrowserContextSetOfflineParams, progress: Progress): Promise<BrowserContextSetOfflineResult>;
   storageState(params: BrowserContextStorageStateParams, progress: Progress): Promise<BrowserContextStorageStateResult>;
@@ -1580,6 +1520,28 @@ export type BrowserContextSetNetworkInterceptionPatternsOptions = {
 
 };
 export type BrowserContextSetNetworkInterceptionPatternsResult = void;
+export type BrowserContextRouteAPIRequestsFromHarParams = {
+  harId: string,
+  urlGlob?: string,
+  urlRegexSource?: string,
+  urlRegexFlags?: string,
+  notFound: 'abort' | 'fallback',
+};
+export type BrowserContextRouteAPIRequestsFromHarOptions = {
+  urlGlob?: string,
+  urlRegexSource?: string,
+  urlRegexFlags?: string,
+};
+export type BrowserContextRouteAPIRequestsFromHarResult = {
+  registrationId: string,
+};
+export type BrowserContextUnrouteAPIRequestsFromHarParams = {
+  registrationId: string,
+};
+export type BrowserContextUnrouteAPIRequestsFromHarOptions = {
+
+};
+export type BrowserContextUnrouteAPIRequestsFromHarResult = void;
 export type BrowserContextSetWebSocketInterceptionPatternsParams = {
   patterns: {
     glob?: string,
@@ -2095,23 +2057,6 @@ export type BrowserTypeConnectToWorkerResult = {
 export interface BrowserTypeEvents {
 }
 
-export type Metadata = {
-  location?: {
-    file: string,
-    line?: number,
-    column?: number,
-  },
-  title?: string,
-  internal?: boolean,
-  stepId?: string,
-};
-
-export type ClientSideCallMetadata = {
-  id: number,
-  stack?: StackFrame[],
-};
-
-export type SDKLanguage = 'javascript' | 'python' | 'java' | 'csharp';
 // ----------- Disposable -----------
 export type DisposableInitializer = {};
 export interface DisposableEventTarget {
@@ -2126,14 +2071,6 @@ export type DisposableDisposeResult = void;
 
 export interface DisposableEvents {
 }
-
-export type WaitInfo = {
-  waitId: string,
-  phase: 'before' | 'after' | 'log',
-  event?: string,
-  message?: string,
-  error?: string,
-};
 
 // ----------- Electron -----------
 export type ElectronInitializer = {};
@@ -2436,7 +2373,6 @@ export type FrameAddStyleTagResult = {
 };
 export type FrameAriaSnapshotParams = {
   mode?: 'ai' | 'default',
-  track?: string,
   selector?: string,
   depth?: number,
   boxes?: boolean,
@@ -2444,7 +2380,6 @@ export type FrameAriaSnapshotParams = {
 };
 export type FrameAriaSnapshotOptions = {
   mode?: 'ai' | 'default',
-  track?: string,
   selector?: string,
   depth?: number,
   boxes?: boolean,
@@ -3400,7 +3335,7 @@ export type ElementHandleQuerySelectorAllResult = {
 };
 export type ElementHandleScreenshotParams = {
   timeout: number,
-  type?: 'png' | 'jpeg',
+  type?: 'png' | 'jpeg' | 'webp',
   quality?: number,
   omitBackground?: boolean,
   caret?: 'hide' | 'initial',
@@ -3414,7 +3349,7 @@ export type ElementHandleScreenshotParams = {
   style?: string,
 };
 export type ElementHandleScreenshotOptions = {
-  type?: 'png' | 'jpeg',
+  type?: 'png' | 'jpeg' | 'webp',
   quality?: number,
   omitBackground?: boolean,
   caret?: 'hide' | 'initial',
@@ -3716,33 +3651,6 @@ export type LocalUtilsGlobToRegexResult = {
 export interface LocalUtilsEvents {
 }
 
-export type SetNetworkCookie = {
-  name: string,
-  value: string,
-  url?: string,
-  domain?: string,
-  path?: string,
-  expires?: number,
-  httpOnly?: boolean,
-  secure?: boolean,
-  sameSite?: 'Strict' | 'Lax' | 'None',
-  partitionKey?: string,
-  _crHasCrossSiteAncestor?: boolean,
-};
-
-export type NetworkCookie = {
-  name: string,
-  value: string,
-  domain: string,
-  path: string,
-  expires: number,
-  httpOnly: boolean,
-  secure: boolean,
-  sameSite: 'Strict' | 'Lax' | 'None',
-  partitionKey?: string,
-  _crHasCrossSiteAncestor?: boolean,
-};
-
 // ----------- Request -----------
 export type RequestInitializer = {
   frame?: FrameChannel,
@@ -3924,17 +3832,6 @@ export interface WebSocketRouteEvents {
   'closeServer': WebSocketRouteCloseServerEvent;
 }
 
-export type ResourceTiming = {
-  startTime: number,
-  domainLookupStart: number,
-  domainLookupEnd: number,
-  connectStart: number,
-  secureConnectionStart: number,
-  connectEnd: number,
-  requestStart: number,
-  responseStart: number,
-};
-
 // ----------- Response -----------
 export type ResponseInitializer = {
   request: RequestChannel,
@@ -3989,26 +3886,6 @@ export type ResponseSizesResult = {
 
 export interface ResponseEvents {
 }
-
-export type SecurityDetails = {
-  issuer?: string,
-  protocol?: string,
-  subjectName?: string,
-  validFrom?: number,
-  validTo?: number,
-};
-
-export type RequestSizes = {
-  requestBodySize: number,
-  requestHeadersSize: number,
-  responseBodySize: number,
-  responseHeadersSize: number,
-};
-
-export type RemoteAddr = {
-  ipAddress: string,
-  port: number,
-};
 
 // ----------- WebSocket -----------
 export type WebSocketInitializer = {
@@ -4318,6 +4195,7 @@ export type PageExpectScreenshotParams = {
   threshold?: number,
   fullPage?: boolean,
   clip?: Rect,
+  type?: 'png' | 'webp',
   omitBackground?: boolean,
   caret?: 'hide' | 'initial',
   animations?: 'disabled' | 'allow',
@@ -4341,6 +4219,7 @@ export type PageExpectScreenshotOptions = {
   threshold?: number,
   fullPage?: boolean,
   clip?: Rect,
+  type?: 'png' | 'webp',
   omitBackground?: boolean,
   caret?: 'hide' | 'initial',
   animations?: 'disabled' | 'allow',
@@ -4365,7 +4244,7 @@ export type PageExpectScreenshotErrorDetails = {
 };
 export type PageScreenshotParams = {
   timeout: number,
-  type?: 'png' | 'jpeg',
+  type?: 'png' | 'jpeg' | 'webp',
   quality?: number,
   fullPage?: boolean,
   clip?: Rect,
@@ -4381,7 +4260,7 @@ export type PageScreenshotParams = {
   style?: string,
 };
 export type PageScreenshotOptions = {
-  type?: 'png' | 'jpeg',
+  type?: 'png' | 'jpeg' | 'webp',
   quality?: number,
   fullPage?: boolean,
   clip?: Rect,
@@ -5113,93 +4992,6 @@ export interface JsonPipeEvents {
   'closed': JsonPipeClosedEvent;
 }
 
-export type ExpectedTextValue = {
-  string?: string,
-  regexSource?: string,
-  regexFlags?: string,
-  matchSubstring?: boolean,
-  ignoreCase?: boolean,
-  normalizeWhiteSpace?: boolean,
-};
-
-export type SelectorEngine = {
-  name: string,
-  source: string,
-  contentScript?: boolean,
-};
-
-export type FormField = {
-  name: string,
-  value?: string,
-  file?: {
-    name: string,
-    mimeType?: string,
-    buffer: Binary,
-  },
-};
-
-export type LifecycleEvent = 'load' | 'domcontentloaded' | 'networkidle' | 'commit';
-export type ConsoleMessagesFilter = 'all' | 'since-navigation';
-export type RecorderSource = {
-  isRecorded: boolean,
-  id: string,
-  label: string,
-  text: string,
-  language: string,
-  highlight: {
-    line: number,
-    type: string,
-  }[],
-  revealLine?: number,
-  group?: string,
-};
-
-export type IndexedDBDatabase = {
-  name: string,
-  version: number,
-  stores: {
-    name: string,
-    autoIncrement: boolean,
-    keyPath?: string,
-    keyPathArray?: string[],
-    records: {
-      key?: any,
-      keyEncoded?: any,
-      value?: any,
-      valueEncoded?: any,
-    }[],
-    indexes: {
-      name: string,
-      keyPath?: string,
-      keyPathArray?: string[],
-      multiEntry: boolean,
-      unique: boolean,
-    }[],
-  }[],
-};
-
-export type SetOriginStorage = {
-  origin: string,
-  localStorage: NameValue[],
-  indexedDB?: IndexedDBDatabase[],
-};
-
-export type OriginStorage = {
-  origin: string,
-  localStorage: NameValue[],
-  indexedDB?: IndexedDBDatabase[],
-};
-
-export type RecordHarOptions = {
-  content?: 'embed' | 'attach' | 'omit',
-  mode?: 'full' | 'minimal',
-  urlGlob?: string,
-  urlRegexSource?: string,
-  urlRegexFlags?: string,
-  harPath?: string,
-  resourcesDir?: string,
-};
-
 // ----------- CDPSession -----------
 export type CDPSessionInitializer = {};
 export interface CDPSessionEventTarget {
@@ -5341,94 +5133,6 @@ export type DialogDismissResult = void;
 
 export interface DialogEvents {
 }
-
-export type SerializedValue = {
-  n?: number,
-  b?: boolean,
-  s?: string,
-  v?: 'null' | 'undefined' | 'NaN' | 'Infinity' | '-Infinity' | '-0',
-  d?: string,
-  u?: string,
-  bi?: string,
-  ta?: {
-    b: Binary,
-    k: 'i8' | 'ui8' | 'ui8c' | 'i16' | 'ui16' | 'i32' | 'ui32' | 'f32' | 'f64' | 'bi64' | 'bui64',
-  },
-  e?: {
-    m: string,
-    n: string,
-    s: string,
-  },
-  r?: {
-    p: string,
-    f: string,
-  },
-  a?: SerializedValue[],
-  o?: {
-    k: string,
-    v: SerializedValue,
-  }[],
-  h?: number,
-  id?: number,
-  ref?: number,
-};
-
-export type SerializedArgument = {
-  value: SerializedValue,
-  handles: Channel[],
-};
-
-export type SerializedError = {
-  error?: {
-    message: string,
-    name: string,
-    stack?: string,
-  },
-  value?: SerializedValue,
-};
-
-export type StackFrame = {
-  file: string,
-  line: number,
-  column: number,
-  function?: string,
-};
-
-export type VirtualCredential = {
-  id: string,
-  rpId: string,
-  userHandle: string,
-  privateKey: string,
-  publicKey: string,
-};
-
-export type Point = {
-  x: number,
-  y: number,
-};
-
-export type Rect = {
-  x: number,
-  y: number,
-  width: number,
-  height: number,
-};
-
-export type URLPattern = {
-  hash: string,
-  hostname: string,
-  password: string,
-  pathname: string,
-  port: string,
-  protocol: string,
-  search: string,
-  username: string,
-};
-
-export type NameValue = {
-  name: string,
-  value: string,
-};
 
 // ----------- Tracing -----------
 export type TracingInitializer = {};

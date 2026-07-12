@@ -20,9 +20,10 @@ import jpegjs from 'jpeg-js';
 import { assert } from '@isomorphic/assert';
 import { headersArrayToObject, headersObjectToArray } from '@isomorphic/headers';
 import { ManualPromise } from '@isomorphic/manualPromise';
-import { splitErrorMessage } from '@isomorphic/stackTrace';
+import { splitErrorMessage } from '@utils/stackTrace';
 import { debugLogger } from '@utils/debugLogger';
 import { eventsHelper } from '@utils/eventsHelper';
+import { encodeWebp } from '@utils/webp/webp';
 import * as dialog from '../../dialog';
 import * as dom from '../../dom';
 import { TargetClosedError } from '../../errors';
@@ -767,8 +768,13 @@ export class WVPage implements PageDelegate {
     const result = await progress.race(this._session.send('Page.snapshotRect', { ...rect, coordinateSystem: documentRect ? 'Page' : 'Viewport' }));
     const prefix = 'data:image/png;base64,';
     let buffer: Buffer = Buffer.from(result.dataURL.substr(prefix.length), 'base64');
-    if (format === 'jpeg')
+    if (format === 'jpeg') {
       buffer = jpegjs.encode(PNG.sync.read(buffer), quality).data;
+    } else if (format === 'webp') {
+      const png = PNG.sync.read(buffer);
+      // Match the native WebKit encoder: webp quality 100 (or omitted) is lossless.
+      buffer = (quality === undefined || quality >= 100) ? encodeWebp(png, { lossless: true }) : encodeWebp(png, { quality });
+    }
     return buffer;
   }
 
@@ -888,7 +894,26 @@ export class WVPage implements PageDelegate {
     }, {});
     if (!result || typeof result === 'string')
       return null;
-    return result as types.Quad[];
+    let quads = result as types.Quad[];
+    let frame: frames.Frame | null = handle._frame;
+    while (frame?.parentFrame()) {
+      const frameElement = await this.getFrameElement(frame).catch(() => null);
+      if (!frameElement)
+        return null;
+      const offset = await frameElement.evaluateInUtility(([injected, iframe]) => {
+        const element = iframe as Element;
+        const style = injected.describeIFrameStyle(element);
+        if (style === 'error:notconnected' || style === 'transformed')
+          return null;
+        const rect = element.getBoundingClientRect();
+        return { x: rect.left + style.left, y: rect.top + style.top };
+      }, {}).finally(() => frameElement.dispose());
+      if (!offset || typeof offset === 'string')
+        return null;
+      quads = quads.map(quad => quad.map(point => ({ x: point.x + offset.x, y: point.y + offset.y })) as types.Quad);
+      frame = frame.parentFrame();
+    }
+    return quads;
   }
 
   async adoptElementHandle<T extends Node>(handle: dom.ElementHandle<T>, to: dom.FrameExecutionContext): Promise<dom.ElementHandle<T>> {

@@ -14,9 +14,10 @@
  * limitations under the License.
  */
 
-import { rewriteErrorMessage } from '@isomorphic/stackTrace';
+import { rewriteErrorMessage } from '@utils/stackTrace';
+import { createGuid } from '@utils/crypto';
 import { currentZone } from '@utils/zones';
-import { TimeoutError } from './errors';
+import { AbortError, TimeoutError } from './errors';
 
 import type { ChannelOwner } from './channelOwner';
 import type * as channels from './channels';
@@ -34,7 +35,7 @@ export class Waiter {
   private _savedZone: Zone;
 
   constructor(channelOwner: ChannelOwner, event: string) {
-    this._waitId = createGuidWithWebCrypto();
+    this._waitId = createGuid();
     this._channelOwner = channelOwner;
     this._savedZone = currentZone().without('apiZone');
 
@@ -90,18 +91,23 @@ export class Waiter {
     if (!signal)
       return;
     if (signal.aborted) {
-      this.rejectImmediately(signalToError(signal));
+      this.rejectImmediately(new AbortError(undefined, { cause: signal.reason }));
       return;
     }
     let rejectPromise: (e: any) => void;
     const promise = new Promise<void>((_, reject) => { rejectPromise = reject; });
-    const listener = () => rejectPromise!(signalToError(signal));
+    const listener = () => rejectPromise!(new AbortError(undefined, { cause: signal.reason }));
     signal.addEventListener('abort', listener, { once: true });
     this._rejectOn(promise, () => signal.removeEventListener('abort', listener));
   }
 
   rejectImmediately(error: Error) {
     this._immediateError = error;
+  }
+
+  throwIfImmediatelyRejected() {
+    if (this._immediateError)
+      throw this._immediateError;
   }
 
   dispose() {
@@ -161,14 +167,6 @@ function waitForEvent<T = void>(emitter: EventEmitter, event: string, savedZone:
   return { promise, dispose };
 }
 
-function signalToError(signal: AbortSignal): Error {
-  const reason = signal.reason;
-  if (reason instanceof Error)
-    return reason;
-  const message = typeof reason?.message === 'string' ? reason.message : reason;
-  return new Error(String(message ?? 'The operation was aborted'));
-}
-
 function waitForTimeout(timeout: number): { promise: Promise<void>, dispose: () => void } {
   let timeoutId: any;
   const promise = new Promise<void>(resolve => timeoutId = setTimeout(resolve, timeout));
@@ -184,10 +182,4 @@ function formatLogRecording(log: string[]): string {
   const leftLength = (headerLength - header.length) / 2;
   const rightLength = headerLength - header.length - leftLength;
   return `\n${'='.repeat(leftLength)}${header}${'='.repeat(rightLength)}\n${log.join('\n')}\n${'='.repeat(headerLength)}`;
-}
-
-function createGuidWithWebCrypto() {
-  // This avoids stubbing "crypto" for browser build.
-  // TODO: consider replacing the main createGuid() helper with this.
-  return Array.from(globalThis.crypto.getRandomValues(new Uint8Array(16)), b => b.toString(16).padStart(2, '0')).join('');
 }

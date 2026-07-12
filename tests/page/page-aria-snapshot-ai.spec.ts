@@ -19,7 +19,7 @@ import { test as it, expect } from './pageTest';
 import { unshift } from '../config/utils';
 import type { Page } from 'playwright-core';
 
-async function snapshotForAI(page: Page, options?: Omit<Parameters<Page['ariaSnapshot']>[0], 'mode'> & { _track?: string }): Promise<string> {
+async function snapshotForAI(page: Page, options?: Omit<Parameters<Page['ariaSnapshot']>[0], 'mode'>): Promise<string> {
   return await page.ariaSnapshot({ ...options, mode: 'ai' });
 }
 
@@ -105,13 +105,13 @@ it('should stitch all frame snapshots', async ({ page, server }) => {
   expect(snapshot).toContainYaml(`
     - generic [active] [ref=e1]:
       - iframe [ref=e2]:
-        - generic [active] [ref=f1e1]:
+        - generic [ref=f1e1]:
           - iframe [ref=f1e2]:
-            - generic [ref=f3e2]: Hi, I'm frame
+            - generic [ref=f3e1]: Hi, I'm frame
           - iframe [ref=f1e3]:
-            - generic [ref=f4e2]: Hi, I'm frame
+            - generic [ref=f4e1]: Hi, I'm frame
       - iframe [ref=e3]:
-        - generic [ref=f2e2]: Hi, I'm frame
+        - generic [ref=f2e1]: Hi, I'm frame
   `);
 
   const href = await page.locator('aria-ref=e1').evaluate(e => e.ownerDocument.defaultView.location.href);
@@ -340,11 +340,158 @@ it('should not nest cursor pointer hints', async ({ page }) => {
   `);
 
   const snapshot = await snapshotForAI(page);
+  // The link's name is redundant - "Link with a button" prints as text and "Button" as the button -
+  // so it is dropped even though the node is clickable.
   expect(snapshot).toContainYaml(`
-    - link \"Link with a button Button\" [ref=e2] [cursor=pointer]:
+    - link [ref=e2] [cursor=pointer]:
       - /url: about:blank
       - text: Link with a button
       - button "Button" [ref=e3]
+  `);
+});
+
+it('should omit names that just repeat printed descendant nodes', async ({ page }) => {
+  await page.setContent(`
+    <h3><a style="cursor: pointer" href="/issues/1">Clipboard API</a></h3>
+  `);
+
+  const snapshot = await snapshotForAI(page);
+  expect(snapshot).toContainYaml(`
+    - heading [level=3] [ref=e2]:
+      - link "Clipboard API" [ref=e3] [cursor=pointer]:
+        - /url: /issues/1
+  `);
+});
+
+it('should omit redundant name when a contributing wrapper is collapsed', async ({ page }) => {
+  // The flex span contributes to the heading's name, but is then removed from the tree as a
+  // single-child generic wrapper. Its contribution is fully represented by the link, so the
+  // heading's name is still redundant.
+  await page.setContent(`
+    <h3><span style="display: flex"><a style="cursor: pointer" href="/issues/1">Clipboard API</a></span></h3>
+  `);
+
+  const snapshot = await snapshotForAI(page);
+  expect(snapshot).toContainYaml(`
+    - heading [level=3] [ref=e2]:
+      - link "Clipboard API" [ref=e4] [cursor=pointer]:
+        - /url: /issues/1
+  `);
+});
+
+it('should omit redundant name when a contributor is a skipped leaf generic', async ({ page }) => {
+  // The outer span is not collapsed (its child is an element, not text), so it becomes a leaf
+  // generic node that contributes to both names. The link's rendered name covers it, which in turn
+  // makes the heading's name redundant.
+  await page.setContent(`
+    <h3><a style="cursor: pointer" href="/issues/1"><span><span>Clipboard API</span></span></a></h3>
+  `);
+
+  const snapshot = await snapshotForAI(page);
+  expect(snapshot).toContainYaml(`
+    - heading [level=3] [ref=e2]:
+      - link "Clipboard API" [ref=e3] [cursor=pointer]:
+        - /url: /issues/1
+  `);
+});
+
+it('should keep names not derived from printed nodes', async ({ page }) => {
+  await page.setContent(`
+    <h3 aria-label="Clipboard API issue"><a style="cursor: pointer" href="/issues/1">Clipboard API</a></h3>
+  `);
+
+  const snapshot = await snapshotForAI(page);
+  expect(snapshot).toContainYaml(`
+    - heading "Clipboard API issue" [level=3] [ref=e2]:
+      - link "Clipboard API" [ref=e3] [cursor=pointer]:
+        - /url: /issues/1
+  `);
+});
+
+it('should omit images without an accessible name', async ({ page }) => {
+  await page.setContent(`
+    <img src="data:image/gif;base64,R0lGODlhAQABAAAAACwAAAAAAQABAAA=">
+    <img alt="A cat" src="data:image/gif;base64,R0lGODlhAQABAAAAACwAAAAAAQABAAA=">
+    <img style="cursor: pointer" src="data:image/gif;base64,R0lGODlhAQABAAAAACwAAAAAAQABAAA=">
+  `);
+
+  const snapshot = await snapshotForAI(page);
+  // A nameless image carries no information and is omitted, whether or not it is clickable. Only
+  // the named image is kept - and the body wrapper, left with a single child, is unwrapped.
+  expect(snapshot).toContainYaml(`
+    - img "A cat" [ref=e3]
+  `);
+  expect(snapshot).not.toContain('[ref=e2]');
+  expect(snapshot).not.toContain('[ref=e4]');
+});
+
+it('should omit a nameless image nested inside a link', async ({ page }) => {
+  // The decorative image has no name, so it is dropped even though it sits inside a clickable link.
+  await page.setContent(`
+    <a style="cursor: pointer" href="/issue/1">Open issue <img src="data:image/gif;base64,R0lGODlhAQABAAAAACwAAAAAAQABAAA="></a>
+  `);
+
+  const snapshot = await snapshotForAI(page);
+  expect(snapshot).toContainYaml(`
+    - link "Open issue" [ref=e2] [cursor=pointer]:
+      - /url: /issue/1
+  `);
+  expect(snapshot).not.toContain('img');
+});
+
+it('should omit leaf generic whose text is already in an ancestor name', async ({ page }) => {
+  // The inner element is block so it survives as its own generic node (an inline single-text span
+  // would be collapsed into the link instead). It inherits the link's pointer cursor.
+  await page.setContent(`
+    <a style="cursor: pointer" href="/issues/15860"><div>[Feature] a dedicated clipboard API</div></a>
+  `);
+
+  const snapshot = await snapshotForAI(page);
+  // The link keeps its name, and the inner leaf generic that the name was computed from is dropped
+  // because its text is already shown by the name.
+  expect(snapshot).toContainYaml(`
+    - link "[Feature] a dedicated clipboard API" [ref=e2] [cursor=pointer]:
+      - /url: /issues/15860
+  `);
+  expect(snapshot).not.toContain('[ref=e3]');
+});
+
+it('should omit name-repeating generic behind a wrapper', async ({ page }) => {
+  // The leaf generic that repeats the link's name sits inside a nameless wrapper. Its text is
+  // first inlined into the wrapper, which then faces the link and removes itself.
+  await page.setContent(`
+    <a style="cursor: pointer" href="/labels"><span style="display: inline-block"><span style="display: inline-block"><span>P3-collecting-feedback</span></span></span></a>
+  `);
+
+  const snapshot = await snapshotForAI(page);
+  expect(snapshot).toContainYaml(`
+    - link "P3-collecting-feedback" [ref=e2] [cursor=pointer]:
+      - /url: /labels
+  `);
+  expect(snapshot.split('P3-collecting-feedback')).toHaveLength(2);
+});
+
+it('should resolve refs of distilled-away nodes', async ({ page }) => {
+  await page.setContent(`
+    <a style="cursor: pointer" href="/issues/15860"><div>[Feature] a dedicated clipboard API</div></a>
+  `);
+
+  const snapshot = await snapshotForAI(page);
+  // The inner leaf generic is distilled away, but its ref still resolves to the element.
+  expect(snapshot).not.toContain('[ref=e3]');
+  await expect(page.locator('aria-ref=e3')).toHaveText('[Feature] a dedicated clipboard API');
+});
+
+it('should not distill snapshots outside of ai mode', async ({ page }) => {
+  await page.setContent(`
+    <h3><a href="/issues/1">Clipboard API</a></h3>
+  `);
+
+  // The heading name would be dropped as redundant in ai mode; matching mode keeps it.
+  await expect(page.locator('body')).toMatchAriaSnapshot(`
+    - heading "Clipboard API" [level=3]:
+      - link "Clipboard API":
+        - /url: /issues/1
   `);
 });
 
@@ -376,7 +523,7 @@ it('should auto-wait for navigation', async ({ page, server }) => {
     snapshotForAI(page)
   ]);
   // The snapshot races the reload, which may re-number the main frame, so accept any ref.
-  expect(snapshot).toMatch(/- generic \[ref=(?:f\d+)?e\d+\]: Hi, I'm frame/);
+  expect(snapshot).toMatch(/- generic \[active\] \[ref=(?:f\d+)?e\d+\]: Hi, I'm frame/);
 });
 
 it('should auto-wait for blocking CSS', async ({ page, server }) => {
@@ -551,242 +698,43 @@ it('should collapse inline generic nodes', async ({ page }) => {
   `);
 });
 
+it('should inline single leaf generic child into parent generic', async ({ page }) => {
+  // The nameless images are distilled away, so each wrapper is left with a single leaf generic
+  // child, whose text is inlined into the wrapper - recursively for the second one.
+  await page.setContent(`
+    <div><img src="data:image/gif;base64,R0lGODlhAQABAAAAACwAAAAAAQABAAA="><div>Status: Open.</div></div>
+    <div><img src="data:image/gif;base64,R0lGODlhAQABAAAAACwAAAAAAQABAAA="><div><img src="data:image/gif;base64,R0lGODlhAQABAAAAACwAAAAAAQABAAA="><div>Nested twice.</div></div></div>
+  `);
+
+  const snapshot = await snapshotForAI(page);
+  expect(snapshot).toContainYaml(`
+    - generic [active] [ref=e1]:
+      - generic [ref=e2]: "Status: Open."
+      - generic [ref=e5]: Nested twice.
+  `);
+});
+
+it('should inline a deeply nested generic', async ({ page }) => {
+  // Every wrapper contains a nameless image (distilled away) plus a single generic child, so the
+  // text bubbles up the whole chain - all the way into the body.
+  const img = `<img src="data:image/gif;base64,R0lGODlhAQABAAAAACwAAAAAAQABAAA=">`;
+  await page.setContent(`
+    <div>${img}<div>${img}<div>${img}<div>${img}<div>Deeply nested.</div></div></div></div></div>
+  `);
+
+  const snapshot = await snapshotForAI(page);
+  expect(snapshot).toContainYaml(`
+    - generic [active] [ref=e1]: Deeply nested.
+  `);
+  expect(snapshot).not.toContain('img');
+});
+
 it('should not remove generic nodes with title', async ({ page }) => {
   await page.setContent(`<div title="Element title">Element content</div>`);
 
   const snapshot = await snapshotForAI(page);
   expect(snapshot).toContainYaml(`
     - generic "Element title" [ref=e2]
-  `);
-});
-
-it('should create incremental snapshots on multiple tracks', async ({ page }) => {
-  await page.setContent(`<ul><li><button>a button</button></li><li><span>a span</span></li><li id=hidden-li style="display:none">some text</li></ul>`);
-
-  expect(await snapshotForAI(page, { _track: 'first' })).toContainYaml(`
-    - list [ref=e2]:
-      - listitem [ref=e3]:
-        - button "a button" [ref=e4]
-      - listitem [ref=e5]: a span
-  `);
-  expect(await snapshotForAI(page, { _track: 'second' })).toContainYaml(`
-    - list [ref=e2]:
-      - listitem [ref=e3]:
-        - button "a button" [ref=e4]
-      - listitem [ref=e5]: a span
-  `);
-  expect(await snapshotForAI(page, { _track: 'first' })).toContainYaml(`
-  `);
-
-  await page.evaluate(() => {
-    document.querySelector('span').textContent = 'changed span';
-    document.getElementById('hidden-li').style.display = 'inline';
-  });
-  expect(await snapshotForAI(page, { _track: 'first' })).toContainYaml(`
-    - <changed> list [ref=e2]:
-      - ref=e3 [unchanged]
-      - listitem [ref=e5]: changed span
-      - listitem [ref=e6]: some text
-  `);
-
-  await page.evaluate(() => {
-    document.querySelector('span').textContent = 'a span';
-    document.getElementById('hidden-li').style.display = 'none';
-  });
-  expect(await snapshotForAI(page, { _track: 'first' })).toContainYaml(`
-    - <changed> list [ref=e2]:
-      - ref=e3 [unchanged]
-      - listitem [ref=e5]: a span
-  `);
-  expect(await snapshotForAI(page, { _track: 'second' })).toContainYaml(`
-  `);
-});
-
-it('should create incremental snapshot for attribute change', async ({ page }) => {
-  await page.setContent(`<button>a button</button>`);
-  await page.evaluate(() => document.querySelector('button').focus());
-  expect(await snapshotForAI(page, { _track: 'track' })).toContainYaml(`
-    - button "a button" [active] [ref=e2]
-  `);
-
-  await page.evaluate(() => document.querySelector('button').blur());
-  expect(await snapshotForAI(page, { _track: 'track' })).toContainYaml(`
-    - <changed> button "a button" [ref=e2]
-  `);
-});
-
-it('should create incremental snapshot for child removal', async ({ page }) => {
-  await page.setContent(`<li><button>a button</button><span>some text</span></li>`);
-  expect(await snapshotForAI(page, { _track: 'track' })).toContainYaml(`
-    - listitem [ref=e2]:
-      - button "a button" [ref=e3]
-      - text: some text
-  `);
-
-  await page.evaluate(() => document.querySelector('span').remove());
-  expect(await snapshotForAI(page, { _track: 'track' })).toContainYaml(`
-    - <changed> listitem [ref=e2]:
-      - ref=e3 [unchanged]
-  `);
-});
-
-it('should create incremental snapshot for child addition', async ({ page }) => {
-  await page.setContent(`<li><button>a button</button><span style="display:none">some text</span></li>`);
-  expect(await snapshotForAI(page, { _track: 'track' })).toContainYaml(`
-    - listitem [ref=e2]:
-      - button "a button" [ref=e3]
-  `);
-
-  await page.evaluate(() => document.querySelector('span').style.display = 'inline');
-  expect(await snapshotForAI(page, { _track: 'track' })).toContainYaml(`
-    - <changed> listitem [ref=e2]:
-      - ref=e3 [unchanged]
-      - text: some text
-  `);
-});
-
-it('should create incremental snapshot for prop change', async ({ page }) => {
-  await page.setContent(`<a href="about:blank" style="cursor:pointer">a link</a>`);
-  expect(await snapshotForAI(page, { _track: 'track' })).toContainYaml(`
-    - link "a link" [ref=e2] [cursor=pointer]:
-      - /url: about:blank
-  `);
-
-  await page.evaluate(() => document.querySelector('a').setAttribute('href', 'https://playwright.dev'));
-  expect(await snapshotForAI(page, { _track: 'track' })).toContainYaml(`
-    - <changed> link "a link" [ref=e2] [cursor=pointer]:
-      - /url: https://playwright.dev
-  `);
-});
-
-it('should create incremental snapshot for cursor change', async ({ page }) => {
-  await page.setContent(`<a href="about:blank" style="cursor:pointer">a link</a>`);
-  expect(await snapshotForAI(page, { _track: 'track' })).toContainYaml(`
-    - link "a link" [ref=e2] [cursor=pointer]:
-      - /url: about:blank
-  `);
-
-  await page.evaluate(() => document.querySelector('a').style.cursor = 'default');
-  expect(await snapshotForAI(page, { _track: 'track' })).toContainYaml(`
-    - <changed> link "a link" [ref=e2]:
-      - /url: about:blank
-  `);
-});
-
-it('should create incremental snapshot for name change', async ({ page }) => {
-  await page.setContent(`<button><span>a button</span></button>`);
-  expect(await snapshotForAI(page, { _track: 'track' })).toContainYaml(`
-    - button "a button" [ref=e2]
-  `);
-
-  await page.evaluate(() => document.querySelector('span').textContent = 'new button');
-  expect(await snapshotForAI(page, { _track: 'track' })).toContainYaml(`
-    - <changed> button "new button" [ref=e3]
-  `);
-});
-
-it('should create incremental snapshot for text change', async ({ page }) => {
-  await page.setContent(`<li><span>an item</span></li>`);
-  expect(await snapshotForAI(page, { _track: 'track' })).toContainYaml(`
-    - listitem [ref=e2]: an item
-  `);
-
-  await page.evaluate(() => document.querySelector('span').textContent = 'new text');
-  expect(await snapshotForAI(page, { _track: 'track' })).toContainYaml(`
-    - <changed> listitem [ref=e2]: new text
-  `);
-});
-
-it('should produce incremental snapshot for iframes', async ({ page }) => {
-  await page.setContent(`
-    <iframe srcdoc="
-      <li>
-        <span style='display:none'>outer text</span>
-        <button>a button</button>
-        <iframe src='data:text/html,<li>inner text</li>' style='display:none'></iframe>
-      </li>
-    "></iframe>
-  `);
-  expect(await snapshotForAI(page, { _track: 'track' })).toContainYaml(`
-    - iframe [ref=e2]:
-      - listitem [ref=f1e2]:
-        - button "a button" [ref=f1e3]
-  `);
-
-  await page.frames()[1].evaluate(() => {
-    document.querySelector('span').style.display = 'block';
-    document.querySelector('iframe').style.display = 'block';
-  });
-  expect(await snapshotForAI(page, { _track: 'track' })).toContainYaml(`
-    - <changed> listitem [ref=f1e2]:
-      - generic [ref=f1e4]: outer text
-      - ref=f1e3 [unchanged]
-      - iframe [ref=f1e5]
-    - <changed> iframe [ref=f1e5]:
-      - listitem [ref=f2e2]: inner text
-  `);
-});
-
-it('should create multiple chunks in incremental snapshot', async ({ page }) => {
-  await page.setContent(`
-    <ul>
-      <li><span>item1</span></li>
-      <li><span>item2</span></li>
-      <li><div role=group><span>item3</span></div></li>
-      <ul>
-        <li id=to-remove>to be removed</li>
-        <li>one more</li>
-      </ul>
-    </ul>
-  `);
-  expect(await snapshotForAI(page, { _track: 'track' })).toContainYaml(`
-    - list [ref=e2]:
-      - listitem [ref=e3]: item1
-      - listitem [ref=e4]: item2
-      - listitem [ref=e5]:
-        - group [ref=e6]: item3
-      - list [ref=e7]:
-        - listitem [ref=e8]: to be removed
-        - listitem [ref=e9]: one more
-  `);
-
-  await page.evaluate(() => {
-    const spans = document.querySelectorAll('span');
-    spans[0].textContent = 'new item1';
-    spans[2].textContent = 'new item3';
-    const button = document.createElement('button');
-    button.textContent = 'button';
-    spans[2].parentElement.appendChild(button);
-    document.querySelector('#to-remove').remove();
-  });
-  expect(await snapshotForAI(page, { _track: 'track' })).toContainYaml(`
-    - <changed> listitem [ref=e3]: new item1
-    - <changed> group [ref=e6]:
-      - text: new item3
-      - button "button" [ref=e10]
-    - <changed> list [ref=e7]:
-      - ref=e9 [unchanged]
-  `);
-});
-
-it('should create incremental snapshot for children swap', async ({ page }) => {
-  await page.setContent(`
-    <ul>
-      <li>item 1</li>
-      <li>item 2</li>
-    </ul>
-  `);
-  expect(await snapshotForAI(page, { _track: 'track' })).toContainYaml(`
-    - list [ref=e2]:
-      - listitem [ref=e3]: item 1
-      - listitem [ref=e4]: item 2
-  `);
-
-  await page.evaluate(() => document.querySelector('ul').appendChild(document.querySelector('li')));
-  expect(await snapshotForAI(page, { _track: 'track' })).toContainYaml(`
-    - <changed> list [ref=e2]:
-      - ref=e4 [unchanged]
-      - ref=e3 [unchanged]
   `);
 });
 

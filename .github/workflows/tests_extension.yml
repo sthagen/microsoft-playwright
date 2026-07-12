@@ -49,3 +49,8 @@ jobs:
     - run: npm run build
     - run: npx playwright install --with-deps chromium
     - run: npm run test-extension
+    - name: Upload parquet report
+      if: ${{ !cancelled() }}
+      uses: ./.github/actions/upload-parquet-report
+      with:
+        job_name: extension-${{ matrix.os }}

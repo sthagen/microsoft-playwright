@@ -26,7 +26,7 @@ jobs:
         shard: [1, 2, 3, 4]
     steps:
       - uses: actions/checkout@v6
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: 20
 
@@ -158,3 +158,9 @@ jobs:
           path: |
             ${{ github.workspace }}/test-results/**
           if-no-files-found: ignore
+
+      - name: Upload parquet report
+        if: ${{ !cancelled() }}
+        uses: ./.github/actions/upload-parquet-report
+        with:
+          job_name: webview-simulator-${{ matrix.shard }}

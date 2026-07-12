@@ -1307,6 +1307,12 @@ When set to `minimal`, only record information necessary for routing from HAR. T
 
 Optional setting to control resource content management. If `attach` is specified, resources are persisted as separate files or entries in the ZIP archive. If `embed` is specified, content is stored inline the HAR file.
 
+### option: BrowserContext.routeFromHAR.interceptAPIRequests
+* since: v1.62
+- `interceptAPIRequests` <[boolean]>
+
+If set to `true`, requests made via [APIRequestContext] (such as [`property: BrowserContext.request`] or [`property: Page.request`]) are also served from the HAR file. By default these requests are sent to the network, matching the behavior prior to v1.62. Defaults to `false` for backward compatibility.
+
 
 ## async method: BrowserContext.routeWebSocket
 * since: v1.48
@@ -1713,6 +1719,24 @@ Will throw an error if the page is closed before the [`event: BrowserContext.con
 * langs: python
 - returns: <[EventContextManager]<[ConsoleMessage]>>
 
+**Usage**
+
+```python async
+async with context.expect_console_message() as message_info:
+    await page.get_by_role("button").click()
+
+message = await message_info.value
+print(message.text)
+```
+
+```python sync
+with context.expect_console_message() as message_info:
+    page.get_by_role("button").click()
+
+message = message_info.value
+print(message.text)
+```
+
 ### param: BrowserContext.waitForConsoleMessage.action = %%-csharp-wait-for-event-action-%%
 * since: v1.34
 
@@ -1811,6 +1835,24 @@ Will throw an error if the context closes before new [Page] is created.
 * since: v1.9
 * langs: python
 - returns: <[EventContextManager]<[Page]>>
+
+**Usage**
+
+```python async
+async with context.expect_page() as page_info:
+    await page.get_by_text("Open new tab").click()
+
+new_page = await page_info.value
+print(await new_page.title())
+```
+
+```python sync
+with context.expect_page() as page_info:
+    page.get_by_text("Open new tab").click()
+
+new_page = page_info.value
+print(new_page.title())
+```
 
 ### param: BrowserContext.waitForPage.action = %%-csharp-wait-for-event-action-%%
 * since: v1.12

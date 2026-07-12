@@ -22,7 +22,7 @@ import { Frame } from '../frames';
 
 import type { CallMetadata } from '../instrumentation';
 import type { Page } from '../page';
-import type * as actions from '@recorder/actions';
+import type * as actions from '@isomorphic/codegen/actions';
 import type { CallLog, CallLogStatus } from '@recorder/recorderTypes';
 import type { Progress } from '../progress';
 
@@ -63,20 +63,8 @@ export function mainFrameForAction(pageAliases: Map<Page, string>, actionInConte
   return page.mainFrame();
 }
 
-export async function frameForAction(pageAliases: Map<Page, string>, actionInContext: actions.ActionInContext, action: actions.ActionWithSelector): Promise<Frame> {
-  const pageAlias = actionInContext.frame.pageAlias;
-  const page = [...pageAliases.entries()].find(([, alias]) => pageAlias === alias)?.[0];
-  if (!page)
-    throw new Error('Internal error: page not found');
-  const fullSelector = buildFullSelector(actionInContext.frame.framePath, action.selector);
-  const result = await page.mainFrame().selectors.resolveFrameForSelector(fullSelector);
-  if (!result)
-    throw new Error('Internal error: frame not found');
-  return result.frame;
-}
-
 function isSameAction(a: actions.ActionInContext, b: actions.ActionInContext): boolean {
-  return a.action.name === b.action.name && a.frame.pageAlias === b.frame.pageAlias && a.frame.framePath.join('|') === b.frame.framePath.join('|');
+  return a.action.name === b.action.name && a.frame.pageAlias === b.frame.pageAlias;
 }
 
 function isSameSelector(action: actions.ActionInContext, lastAction: actions.ActionInContext): boolean {

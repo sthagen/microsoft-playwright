@@ -34,13 +34,13 @@ import { Frame } from './frames';
 import { Page } from './page';
 import { performAction } from './recorder/recorderRunner';
 
-import type { Language } from './codegen/types';
+import type { Language } from '@isomorphic/codegen/types';
 import type { CallMetadata, InstrumentationListener, SdkObject } from './instrumentation';
 import type { Point } from '@isomorphic/types';
 import type { AriaTemplateNode } from '@isomorphic/ariaSnapshot';
 import type { Progress } from './progress';
 import type * as channels from './channels';
-import type * as actions from '@recorder/actions';
+import type * as actions from '@isomorphic/codegen/actions';
 import type { CallLog, CallLogStatus, ElementInfo, Mode, OverlayState, Source, UIState } from '@recorder/recorderTypes';
 import type { RegisteredListener } from '@utils/eventsHelper';
 
@@ -229,7 +229,7 @@ export class Recorder extends EventEmitter<RecorderEventMap> implements Instrume
       // Input actions that potentially lead to navigation are intercepted on the page and are
       // performed by the Playwright.
       await this._context.exposeBinding(progress, '__pw_recorderPerformAction',
-          (source: BindingSource, action: actions.PerformOnRecordAction) => this._performAction(progress, source.frame, action));
+          (source: BindingSource, action: actions.PerformOnRecordAction, preconditionSelector?: string) => this._performAction(progress, source.frame, action, preconditionSelector));
 
       // Other non-essential actions are simply being recorded.
       await this._context.exposeBinding(progress, '__pw_recorderRecordAction',
@@ -378,17 +378,17 @@ export class Recorder extends EventEmitter<RecorderEventMap> implements Instrume
       return;
     try {
       const mainFrame = frame._page.mainFrame();
-      const resolved = await mainFrame.selectors.resolveFrameForSelector(this._highlightedElement.selector);
+      const resolved = await mainFrame.selectors.callOnSelector(this._highlightedElement.selector, { callWithoutMatches: true }, () => {}, {});
       // selector couldn't be found, don't highlight anything
       if (!resolved)
         return '';
 
       // selector points to no specific frame, highlight in all frames
-      if (resolved?.frame === mainFrame)
+      if (resolved.frame === mainFrame)
         return stringifySelector(resolved.info.parsed);
 
       // selector points to this frame, highlight it
-      if (resolved?.frame === frame)
+      if (resolved.frame === frame)
         return stringifySelector(resolved.info.parsed);
 
       // selector points to a different frame, highlight nothing
@@ -552,15 +552,6 @@ export class Recorder extends EventEmitter<RecorderEventMap> implements Instrume
     return {
       pageGuid: page.guid,
       pageAlias: this._pageAliases.get(page)!,
-      framePath: [],
-    };
-  }
-
-  private async _describeFrame(progress: Progress, frame: Frame): Promise<actions.FrameDescription> {
-    return {
-      pageGuid: frame._page.guid,
-      pageAlias: this._pageAliases.get(frame._page)!,
-      framePath: await generateFrameSelector(progress, frame),
     };
   }
 
@@ -568,19 +559,22 @@ export class Recorder extends EventEmitter<RecorderEventMap> implements Instrume
     return this._params.testIdAttributeName || this._context.selectors().testIdAttributeName() || 'data-testid';
   }
 
-  private async _createActionInContext(progress: Progress, frame: Frame, action: actions.Action): Promise<actions.ActionInContext> {
-    const frameDescription = await this._describeFrame(progress, frame);
+  private _appendContextToAction(frame: Frame, action: actions.Action, framePath: string[]): actions.ActionInContext {
+    if (framePath.length && 'selector' in action)
+      action.selector = buildFullSelector(framePath, action.selector);
     const actionInContext: actions.ActionInContext = {
-      frame: frameDescription,
+      frame: this._describeMainFrame(frame._page),
       action,
-      description: undefined,
       startTime: monotonicTime(),
     };
     return actionInContext;
   }
 
-  private async _performAction(progress: Progress, frame: Frame, action: actions.PerformOnRecordAction) {
-    const actionInContext = await this._createActionInContext(progress, frame, action);
+  private async _performAction(progress: Progress, frame: Frame, action: actions.PerformOnRecordAction, preconditionSelector?: string) {
+    const framePath = await generateFrameSelector(progress, frame);
+    if (preconditionSelector)
+      this._signalProcessor.signal(this._pageAliases.get(frame._page)!, frame, { name: 'expect', selector: buildFullSelector(framePath, preconditionSelector) });
+    const actionInContext = this._appendContextToAction(frame, action, framePath);
     this._signalProcessor.addAction(actionInContext);
     try {
       if (actionInContext.action.name !== 'openPage' && actionInContext.action.name !== 'closePage')
@@ -591,7 +585,8 @@ export class Recorder extends EventEmitter<RecorderEventMap> implements Instrume
   }
 
   private async _recordAction(progress: Progress, frame: Frame, action: actions.Action) {
-    const actionInContext = await this._createActionInContext(progress, frame, action);
+    const framePath = await generateFrameSelector(progress, frame);
+    const actionInContext = this._appendContextToAction(frame, action, framePath);
     this._signalProcessor.addAction(actionInContext);
   }
 

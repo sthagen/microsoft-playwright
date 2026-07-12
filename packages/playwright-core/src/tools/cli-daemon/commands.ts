@@ -48,7 +48,9 @@ const open = declareCommand({
   options: z.object({
     browser: z.string().optional().describe('Browser or chrome channel to use, possible values: chrome, firefox, webkit, msedge.'),
     config: z.string().optional().describe('Path to the configuration file, defaults to .playwright/cli.config.json'),
+    device: z.string().optional().describe('Emulate a specific device, for example "iPhone 15".'),
     headed: z.boolean().optional().describe('Run browser in headed mode'),
+    mobile: z.boolean().optional().describe('Emulate a generic mobile device (Pixel 10 for Chromium, iPhone 17 for WebKit). Mobile pages are usually lighter, which saves tokens.'),
     persistent: z.boolean().optional().describe('Use persistent browser profile'),
     profile: z.string().optional().describe('Path to a persistent user data directory.'),
   }),
@@ -383,6 +385,20 @@ const snapshot = declareCommand({
   }),
   toolName: 'browser_snapshot',
   toolParams: ({ filename, target, depth, boxes }) => ({ filename, target, depth, boxes }),
+});
+
+const find = declareCommand({
+  name: 'find',
+  description: 'Search the page snapshot for text or a regexp, returning matching nodes with surrounding context (like search snippets)',
+  category: 'core',
+  args: z.object({
+    text: z.string().optional().describe('Plain text to search for in the page snapshot (case-insensitive substring match)'),
+  }),
+  options: z.object({
+    regex: z.string().optional().describe('Regular expression to search for in the page snapshot. Provide either a text argument or --regex, not both.'),
+  }),
+  toolName: 'browser_find',
+  toolParams: ({ text, regex }) => ({ text, regex }),
 });
 
 const generateLocator = declareCommand({
@@ -789,12 +805,13 @@ const screenshot = declareCommand({
     target: z.string().optional().describe(elementTargetDescription),
   }),
   options: z.object({
-    filename: z.string().optional().describe('File name to save the screenshot to. Defaults to `page-{timestamp}.{png|jpeg}` if not specified.'),
+    filename: z.string().optional().describe('File name to save the screenshot to. Defaults to `page-{timestamp}.{png|jpeg|webp}` if not specified.'),
+    type: z.enum(['png', 'jpeg', 'webp']).optional().describe('Image format. If unset, inferred from the filename extension, otherwise png.'),
     ['full-page']: z.boolean().optional().describe('When true, takes a screenshot of the full scrollable page, instead of the currently visible viewport.'),
     hires: z.boolean().optional().describe('When true, captures a high-resolution screenshot using device pixels (accounts for the device pixel ratio), instead of CSS pixels.'),
   }),
   toolName: 'browser_take_screenshot',
-  toolParams: ({ target, filename, ['full-page']: fullPage, hires }) => ({ filename, target, fullPage, scale: hires ? 'device' : undefined }),
+  toolParams: ({ target, filename, type, ['full-page']: fullPage, hires }) => ({ filename, target, type, fullPage, scale: hires ? 'device' : undefined }),
 });
 
 const pdfSave = declareCommand({
@@ -1149,6 +1166,7 @@ const commandsArray: AnyCommandSchema[] = [
   check,
   uncheck,
   snapshot,
+  find,
   evaluate,
   consoleList,
   dialogAccept,

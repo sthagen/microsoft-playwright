@@ -107,6 +107,11 @@ test.describe('browserName and channel', () => {
 // ---------------------------------------------------------------------------
 
 test.describe('sandbox', () => {
+  test('chromium sandbox enabled by default', async () => {
+    const config = await resolveCLIConfigForMCP({}, emptyEnv);
+    expect(config.browser.launchOptions.chromiumSandbox).toBe(true);
+  });
+
   test('chromium sandbox enabled for chrome channel', async () => {
     const config = await resolveCLIConfigForMCP({ browser: 'chrome' }, emptyEnv);
     expect(config.browser.launchOptions.chromiumSandbox).toBe(true);
@@ -186,6 +191,48 @@ test.describe('viewport', () => {
     await fs.promises.writeFile(configFile, JSON.stringify(fileConfig));
     const config = await resolveCLIConfigForMCP({ config: configFile, headless: true }, emptyEnv);
     expect(config.browser.contextOptions.viewport).toEqual({ width: 640, height: 480 });
+  });
+});
+
+test.describe('mobile', () => {
+  test('--mobile defaults to a Chromium mobile device', async () => {
+    const config = await resolveCLIConfigForMCP({ mobile: true }, emptyEnv);
+    expect(config.browser.contextOptions.isMobile).toBe(true);
+    expect(config.browser.contextOptions.userAgent).toContain('Pixel 10');
+  });
+
+  test('--mobile with a Chromium channel picks a Chromium mobile device', async () => {
+    const config = await resolveCLIConfigForMCP({ mobile: true, browser: 'msedge' }, emptyEnv);
+    expect(config.browser.contextOptions.isMobile).toBe(true);
+    expect(config.browser.contextOptions.userAgent).toContain('Pixel 10');
+  });
+
+  test('--mobile with WebKit picks a WebKit mobile device', async () => {
+    const config = await resolveCLIConfigForMCP({ mobile: true, browser: 'webkit' }, emptyEnv);
+    expect(config.browser.contextOptions.isMobile).toBe(true);
+    expect(config.browser.contextOptions.userAgent).toContain('iPhone');
+  });
+
+  test('explicit viewport still wins over --mobile', async () => {
+    const config = await resolveCLIConfigForMCP({ mobile: true, viewportSize: { width: 800, height: 600 } }, emptyEnv);
+    expect(config.browser.contextOptions.isMobile).toBe(true);
+    expect(config.browser.contextOptions.viewport).toEqual({ width: 800, height: 600 });
+  });
+
+  test('--mobile via env var', async () => {
+    const config = await resolveCLIConfigForMCP({}, { PLAYWRIGHT_MCP_MOBILE: '1' });
+    expect(config.browser.contextOptions.isMobile).toBe(true);
+    expect(config.browser.contextOptions.userAgent).toContain('Pixel 10');
+  });
+
+  test('--mobile is rejected with Firefox', async () => {
+    await expect(resolveCLIConfigForMCP({ mobile: true, browser: 'firefox' }, emptyEnv))
+        .rejects.toThrow('--mobile is not supported with the Firefox browser.');
+  });
+
+  test('--mobile cannot be combined with --device', async () => {
+    await expect(resolveCLIConfigForMCP({ mobile: true, device: 'iPhone 15' }, emptyEnv))
+        .rejects.toThrow('Cannot use --mobile together with --device');
   });
 });
 

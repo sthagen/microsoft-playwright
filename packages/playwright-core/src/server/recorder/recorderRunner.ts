@@ -14,13 +14,13 @@
  * limitations under the License.
  */
 
-import { toKeyboardModifiers } from '../codegen/language';
-import { buildFullSelector, mainFrameForAction } from './recorderUtils';
+import { toKeyboardModifiers } from '@isomorphic/codegen/language';
+import { mainFrameForAction } from './recorderUtils';
 import { Progress } from '../progress';
 
 import type { Page } from '../page';
 import type * as types from '../types';
-import type * as actions from '@recorder/actions';
+import type * as actions from '@isomorphic/codegen/actions';
 import type { Frame } from '../frames';
 
 export async function performAction(progress: Progress, pageAliases: Map<Page, string>, actionInContext: actions.ActionInContext) {
@@ -44,7 +44,7 @@ async function performActionImpl(progress: Progress, mainFrame: Frame, actionInC
     return;
   }
 
-  const selector = buildFullSelector(actionInContext.frame.framePath, action.selector);
+  const selector = action.selector;
 
   if (action.name === 'click') {
     const options = toClickOptions(action);

@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import { isInvalidSelectorError, stringifySelector } from '@isomorphic/selectorParser';
+import { isInvalidSelectorError } from '@isomorphic/selectorParser';
 import { ManualPromise } from '@isomorphic/manualPromise';
 import { parseEvaluationResultValue } from '@isomorphic/utilityScriptSerializers';
 import { getComparator } from '@utils/comparators';
@@ -53,7 +53,6 @@ import type * as types from './types';
 import type { ImageComparatorOptions } from '@utils/comparators';
 import type * as channels from './channels';
 import type { BindingPayload } from '@injected/bindingsController';
-import type { SelectorInfo } from './frameSelectors';
 
 export interface PageDelegate {
   readonly rawMouse: input.RawMouse;
@@ -106,6 +105,8 @@ export interface PageDelegate {
   // WebKit hack.
   shouldToggleStyleSheetToSyncAnimations(): boolean;
   setDockTile(image: Buffer): Promise<void>;
+  // Allow Bidi to set different ffmpeg video filter args.
+  getFFmpegVideoFilterArgs?: (options: { width: number, height: number }) => string;
 }
 
 type EmulatedSize = { screen: types.Size, viewport: types.Size };
@@ -201,6 +202,7 @@ export class Page extends SdkObject<PageEventMap> {
   readonly overlay: Overlay;
   readonly screencast: Screencast;
   _closeReason: string | undefined;
+  private _customCloseHandler?: (runBeforeUnload: boolean) => Promise<void>;
 
   constructor(delegate: PageDelegate, browserContext: BrowserContext) {
     super(browserContext, 'page');
@@ -719,28 +721,26 @@ export class Page extends SdkObject<PageEventMap> {
       return await this.screenshotter.screenshotPage(progress, options || {});
     };
 
-    const comparator = getComparator('image/png');
     let intermediateResult: {
       actual?: Buffer,
       previous?: Buffer,
       errorMessage: string,
       diff?: Buffer,
     } | undefined;
-    const areEqualScreenshots = (actual: Buffer | undefined, expected: Buffer | undefined, previous: Buffer | undefined) => {
-      const comparatorResult = actual && expected ? comparator(actual, expected, options) : undefined;
-      if (comparatorResult !== undefined && !!comparatorResult === !!options.isNot)
-        return true;
-      if (comparatorResult)
-        intermediateResult = { errorMessage: comparatorResult.errorMessage, diff: comparatorResult.diff, actual, previous };
-      return false;
-    };
 
     try {
       if (!options.expected && options.isNot)
         throw new Error('"not" matcher requires expected result');
       const format = validateScreenshotOptions(options || {});
-      if (format !== 'png')
-        throw new Error('Only PNG screenshots are supported');
+      const comparator = getComparator(`image/${format}`);
+      const areEqualScreenshots = (actual: Buffer | undefined, expected: Buffer | undefined, previous: Buffer | undefined) => {
+        const comparatorResult = actual && expected ? comparator(actual, expected, options) : undefined;
+        if (comparatorResult !== undefined && !!comparatorResult === !!options.isNot)
+          return true;
+        if (comparatorResult)
+          intermediateResult = { errorMessage: comparatorResult.errorMessage, diff: comparatorResult.diff, actual, previous };
+        return false;
+      };
       let actual: Buffer | undefined;
       let previous: Buffer | undefined;
       const pollIntervals = [0, 100, 250, 500];
@@ -832,9 +832,14 @@ export class Page extends SdkObject<PageEventMap> {
       this._lifecycle = 'closing';
       // This might throw if the browser context containing the page closes
       // while we are trying to close the page.
-      await this.delegate.closePage(false).catch(e => debugLogger.log('error', e));
+      const closePage = this._customCloseHandler ?? (runBeforeUnload => this.delegate.closePage(runBeforeUnload));
+      await closePage(false).catch(e => debugLogger.log('error', e));
     }
     await this.closedPromise;
+  }
+
+  setCustomCloseHandler(handler: ((runBeforeUnload: boolean) => Promise<void>) | undefined) {
+    this._customCloseHandler = handler;
   }
 
   async runBeforeUnload(progress: Progress) {
@@ -844,7 +849,8 @@ export class Page extends SdkObject<PageEventMap> {
   private async _runBeforeUnload() {
     // This might throw if the browser context containing the page closes
     // while we are trying to close the page.
-    await this.delegate.closePage(true).catch(e => debugLogger.log('error', e));
+    const closePage = this._customCloseHandler ?? (runBeforeUnload => this.delegate.closePage(runBeforeUnload));
+    await closePage(true).catch(e => debugLogger.log('error', e));
   }
 
   isClosed(): boolean {
@@ -1107,37 +1113,25 @@ export class InitScript extends DisposableObject {
   }
 }
 
-export async function ariaSnapshotForFrame(progress: Progress, frame: frames.Frame, options: { mode?: 'ai' | 'default', track?: string, doNotRenderActive?: boolean, info?: SelectorInfo, depth?: number, boxes?: boolean } = {}): Promise<{ full: string[], incremental?: string[] }> {
-  // Only await the topmost navigations, inner frames will be empty when racing.
+export async function ariaSnapshotForFrame(progress: Progress, frame: frames.Frame, selector: string | undefined, options: { mode?: 'ai' | 'default', doNotRenderActive?: boolean, depth?: number, boxes?: boolean } = {}): Promise<string[]> {
   const snapshot = await frame.retryWithProgressAndTimeouts(progress, [1000, 2000, 4000, 8000], async (progress, continuePolling) => {
     try {
-      const context = await progress.race(frame.utilityContext());
-      const injectedScript = await progress.race(context.injectedScript());
-      const snapshotOrRetry = await progress.race(injectedScript.evaluate((injected, options) => {
-        if (options.info) {
-          const element = injected.querySelector(options.info.parsed, injected.document, options.info.strict);
-          if (!element)
-            return false;
-          return injected.incrementalAriaSnapshot(element, options);
-        }
-        const node = injected.document.body;
-        if (!node)
-          return true;
-        return injected.incrementalAriaSnapshot(node, options);
+      // Note: the resolved frame might differ from the original |frame|.
+      const resolved = await progress.race(frame.selectors.callOnSelector(selector || 'body', { strict: true }, ({ injected, elements }, ariaOptions) => {
+        return injected.ariaSnapshotWithRefs(elements[0], ariaOptions);
       }, {
         mode: options.mode ?? 'default',
-        refPrefix: frame.seq ? 'f' + frame.seq : '',
-        track: options.track,
         doNotRenderActive: options.doNotRenderActive,
-        info: options.info,
         depth: options.depth,
         boxes: options.boxes,
       }));
-      if (snapshotOrRetry === true)
+      if (!resolved) {
+        if (selector)
+          throw new NonRecoverableDOMError(`Selector "${selector}" does not match any element`);
+        // Retry only for the main frame "body" being absent, so that `page.ariaSnapshot()` does not fail.
         return continuePolling;
-      if (snapshotOrRetry === false)
-        throw new NonRecoverableDOMError(`Selector "${stringifySelector(options.info!.parsed)}" does not match any element`);
-      return snapshotOrRetry;
+      }
+      return { ...resolved.result, resolvedFrame: resolved.frame };
     } catch (e) {
       if (frame.isNonRetriableError(e))
         throw e;
@@ -1148,56 +1142,32 @@ export async function ariaSnapshotForFrame(progress: Progress, frame: frames.Fra
   // Only fetch child snapshots for iframes that were actually rendered (not filtered by depth).
   const renderedIframeRefs = snapshot.iframeRefs.filter(ref => ref in snapshot.iframeDepths);
   progress.setAllowConcurrentOrNestedRaces(true);
-  const childSnapshotPromises = renderedIframeRefs.map(ref => {
-    const iframeDepth = snapshot.iframeDepths[ref];
-    const childDepth = options.depth ? options.depth - iframeDepth - 1 : undefined;
-    return ariaSnapshotFrameRef(progress, frame, ref, { ...options, depth: childDepth });
+  const childSnapshotPromises = renderedIframeRefs.map(async ref => {
+    const childDepth = options.depth ? options.depth - snapshot.iframeDepths[ref] - 1 : undefined;
+    const frameBodySelector = `aria-ref=${ref} >> internal:control=enter-frame >> body`;
+    try {
+      return await ariaSnapshotForFrame(progress, snapshot.resolvedFrame, frameBodySelector, { ...options, depth: childDepth });
+    } catch {
+      return [];
+    }
   });
   const childSnapshots = await Promise.all(childSnapshotPromises);
   progress.setAllowConcurrentOrNestedRaces(false);
 
-  const full = [];
-  let incremental: string[] | undefined;
-
-  if (snapshot.incremental !== undefined) {
-    incremental = snapshot.incremental.split('\n');
-    for (let i = 0; i < renderedIframeRefs.length; i++) {
-      const childSnapshot = childSnapshots[i];
-      if (childSnapshot.incremental)
-        incremental.push(...childSnapshot.incremental);
-      else if (childSnapshot.full.length)
-        incremental.push('- <changed> iframe [ref=' + renderedIframeRefs[i] + ']:', ...childSnapshot.full.map(l => '  ' + l));
-    }
-  }
-
-  for (const line of snapshot.full.split('\n')) {
+  const lines = [];
+  for (const line of snapshot.text.split('\n')) {
     const match = line.match(/^(\s*)- iframe (?:\[active\] )?\[ref=([^\]]*)\]/);
     if (!match) {
-      full.push(line);
+      lines.push(line);
       continue;
     }
-
     const leadingSpace = match[1];
     const ref = match[2];
-    const childSnapshot = childSnapshots[renderedIframeRefs.indexOf(ref)] ?? { full: [] };
-    full.push(childSnapshot.full.length ? line + ':' : line);
-    full.push(...childSnapshot.full.map(l => leadingSpace + '  ' + l));
+    const childSnapshot = childSnapshots[renderedIframeRefs.indexOf(ref)] ?? [];
+    lines.push(childSnapshot.length ? line + ':' : line);
+    lines.push(...childSnapshot.map(l => leadingSpace + '  ' + l));
   }
-
-  return { full, incremental };
-}
-
-async function ariaSnapshotFrameRef(progress: Progress, parentFrame: frames.Frame, frameRef: string, options: { mode?: 'ai' | 'default', track?: string, doNotRenderActive?: boolean, depth?: number }): Promise<{ full: string[], incremental?: string[] }> {
-  const frameSelector = `aria-ref=${frameRef} >> internal:control=enter-frame`;
-  const frameBodySelector = `${frameSelector} >> body`;
-  const child = await progress.race(parentFrame.selectors.resolveFrameForSelector(frameBodySelector, { strict: true }));
-  if (!child)
-    return { full: [] };
-  try {
-    return await ariaSnapshotForFrame(progress, child.frame, { ...options, info: undefined });
-  } catch {
-    return { full: [] };
-  }
+  return lines;
 }
 
 function ensureArrayLimit<T>(array: T[], limit: number): T[] {

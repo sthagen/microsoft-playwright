@@ -384,8 +384,8 @@ const DOWNLOAD_PATHS: Record<string, DownloadPaths> = {
     'mac14-arm64': 'builds/webkit/%s/webkit-mac-14-arm64.zip',
     'mac15': 'builds/webkit/%s/webkit-mac-15.zip',
     'mac15-arm64': 'builds/webkit/%s/webkit-mac-15-arm64.zip',
-    'mac26': 'builds/webkit/%s/webkit-mac-15.zip',
-    'mac26-arm64': 'builds/webkit/%s/webkit-mac-15-arm64.zip',
+    'mac26': 'builds/webkit/%s/webkit-mac-26.zip',
+    'mac26-arm64': 'builds/webkit/%s/webkit-mac-26-arm64.zip',
     'win64': 'builds/webkit/%s/webkit-win64.zip',
   },
   'ffmpeg': {
@@ -1101,7 +1101,7 @@ export class Registry {
       return await installDependenciesLinux(targets, dryRun);
   }
 
-  async install(executablesToInstall: Executable[], options?: { force?: boolean }) {
+  async install(executablesToInstall: Executable[], options?: { force?: boolean, gc?: boolean }) {
     const executables = this._dedupe(executablesToInstall);
     await fs.promises.mkdir(registryDirectory, { recursive: true });
     const lockfilePath = path.join(registryDirectory, '__dirlock');
@@ -1127,7 +1127,7 @@ export class Registry {
       await fs.promises.writeFile(path.join(linksDir, calculateSha1(PACKAGE_PATH)), PACKAGE_PATH);
 
       // Remove stale browsers.
-      if (!getAsBooleanFromENV('PLAYWRIGHT_SKIP_BROWSER_GC'))
+      if (options?.gc !== false && !getAsBooleanFromENV('PLAYWRIGHT_SKIP_BROWSER_GC'))
         await this._validateInstallationCache(linksDir);
 
       // Install browsers for this package.

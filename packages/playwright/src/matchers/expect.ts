@@ -14,9 +14,7 @@
  * limitations under the License.
  */
 
-import path from 'path';
-
-import { parseStackFrame, captureRawStack } from '@isomorphic/stackTrace';
+import { parseStackFrame, captureRawStack } from '@utils/stackTrace';
 import { escapeWithQuotes, isString } from '@isomorphic/stringUtils';
 import { pollAgainstDeadline } from '@isomorphic/timeoutRunner';
 import { currentZone } from '@utils/zones';
@@ -88,7 +86,7 @@ import type { MatcherContext, MatchersObject, RawMatcherFn } from './expectLibra
 import type { MatcherAttachment, MatcherResult } from './matcherHint';
 import type { ExpectMatcherStateInternal } from './matchers';
 import type { Expect } from '../../types/test';
-import type { StackFrame } from '@isomorphic/stackTrace';
+import type { StackFrame } from '@utils/stackTrace';
 
 interface ExpectStep {
   complete(result: {
@@ -144,7 +142,7 @@ export type ExpectConfig = {
 };
 
 function unfilteredStackTrace(rawStack: string[]): StackFrame[] {
-  return rawStack.map(frame => parseStackFrame(frame, path.sep, !!process.env.PWDEBUGIMPL)).filter(f => !!f);
+  return rawStack.map(frame => parseStackFrame(frame)).filter(f => !!f);
 }
 
 let _expectConfig: ExpectConfig = { testInfo: null, filteredStackTrace: unfilteredStackTrace, ignoreSnapshots: false, updateSnapshots: 'missing' };

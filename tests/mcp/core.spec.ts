@@ -30,6 +30,33 @@ test('browser_navigate', async ({ client, server }) => {
   });
 });
 
+test('browser_navigate surfaces non-2xx HTTP status', async ({ client, server }) => {
+  server.setRoute('/locked', (req, res) => {
+    res.writeHead(402, { 'Content-Type': 'text/html' });
+    res.end('<title>Payment Required</title><body>Pay up</body>');
+  });
+
+  expect(await client.callTool({
+    name: 'browser_navigate',
+    arguments: { url: server.PREFIX + '/locked' },
+  })).toHaveResponse({
+    page: expect.stringContaining(`- HTTP status: 402 Payment Required`),
+  });
+
+  // A redirect to a 2xx page must not carry a status line: the intermediate
+  // 302 hop must not leak, and the final 2xx landing renders nothing.
+  server.setRoute('/redirect', (req, res) => {
+    res.writeHead(302, { location: server.HELLO_WORLD });
+    res.end();
+  });
+  expect(await client.callTool({
+    name: 'browser_navigate',
+    arguments: { url: server.PREFIX + '/redirect' },
+  })).not.toHaveResponse({
+    page: expect.stringContaining('HTTP status'),
+  });
+});
+
 test('browser_navigate blocks file:// URLs by default', async ({ client }) => {
   expect(await client.callTool({
     name: 'browser_navigate',
@@ -82,7 +109,7 @@ test('browser_navigate can navigate to file:// URLs allowUnrestrictedFileAccess 
     arguments: { url },
   })).toHaveResponse({
     page: expect.stringContaining(`- Page URL: ${url}`),
-    snapshot: `- generic [ref=e2]: Test file content`,
+    snapshot: `- generic [active] [ref=e1]: Test file content`,
   });
 });
 

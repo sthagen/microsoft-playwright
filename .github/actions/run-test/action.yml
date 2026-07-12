@@ -39,7 +39,7 @@ inputs:
 runs:
   using: composite
   steps:
-    - uses: actions/setup-node@v4
+    - uses: actions/setup-node@v6
       with:
         node-version: ${{ inputs.node-version }}
     - run: |
@@ -98,4 +98,9 @@ runs:
       uses: ./.github/actions/upload-blob-report
       with:
         report_dir: blob-report
+        job_name: ${{ inputs.bot-name }}-${{ inputs.shard-index }}
+    - name: Upload parquet report
+      if: ${{ !cancelled() && env.PLAYWRIGHT_SETUP_COMPLETE == 'true' }}
+      uses: ./.github/actions/upload-parquet-report
+      with:
         job_name: ${{ inputs.bot-name }}-${{ inputs.shard-index }}

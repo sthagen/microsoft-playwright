@@ -15,7 +15,7 @@
  */
 
 import { config as loadEnv } from 'dotenv';
-loadEnv({ path: path.join(__dirname, '..', '..', '.env'), override: true });
+loadEnv({ path: path.join(__dirname, '..', '..', '.env'), override: true, quiet: true });
 process.env.PWTEST_UNDER_TEST = '1';
 
 import { type Config, type PlaywrightTestOptions, type PlaywrightWorkerOptions, type ReporterDescription } from '@playwright/test';
@@ -47,6 +47,7 @@ const reporters = () => {
     ['dot'],
     ['json', { outputFile: path.join(outputDir, 'report.json') }],
     ['blob'],
+    ['../config/parquetReporter.ts'],
   ] : [
     ['html', { open: 'on-failure', title: 'Playwright Library Tests' }]
   ];

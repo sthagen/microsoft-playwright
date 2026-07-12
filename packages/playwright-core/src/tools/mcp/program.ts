@@ -46,6 +46,7 @@ export function decorateMCPCommand(command: Command) {
       .option('--config <path>', 'path to the configuration file.')
       .option('--console-level <level>', 'level of console messages to return: "error", "warning", "info", "debug". Each level includes the messages of more severe levels.', enumParser.bind(null, '--console-level', ['error', 'warning', 'info', 'debug']))
       .option('--device <device>', 'device to emulate, for example: "iPhone 15"')
+      .option('--mobile', 'emulate a generic mobile device (Pixel 10 for Chromium, iPhone 17 for WebKit). Mobile pages are usually lighter, which saves tokens. Cannot be combined with --device.')
       .option('--executable-path <path>', 'path to the browser executable.')
       .option('--extension', 'Connect to a running browser instance (Edge/Chrome only). Requires the "Playwright Extension" to be installed.')
       .option('--endpoint <endpoint>', 'Bound browser endpoint to connect to.')
@@ -132,12 +133,18 @@ export function decorateMCPCommand(command: Command) {
           },
           disposed: async backend => {
             clientCount--;
-            if (sharedBrowserPromise && clientCount > 0)
+            const browserContext = (backend as BrowserBackend).browserContext;
+
+            if (sharedBrowserPromise && clientCount > 0) {
+              if (config.browser.isolated) {
+                testDebug('close context');
+                await browserContext.close().catch(() => { });
+              }
               return;
+            }
 
             testDebug('close browser');
             sharedBrowserPromise = undefined;
-            const browserContext = (backend as BrowserBackend).browserContext;
             await browserContext.close().catch(() => { });
             await browserContext.browser()?.close().catch(() => { });
           }

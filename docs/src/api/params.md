@@ -1001,11 +1001,19 @@ The default value can be changed by using the [`method: BrowserContext.setDefaul
 
 ## wait-for-event-signal
 * langs: js
-* since: v1.61
+* since: v1.62
 - `signal` <[AbortSignal]>
 
 Allows to cancel the waiting using an [`AbortSignal`](https://developer.mozilla.org/en-US/docs/Web/API/AbortSignal). If the signal is aborted, the waiting will be aborted and the operation will throw an error.
-Note that providing a signal does not disable the default timeout; pass `timeout: 0` to disable the timeout entirely.
+Note that providing a signal does not disable the default timeout, which can be changed using [`method: BrowserContext.setDefaultTimeout`]; pass `timeout: 0` to disable the timeout entirely.
+
+## input-signal
+* langs: js
+* since: v1.62
+- `signal` <[AbortSignal]>
+
+Allows to cancel the operation using an [`AbortSignal`](https://developer.mozilla.org/en-US/docs/Web/API/AbortSignal). If the signal is aborted, the operation will be aborted and throw an error.
+Note that providing a signal does not disable the default timeout, which can be changed using [`method: BrowserContext.setDefaultTimeout`] or [`method: Page.setDefaultTimeout`]; pass `timeout: 0` to disable the timeout entirely.
 
 ## android-timeout
 * langs: js
@@ -1019,6 +1027,16 @@ using the [`method: AndroidDevice.setDefaultTimeout`] method.
 - `timeout` <[float]>
 
 Time to retry the assertion for in milliseconds. Defaults to `timeout` in `TestConfig.expect`.
+
+## js-assertions-signal
+* langs: js
+* since: v1.62
+- `signal` <[AbortSignal]>
+
+An optional [`AbortSignal`](https://developer.mozilla.org/en-US/docs/Web/API/AbortSignal) that
+can cancel the assertion. Aborting the signal fails the assertion like a timeout: if the signal
+is aborted while the assertion is retrying, or is already aborted before the assertion starts,
+the assertion fails without retrying further.
 
 ## csharp-java-python-assertions-timeout
 * langs: java, python, csharp
@@ -1285,7 +1303,8 @@ Defaults to `false`.
 ## screenshot-option-quality
 - `quality` <[int]>
 
-The quality of the image, between 0-100. Not applicable to `png` images.
+The quality of the image, between 0-100. Not applicable to `png` images. For `jpeg` the default is `80`.
+For `webp`, a quality of `100` (the default) produces a lossless image, while lower values use lossy compression.
 
 ## screenshot-option-path
 - `path` <[path]>
@@ -1295,7 +1314,7 @@ relative path, then it is resolved relative to the current working directory. If
 saved to the disk.
 
 ## screenshot-option-type
-- `type` <[ScreenshotType]<"png"|"jpeg">>
+- `type` <[ScreenshotType]<"png"|"jpeg"|"webp">>
 
 Specify screenshot type, defaults to `png`.
 

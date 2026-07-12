@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import type { TestStatus, Metadata, PlaywrightTestOptions, PlaywrightWorkerOptions, ReporterDescription, FullConfig, FullProject, Location, WorkerInfo } from './test';
+import type { TestStatus, Metadata, PlaywrightTestOptions, PlaywrightWorkerOptions, ReporterDescription, FullConfig, FullProject, Location, WorkerInfo, TestAnnotation } from './test';
 export type { FullConfig, FullProject, TestStatus, Location, WorkerInfo } from './test';
 
 /**
@@ -42,6 +42,7 @@ export interface FullResult {
 }
 
 export interface Reporter {
+  preprocessSuite?(config: FullConfig, suite: Suite): Promise<{ implementsSharding?: boolean } | undefined | void> | { implementsSharding?: boolean } | void;
   onEnd?(result: FullResult): Promise<{ status?: FullResult['status'] } | undefined | void> | void;
 }
 
@@ -94,7 +95,7 @@ export interface JSONReportSpec {
 
 export interface JSONReportTest {
   timeout: number;
-  annotations: { type: string, description?: string }[],
+  annotations: TestAnnotation[],
   expectedStatus: TestStatus;
   projectName: string;
   projectId: string;
@@ -126,7 +127,7 @@ export interface JSONReportTestResult {
     body?: string;
     contentType: string;
   }[];
-  annotations: { type: string, description?: string }[];
+  annotations: TestAnnotation[];
   errorLocation?: Location;
 }
 

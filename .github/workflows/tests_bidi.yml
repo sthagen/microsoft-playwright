@@ -55,6 +55,8 @@ jobs:
     - run: npx playwright install --with-deps chromium
     - if: matrix.channel == 'moz-firefox-nightly'
       run: |
+        sudo apt-get update
+        sudo apt-get install -y libavcodec60
         echo "BIDI_FFPATH=$(npx -y @puppeteer/browsers install firefox@nightly | tail -n1 | sed 's/^[^ ]* *//')" >> "$GITHUB_ENV"
     - name: Run tests
       run: xvfb-run --auto-servernum --server-args="-screen 0 1280x960x24" -- npm run biditest -- --retries=${{ matrix.isPullRequest && 2 || 0 }} --project=${{ matrix.channel }}*
@@ -75,6 +77,12 @@ jobs:
         name: json-report-${{ matrix.channel }}
         path: test-results/report.json
         retention-days: 7
+
+    - name: Upload parquet report
+      if: ${{ !cancelled() }}
+      uses: ./.github/actions/upload-parquet-report
+      with:
+        job_name: ${{ matrix.channel }}
 
     - name: Azure Login
       if: ${{ !cancelled() && github.ref == 'refs/heads/main' }}

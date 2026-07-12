@@ -53,7 +53,6 @@ const test = base.extend<TestOptions>({
         const tlsSocket = req.socket as import('tls').TLSSocket;
         const parts: { key: string, value: any }[] = [];
         parts.push({ key: 'alpn-protocol', value: tlsSocket.alpnProtocol });
-        // @ts-expect-error https://github.com/DefinitelyTyped/DefinitelyTyped/discussions/62336
         parts.push({ key: 'servername', value: tlsSocket.servername });
         const cert = tlsSocket.getPeerCertificate();
         if (tlsSocket.authorized) {
@@ -345,7 +344,7 @@ test.describe('browser', () => {
 
   test('should not intercept TLS for origins without a client certificate', {
     annotation: { type: 'issue', description: 'https://github.com/microsoft/playwright/issues/41106' },
-  }, async ({ browser, asset, httpsServer, browserName, platform }) => {
+  }, async ({ browser, asset, httpsServer, browserName, platform, channel }) => {
     // If the proxy intercepted this origin, the browser would see its self-signed cert (CN=localhost)
     // instead of the real server cert (CN=playwright-test).
     const page = await browser.newPage({
@@ -358,7 +357,7 @@ test.describe('browser', () => {
     const response = await page.goto(httpsServer.EMPTY_PAGE);
     expect(response.ok()).toBe(true);
     const subjectName = (await response.securityDetails()).subjectName;
-    if (browserName === 'webkit' && platform === 'win32') {
+    if (browserName === 'webkit' && platform === 'win32' && channel !== 'webkit-wsl') {
       // Don't ask me why this is "true" on Windows WebKit.
       expect(subjectName).toContain('true');
     } else {

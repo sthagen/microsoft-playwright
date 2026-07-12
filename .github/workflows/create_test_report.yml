@@ -4,21 +4,29 @@ on:
     workflows: ["tests 1", "tests 2", "tests others", "MCP"]
     types:
       - completed
+
+permissions: {}
+
 jobs:
   merge-reports:
     permissions:
       pull-requests: write
       checks: write
       statuses: write
-      id-token: write   # This is required for OIDC login (azure/login) to succeed
       contents: read    # This is required for actions/checkout to succeed
     if: ${{ github.event.workflow_run.event == 'pull_request' || github.event.workflow_run.event == 'push' }}
     runs-on: ubuntu-latest
+    outputs:
+      pr_number: ${{ steps.pr.outputs.number }}
+      has_failures: ${{ steps.failures.outputs.has_failures }}
+      triage_allowed: ${{ steps.pr.outputs.triage_allowed }}
+    env:
+      MARKDOWN_OUTPUT_FILE: ${{ github.workspace }}/report.md
     steps:
     - uses: actions/checkout@v6
     - uses: actions/setup-node@v6
       with:
-        node-version: 20
+        node-version: lts/*
     - run: npm ci
     - run: npm run build
 
@@ -32,31 +40,68 @@ jobs:
       run: |
         npx playwright merge-reports --config .github/workflows/merge.config.ts ./all-blob-reports
       env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         NODE_OPTIONS: --max-old-space-size=8192
-        HTML_REPORT_URL: 'https://mspwblobreport.z1.web.core.windows.net/run-${{ github.event.workflow_run.id }}-${{ github.event.workflow_run.run_attempt }}-${{ github.sha }}/index.html'
         WORKFLOW_RUN_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
 
-    - name: Azure Login
-      uses: azure/login@v3
-      with:
-        client-id: ${{ secrets.AZURE_BLOB_REPORTS_CLIENT_ID }}
-        tenant-id: ${{ secrets.AZURE_BLOB_REPORTS_TENANT_ID }}
-        subscription-id: ${{ secrets.AZURE_BLOB_REPORTS_SUBSCRIPTION_ID }}
-
-    - name: Upload HTML report to Azure
-      id: upload-report
+    - name: Detect failures
+      id: failures
       run: |
-        REPORT_DIR='run-${{ github.event.workflow_run.id }}-${{ github.event.workflow_run.run_attempt }}-${{ github.sha }}'
-        azcopy cp --recursive "./playwright-report/*" "https://mspwblobreport.blob.core.windows.net/\$web/$REPORT_DIR"
-        REPORT_URL="https://mspwblobreport.z1.web.core.windows.net/$REPORT_DIR/index.html"
-        echo "Report url: $REPORT_URL"
-        echo "reportUrl=$REPORT_URL" >> "$GITHUB_OUTPUT"
+        if [ -f "$MARKDOWN_OUTPUT_FILE" ] && grep -qE '\*\*[0-9]+ failed\*\*' "$MARKDOWN_OUTPUT_FILE"; then
+          echo "has_failures=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "has_failures=false" >> "$GITHUB_OUTPUT"
+        fi
+
+    - name: Upload HTML report
+      id: upload-report
+      uses: actions/upload-artifact@v7
+      with:
+        path: playwright-report/index.html
+        archive: false   # Upload as a single, browser-openable file (no zip)
+        retention-days: 30
+
+    # The triggering workflow ran on a pull_request event, but workflow_run.pull_requests is
+    # empty for PRs from forks, so resolve the number from the head ref instead. gh's head
+    # filter wants "owner:branch" for forks but a bare branch for same-repo PRs.
+    - name: Resolve PR number and triage allow-list
+      if: ${{ github.event.workflow_run.event == 'pull_request' }}
+      id: pr
       env:
-        AZCOPY_AUTO_LOGIN_TYPE: AZCLI
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        HEAD_REF: ${{ github.event.workflow_run.head_repository.full_name == github.repository && github.event.workflow_run.head_branch || format('{0}:{1}', github.event.workflow_run.head_repository.owner.login, github.event.workflow_run.head_branch) }}
+      run: |
+        NUMBER=$(gh pr view --repo "${{ github.repository }}" "$HEAD_REF" --json number --jq '.number' 2>/dev/null || true)
+        echo "number=$NUMBER" >> "$GITHUB_OUTPUT"
+
+        AUTHOR=$(gh pr view --repo "${{ github.repository }}" "$HEAD_REF" --json author --jq '.author.login' 2>/dev/null || true)
+        ALLOWED="github-actions[bot] pavelfeldman yury-s dgozman Skn0tt dcrousso"
+        TRIAGE_ALLOWED=false
+        for a in $ALLOWED; do
+          if [ "$a" = "$AUTHOR" ]; then TRIAGE_ALLOWED=true; break; fi
+        done
+        echo "triage_allowed=$TRIAGE_ALLOWED" >> "$GITHUB_OUTPUT"
+
+    - name: Post report comment to PR
+      if: ${{ steps.pr.outputs.number }}
+      uses: actions/github-script@v8
+      env:
+        HTML_REPORT_URL: ${{ steps.upload-report.outputs.artifact-url }}
+        PR_NUMBER: ${{ steps.pr.outputs.number }}
+      with:
+        github-token: ${{ secrets.GITHUB_TOKEN }}
+        script: |
+          const { postReportComment } = require('./tests/config/postReportComment');
+          await postReportComment({
+            github,
+            context,
+            core,
+            reportFile: process.env.MARKDOWN_OUTPUT_FILE,
+            prNumber: +process.env.PR_NUMBER,
+            reportUrl: process.env.HTML_REPORT_URL,
+          });
 
     - name: Publish Report URL as Commit Status
-      uses: actions/github-script@v8
+      uses: actions/github-script@v9
       with:
         script: |
           await github.rest.repos.createCommitStatus({
@@ -64,6 +109,101 @@ jobs:
             repo: context.repo.repo,
             sha: '${{ github.event.workflow_run.head_sha }}',
             state: 'success',
-            target_url: '${{ steps.upload-report.outputs.reportUrl }}',
+            target_url: '${{ steps.upload-report.outputs.artifact-url }}',
             context: 'HTML Report (${{ github.event.workflow_run.name }})',
           });
+
+  triage:
+    needs: merge-reports
+    if: ${{ needs.merge-reports.outputs.has_failures == 'true' && needs.merge-reports.outputs.pr_number && needs.merge-reports.outputs.triage_allowed == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      copilot-requests: write
+    outputs:
+      has_draft: ${{ steps.triage.outputs.has_draft }}
+      pr_number: ${{ needs.merge-reports.outputs.pr_number }}
+    env:
+      PR_NUMBER: ${{ needs.merge-reports.outputs.pr_number }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+
+      - name: Install Copilot CLI
+        run: npm install -g @github/copilot
+
+      - name: Triage failures with Copilot CLI
+        id: triage
+        env:
+          COPILOT_GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p output
+          PROMPT=$(cat <<EOF
+          Come up with a verdict on the CI test failures on pull request #$PR_NUMBER of ${{ github.repository }}: are they likely caused by this PR? Follow the pr-ci-triage guide (.github/workflows/pr-ci-triage.md) for the analysis.
+
+          Write your verdict to output/triage.md as a PR comment, in the format the guide specifies and the playwright-bot-voice register (.claude/skills/playwright-bot-voice/SKILL.md).
+
+          Do not post anything yourself — a later workflow step posts output/triage.md.
+          EOF
+          )
+          copilot \
+            --allow-all-tools \
+            --allow-all-paths \
+            --no-ask-user \
+            --enable-all-github-mcp-tools \
+            --share=output/copilot-session.md \
+            --model claude-opus-4.8 \
+            --max-ai-credits 500 \
+            -p "$PROMPT"
+
+          if [ -s output/triage.md ]; then
+            echo "has_draft=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_draft=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Add session transcript to job summary
+        if: ${{ always() }}
+        run: |
+          {
+            echo "## CI triage session transcript (PR #$PR_NUMBER)"
+            echo ''
+            cat "output/copilot-session.md" 2>/dev/null || echo "(no transcript)"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload output
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-triage-${{ needs.merge-reports.outputs.pr_number }}
+          path: output/triage.md
+          if-no-files-found: warn
+
+  post:
+    needs: triage
+    if: needs.triage.outputs.has_draft == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    env:
+      PR_NUMBER: ${{ needs.triage.outputs.pr_number }}
+      GH_TOKEN: ${{ github.token }}
+      WORKFLOW_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+    steps:
+      - name: Download triage output
+        uses: actions/download-artifact@v4
+        with:
+          name: ci-triage-${{ needs.triage.outputs.pr_number }}
+          path: output
+
+      - name: Post triage comment
+        run: |
+          printf '\n\n<sub>Triaged by the Playwright bot - [agent run](%s)</sub>\n<!-- playwright-ci-triage -->\n' "$WORKFLOW_URL" >> output/triage.md
+          gh issue comment "$PR_NUMBER" --repo "${{ github.repository }}" --body-file output/triage.md
+
