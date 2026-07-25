@@ -15,6 +15,7 @@
  * limitations under the License.
  */
 
+import { kNoTimeout } from './timeoutSettings';
 import type { Page } from './page';
 import type * as api from '../../types/types';
 import type * as channels from './channels';
@@ -27,23 +28,23 @@ export class Keyboard implements api.Keyboard {
   }
 
   async down(key: string) {
-    await this._page._channel.keyboardDown({ key }, undefined);
+    await this._page._channel.keyboardDown({ key }, kNoTimeout);
   }
 
   async up(key: string) {
-    await this._page._channel.keyboardUp({ key }, undefined);
+    await this._page._channel.keyboardUp({ key }, kNoTimeout);
   }
 
   async insertText(text: string) {
-    await this._page._channel.keyboardInsertText({ text }, undefined);
+    await this._page._channel.keyboardInsertText({ text }, kNoTimeout);
   }
 
   async type(text: string, options: channels.PageKeyboardTypeOptions = {}) {
-    await this._page._channel.keyboardType({ text, ...options }, undefined);
+    await this._page._channel.keyboardType({ text, ...options }, kNoTimeout);
   }
 
   async press(key: string, options: channels.PageKeyboardPressOptions = {}) {
-    await this._page._channel.keyboardPress({ key, ...options }, undefined);
+    await this._page._channel.keyboardPress({ key, ...options }, kNoTimeout);
   }
 }
 
@@ -55,19 +56,19 @@ export class Mouse implements api.Mouse {
   }
 
   async move(x: number, y: number, options: { steps?: number } = {}) {
-    await this._page._channel.mouseMove({ x, y, ...options }, undefined);
+    await this._page._channel.mouseMove({ x, y, ...options }, kNoTimeout);
   }
 
   async down(options: channels.PageMouseDownOptions = {}) {
-    await this._page._channel.mouseDown({ ...options }, undefined);
+    await this._page._channel.mouseDown({ ...options }, kNoTimeout);
   }
 
   async up(options: channels.PageMouseUpOptions = {}) {
-    await this._page._channel.mouseUp(options, undefined);
+    await this._page._channel.mouseUp(options, kNoTimeout);
   }
 
   async click(x: number, y: number, options: channels.PageMouseClickOptions = {}) {
-    await this._page._channel.mouseClick({ x, y, ...options }, undefined);
+    await this._page._channel.mouseClick({ x, y, ...options }, kNoTimeout);
   }
 
   async dblclick(x: number, y: number, options: Omit<channels.PageMouseClickOptions, 'clickCount'> = {}) {
@@ -77,7 +78,7 @@ export class Mouse implements api.Mouse {
   }
 
   async wheel(deltaX: number, deltaY: number) {
-    await this._page._channel.mouseWheel({ deltaX, deltaY }, undefined);
+    await this._page._channel.mouseWheel({ deltaX, deltaY }, kNoTimeout);
   }
 }
 
@@ -89,6 +90,6 @@ export class Touchscreen implements api.Touchscreen {
   }
 
   async tap(x: number, y: number) {
-    await this._page._channel.touchscreenTap({ x, y }, undefined);
+    await this._page._channel.touchscreenTap({ x, y }, kNoTimeout);
   }
 }

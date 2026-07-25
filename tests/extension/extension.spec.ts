@@ -15,6 +15,7 @@
  */
 
 import fs from 'fs/promises';
+import path from 'path';
 
 import { test, testWithOldExtensionVersion, expect, extensionId, clickAllowAndSelect, connectAndNavigate, startWithExtensionFlag } from './extension-fixtures';
 import { utils } from '../../packages/playwright-core/lib/coreBundle';
@@ -41,27 +42,7 @@ test(`navigate with extension`, async ({ startExtensionClient, server }) => {
   });
 });
 
-test(`connect.html protocolVersion search param matches fixture option`, async ({ startExtensionClient, server, protocolVersion }) => {
-  const { browserContext, client } = await startExtensionClient();
-
-  const confirmationPagePromise = browserContext.waitForEvent('page', page => {
-    return page.url().startsWith(`chrome-extension://${extensionId}/connect.html`);
-  });
-
-  client.callTool({
-    name: 'browser_navigate',
-    arguments: { url: server.HELLO_WORLD },
-  }).catch(() => {});
-
-  const selectorPage = await confirmationPagePromise;
-  const url = new URL(selectorPage.url());
-  expect(url.searchParams.get('protocolVersion')).toBe(String(protocolVersion));
-});
-
-test(`protocolVersion defaults to 2`, async ({ startExtensionClient, server, protocolVersion }) => {
-  const saved = process.env.PLAYWRIGHT_EXTENSION_PROTOCOL;
-  delete process.env.PLAYWRIGHT_EXTENSION_PROTOCOL;
-
+test(`connect.html requests protocol version 2`, async ({ startExtensionClient, server }) => {
   const { browserContext, client } = await startExtensionClient();
 
   const confirmationPagePromise = browserContext.waitForEvent('page', page => {
@@ -76,12 +57,9 @@ test(`protocolVersion defaults to 2`, async ({ startExtensionClient, server, pro
   const selectorPage = await confirmationPagePromise;
   const url = new URL(selectorPage.url());
   expect(url.searchParams.get('protocolVersion')).toBe('2');
-
-  process.env.PLAYWRIGHT_EXTENSION_PROTOCOL = saved;
 });
 
-test(`browser_run_code_unsafe can evaluate in a web worker`, async ({ startExtensionClient, server, protocolVersion }) => {
-  test.skip(protocolVersion === 1, 'Multi-tab not supported in protocol v1');
+test(`browser_run_code_unsafe can evaluate in a web worker`, async ({ startExtensionClient, server }) => {
   server.setContent('/worker.js', `
     self.onmessage = (e) => self.postMessage('echo:' + e.data);
     self.workerName = 'mcp-worker';
@@ -232,6 +210,23 @@ test(`extension needs update`, async ({ startExtensionClient, server }) => {
   await expect(confirmationPage.locator('.status-banner')).toContainText(`Playwright client trying to connect requires newer extension version`);
 });
 
+test(`extension rejects outdated client protocol version`, async ({ startExtensionClient, server }) => {
+  const { browserContext, client } = await startExtensionClient({ PLAYWRIGHT_EXTENSION_PROTOCOL: '1' });
+
+  const confirmationPagePromise = browserContext.waitForEvent('page', page => {
+    return page.url().startsWith(`chrome-extension://${extensionId}/connect.html`);
+  });
+
+  // The call hangs as the extension never connects to the relay.
+  client.callTool({
+    name: 'browser_navigate',
+    arguments: { url: server.HELLO_WORLD },
+  }).catch(() => {});
+
+  const confirmationPage = await confirmationPagePromise;
+  await expect(confirmationPage.locator('.status-banner')).toContainText(`The client uses an unsupported protocol version. Update Playwright MCP or CLI to the latest version.`);
+});
+
 test(`custom executablePath skips local extension check`, {
   annotation: { type: 'issue', description: 'https://github.com/microsoft/playwright-mcp/issues/1590' },
 }, async ({ startClient, server }) => {
@@ -251,6 +246,31 @@ test(`custom executablePath skips local extension check`, {
   await expect(async () => {
     const output = await fs.readFile(test.info().outputPath('output.txt'), 'utf8');
     expect(output).toMatch(new RegExp(`Custom exec args.*chrome-extension://${extensionId}/connect\\.html\\?`));
+  }).toPass();
+});
+
+test(`launches the profile that has the extension`, {
+  annotation: { type: 'issue', description: 'https://github.com/microsoft/playwright/issues/41916' },
+}, async ({ startClient, server }, testInfo) => {
+  // The extension lives in a non-default profile only; the launch must target that profile via
+  // `--profile-directory`, otherwise Chrome opens the default profile without the extension and the
+  // connection hangs. A fake executable records the launch arguments, so no real browser is needed.
+  const userDataDir = testInfo.outputPath('multi-profile');
+  await fs.mkdir(path.join(userDataDir, 'Default'), { recursive: true });
+  await fs.mkdir(path.join(userDataDir, 'Profile 1', 'Extensions', extensionId), { recursive: true });
+
+  const executablePath = testInfo.outputPath('echo.sh');
+  await fs.writeFile(executablePath, '#!/bin/bash\necho "Custom exec args: $@" > "$(dirname "$0")/output.txt"', { mode: 0o755 });
+
+  const { client } = await startClient({
+    args: [`--extension`, `--executable-path=${executablePath}`],
+    env: { PWTEST_EXTENSION_USER_DATA_DIR: userDataDir },
+  });
+
+  client.callTool({ name: 'browser_navigate', arguments: { url: server.HELLO_WORLD } }).catch(() => {});
+  await expect(async () => {
+    const output = await fs.readFile(testInfo.outputPath('output.txt'), 'utf8');
+    expect(output).toContain(`--profile-directory=Profile 1`);
   }).toPass();
 });
 
@@ -328,7 +348,9 @@ test(`bypass connection dialog with token`, async ({ browserWithExtension, start
   const token = await page.locator('.auth-token-code').textContent();
   const [, value] = token?.split('=') || [];
 
+  const clientName = 'token-bypass-client';
   const { client } = await startClient({
+    clientName,
     args: [`--extension`],
     env: {
       PLAYWRIGHT_MCP_EXTENSION_TOKEN: value,
@@ -344,39 +366,7 @@ test(`bypass connection dialog with token`, async ({ browserWithExtension, start
   expect(await navigateResponse).toHaveResponse({
     snapshot: expect.stringContaining(`- generic [active] [ref=f1e1]: Hello, world!`),
   });
-});
 
-test(`pending connection closed when client disconnects`, async ({ startExtensionClient, server, protocolVersion }) => {
-  // v2 does not open a WS to the relay before the user clicks Allow, so there
-  // is no pending connection to tear down when the client dies pre-Allow.
-  test.skip(protocolVersion === 2, 'v2 defers the relay connection until Allow');
-  const { browserContext, client } = await startExtensionClient();
-
-  const confirmationPagePromise = browserContext.waitForEvent('page', page => {
-    return page.url().startsWith(`chrome-extension://${extensionId}/connect.html`);
-  });
-
-  client.callTool({
-    name: 'browser_navigate',
-    arguments: { url: server.HELLO_WORLD },
-  }).catch(() => {});
-
-  const selectorPage = await confirmationPagePromise;
-  // Wait for the tab list to appear so we know the relay connection is established.
-  await selectorPage.locator('.tab-item').first().waitFor();
-
-  // Close the MCP client, which tears down the relay WebSocket.
-  await client.close();
-
-  await expect(selectorPage.locator('.status-banner')).toContainText('Pending client connection closed.');
-  await expect(selectorPage).toHaveTitle('Playwright Extension');
-
-  // The connect tab should be removed from the Playwright group.
-  await expect.poll(async () => {
-    return selectorPage.evaluate(async () => {
-      const chrome = (window as any).chrome;
-      const tab = await chrome.tabs.getCurrent();
-      return tab?.groupId ?? -1;
-    });
-  }).toBe(-1);
+  await page.goto(`chrome-extension://${extensionId}/status.html`);
+  await expect(page.locator('.client-info')).toContainText(`Connected to "${clientName}"`);
 });

@@ -476,6 +476,9 @@ Path to the JavaScript file. If `path` is a relative path, then it is resolved r
 
 Script to be evaluated in all pages in the browser context. Optional.
 
+### option: BrowserContext.addInitScript.exposeFunctions = %%-js-init-script-expose-functions-%%
+* since: v1.62
+
 ## method: BrowserContext.backgroundPages
 * since: v1.11
 * deprecated: Background pages have been removed from Chromium together with Manifest V2 extensions.
@@ -1307,12 +1310,6 @@ When set to `minimal`, only record information necessary for routing from HAR. T
 
 Optional setting to control resource content management. If `attach` is specified, resources are persisted as separate files or entries in the ZIP archive. If `embed` is specified, content is stored inline the HAR file.
 
-### option: BrowserContext.routeFromHAR.interceptAPIRequests
-* since: v1.62
-- `interceptAPIRequests` <[boolean]>
-
-If set to `true`, requests made via [APIRequestContext] (such as [`property: BrowserContext.request`] or [`property: Page.request`]) are also served from the HAR file. By default these requests are sent to the network, matching the behavior prior to v1.62. Defaults to `false` for backward compatibility.
-
 
 ## async method: BrowserContext.routeWebSocket
 * since: v1.48
@@ -1523,9 +1520,12 @@ its geolocation.
 
 ### param: BrowserContext.setHTTPCredentials.httpCredentials
 * since: v1.8
-- `httpCredentials` <[null]|[Object]>
+- `httpCredentials` <[null]|[Object]|[Array]<[Object]>>
   - `username` <[string]>
   - `password` <[string]>
+  - `origin` ?<[string]> Restrain sending http credentials on specific origin (scheme://host:port).
+
+Pass an array to use different credentials for different origins. The first entry that matches the request origin is used, and entries with no origin match any request.
 
 ## async method: BrowserContext.setOffline
 * since: v1.8

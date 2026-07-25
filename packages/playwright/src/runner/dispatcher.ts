@@ -36,28 +36,47 @@ export class Dispatcher {
   // Worker slot is claimed when it has jobDispatcher assigned.
   private _workerSlots: { worker?: WorkerHost, jobDispatcher?: JobDispatcher }[] = [];
   private _queue: TestGroup[] = [];
+  private _isolatedJobs = new Set<TestGroup>();
   private _workerLimitPerProjectId = new Map<string, number>();
   private _queuedOrRunningHashCount = new Map<string, number>();
   private _finished = new ManualPromise<void>();
   private _isStopped = true;
+  // Teardown phases keep running after maxFailures, so that cleanup is not skipped.
+  private _ignoreMaxFailures: boolean;
 
   private _testRun: TestRun;
 
   private _extraEnvByProjectId: EnvByProjectId = new Map();
   private _producedEnvByProjectId: EnvByProjectId = new Map();
 
-  constructor(testRun: TestRun) {
+  constructor(testRun: TestRun, options: { ignoreMaxFailures?: boolean } = {}) {
     this._testRun = testRun;
+    this._ignoreMaxFailures = !!options.ignoreMaxFailures;
     for (const project of testRun.config.projects) {
       if (project.workers)
         this._workerLimitPerProjectId.set(project.id, project.workers);
     }
   }
 
+  private _heldLocks(): Set<string> {
+    const heldLocks = new Set<string>();
+    for (const slot of this._workerSlots) {
+      for (const lock of slot.jobDispatcher?.job.locks || [])
+        heldLocks.add(lock);
+    }
+    return heldLocks;
+  }
+
   private _findFirstJobToRun() {
+    const heldLocks = this._heldLocks();
     // Always pick the first job that can be run while respecting the project worker limit.
     for (let index = 0; index < this._queue.length; index++) {
       const job = this._queue[index];
+      // Isolated retries only run one at a time, after all other jobs have finished.
+      if (this._isolatedJobs.has(job) && this._workerSlots.some(w => !!w.jobDispatcher))
+        continue;
+      if (job.locks.some(lock => heldLocks.has(lock)))
+        continue;
       const projectIdWorkerLimit = this._workerLimitPerProjectId.get(job.projectId);
       if (!projectIdWorkerLimit)
         return index;
@@ -68,17 +87,22 @@ export class Dispatcher {
     return -1;
   }
 
-  private _scheduleJob() {
+  private _scheduleJobs() {
+    // Finishing a job releases its locks, which may unblock multiple queued jobs.
+    while (this._scheduleJob()) {}
+  }
+
+  private _scheduleJob(): boolean {
     // NOTE: keep this method synchronous for easier reasoning.
 
-    // 0. No more running jobs after stop.
-    if (this._isStopped)
-      return;
+    // 0. No more running jobs after stop, no scheduling without a free worker.
+    if (this._isStopped || !this._workerSlots.some(w => !w.jobDispatcher))
+      return false;
 
     // 1. Find a job to run.
     const jobIndex = this._findFirstJobToRun();
     if (jobIndex === -1)
-      return;
+      return false;
     const job = this._queue[jobIndex];
 
     // 2. Find a worker with the same hash, or just some free worker.
@@ -87,12 +111,12 @@ export class Dispatcher {
       workerIndex = this._workerSlots.findIndex(w => !w.jobDispatcher);
     if (workerIndex === -1) {
       // No workers available, bail out.
-      return;
+      return false;
     }
 
     // 3. Claim both the job and the worker slot.
     this._queue.splice(jobIndex, 1);
-    const jobDispatcher = new JobDispatcher(job, this._testRun, () => this.stop().catch(() => {}));
+    const jobDispatcher = new JobDispatcher(job, this._testRun, this._ignoreMaxFailures ? undefined : () => this.stop().catch(() => {}));
     this._workerSlots[workerIndex].jobDispatcher = jobDispatcher;
 
     // 4. Run the job. This is the only async operation.
@@ -101,10 +125,11 @@ export class Dispatcher {
       // 5. Release the worker slot.
       this._workerSlots[workerIndex].jobDispatcher = undefined;
 
-      // 6. Check whether we are done or should schedule another job.
+      // 6. Check whether we are done or should schedule other jobs.
       this._checkFinished();
-      this._scheduleJob();
+      this._scheduleJobs();
     });
+    return true;
   }
 
   private async _runJobInWorker(index: number, jobDispatcher: JobDispatcher) {
@@ -150,13 +175,17 @@ export class Dispatcher {
     else if (this._isWorkerRedundant(worker))
       void worker.stop();
 
-    // 5. Possibly queue a new job with leftover tests and/or retries.
-    if (!this._isStopped && result.newJob) {
-      if (this._testRun.config.retryStrategy === 'deferred')
-        this._queue.push(result.newJob);
-      else
-        this._queue.unshift(result.newJob);
-      this._updateCounterForWorkerHash(result.newJob.workerHash, +1);
+    // 5. Possibly queue new jobs with leftover tests and/or retries.
+    if (!this._isStopped) {
+      if (result.remainingJob) {
+        this._queue.unshift(result.remainingJob);
+        this._updateCounterForWorkerHash(result.remainingJob.workerHash, +1);
+      }
+      if (result.isolatedRetriesJob) {
+        this._isolatedJobs.add(result.isolatedRetriesJob);
+        this._queue.push(result.isolatedRetriesJob);
+        this._updateCounterForWorkerHash(result.isolatedRetriesJob.workerHash, +1);
+      }
     }
   }
 
@@ -196,14 +225,13 @@ export class Dispatcher {
     this._isStopped = false;
     this._workerSlots = [];
     // 0. Stop right away if we have reached max failures.
-    if (this._testRun.hasReachedMaxFailures())
+    if (!this._ignoreMaxFailures && this._testRun.hasReachedMaxFailures())
       void this.stop();
     // 1. Allocate workers.
     for (let i = 0; i < this._testRun.config.config.workers; i++)
       this._workerSlots.push({});
     // 2. Schedule enough jobs.
-    for (let i = 0; i < this._workerSlots.length; i++)
-      this._scheduleJob();
+    this._scheduleJobs();
     this._checkFinished();
     // 3. More jobs are scheduled when the worker becomes free.
     // 4. Wait for all jobs to finish.
@@ -280,11 +308,12 @@ export class Dispatcher {
 }
 
 class JobDispatcher {
-  jobResult = new ManualPromise<{ newJob?: TestGroup, didFail: boolean }>();
+  jobResult = new ManualPromise<{ remainingJob?: TestGroup, isolatedRetriesJob?: TestGroup, didFail: boolean }>();
 
   readonly job: TestGroup;
   private _testRun: TestRun;
-  private _stopCallback: () => void;
+  // Missing callback means that maxFailures should be ignored, e.g. in teardown phases.
+  private _onMaxFailuresReached?: () => void;
   private _listeners: RegisteredListener[] = [];
   private _failedTests = new Set<testNs.TestCase>();
   private _failedWithNonRetriableError = new Set<testNs.TestCase|testNs.Suite>();
@@ -294,11 +323,15 @@ class JobDispatcher {
   private _workerIndex = 0;
   private _currentlyRunning: { test: testNs.TestCase, result: TestResult } | undefined;
 
-  constructor(job: TestGroup, testRun: TestRun, stopCallback: () => void) {
+  constructor(job: TestGroup, testRun: TestRun, onMaxFailuresReached?: () => void) {
     this.job = job;
     this._testRun = testRun;
-    this._stopCallback = stopCallback;
+    this._onMaxFailuresReached = onMaxFailuresReached;
     this._remainingByTestId = new Map(this.job.tests.map(e => [e.id, e]));
+  }
+
+  private _isStoppedByMaxFailures() {
+    return !!this._onMaxFailuresReached && this._testRun.hasReachedMaxFailures();
   }
 
   private _onTestBegin(params: ipc.TestBeginPayload) {
@@ -317,7 +350,7 @@ class JobDispatcher {
   }
 
   private _onTestEnd(params: ipc.TestEndPayload) {
-    if (this._testRun.hasReachedMaxFailures()) {
+    if (this._isStoppedByMaxFailures()) {
       // Do not show more than one error to avoid confusion, but report
       // as interrupted to indicate that we did actually start the test.
       params.status = 'interrupted';
@@ -449,7 +482,7 @@ class JobDispatcher {
     for (const test of this._remainingByTestId.values()) {
       if (!testIds.has(test.id))
         continue;
-      if (!this._testRun.hasReachedMaxFailures()) {
+      if (!this._isStoppedByMaxFailures()) {
         this._failTestWithErrors(test, errors);
         errors = []; // Only report errors for the first test.
       }
@@ -537,14 +570,21 @@ class JobDispatcher {
     }
 
     const remaining = [...this._remainingByTestId.values()];
+    const isolatedRetries: testNs.TestCase[] = [];
     for (const test of retryCandidates) {
-      if (test.results.length < test.retries + 1)
-        remaining.push(test);
+      if (test.results.length < test.retries + 1) {
+        // Immediate retries run together with the remaining tests, in a single job.
+        if (this._testRun.config.retryStrategy === 'immediate')
+          remaining.push(test);
+        else
+          isolatedRetries.push(test);
+      }
     }
 
-    // This job is over, we will schedule another one.
-    const newJob = remaining.length ? { ...this.job, tests: remaining } : undefined;
-    this._finished({ didFail: true, newJob });
+    // This job is over, we will schedule new jobs for the remaining tests and isolated retries.
+    const remainingJob = remaining.length ? { ...this.job, tests: remaining } : undefined;
+    const isolatedRetriesJob = isolatedRetries.length ? { ...this.job, tests: isolatedRetries } : undefined;
+    this._finished({ didFail: true, remainingJob, isolatedRetriesJob });
   }
 
   onExit(data: ProcessExitData) {
@@ -554,7 +594,7 @@ class JobDispatcher {
     this._onDone({ skipTestsDueToSetupFailure: [], fatalErrors: [], unexpectedExitError });
   }
 
-  private _finished(result: { newJob?: TestGroup, didFail: boolean }) {
+  private _finished(result: { remainingJob?: TestGroup, isolatedRetriesJob?: TestGroup, didFail: boolean }) {
     eventsHelper.removeEventListeners(this._listeners);
     this.jobResult.resolve(result);
   }
@@ -624,7 +664,7 @@ class JobDispatcher {
     // with skipped tests mixed in-between non-skipped. This makes
     // for a better reporter experience.
     const allTestsSkipped = this.job.tests.every(test => test.expectedStatus === 'skipped');
-    if (allTestsSkipped && !this._testRun.hasReachedMaxFailures()) {
+    if (allTestsSkipped && !this._isStoppedByMaxFailures()) {
       for (const test of this.job.tests) {
         const result = test._appendTestResult();
         this._testRun.reporter.onTestBegin?.(test, result);
@@ -644,12 +684,12 @@ class JobDispatcher {
 
   private _reportTestEnd(test: testNs.TestCase, result: TestResult) {
     this._testRun.reporter.onTestEnd?.(test, result);
-    const hadMaxFailures = this._testRun.hasReachedMaxFailures();
+    const hadMaxFailures = this._isStoppedByMaxFailures();
     // Test is considered failing after the last retry.
     if (test.outcome() === 'unexpected' && test.results.length > test.retries)
       ++this._testRun.failedTestCount;
-    if (!hadMaxFailures && this._testRun.hasReachedMaxFailures()) {
-      this._stopCallback();
+    if (!hadMaxFailures && this._isStoppedByMaxFailures()) {
+      this._onMaxFailuresReached?.();
       this._testRun.reporter.onError?.({ message: colors.red(`Testing stopped early after ${this._testRun.config.config.maxFailures} maximum allowed failures.`) });
     }
   }

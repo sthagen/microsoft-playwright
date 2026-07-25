@@ -192,7 +192,8 @@ async function runWatch() {
   for (const { files, from, to, ignored } of copyFiles) {
     const watcher = chokidar.watch([filePath(files)], { ignored });
     watcher.on('all', (event, file) => {
-      copyFile(file, from, to);
+      if (event === 'add' || event === 'change')
+        copyFile(file, from, to);
     });
   }
 
@@ -1055,14 +1056,9 @@ copyFiles.push({
   to: 'packages/playwright/lib',
 });
 
+// Agent skills ship as-is: SKILL.md, referenced docs and templates.
 copyFiles.push({
-  files: 'packages/playwright-core/src/tools/cli-client/skill/**/*.md',
-  from: 'packages/playwright-core/src',
-  to: 'packages/playwright-core/lib',
-});
-
-copyFiles.push({
-  files: 'packages/playwright-core/src/tools/trace/SKILL.md',
+  files: 'packages/playwright-core/src/tools/skills/**/*',
   from: 'packages/playwright-core/src',
   to: 'packages/playwright-core/lib',
 });

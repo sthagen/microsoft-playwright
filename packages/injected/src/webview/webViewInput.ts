@@ -66,6 +66,10 @@ function markAndDispatch(node: EventTarget, event: Event): boolean {
   return node.dispatchEvent(event);
 }
 
+function isFrameOwner(element: Element | null): element is HTMLIFrameElement | HTMLFrameElement {
+  return !!element && (element.localName === 'iframe' || element.localName === 'frame');
+}
+
 // Legacy WebKit-only KeyboardEvent.keyIdentifier (a DOM Level 3 draft property
 // dropped by every other engine). It cannot be supplied via the constructor, so
 // compute it from the virtual key code and define it on the event before
@@ -145,6 +149,19 @@ export class WebViewInput {
     return el;
   }
 
+  positionInIFrame(x: number, y: number): { iframe: HTMLIFrameElement | HTMLFrameElement | null, x: number, y: number } {
+    const target = this._deepElementFromPoint(x, y);
+    if (!isFrameOwner(target))
+      return { iframe: null, x, y };
+    const frameRect = target.getBoundingClientRect();
+    const frameStyle = this._window.getComputedStyle(target);
+    return {
+      iframe: target,
+      x: x - frameRect.left - parseFloat(frameStyle.borderLeftWidth) - parseFloat(frameStyle.paddingLeft),
+      y: y - frameRect.top - parseFloat(frameStyle.borderTopWidth) - parseFloat(frameStyle.paddingTop),
+    };
+  }
+
   // The focused element may live inside one or more shadow roots, where
   // document.activeElement only reports the outermost shadow host.
   private _deepActiveElement(): Element | null {
@@ -152,6 +169,11 @@ export class WebViewInput {
     while (active && active.shadowRoot && active.shadowRoot.activeElement)
       active = active.shadowRoot.activeElement;
     return active;
+  }
+
+  activeIFrame(): HTMLIFrameElement | HTMLFrameElement | null {
+    const active = this._deepActiveElement();
+    return isFrameOwner(active) ? active : null;
   }
 
   private _insertText(target: Element | null, text: string) {
@@ -269,6 +291,7 @@ export class WebViewInput {
       metaKey: params.metaKey,
     };
     const pointer: PointerEventInit = { ...base, pointerId: 1, pointerType: 'mouse', isPrimary: true };
+    let lastTask = Promise.resolve();
     const prev = this._hoverTarget;
     if (prev !== target) {
       if (prev && prev.isConnected) {
@@ -280,11 +303,27 @@ export class WebViewInput {
       void this._postTask(() => markAndDispatch(target, new PointerEvent('pointerover', { ...pointer, relatedTarget: prev })));
       void this._postTask(() => markAndDispatch(target, new MouseEvent('mouseover', { ...base, relatedTarget: prev })));
       void this._postTask(() => markAndDispatch(target, new PointerEvent('pointerenter', { ...pointer, bubbles: false, cancelable: false, relatedTarget: prev })));
-      void this._postTask(() => markAndDispatch(target, new MouseEvent('mouseenter', { ...base, bubbles: false, cancelable: false, relatedTarget: prev })));
+      lastTask = this._postTask(() => markAndDispatch(target, new MouseEvent('mouseenter', { ...base, bubbles: false, cancelable: false, relatedTarget: prev })));
       this._hoverTarget = target;
     }
+    // Movements within an <iframe> are not dispatched in the owner context.
+    if (isFrameOwner(target))
+      return lastTask;
     void this._postTask(() => markAndDispatch(target, new PointerEvent('pointermove', pointer)));
     return this._postTask(() => markAndDispatch(target, new MouseEvent('mousemove', base)));
+  }
+
+  clearHover(): Promise<void> {
+    const prev = this._hoverTarget;
+    this._hoverTarget = null;
+    if (!prev?.isConnected)
+      return Promise.resolve();
+    const base: MouseEventInit = { bubbles: true, cancelable: true, view: this._window, relatedTarget: null };
+    const pointer: PointerEventInit = { ...base, pointerId: 1, pointerType: 'mouse', isPrimary: true };
+    void this._postTask(() => markAndDispatch(prev, new PointerEvent('pointerout', pointer)));
+    void this._postTask(() => markAndDispatch(prev, new MouseEvent('mouseout', base)));
+    void this._postTask(() => markAndDispatch(prev, new PointerEvent('pointerleave', { ...pointer, bubbles: false, cancelable: false })));
+    return this._postTask(() => markAndDispatch(prev, new MouseEvent('mouseleave', { ...base, bubbles: false, cancelable: false })));
   }
 
   mouseEvent(params: MouseEventParams): Promise<void> {
@@ -350,7 +389,7 @@ export class WebViewInput {
       metaKey: params.metaKey,
     };
     try {
-      const touch = new Touch({ identifier: 0, target, clientX: params.x, clientY: params.y, screenX: params.x, screenY: params.y, pageX: params.x, pageY: params.y, radiusX: 1, radiusY: 1, rotationAngle: 0, force: 1 });
+      const touch = new Touch({ identifier: 0, target, clientX: params.x, clientY: params.y, screenX: params.x, screenY: params.y, pageX: params.x + this._window.scrollX, pageY: params.y + this._window.scrollY, radiusX: 1, radiusY: 1, rotationAngle: 0, force: 1 });
       void this._postTask(() => markAndDispatch(target, new TouchEvent('touchstart', { ...init, touches: [touch], targetTouches: [touch], changedTouches: [touch] })));
       void this._postTask(() => markAndDispatch(target, new TouchEvent('touchend', { ...init, touches: [], targetTouches: [], changedTouches: [touch] })));
     } catch {

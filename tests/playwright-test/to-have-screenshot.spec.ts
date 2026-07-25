@@ -18,7 +18,8 @@ import * as fs from 'fs';
 import { PNG } from 'playwright-core/lib/utilsBundle';
 import * as path from 'path';
 import { pathToFileURL } from 'url';
-import { test, expect, createImage, paintBlackPixels } from './playwright-test-fixtures';
+import { test, expect, createImage, createWebpImage, paintBlackPixels } from './playwright-test-fixtures';
+import { utils } from '../../packages/playwright-core/lib/coreBundle';
 import { comparePNGs } from '../config/comparator';
 
 test.describe.configure({ mode: 'parallel' });
@@ -57,6 +58,43 @@ test('should fail to screenshot a page with infinite animation', async ({ runInl
   expect(fs.existsSync(testInfo.outputPath('test-results', 'a-is-a-test', 'is-a-test-1-previous.png'))).toBe(true);
   expect(fs.existsSync(testInfo.outputPath('test-results', 'a-is-a-test', 'is-a-test-1-diff.png'))).toBe(true);
   expect(fs.existsSync(testInfo.outputPath('a.spec.js-snapshots', 'is-a-test-1.png'))).toBe(false);
+});
+
+test('should fail like a timeout when aborted', async ({ runInlineTest }) => {
+  const infiniteAnimationURL = pathToFileURL(path.join(__dirname, '../assets/rotate-z.html'));
+  const result = await runInlineTest({
+    ...playwrightConfig({}),
+    'a.spec.js': `
+      const { test, expect } = require('@playwright/test');
+      test('is a test', async ({ page }) => {
+        await page.goto('${infiniteAnimationURL}');
+        const controller = new AbortController();
+        const promise = expect(page).toHaveScreenshot({ animations: 'allow', timeout: 5000, signal: controller.signal });
+        await page.waitForTimeout(500);
+        controller.abort(new Error('stop it'));
+        await promise;
+      });
+    `
+  });
+  expect(result.exitCode).toBe(1);
+  expect(result.output).toContain(`operation was aborted: stop it`);
+  expect(result.output).not.toContain(`Timeout 5000ms exceeded`);
+});
+
+test('should fail when already aborted', async ({ runInlineTest }) => {
+  const result = await runInlineTest({
+    ...playwrightConfig({}),
+    'a.spec.js': `
+      const { test, expect } = require('@playwright/test');
+      test('is a test', async ({ page }) => {
+        const controller = new AbortController();
+        controller.abort(new Error('already aborted'));
+        await expect(page).toHaveScreenshot({ signal: controller.signal });
+      });
+    `
+  });
+  expect(result.exitCode).toBe(1);
+  expect(result.output).toContain(`Error: The assertion was aborted: already aborted`);
 });
 
 test('should disable animations by default', async ({ runInlineTest }, testInfo) => {
@@ -568,6 +606,86 @@ test('should fail when given unsupported snapshot name', async ({ runInlineTest 
   });
   expect(result.exitCode).toBe(1);
   expect(result.output).toContain(`Screenshot name "snapshot.jpeg" must have a '.png' or '.webp' extension`);
+});
+
+test('should pass when webp screenshot matches expectation', async ({ runInlineTest }) => {
+  const result = await runInlineTest({
+    ...playwrightConfig({
+      snapshotPathTemplate: '__screenshots__/{testFilePath}/{arg}{ext}',
+    }),
+    '__screenshots__/a.spec.js/snapshot.webp': createWebpImage(IMG_WIDTH, IMG_HEIGHT, 255, 255, 255),
+    'a.spec.js': `
+      const { test, expect } = require('@playwright/test');
+      test('is a test', async ({ page }) => {
+        await expect(page).toHaveScreenshot('snapshot.webp');
+      });
+    `
+  });
+  expect(result.exitCode).toBe(0);
+});
+
+test('should write missing webp expectation', async ({ runInlineTest }, testInfo) => {
+  const result = await runInlineTest({
+    ...playwrightConfig({
+      snapshotPathTemplate: '__screenshots__/{testFilePath}/{arg}{ext}',
+    }),
+    'a.spec.js': `
+      const { test, expect } = require('@playwright/test');
+      test('is a test', async ({ page }) => {
+        await expect(page).toHaveScreenshot('snapshot.webp');
+      });
+    `
+  });
+  expect(result.exitCode).toBe(1);
+  const snapshotOutputPath = testInfo.outputPath('__screenshots__', 'a.spec.js', 'snapshot.webp');
+  expect(result.output).toContain(`A snapshot doesn't exist at ${snapshotOutputPath}, writing actual`);
+  const image = utils.decodeWebp(fs.readFileSync(snapshotOutputPath));
+  expect(image.width).toBe(IMG_WIDTH);
+  expect(image.height).toBe(IMG_HEIGHT);
+});
+
+test('should fail when webp screenshot is different pixels', async ({ runInlineTest }, testInfo) => {
+  const result = await runInlineTest({
+    ...playwrightConfig({
+      snapshotPathTemplate: '__screenshots__/{testFilePath}/{arg}{ext}',
+    }),
+    '__screenshots__/a.spec.js/snapshot.webp': createWebpImage(IMG_WIDTH, IMG_HEIGHT, 255, 0, 0),
+    'a.spec.js': `
+      const { test, expect } = require('@playwright/test');
+      test('is a test', async ({ page }) => {
+        await expect(page).toHaveScreenshot('snapshot.webp', { timeout: 2000 });
+      });
+    `
+  });
+  expect(result.exitCode).toBe(1);
+  expect(result.output).toContain('Error: expect(page).toHaveScreenshot(expected)');
+  expect(result.output).toContain('are different');
+  expect(fs.existsSync(testInfo.outputPath('test-results', 'a-is-a-test', 'snapshot-actual.webp'))).toBe(true);
+  expect(fs.existsSync(testInfo.outputPath('test-results', 'a-is-a-test', 'snapshot-expected.webp'))).toBe(true);
+  expect(fs.existsSync(testInfo.outputPath('test-results', 'a-is-a-test', 'snapshot-diff.webp'))).toBe(true);
+});
+
+test('should update webp snapshot with the update-snapshots flag', async ({ runInlineTest }, testInfo) => {
+  const result = await runInlineTest({
+    ...playwrightConfig({
+      snapshotPathTemplate: '__screenshots__/{testFilePath}/{arg}{ext}',
+    }),
+    '__screenshots__/a.spec.js/snapshot.webp': createWebpImage(IMG_WIDTH, IMG_HEIGHT, 255, 0, 0),
+    'a.spec.js': `
+      const { test, expect } = require('@playwright/test');
+      test('is a test', async ({ page }) => {
+        await expect(page).toHaveScreenshot('snapshot.webp');
+      });
+    `
+  }, { 'update-snapshots': true });
+  expect(result.exitCode).toBe(0);
+  const snapshotOutputPath = testInfo.outputPath('__screenshots__', 'a.spec.js', 'snapshot.webp');
+  expect(result.output).toContain(`${snapshotOutputPath} is re-generated, writing actual.`);
+  const image = utils.decodeWebp(fs.readFileSync(snapshotOutputPath));
+  expect(image.width).toBe(IMG_WIDTH);
+  expect(image.height).toBe(IMG_HEIGHT);
+  // The red expectation should have been replaced with the actual white page.
+  expect([...image.data.subarray(0, 4)]).toEqual([255, 255, 255, 255]);
 });
 
 test('should fail when given buffer', async ({ runInlineTest }) => {

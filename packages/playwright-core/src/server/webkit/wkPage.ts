@@ -398,7 +398,11 @@ export class WKPage implements PageDelegate {
       eventsHelper.addEventListener(this._session, 'Network.loadingFailed', e => this._onLoadingFailed(this._session, e)),
       eventsHelper.addEventListener(this._session, 'Network.webSocketCreated', e => this._page.frameManager.onWebSocketCreated(e.requestId, e.url)),
       eventsHelper.addEventListener(this._session, 'Network.webSocketWillSendHandshakeRequest', event => this._onWebSocketWillSendHandshakeRequest(event)),
-      eventsHelper.addEventListener(this._session, 'Network.webSocketHandshakeResponseReceived', e => this._page.frameManager.onWebSocketResponse(e.requestId, e.response.status, e.response.statusText, headersObjectToArray(e.response.headers, ',', wkSetCookieSeparator))),
+      eventsHelper.addEventListener(this._session, 'Network.webSocketHandshakeResponseReceived', e => this._page.frameManager.onWebSocketResponse(e.requestId, {
+        status: e.response.status,
+        statusText: e.response.statusText,
+        headers: headersObjectToArray(e.response.headers, ',', wkSetCookieSeparator),
+      })),
       eventsHelper.addEventListener(this._session, 'Network.webSocketFrameSent', e => e.response.payloadData && this._page.frameManager.onWebSocketFrameSent(e.requestId, e.response.opcode, e.response.payloadData, this._timestampToWallTimeMsForWebSocket(e.requestId, e.timestamp))),
       eventsHelper.addEventListener(this._session, 'Network.webSocketFrameReceived', e => e.response.payloadData && this._page.frameManager.webSocketFrameReceived(e.requestId, e.response.opcode, e.response.payloadData, this._timestampToWallTimeMsForWebSocket(e.requestId, e.timestamp))),
       eventsHelper.addEventListener(this._session, 'Network.webSocketClosed', event => this._onWebSocketClosed(event)),
@@ -672,13 +676,10 @@ export class WKPage implements PageDelegate {
   }
 
   _calculateExtraHTTPHeaders(): types.HeadersArray {
-    const locale = this._browserContext._options.locale;
-    const headers = network.mergeHeaders([
+    return network.mergeHeaders([
       this._browserContext._options.extraHTTPHeaders,
       this._page.extraHTTPHeaders(),
-      locale ? network.singleHeader('Accept-Language', locale) : undefined,
     ]);
-    return headers;
   }
 
   async updateEmulateMedia(): Promise<void> {
@@ -751,8 +752,8 @@ export class WKPage implements PageDelegate {
   }
 
   async updateHttpCredentials() {
-    const credentials = this._browserContext._options.httpCredentials || { username: '', password: '', origin: '' };
-    await this._pageProxySession.send('Emulation.setAuthCredentials', { username: credentials.username, password: credentials.password, origin: credentials.origin });
+    const credentials = (this._browserContext._options.httpCredentials || []).map(c => ({ username: c.username, password: c.password, origin: c.origin }));
+    await this._pageProxySession.send('Emulation.setAuthCredentials', { credentials });
   }
 
   async updateFileChooserInterception() {
@@ -846,8 +847,7 @@ export class WKPage implements PageDelegate {
 
   private _toolbarHeight(): number {
     if (this._page.browserContext._browser?.options.headful) {
-      if (hostPlatform === 'mac10.15')
-        return 55;
+      // note: historically, value for mac10.15 was 55
       if (hostPlatform === 'mac26-arm64' || hostPlatform === 'mac26')
         return 69;
       return 59;
@@ -951,18 +951,18 @@ export class WKPage implements PageDelegate {
   private _onScreencastFrame(event: Protocol.Screencast.screencastFramePayload) {
     const generation = this._screencastGeneration;
     const buffer = Buffer.from(event.data, 'base64');
-    this._page.screencast.onScreencastFrame({
+    void this._page.screencast.onScreencastFrame({
       buffer,
       frameSwapWallTime: event.timestamp
         // timestamp is in seconds, we need to convert to milliseconds.
         ? event.timestamp * 1000
-        // Fallback for Debian 11 and Ubuntu 20.04 where WebKit is frozen on an older
+        // Fallback for Ubuntu 20.04 where WebKit is frozen on an older
         // version that did not send timestamp.
-        // TODO: remove this fallback when Debian 11 and Ubuntu 20.04 are EOL.
+        // TODO: remove this fallback when Ubuntu 20.04 is EOL.
         : Date.now(),
       viewportWidth: event.deviceWidth,
       viewportHeight: event.deviceHeight,
-    }, () => {
+    }).then(() => {
       this._pageProxySession.sendMayFail('Screencast.screencastFrameAck', { generation });
     });
   }
@@ -1218,7 +1218,10 @@ export class WKPage implements PageDelegate {
   _onWebSocketWillSendHandshakeRequest(event: Protocol.Network.webSocketWillSendHandshakeRequestPayload) {
     const wallTimeMs = event.walltime * 1000;
     this._timestampBaselineForWebSocket.set(event.requestId, wallTimeMs - event.timestamp * 1000);
-    this._page.frameManager.onWebSocketRequest(event.requestId, headersObjectToArray(event.request.headers), wallTimeMs);
+    this._page.frameManager.onWebSocketRequest(event.requestId, {
+      headers: headersObjectToArray(event.request.headers),
+      wallTimeMs,
+    });
   }
 
   _onWebSocketClosed(event: Protocol.Network.webSocketClosedPayload) {
@@ -1236,6 +1239,8 @@ export class WKPage implements PageDelegate {
       ['notifications', 'notifications'],
       ['clipboard-read', 'clipboard-read'],
       ['screen-wake-lock', 'screen-wake-lock'],
+      ['camera', 'camera'],
+      ['microphone', 'microphone'],
     ]);
     const filtered = permissions.map(permission => {
       const protocolPermission = webPermissionToProtocol.get(permission);

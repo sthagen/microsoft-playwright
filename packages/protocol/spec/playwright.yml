@@ -64,16 +64,8 @@ Playwright:
               pfx: binary?
         maxRedirects: int?
         httpCredentials:
-          type: object?
-          properties:
-            username: string
-            password: string
-            origin: string?
-            send:
-              type: enum?
-              literals:
-              - always
-              - unauthorized
+          type: array?
+          items: HttpCredentials
         proxy:
           type: object?
           properties:
@@ -456,6 +448,9 @@ Debugger:
             line: int?
             column: int?
 
+    enable:
+      internal: true
+
   events:
 
     pausedStateChanged:
@@ -471,6 +466,33 @@ Debugger:
                 column: int?
             title: string
             stack: string?
+
+    apiCallsUpdated:
+      parameters:
+        apiCalls:
+          type: array
+          items:
+            type: object
+            properties:
+              id: string
+              title: string
+              location:
+                type: object?
+                properties:
+                  file: string
+                  line: int?
+                  column: int?
+              newLogEntries:
+                type: array
+                items: string
+              actionPoint: Point?
+              status:
+                type: enum
+                literals:
+                - running
+                - success
+                - error
+              error: string?
 
 Dialog:
   type: interface

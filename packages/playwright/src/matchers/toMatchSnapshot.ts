@@ -55,6 +55,7 @@ type ToHaveScreenshotOptions = ToHaveScreenshotConfigOptions & {
   mask?: Array<Locator>;
   maskColor?: string;
   omitBackground?: boolean;
+  signal?: AbortSignal;
 };
 
 // Keep in sync with above (begin).
@@ -64,6 +65,7 @@ const NonConfigProperties: (keyof ToHaveScreenshotOptions)[] = [
   'mask',
   'maskColor',
   'omitBackground',
+  'signal',
 ];
 // Keep in sync with above (end).
 
@@ -362,6 +364,7 @@ export async function toHaveScreenshot(
     style,
     isNot: !!this.isNot,
     timeout,
+    signal: helper.options.signal,
     type: screenshotType,
     comparator: helper.options.comparator,
     maxDiffPixels: helper.options.maxDiffPixels,
@@ -460,6 +463,9 @@ function determineFileExtension(file: string | Buffer): string {
     return 'png';
   if (compareMagicBytes(file, [0xff, 0xd8, 0xff]))
     return 'jpg';
+  // A WebP bitstream is a RIFF container tagged 'WEBP': "RIFF????WEBP".
+  if (file.length >= 12 && file.toString('ascii', 0, 4) === 'RIFF' && file.toString('ascii', 8, 12) === 'WEBP')
+    return 'webp';
   return 'dat';
 }
 

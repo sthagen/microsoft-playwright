@@ -165,8 +165,7 @@ it('should not change default locale in another context', async ({ browser }) =>
   }
 });
 
-it('should propagate locale to workers', async ({ browser, browserName, isBidi, server }) => {
-  it.fail(browserName === 'firefox' && !isBidi, 'https://github.com/microsoft/playwright/issues/38919');
+it('should propagate locale to workers', async ({ browser, browserName, server }) => {
   const context = await browser.newContext({ locale: 'ru-RU' });
   const page = await context.newPage();
   await page.goto(server.EMPTY_PAGE);
@@ -187,5 +186,54 @@ it('should affect Intl.DateTimeFormat().resolvedOptions().locale', async ({ brow
   const page = await context.newPage();
   await page.goto(server.EMPTY_PAGE);
   expect(await page.evaluate(() => (new Intl.DateTimeFormat()).resolvedOptions().locale)).toBe('en-GB');
+  await context.close();
+});
+
+it('should send user Accept-Language header', {
+  annotation: [{ type: 'issue', description: 'https://github.com/microsoft/playwright/issues/23732' }],
+}, async ({ browser, server }) => {
+  const context = await browser.newContext({ locale: 'en-GB' });
+  const page = await context.newPage();
+  await page.goto(server.EMPTY_PAGE);
+  {
+    const reqPromise = server.waitForRequest('/empty.html');
+    await page.evaluate(async url => {
+      await fetch(url, {
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept-Language': 'de'
+        },
+      });
+    }, server.EMPTY_PAGE);
+    const req = await reqPromise;
+    expect(req.headers['accept-language']).toBe('de');
+  }
+  {
+    const reqPromise = server.waitForRequest('/empty.html');
+    await page.evaluate(async url => {
+      await fetch(url, {
+        headers: {
+          'Content-Type': 'application/json'
+        },
+      });
+    }, server.EMPTY_PAGE);
+    const req = await reqPromise;
+    expect(req.headers['accept-language']).toContain('en-GB');
+  }
+  await context.close();
+});
+
+it('should send Accept-Language header on WebSocket handshake', {
+  annotation: [{ type: 'issue', description: 'https://github.com/microsoft/playwright/issues/23732' }],
+}, async ({ browser, server, browserName, browserMajorVersion }) => {
+  it.fixme(browserName === 'firefox', 'Firefox does not send Accept-Language on WebSocket handshake');
+  it.fixme(browserName === 'chromium' && browserMajorVersion === 150, 'Chromium 150 sends the browser Accept-Language instead of the emulated locale on WebSocket handshake, https://github.com/microsoft/playwright/issues/23732');
+  const context = await browser.newContext({ locale: 'en-GB' });
+  const page = await context.newPage();
+  await page.goto(server.EMPTY_PAGE);
+  const reqPromise = server.waitForWebSocketConnectionRequest();
+  await page.evaluate(port => { new WebSocket(`ws://localhost:${port}/ws`); }, server.PORT);
+  const req = await reqPromise;
+  expect(req.headers['accept-language']).toContain('en-GB');
   await context.close();
 });

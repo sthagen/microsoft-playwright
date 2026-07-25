@@ -145,9 +145,8 @@ it('should create userDataDir if it does not exist', async ({ createUserDataDir,
 
 it('should goto about:blank on relaunched persistent context', {
   annotation: { type: 'issue', description: 'https://github.com/microsoft/playwright/issues/41216' },
-}, async ({ browserType, createUserDataDir, browserName }) => {
-  it.fixme(browserName === 'firefox');
-  it.slow();
+}, async ({ browserType, createUserDataDir, browserName, isBidi }) => {
+  it.fixme(browserName === 'firefox' && !isBidi);
 
   const userDataDir = await createUserDataDir();
 
@@ -314,5 +313,19 @@ it('exposes browser', async ({ launchPersistent }) => {
   await browser.close();
   expect(context.pages().length).toBe(0);
   // Next line should not throw.
+  await context.close();
+});
+
+it('should support storage.getDirectory()', {
+  annotation: { type: 'issue', description: 'https://github.com/microsoft/playwright/issues/18235' }
+}, async ({ launchPersistent, server }) => {
+  const { context } = await launchPersistent();
+  const page = await context.newPage();
+  await page.goto(server.EMPTY_PAGE);
+  const name = await page.evaluate(async () => {
+    const dir = await navigator.storage.getDirectory();
+    return dir.name;
+  }).catch(e => e);
+  expect(name).toBe('');
   await context.close();
 });

@@ -16,6 +16,7 @@
  */
 
 import type { Size } from '@isomorphic/types';
+import type { HttpCredentials } from '@protocol/structs';
 import type * as channels from './channels';
 export type { HeadersArray, Point, Quad, Rect, Size } from '@isomorphic/types';
 
@@ -63,9 +64,10 @@ export type ClientCertificate = {
   passphrase?: string;
 };
 
-export type BrowserContextOptions = Omit<channels.BrowserNewContextOptions, 'viewport' | 'noDefaultViewport' | 'extraHTTPHeaders' | 'clientCertificates' | 'storageState' | 'recordHar' | 'colorScheme' | 'reducedMotion' | 'forcedColors' | 'acceptDownloads' | 'contrast' | 'agent'> & {
+export type BrowserContextOptions = Omit<channels.BrowserNewContextOptions, 'viewport' | 'noDefaultViewport' | 'extraHTTPHeaders' | 'clientCertificates' | 'storageState' | 'recordHar' | 'colorScheme' | 'reducedMotion' | 'forcedColors' | 'acceptDownloads' | 'contrast' | 'agent' | 'httpCredentials'> & {
   viewport?: Size | null;
   extraHTTPHeaders?: Headers;
+  httpCredentials?: HttpCredentials | HttpCredentials[];
   logger?: Logger;
   storageState?: string | SetStorageState;
   har?: {
@@ -147,4 +149,4 @@ export type AnnotateOptions = { duration?: number, position?: AnnotatePosition, 
 export type RemoteAddr = channels.RemoteAddr;
 export type SecurityDetails = channels.SecurityDetails;
 
-export type FrameExpectParams = Omit<channels.FrameExpectParams, 'selector'|'expression'|'expectedValue'> & { expectedValue?: any };
+export type FrameExpectParams = Omit<channels.FrameExpectParams, 'selector'|'expression'|'expectedValue'> & { expectedValue?: any, timeout: number, signal?: AbortSignal };

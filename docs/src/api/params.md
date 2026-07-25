@@ -584,6 +584,18 @@ to a function, the function is automatically invoked.
 
 Function to be evaluated in the page context.
 
+## js-evaluate-expose-functions
+* langs: js
+- `exposeFunctions` <[boolean]>
+
+When set to `true`, functions passed inside [`param: arg`] are exposed in the page and can be called from the page function. Calling one returns a [Promise] of its result. Under the hood, each function is exposed via [`method: Page.exposeFunction`], so it is technically accessible from all frames and worlds of the page. Exposed functions are cleared upon the top-level navigation. Defaults to `false`, in which case functions are not serializable and passing one throws an error.
+
+## js-init-script-expose-functions
+* langs: js
+- `exposeFunctions` <[boolean]>
+
+When set to `true`, functions passed inside [`param: arg`] are exposed in the page and can be called from the init script. Calling one returns a [Promise] of its result. Under the hood, each function is exposed via [`method: Page.exposeFunction`], so it is technically accessible from all frames and worlds of the page. Unlike functions passed to [`method: Page.evaluate`], functions passed to an init script are exposed in every new document, so they survive navigations. Defaults to `false`, in which case functions are not serializable and are silently dropped.
+
 ## js-evalonselector-pagefunction
 * langs: js
 - `pageFunction` <[function]\([Element]\)|[string]>
@@ -706,7 +718,7 @@ An object containing additional HTTP headers to be sent with every request. Defa
 Whether to emulate network being offline. Defaults to `false`. Learn more about [network emulation](../emulation.md#offline).
 
 ## context-option-httpcredentials
-- `httpCredentials` <[Object]>
+- `httpCredentials` <[Object]|[Array]<[Object]>>
   * alias: HttpCredentials
   - `username` <[string]>
   - `password` <[string]>
@@ -715,6 +727,8 @@ Whether to emulate network being offline. Defaults to `false`. Learn more about 
 
 Credentials for [HTTP authentication](https://developer.mozilla.org/en-US/docs/Web/HTTP/Authentication).
 If no origin is specified, the username and password are sent to any servers upon unauthorized responses.
+
+Pass an array to use different credentials for different origins. The first entry that matches the request origin is used, and entries with no origin match any request.
 
 ## context-option-colorscheme
 * langs: js, java
@@ -835,6 +849,7 @@ When set to `minimal`, only record information necessary for routing from HAR. T
     - `duration` ?<[float]> How long each annotation is displayed in milliseconds. Defaults to `500`.
     - `position` ?<[AnnotatePosition]<"top-left"|"top"|"top-right"|"bottom-left"|"bottom"|"bottom-right">> Position of the action title overlay. Defaults to `"top-right"`.
     - `fontSize` ?<[int]> Font size of the action title in pixels. Defaults to `24`.
+    - `cursor` ?<[ScreencastCursor]<"none"|"pointer">> Cursor decoration shown for pointer actions. `"pointer"` (the default) renders a mouse pointer that animates from the previous action point to the next one. `"none"` disables the cursor decoration.
 
 Enables video recording for all pages into `recordVideo.dir` directory. If not specified videos are not recorded. Make
 sure to await [`method: BrowserContext.close`] for videos to be saved.
@@ -1410,14 +1425,6 @@ Whether to find an exact match: case-sensitive and whole-string. Default to fals
 - `role` <[AriaRole]<"alert"|"alertdialog"|"application"|"article"|"banner"|"blockquote"|"button"|"caption"|"cell"|"checkbox"|"code"|"columnheader"|"combobox"|"complementary"|"contentinfo"|"definition"|"deletion"|"dialog"|"directory"|"document"|"emphasis"|"feed"|"figure"|"form"|"generic"|"grid"|"gridcell"|"group"|"heading"|"img"|"insertion"|"link"|"list"|"listbox"|"listitem"|"log"|"main"|"marquee"|"math"|"meter"|"menu"|"menubar"|"menuitem"|"menuitemcheckbox"|"menuitemradio"|"navigation"|"none"|"note"|"option"|"paragraph"|"presentation"|"progressbar"|"radio"|"radiogroup"|"region"|"row"|"rowgroup"|"rowheader"|"scrollbar"|"search"|"searchbox"|"separator"|"slider"|"spinbutton"|"status"|"strong"|"subscript"|"superscript"|"switch"|"tab"|"table"|"tablist"|"tabpanel"|"term"|"textbox"|"time"|"timer"|"toolbar"|"tooltip"|"tree"|"treegrid"|"treeitem">>
 
 Required aria role.
-
-## locator-get-by-role-option-busy
-* since: v1.61
-- `busy` <[boolean]>
-
-An attribute that is usually set by `aria-busy`.
-
-Learn more about [`aria-busy`](https://www.w3.org/TR/wai-aria-1.2/#aria-busy).
 
 ## locator-get-by-role-option-checked
 * since: v1.27
@@ -2028,3 +2035,26 @@ In this config:
   * alias-java: ServerAddr
   - `ipAddress` <[string]> IPv4 or IPV6 address of the server.
   - `port` <[int]>
+
+## resource-timing
+- returns: <[Object]>
+  * alias-csharp: RequestTimingResult
+  * alias-java: Timing
+  - `startTime` <[float]> Request start time in milliseconds elapsed since January 1, 1970 00:00:00 UTC
+  - `domainLookupStart` <[float]> Time immediately before the client starts the domain name lookup for the
+    resource. The value is given in milliseconds relative to `startTime`, -1 if not available.
+  - `domainLookupEnd` <[float]> Time immediately after the client ends the domain name lookup for the resource.
+    The value is given in milliseconds relative to `startTime`, -1 if not available.
+  - `connectStart` <[float]> Time immediately before the client starts establishing the connection to the server
+    to retrieve the resource. The value is given in milliseconds relative to `startTime`, -1 if not available.
+  - `secureConnectionStart` <[float]> Time immediately before the client starts the handshake process to secure the
+    current connection. The value is given in milliseconds relative to `startTime`, -1 if not available.
+  - `connectEnd` <[float]> Time immediately after the client establishes the connection to the server
+    to retrieve the resource. The value is given in milliseconds relative to `startTime`, -1 if not available.
+  - `requestStart` <[float]> Time immediately before the client starts requesting the resource from the server,
+    cache, or local resource. The value is given in milliseconds relative to `startTime`, -1 if not available.
+  - `responseStart` <[float]> Time immediately after the client receives the first byte of the response from the server,
+    cache, or local resource. The value is given in milliseconds relative to `startTime`, -1 if not available.
+  - `responseEnd` <[float]> Time immediately after the client receives the last byte of the resource or immediately
+    before the transport connection is closed, whichever comes first. The value is given in milliseconds relative to
+    `startTime`, -1 if not available.

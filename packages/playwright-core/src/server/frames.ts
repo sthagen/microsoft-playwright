@@ -16,7 +16,6 @@
  */
 
 import yaml from 'yaml';
-import { assertionAbortedMessage } from '@isomorphic/abortSignal';
 import { parseAriaSnapshotUnsafe } from '@isomorphic/ariaSnapshot';
 import { isInvalidSelectorError } from '@isomorphic/selectorParser';
 import { ManualPromise } from '@isomorphic/manualPromise';
@@ -29,7 +28,7 @@ import { makeWaitForNextTask } from '@utils/task';
 import { createGuid } from '@utils/crypto';
 import { BrowserContext } from './browserContext';
 import * as dom from './dom';
-import { TimeoutError, AbortError, isTargetClosedError } from './errors';
+import { EvaluationStalledError, TimeoutError, isTargetClosedError } from './errors';
 import { prepareFilesForUpload } from './fileUploadUtils';
 import { FrameSelectors } from './frameSelectors';
 import { helper } from './helper';
@@ -85,7 +84,7 @@ export type NavigationEvent = {
   isPublic?: boolean;
 };
 
-type ElementCallback<T, R> = (injected: InjectedScript, element: Element, data: T) => R;
+type ElementCallback<T, R> = (injected: InjectedScript, element: Element, data: js.Unboxed<T>) => R;
 
 export class NavigationAbortedError extends Error {
   readonly documentId?: string;
@@ -433,29 +432,30 @@ export class FrameManager {
     this._webSockets.set(requestId, ws);
   }
 
-  onWebSocketRequest(requestId: string, headers: types.HeadersArray, wallTimeMs?: number) {
+  onWebSocketRequest(requestId: string, requestData?: { headers: types.HeadersArray, wallTimeMs?: number }) {
     const ws = this._webSockets.get(requestId);
     if (!ws)
       return;
 
-    ws.setWallTimeMs(wallTimeMs);
+    ws.setWallTimeMs(requestData?.wallTimeMs);
 
     if (ws.markAsNotified()) {
       this._page.emit(Page.Events.WebSocket, ws);
       this._page.browserContext.emit(BrowserContext.Events.WebSocket, ws, this._page);
     }
 
-    ws.requestSent(headers);
+    if (requestData)
+      ws.requestSent(requestData.headers);
   }
 
-  onWebSocketResponse(requestId: string, status: number, statusText: string, headers: types.HeadersArray) {
+  onWebSocketResponse(requestId: string, responseData: { status: number, statusText: string, headers: types.HeadersArray }) {
     const ws = this._webSockets.get(requestId);
     if (!ws)
       return;
 
-    ws.responseReceived(status, statusText, headers);
-    if (status >= 400)
-      ws.error(`${statusText}: ${status}`);
+    ws.responseReceived(responseData.status, responseData.statusText, responseData.headers);
+    if (responseData.status >= 400)
+      ws.error(`${responseData.statusText}: ${responseData.status}`);
   }
 
   onWebSocketFrameSent(requestId: string, opcode: number, data: string, wallTimeMs: number) {
@@ -585,7 +585,7 @@ export class Frame extends SdkObject<FrameEventMap> {
   _setPendingDocument(documentInfo: DocumentInfo | undefined) {
     this._pendingDocument = documentInfo;
     if (documentInfo)
-      this.invalidateNonStallingEvaluations(new Error('Navigation interrupted the evaluation'));
+      this.invalidateNonStallingEvaluations(new EvaluationStalledError('Navigation interrupted the evaluation'));
   }
 
   pendingDocument(): DocumentInfo | undefined {
@@ -601,9 +601,9 @@ export class Frame extends SdkObject<FrameEventMap> {
 
   async raceAgainstEvaluationStallingEvents<T>(cb: () => Promise<T>): Promise<T> {
     if (this._pendingDocument)
-      throw new Error('Frame is currently attempting a navigation');
+      throw new EvaluationStalledError('Frame is currently attempting a navigation');
     if (this._page.browserContext.dialogManager.hasOpenDialogsForPage(this._page))
-      throw new Error('Open JavaScript dialog prevents evaluation');
+      throw new EvaluationStalledError('Open JavaScript dialog prevents evaluation');
 
     const promise = new ManualPromise<T>();
     this._raceAgainstEvaluationStallingEventsPromises.add(promise);
@@ -619,7 +619,7 @@ export class Frame extends SdkObject<FrameEventMap> {
 
   nonStallingRawEvaluateInExistingMainContext(expression: string): Promise<any> {
     return this.raceAgainstEvaluationStallingEvents(() => {
-      const context = this._existingMainContext();
+      const context = this.existingContext('main');
       if (!context)
         throw new Error('Frame does not yet have a main execution context');
       return context.rawEvaluateJSON(expression);
@@ -798,8 +798,10 @@ export class Frame extends SdkObject<FrameEventMap> {
     return this.context('main');
   }
 
-  private _existingMainContext(): dom.FrameExecutionContext | null {
-    return this._contextData.get('main')?.context || null;
+  existingContext(world: types.World): dom.FrameExecutionContext | null {
+    if (this._page.delegate.noUtilityWorld?.())
+      world = 'main';
+    return this._contextData.get(world)?.context || null;
   }
 
   utilityContext(): Promise<dom.FrameExecutionContext> {
@@ -1533,7 +1535,7 @@ export class Frame extends SdkObject<FrameEventMap> {
       });
     } catch (e) {
       const details: ExpectErrorDetails = {};
-      if (isInvalidSelectorError(e)) {
+      if (isInvalidSelectorError(e) || dom.isNonRecoverableDOMError(e)) {
         details.customErrorMessage = e.message;
       } else if (js.isJavaScriptErrorInEvaluate(e)) {
         details.customErrorMessage = e.message.startsWith('Error: ') ? e.message.substring('Error: '.length) : e.message;
@@ -1545,8 +1547,6 @@ export class Frame extends SdkObject<FrameEventMap> {
         progress.log(e.message);
       if (e instanceof TimeoutError)
         details.timedOut = true;
-      if (e instanceof AbortError)
-        details.customErrorMessage = assertionAbortedMessage(e.cause);
       throw new ExpectError(details);
     }
   }
@@ -1783,7 +1783,7 @@ export class Frame extends SdkObject<FrameEventMap> {
       const resolved = await progress.race(this.selectors.callOnSelector(selector, { ...options, scope, markTargets: 'first' }, ({ injected, elements }, { callbackText, taskData }) => {
         const callback = injected.eval(callbackText) as ElementCallback<T, R>;
         const element = elements[0];
-        const value = callback(injected, element, taskData);
+        const value = callback(injected, element, taskData as js.Unboxed<T>);
         if (!value)
           return { success: false };
         const log = `  locator resolved to ${injected.previewNode(element)}`;

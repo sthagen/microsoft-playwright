@@ -25,7 +25,7 @@ import { ChannelOwner } from './channelOwner';
 import { TargetClosedError, isTargetClosedError } from './errors';
 import { Events } from './events';
 import { Waiter } from './waiter';
-import { TimeoutSettings } from './timeoutSettings';
+import { TimeoutSettings, kNoTimeout } from './timeoutSettings';
 import { connectToEndpoint } from './connect';
 
 import type { Page } from './page';
@@ -57,7 +57,7 @@ export class Android extends ChannelOwner<channels.AndroidChannel> implements ap
   }
 
   async devices(options: { port?: number } = {}): Promise<AndroidDevice[]> {
-    const { devices } = await this._channel.devices(options, undefined);
+    const { devices } = await this._channel.devices(options, kNoTimeout);
     return devices.map(d => AndroidDevice.from(d));
   }
 
@@ -71,8 +71,8 @@ export class Android extends ChannelOwner<channels.AndroidChannel> implements ap
     return await this._wrapApiCall(async () => {
       const deadline = options.timeout ? monotonicTime() + options.timeout : 0;
       const headers = { 'x-playwright-browser': 'android', ...options.headers };
-      const connectParams: channels.LocalUtilsConnectParams = { endpoint, headers, slowMo: options.slowMo, timeout: options.timeout || 0 };
-      const connection = await connectToEndpoint(this._connection, connectParams);
+      const connectParams: channels.LocalUtilsConnectParams = { endpoint, headers, slowMo: options.slowMo };
+      const connection = await connectToEndpoint(this._connection, connectParams, { signal: undefined, timeout: options.timeout || 0 });
 
       let device: AndroidDevice;
       connection.on('close', () => {
@@ -166,11 +166,11 @@ export class AndroidDevice extends ChannelOwner<channels.AndroidDeviceChannel> i
   }
 
   async wait(selector: api.AndroidSelector, options: { state?: 'gone' } & types.TimeoutOptions = {}) {
-    await this._channel.wait({ androidSelector: toSelectorChannel(selector), ...options, timeout: this._timeoutSettings.timeout(options) }, options.signal);
+    await this._channel.wait({ androidSelector: toSelectorChannel(selector), ...options }, this._timeoutSettings.timeout(options));
   }
 
   async fill(selector: api.AndroidSelector, text: string, options: types.TimeoutOptions = {}) {
-    await this._channel.fill({ androidSelector: toSelectorChannel(selector), text, ...options, timeout: this._timeoutSettings.timeout(options) }, options.signal);
+    await this._channel.fill({ androidSelector: toSelectorChannel(selector), text, ...options }, this._timeoutSettings.timeout(options));
   }
 
   async press(selector: api.AndroidSelector, key: api.AndroidKey, options: types.TimeoutOptions = {}) {
@@ -179,43 +179,43 @@ export class AndroidDevice extends ChannelOwner<channels.AndroidDeviceChannel> i
   }
 
   async tap(selector: api.AndroidSelector, options: { duration?: number } & types.TimeoutOptions = {}) {
-    await this._channel.tap({ androidSelector: toSelectorChannel(selector), ...options, timeout: this._timeoutSettings.timeout(options) }, options.signal);
+    await this._channel.tap({ androidSelector: toSelectorChannel(selector), ...options }, this._timeoutSettings.timeout(options));
   }
 
   async drag(selector: api.AndroidSelector, dest: types.Point, options: SpeedOptions & types.TimeoutOptions = {}) {
-    await this._channel.drag({ androidSelector: toSelectorChannel(selector), dest, ...options, timeout: this._timeoutSettings.timeout(options) }, options.signal);
+    await this._channel.drag({ androidSelector: toSelectorChannel(selector), dest, ...options }, this._timeoutSettings.timeout(options));
   }
 
   async fling(selector: api.AndroidSelector, direction: Direction, options: SpeedOptions & types.TimeoutOptions = {}) {
-    await this._channel.fling({ androidSelector: toSelectorChannel(selector), direction, ...options, timeout: this._timeoutSettings.timeout(options) }, options.signal);
+    await this._channel.fling({ androidSelector: toSelectorChannel(selector), direction, ...options }, this._timeoutSettings.timeout(options));
   }
 
   async longTap(selector: api.AndroidSelector, options: types.TimeoutOptions = {}) {
-    await this._channel.longTap({ androidSelector: toSelectorChannel(selector), ...options, timeout: this._timeoutSettings.timeout(options) }, options.signal);
+    await this._channel.longTap({ androidSelector: toSelectorChannel(selector), ...options }, this._timeoutSettings.timeout(options));
   }
 
   async pinchClose(selector: api.AndroidSelector, percent: number, options: SpeedOptions & types.TimeoutOptions = {}) {
-    await this._channel.pinchClose({ androidSelector: toSelectorChannel(selector), percent, ...options, timeout: this._timeoutSettings.timeout(options) }, options.signal);
+    await this._channel.pinchClose({ androidSelector: toSelectorChannel(selector), percent, ...options }, this._timeoutSettings.timeout(options));
   }
 
   async pinchOpen(selector: api.AndroidSelector, percent: number, options: SpeedOptions & types.TimeoutOptions = {}) {
-    await this._channel.pinchOpen({ androidSelector: toSelectorChannel(selector), percent, ...options, timeout: this._timeoutSettings.timeout(options) }, options.signal);
+    await this._channel.pinchOpen({ androidSelector: toSelectorChannel(selector), percent, ...options }, this._timeoutSettings.timeout(options));
   }
 
   async scroll(selector: api.AndroidSelector, direction: Direction, percent: number, options: SpeedOptions & types.TimeoutOptions = {}) {
-    await this._channel.scroll({ androidSelector: toSelectorChannel(selector), direction, percent, ...options, timeout: this._timeoutSettings.timeout(options) }, options.signal);
+    await this._channel.scroll({ androidSelector: toSelectorChannel(selector), direction, percent, ...options }, this._timeoutSettings.timeout(options));
   }
 
   async swipe(selector: api.AndroidSelector, direction: Direction, percent: number, options: SpeedOptions & types.TimeoutOptions = {}) {
-    await this._channel.swipe({ androidSelector: toSelectorChannel(selector), direction, percent, ...options, timeout: this._timeoutSettings.timeout(options) }, options.signal);
+    await this._channel.swipe({ androidSelector: toSelectorChannel(selector), direction, percent, ...options }, this._timeoutSettings.timeout(options));
   }
 
   async info(selector: api.AndroidSelector): Promise<api.AndroidElementInfo> {
-    return (await this._channel.info({ androidSelector: toSelectorChannel(selector) }, undefined)).info;
+    return (await this._channel.info({ androidSelector: toSelectorChannel(selector) }, kNoTimeout)).info;
   }
 
   async screenshot(options: { path?: string } = {}): Promise<Buffer> {
-    const { binary } = await this._channel.screenshot({}, undefined);
+    const { binary } = await this._channel.screenshot({}, kNoTimeout);
     if (options.path)
       await fs.promises.writeFile(options.path, binary);
     return binary;
@@ -230,7 +230,7 @@ export class AndroidDevice extends ChannelOwner<channels.AndroidDeviceChannel> i
       if (this._shouldCloseConnectionOnClose)
         this._connection.close();
       else
-        await this._channel.close({}, undefined);
+        await this._channel.close({}, kNoTimeout);
     } catch (e) {
       if (isTargetClosedError(e))
         return;
@@ -243,25 +243,25 @@ export class AndroidDevice extends ChannelOwner<channels.AndroidDeviceChannel> i
   }
 
   async shell(command: string): Promise<Buffer> {
-    const { result } = await this._channel.shell({ command }, undefined);
+    const { result } = await this._channel.shell({ command }, kNoTimeout);
     return result;
   }
 
   async open(command: string): Promise<AndroidSocket> {
-    return AndroidSocket.from((await this._channel.open({ command }, undefined)).socket);
+    return AndroidSocket.from((await this._channel.open({ command }, kNoTimeout)).socket);
   }
 
   async installApk(file: string | Buffer, options?: { args: string[] }): Promise<void> {
-    await this._channel.installApk({ file: await loadFile(file), args: options && options.args }, undefined);
+    await this._channel.installApk({ file: await loadFile(file), args: options && options.args }, kNoTimeout);
   }
 
   async push(file: string | Buffer, path: string, options?: { mode: number }): Promise<void> {
-    await this._channel.push({ file: await loadFile(file), path, mode: options ? options.mode : undefined }, undefined);
+    await this._channel.push({ file: await loadFile(file), path, mode: options ? options.mode : undefined }, kNoTimeout);
   }
 
   async launchBrowser(options: types.BrowserContextOptions & { pkg?: string } = {}): Promise<BrowserContext> {
     const contextOptions = await prepareBrowserContextParams(options);
-    const result = await this._channel.launchBrowser(contextOptions, undefined);
+    const result = await this._channel.launchBrowser(contextOptions, kNoTimeout);
     const context = BrowserContext.from(result.context);
     const selectors = this._android._playwright.selectors;
     selectors._contextsForSelectors.add(context);
@@ -272,12 +272,10 @@ export class AndroidDevice extends ChannelOwner<channels.AndroidDeviceChannel> i
 
   async waitForEvent(event: string, optionsOrPredicate: types.WaitForEventOptions = {}): Promise<any> {
     return await this._wrapApiCall(async () => {
-      const timeout = this._timeoutSettings.timeout(typeof optionsOrPredicate === 'function' ? {} : optionsOrPredicate);
+      const timeoutOptions = this._timeoutSettings.timeout(typeof optionsOrPredicate === 'function' ? {} : optionsOrPredicate);
       const predicate = typeof optionsOrPredicate === 'function' ? optionsOrPredicate : optionsOrPredicate.predicate;
-      const signal = typeof optionsOrPredicate === 'function' ? undefined : (optionsOrPredicate as types.TimeoutOptions).signal;
       const waiter = Waiter.createForEvent(this, event);
-      waiter.rejectOnTimeout(timeout, `Timeout ${timeout}ms exceeded while waiting for event "${event}"`);
-      waiter.rejectOnSignal(signal);
+      waiter.rejectOnTimeout(timeoutOptions, `Timeout ${timeoutOptions.timeout}ms exceeded while waiting for event "${event}"`);
       if (event !== Events.AndroidDevice.Close)
         waiter.rejectOnEvent(this, Events.AndroidDevice.Close, () => new TargetClosedError());
       const result = await waiter.waitForEvent(this, event, predicate as any);
@@ -299,11 +297,11 @@ export class AndroidSocket extends ChannelOwner<channels.AndroidSocketChannel> i
   }
 
   async write(data: Buffer): Promise<void> {
-    await this._channel.write({ data }, undefined);
+    await this._channel.write({ data }, kNoTimeout);
   }
 
   async close(): Promise<void> {
-    await this._channel.close({}, undefined);
+    await this._channel.close({}, kNoTimeout);
   }
 
   async [Symbol.asyncDispose]() {
@@ -325,23 +323,23 @@ export class AndroidInput implements api.AndroidInput {
   }
 
   async type(text: string) {
-    await this._device._channel.inputType({ text }, undefined);
+    await this._device._channel.inputType({ text }, kNoTimeout);
   }
 
   async press(key: api.AndroidKey) {
-    await this._device._channel.inputPress({ key }, undefined);
+    await this._device._channel.inputPress({ key }, kNoTimeout);
   }
 
   async tap(point: types.Point) {
-    await this._device._channel.inputTap({ point }, undefined);
+    await this._device._channel.inputTap({ point }, kNoTimeout);
   }
 
   async swipe(from: types.Point, segments: types.Point[], steps: number) {
-    await this._device._channel.inputSwipe({ segments, steps }, undefined);
+    await this._device._channel.inputSwipe({ segments, steps }, kNoTimeout);
   }
 
   async drag(from: types.Point, to: types.Point, steps: number) {
-    await this._device._channel.inputDrag({ from, to, steps }, undefined);
+    await this._device._channel.inputDrag({ from, to, steps }, kNoTimeout);
   }
 }
 
@@ -425,7 +423,7 @@ export class AndroidWebView extends EventEmitter implements api.AndroidWebView {
   }
 
   private async _fetchPage(): Promise<Page> {
-    const { context } = await this._device._channel.connectToWebView({ socketName: this._data.socketName }, undefined);
+    const { context } = await this._device._channel.connectToWebView({ socketName: this._data.socketName }, kNoTimeout);
     return BrowserContext.from(context).pages()[0];
   }
 }

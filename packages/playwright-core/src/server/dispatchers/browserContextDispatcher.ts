@@ -46,12 +46,9 @@ import type { Request, Response, RouteHandler } from '../network';
 import type { InitScript, Page, PageError } from '../page';
 import type { Disposable } from '../disposable';
 import type { DispatcherScope } from './dispatcher';
-import type { LocalUtilsDispatcher } from './localUtilsDispatcher';
 import type * as channels from '../channels';
 import type { Progress } from '../progress';
 import type { URLMatch } from '@isomorphic/urlMatch';
-
-type HarForAPIRequestsDisposable = Disposable & { registrationId: string };
 
 export class BrowserContextDispatcher extends Dispatcher<BrowserContext, channels.BrowserContextChannel, DispatcherScope> implements channels.BrowserContextChannel {
   _type_BrowserContext = true;
@@ -193,7 +190,7 @@ export class BrowserContextDispatcher extends Dispatcher<BrowserContext, channel
         page: PageDispatcher.fromNullable(this, request.frame()?._page.initializedOrUndefined()),
       });
     });
-    this.addObjectListener(BrowserContext.Events.RecorderEvent, ({ event, data, page, code }: { event: 'actionAdded' | 'actionUpdated' | 'signalAdded', data: any, page: Page, code: string }) => {
+    this.addObjectListener(BrowserContext.Events.RecorderEvent, ({ event, data, page, code }: { event: 'actionAdded' | 'signalAdded', data: any, page: Page, code: string }) => {
       this._dispatchEvent('recorderEvent', { event, data, code, page: PageDispatcher.from(this, page) });
     });
   }
@@ -253,7 +250,7 @@ export class BrowserContextDispatcher extends Dispatcher<BrowserContext, channel
       const binding = new BindingCallDispatcher(pageDispatcher, params.name, source, args);
       this._dispatchEvent('bindingCall', { binding });
       return binding.promise();
-    });
+    }, undefined, params.noGlobal);
     this._disposables.push(binding);
     return { disposable: new DisposableDispatcher(this, binding) };
   }
@@ -336,38 +333,6 @@ export class BrowserContextDispatcher extends Dispatcher<BrowserContext, channel
     this._webSocketInterceptionPatterns = params.patterns;
     if (params.patterns.length && !this._routeWebSocketInitScript)
       this._routeWebSocketInitScript = await WebSocketRouteDispatcher.install(progress, this.connection, this._context);
-  }
-
-  async routeAPIRequestsFromHar(params: channels.BrowserContextRouteAPIRequestsFromHarParams, progress: Progress): Promise<channels.BrowserContextRouteAPIRequestsFromHarResult> {
-    // Reuse the HarBackend that was already opened via localUtils.harOpen for the page-side
-    // route, rather than opening a second backend for the same HAR file. The backend is owned
-    // by LocalUtils and closed via harClose, so this registration must not dispose it.
-    const harBackend = this.connection.getDispatcher<LocalUtilsDispatcher>('LocalUtils')?.harBackendForId(params.harId);
-    if (!harBackend)
-      throw new Error('Internal error: har was not opened');
-    const urlMatch: URLMatch | undefined =
-      params.urlRegexSource !== undefined && params.urlRegexFlags !== undefined ? new RegExp(params.urlRegexSource, params.urlRegexFlags) :
-        params.urlGlob !== undefined ? params.urlGlob : undefined;
-    const registrationId = createGuid();
-    const registration = this._context.routeAPIRequestsFromHar({
-      harBackend,
-      urlMatch,
-      notFound: params.notFound,
-      baseURL: this._context._options.baseURL,
-    });
-    this._disposables.push({
-      registrationId,
-      dispose: async () => registration.dispose(),
-    } as HarForAPIRequestsDisposable);
-    return { registrationId };
-  }
-
-  async unrouteAPIRequestsFromHar(params: channels.BrowserContextUnrouteAPIRequestsFromHarParams, progress: Progress): Promise<void> {
-    const index = this._disposables.findIndex(d => (d as HarForAPIRequestsDisposable).registrationId === params.registrationId);
-    if (index === -1)
-      return;
-    const [disposable] = this._disposables.splice(index, 1);
-    await progress.race(disposable.dispose());
   }
 
   async storageState(params: channels.BrowserContextStorageStateParams, progress: Progress): Promise<channels.BrowserContextStorageStateResult> {

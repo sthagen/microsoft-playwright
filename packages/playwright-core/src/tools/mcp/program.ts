@@ -61,7 +61,6 @@ export function decorateMCPCommand(command: Command) {
       .option('--no-sandbox', 'disable the sandbox for all process types that are normally sandboxed.')
       .option('--output-dir <path>', 'path to the directory for output files.')
       .option('--output-max-size <bytes>', 'Threshold for evicting old output files, in bytes.', numberParser)
-      .option('--output-mode <mode>', 'whether to save snapshots, console messages, network logs to a file or to the standard output. Can be "file" or "stdout". Default is "stdout".', enumParser.bind(null, '--output-mode', ['file', 'stdout']))
       .option('--port <port>', 'port to listen on for SSE transport.')
       .option('--proxy-bypass <bypass>', 'comma-separated domains to bypass proxy, for example ".com,chromium.org,.domain.com"')
       .option('--proxy-server <proxy>', 'specify proxy server, for example "http://myproxy:3128" or "socks5://myproxy:8080"')
@@ -75,6 +74,7 @@ export function decorateMCPCommand(command: Command) {
       .option('--test-id-attribute <attribute>', 'specify the attribute to use for test ids, defaults to "data-testid"')
       .option('--timeout-action <timeout>', 'specify action timeout in milliseconds, defaults to 5000ms', numberParser)
       .option('--timeout-navigation <timeout>', 'specify navigation timeout in milliseconds, defaults to 60000ms', numberParser)
+      .option('--timeout-settle <timeout>', 'how long to wait after each action for triggered work to settle, in milliseconds, defaults to 500ms', numberParser)
       .option('--user-agent <ua string>', 'specify user agent string')
       .option('--user-data-dir <path>', 'path to the user data directory. If not specified, a temporary directory will be created.')
       .option('--viewport-size <size>', 'specify browser viewport size in pixels, for example "1280x720"', resolutionParser.bind(null, '--viewport-size'))
@@ -129,25 +129,23 @@ export function decorateMCPCommand(command: Command) {
               await browser.bind(sessionName, { workspaceDir: clientInfo.cwd });
             }
             const browserContext = config.browser.isolated ? await browser.newContext(config.browser.contextOptions) : browser.contexts()[0];
-            return new BrowserBackend(config, browserContext, tools);
-          },
-          disposed: async backend => {
-            clientCount--;
-            const browserContext = (backend as BrowserBackend).browserContext;
+            return new BrowserBackend(config, browserContext, tools, async () => {
+              clientCount--;
 
-            if (sharedBrowserPromise && clientCount > 0) {
-              if (config.browser.isolated) {
-                testDebug('close context');
-                await browserContext.close().catch(() => { });
+              if (sharedBrowserPromise && clientCount > 0) {
+                if (config.browser.isolated) {
+                  testDebug('close context');
+                  await browserContext.close().catch(() => { });
+                }
+                return;
               }
-              return;
-            }
 
-            testDebug('close browser');
-            sharedBrowserPromise = undefined;
-            await browserContext.close().catch(() => { });
-            await browserContext.browser()?.close().catch(() => { });
-          }
+              testDebug('close browser');
+              sharedBrowserPromise = undefined;
+              await browserContext.close().catch(() => { });
+              await browserContext.browser()?.close().catch(() => { });
+            });
+          },
         };
         await mcpServer.start(factory, config.server);
       });

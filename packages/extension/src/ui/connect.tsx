@@ -27,11 +27,19 @@ type Status =
 
 const SUPPORTED_PROTOCOL_VERSION = 2;
 
+// Client name comes from the URL and never changes for the lifetime of this page.
+const clientInfo = (() => {
+  try {
+    return JSON.parse(new URLSearchParams(window.location.search).get('client') || '{}').name || 'unknown';
+  } catch {
+    return 'unknown';
+  }
+})();
+
 const ConnectApp: React.FC = () => {
   const [tabs, setTabs] = useState<chrome.tabs.Tab[]>([]);
   const [status, setStatus] = useState<Status | null>(null);
   const [showTabList, setShowTabList] = useState(true);
-  const [clientInfo, setClientInfo] = useState('unknown');
 
   const setError = useCallback((message: string) => {
     setShowTabList(false);
@@ -59,18 +67,10 @@ const ConnectApp: React.FC = () => {
         return;
       }
 
-      try {
-        const client = JSON.parse(params.get('client') || '{}');
-        const info = `${client.name || 'unknown'}`;
-        setClientInfo(info);
-        setStatus({
-          type: 'connecting',
-          message: `"${info}" is trying to connect to the Playwright Extension.`
-        });
-      } catch (e) {
-        setStatus({ type: 'error', message: 'Failed to parse client version.' });
-        return;
-      }
+      setStatus({
+        type: 'connecting',
+        message: `"${clientInfo}" is trying to connect to the Playwright Extension.`
+      });
 
       const parsedVersion = parseInt(params.get('protocolVersion') ?? '', 10);
       const requestedVersion = isNaN(parsedVersion) ? 1 : parsedVersion;
@@ -85,14 +85,13 @@ const ConnectApp: React.FC = () => {
         });
         return;
       }
-      // The background decides per protocolVersion: v1 opens the relay WS
-      // immediately (the daemon expects a prompt connection); v2 just records
-      // the descriptor and defers the WS until the user clicks Allow.
-      const response = await chrome.runtime.sendMessage({ type: 'connectionRequested', mcpRelayUrl: relayUrl, protocolVersion: requestedVersion });
-      if (!response.success) {
-        setError(response.error);
+      if (requestedVersion < SUPPORTED_PROTOCOL_VERSION) {
+        setError('The client uses an unsupported protocol version. Update Playwright MCP or CLI to the latest version.');
         return;
       }
+      // The background only records the relay URL; the WS to the relay opens
+      // once the user clicks Allow.
+      await chrome.runtime.sendMessage({ type: 'connectionRequested', mcpRelayUrl: relayUrl });
 
       const expectedToken = getOrCreateAuthToken();
       const token = params.get('token');
@@ -112,8 +111,9 @@ const ConnectApp: React.FC = () => {
         await loadTabs();
     };
     void runAsync();
-    // Ping the background every 20s so the MV3 service worker (which owns the
-    // relay WebSocket) stays above its 30s idle timeout while the user decides.
+    // Ping the background every 20s so the MV3 service worker (which holds the
+    // pending connection state) stays above its 30s idle timeout while the
+    // user decides.
     const keepalive = setInterval(() => {
       chrome.runtime.sendMessage({ type: 'keepalive' }).catch(() => {});
     }, 20_000);
@@ -152,20 +152,7 @@ const ConnectApp: React.FC = () => {
         message: `"${clientInfo}" failed to connect: ${e}`
       });
     }
-  }, [clientInfo]);
-
-  useEffect(() => {
-    const listener = (message: any) => {
-      if (message.type === 'pendingConnectionClosed') {
-        setError('Pending client connection closed.');
-        document.title = 'Playwright Extension';
-      }
-    };
-    chrome.runtime.onMessage.addListener(listener);
-    return () => {
-      chrome.runtime.onMessage.removeListener(listener);
-    };
-  }, [setError]);
+  }, []);
 
   return (
     <div className='app-container'>

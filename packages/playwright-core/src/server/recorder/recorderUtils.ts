@@ -21,8 +21,6 @@ import { quoteCSSAttributeValue } from '@isomorphic/stringUtils';
 import { Frame } from '../frames';
 
 import type { CallMetadata } from '../instrumentation';
-import type { Page } from '../page';
-import type * as actions from '@isomorphic/codegen/actions';
 import type { CallLog, CallLogStatus } from '@recorder/recorderTypes';
 import type { Progress } from '../progress';
 
@@ -55,55 +53,6 @@ export function metadataToCallLog(metadata: CallMetadata, status: CallLogStatus)
   return callLog;
 }
 
-export function mainFrameForAction(pageAliases: Map<Page, string>, actionInContext: actions.ActionInContext): Frame {
-  const pageAlias = actionInContext.frame.pageAlias;
-  const page = [...pageAliases.entries()].find(([, alias]) => pageAlias === alias)?.[0];
-  if (!page)
-    throw new Error(`Internal error: page ${pageAlias} not found in [${[...pageAliases.values()]}]`);
-  return page.mainFrame();
-}
-
-function isSameAction(a: actions.ActionInContext, b: actions.ActionInContext): boolean {
-  return a.action.name === b.action.name && a.frame.pageAlias === b.frame.pageAlias;
-}
-
-function isSameSelector(action: actions.ActionInContext, lastAction: actions.ActionInContext): boolean {
-  return 'selector' in action.action && 'selector' in lastAction.action && action.action.selector === lastAction.action.selector;
-}
-
-function isShortlyAfter(action: actions.ActionInContext, lastAction: actions.ActionInContext): boolean {
-  return action.startTime - lastAction.startTime < 500;
-}
-
-export function shouldMergeAction(action: actions.ActionInContext, lastAction: actions.ActionInContext | undefined): boolean {
-  if (!lastAction)
-    return false;
-  switch (action.action.name) {
-    case 'fill':
-      return isSameAction(action, lastAction) && isSameSelector(action, lastAction);
-    case 'navigate':
-      return isSameAction(action, lastAction);
-    case 'click':
-      return isSameAction(action, lastAction) && isSameSelector(action, lastAction) && isShortlyAfter(action, lastAction) && action.action.clickCount > (lastAction.action as actions.ClickAction).clickCount;
-  }
-  return false;
-}
-
-export function collapseActions(actions: actions.ActionInContext[]): actions.ActionInContext[] {
-  const result: actions.ActionInContext[] = [];
-  for (const action of actions) {
-    const lastAction = result[result.length - 1];
-    const shouldMerge = shouldMergeAction(action, lastAction);
-    if (!shouldMerge) {
-      result.push(action);
-      continue;
-    }
-    const startTime = result[result.length - 1].startTime;
-    result[result.length - 1] = action;
-    result[result.length - 1].startTime = startTime;
-  }
-  return result;
-}
 
 export async function generateFrameSelector(progress: Progress, frame: Frame): Promise<string[]> {
   const selectorPromises: Promise<string>[] = [];

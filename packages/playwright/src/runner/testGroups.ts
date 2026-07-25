@@ -22,6 +22,7 @@ export type TestGroup = {
   repeatEachIndex: number;
   projectId: string;
   tests: test.TestCase[];
+  locks: string[];
 };
 
 export function createTestGroups(projectSuite: test.Suite, expectedParallelism: number): TestGroup[] {
@@ -58,6 +59,7 @@ export function createTestGroups(projectSuite: test.Suite, expectedParallelism: 
       repeatEachIndex: test.repeatEachIndex,
       projectId: test._projectId,
       tests: [],
+      locks: [],
     };
   };
 
@@ -126,6 +128,15 @@ export function createTestGroups(projectSuite: test.Suite, expectedParallelism: 
         lastGroup.tests.push(test);
       }
     }
+  }
+
+  for (const group of result) {
+    const locks = new Set<string>();
+    for (const test of group.tests) {
+      for (const lock of test._locks)
+        locks.add(lock);
+    }
+    group.locks = [...locks];
   }
   return result;
 }

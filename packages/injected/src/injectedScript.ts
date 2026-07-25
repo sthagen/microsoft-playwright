@@ -539,6 +539,8 @@ export class InjectedScript {
       queryAll(root: SelectorRoot, body: any) {
         if (body === 'enter-frame')
           return [];
+        if (body === 'pierce-frames')
+          return [];
         if (body === 'return-empty')
           return [];
         if (body === 'component') {
@@ -1115,7 +1117,7 @@ export class InjectedScript {
     }[action];
     let result: 'done' | { hitTargetDescription: string } | undefined;
 
-    const listener = (event: PointerEvent | MouseEvent | TouchEvent) => {
+    let listener: ((event: PointerEvent | MouseEvent | TouchEvent) => void) | undefined = (event: PointerEvent | MouseEvent | TouchEvent) => {
       // Ignore events that we do not expect to intercept.
       if (!events.has(event.type))
         return;
@@ -1144,6 +1146,7 @@ export class InjectedScript {
     const stop = () => {
       if (this._hitTargetInterceptor === listener)
         this._hitTargetInterceptor = undefined;
+      listener = undefined;
       // If we did not get any events, consider things working. Possible causes:
       // - JavaScript is disabled (webkit-only).
       // - Some <iframe> overlays the element from another frame.

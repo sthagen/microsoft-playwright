@@ -35,8 +35,8 @@ const HighlightColors = {
 };
 
 export interface RecorderDelegate {
-  performAction?(action: actions.PerformOnRecordAction, preconditionSelector?: string): Promise<void>;
-  recordAction?(action: actions.Action): Promise<void>;
+  performAction?(action: actions.PerformableAction): Promise<void>;
+  recordAction?(action: actions.Action, preconditionSelector?: string): Promise<void>;
   elementPicked?(elementInfo: ElementInfo): Promise<void>;
   setMode?(mode: Mode): Promise<void>;
   setOverlayState?(state: OverlayState): Promise<void>;
@@ -171,7 +171,6 @@ class InspectTool implements RecorderTool {
       void this._recorder.recordAction({
         name: 'assertVisible',
         selector,
-        signals: [],
       });
       this._recorder.setMode('recording');
       this._recorder.overlay?.flashToolSucceeded('assertingVisibility');
@@ -189,12 +188,10 @@ class InspectTool implements RecorderTool {
 
 class RecordActionTool implements RecorderTool {
   private _recorder: Recorder;
-  private _performingActions: Set<actions.PerformOnRecordAction>;
+  private _performingActions: Set<actions.PerformableAction>;
   private _hoveredModel: HighlightModelWithSelector | null = null;
   private _hoveredElement: HTMLElement | null = null;
   private _activeModel: HighlightModelWithSelector | null = null;
-  private _expectProgrammaticKeyUp = false;
-  private _pendingClickAction: { action: actions.ClickAction, timeout: number } | undefined;
   private _observer: MutationObserver | null = null;
   private _dialog: Dialog;
 
@@ -232,7 +229,6 @@ class RecordActionTool implements RecorderTool {
     this._hoveredModel = null;
     this._hoveredElement = null;
     this._activeModel = null;
-    this._expectProgrammaticKeyUp = false;
     this._dialog.close();
   }
 
@@ -252,82 +248,38 @@ class RecordActionTool implements RecorderTool {
       return;
     if (this._shouldIgnoreMouseEvent(event))
       return;
-    if (this._actionInProgress(event))
-      return;
-    if (this._consumedDueToNoModel(event, this._hoveredModel))
-      return;
 
     if (event.button === 2 && event.type === 'auxclick') {
-      this._showActionListDialog(this._hoveredModel!, event);
+      // A right-click we are performing on behalf of the dialog is recorded via onContextMenu.
+      if (!this._performingActions.size)
+        this._showActionListDialog(event);
       return;
     }
 
-    const checkbox = asCheckbox(this._recorder.deepEventTarget(event));
+    // Keyboard-activated clicks, e.g. Enter on a button or Space on a checkbox,
+    // come with zero detail and are recorded in onKeyDown instead.
+    if (event.detail === 0)
+      return;
+
+    const target = this._recorder.deepEventTarget(event);
+    const checkbox = asCheckbox(target);
     if (checkbox && event.detail === 1) {
-      // Interestingly, inputElement.checked is reversed inside this event handler.
-      this._performAction({
+      // Note: inputElement.checked already reflects the new state inside this event handler.
+      this._recordAction({
         name: checkbox.checked ? 'check' : 'uncheck',
-        selector: this._hoveredModel!.selector,
-        signals: [],
-      });
+        selector: this._hoveredModel?.selector ?? this._selectorForElement(target),
+      }, { autoExpect: true });
       return;
     }
 
-    this._cancelPendingClickAction();
-
-    // Stall click in case we are observing double-click.
-    if (event.detail === 1) {
-      this._pendingClickAction = {
-        action: {
-          name: 'click',
-          selector: this._hoveredModel!.selector,
-          position: positionForEvent(event),
-          signals: [],
-          button: buttonForEvent(event),
-          modifiers: modifiersForEvent(event),
-          clickCount: event.detail
-        },
-        timeout: this._recorder.injectedScript.utils.builtins.setTimeout(() => this._commitPendingClickAction(), 200)
-      };
-    }
-  }
-
-  onDblClick(event: MouseEvent) {
-    if (this._dialog.isShowing())
-      return;
-    if (isRangeInput(this._hoveredElement))
-      return;
-    if (this._shouldIgnoreMouseEvent(event))
-      return;
-    // Only allow double click dispatch while action is in progress.
-    if (this._actionInProgress(event))
-      return;
-    if (this._consumedDueToNoModel(event, this._hoveredModel))
-      return;
-
-    this._cancelPendingClickAction();
-
-    this._performAction({
+    this._recordAction({
       name: 'click',
-      selector: this._hoveredModel!.selector,
+      selector: this._hoveredModel?.selector ?? this._selectorForElement(target),
       position: positionForEvent(event),
-      signals: [],
       button: buttonForEvent(event),
       modifiers: modifiersForEvent(event),
       clickCount: event.detail
-    });
-  }
-
-  private _commitPendingClickAction() {
-    if (this._pendingClickAction)
-      this._performAction(this._pendingClickAction.action);
-    this._cancelPendingClickAction();
-  }
-
-  private _cancelPendingClickAction() {
-    if (this._pendingClickAction)
-      this._recorder.injectedScript.utils.builtins.clearTimeout(this._pendingClickAction.timeout);
-    this._pendingClickAction = undefined;
+    }, { autoExpect: true });
   }
 
   onContextMenu(event: MouseEvent) {
@@ -339,11 +291,20 @@ class RecordActionTool implements RecorderTool {
     }
     if (this._shouldIgnoreMouseEvent(event))
       return;
-    if (this._actionInProgress(event))
+    if (this._performingActions.size) {
+      // The dialog is performing a right-click for us; record it naturally instead of reopening the dialog.
+      const target = this._recorder.deepEventTarget(event);
+      this._recordAction({
+        name: 'click',
+        selector: this._hoveredModel?.selector ?? this._selectorForElement(target),
+        position: positionForEvent(event),
+        button: 'right',
+        modifiers: modifiersForEvent(event),
+        clickCount: 1,
+      }, { autoExpect: true });
       return;
-    if (this._consumedDueToNoModel(event, this._hoveredModel))
-      return;
-    this._showActionListDialog(this._hoveredModel!, event);
+    }
+    this._showActionListDialog(event);
   }
 
   onPointerDown(event: PointerEvent) {
@@ -351,7 +312,7 @@ class RecordActionTool implements RecorderTool {
       return;
     if (this._shouldIgnoreMouseEvent(event))
       return;
-    this._consumeWhenAboutToPerform(event);
+    this._consumeRightButtonEvent(event);
   }
 
   onPointerUp(event: PointerEvent) {
@@ -359,7 +320,7 @@ class RecordActionTool implements RecorderTool {
       return;
     if (this._shouldIgnoreMouseEvent(event))
       return;
-    this._consumeWhenAboutToPerform(event);
+    this._consumeRightButtonEvent(event);
   }
 
   onMouseDown(event: MouseEvent) {
@@ -367,7 +328,7 @@ class RecordActionTool implements RecorderTool {
       return;
     if (this._shouldIgnoreMouseEvent(event))
       return;
-    this._consumeWhenAboutToPerform(event);
+    this._consumeRightButtonEvent(event);
     this._activeModel = this._hoveredModel;
   }
 
@@ -376,7 +337,7 @@ class RecordActionTool implements RecorderTool {
       return;
     if (this._shouldIgnoreMouseEvent(event))
       return;
-    this._consumeWhenAboutToPerform(event);
+    this._consumeRightButtonEvent(event);
   }
 
   onMouseMove(event: MouseEvent) {
@@ -415,13 +376,12 @@ class RecordActionTool implements RecorderTool {
       // When the file input is hidden and triggered by another element (e.g. a button with
       // onclick="input.click()"), the hover model points to the trigger, not the input.
       // Derive the selector from the actual target element in that case.
-      const selector = target === this._hoveredElement
-        ? this._hoveredModel!.selector
-        : this._recorder.injectedScript.generateSelector(target, { testIdAttributeName: this._recorder.state.testIdAttributeName }).selector;
+      const selector = target === this._hoveredElement && this._hoveredModel
+        ? this._hoveredModel.selector
+        : this._selectorForElement(target);
       this._recordAction({
         name: 'setInputFiles',
         selector,
-        signals: [],
         files: [...((target as HTMLInputElement).files || [])].map(file => file.name),
       });
       return;
@@ -431,8 +391,7 @@ class RecordActionTool implements RecorderTool {
       this._recordAction({
         name: 'fill',
         // must use hoveredModel instead of activeModel for it to work in webkit
-        selector: this._hoveredModel!.selector,
-        signals: [],
+        selector: this._hoveredModel?.selector ?? this._selectorForElement(target),
         text: target.value,
       });
       return;
@@ -440,17 +399,13 @@ class RecordActionTool implements RecorderTool {
 
     if (['INPUT', 'TEXTAREA'].includes(target.nodeName) || target.isContentEditable) {
       if (target.nodeName === 'INPUT' && ['checkbox', 'radio'].includes((target as HTMLInputElement).type.toLowerCase())) {
-        // Checkbox is handled in click, we can't let input trigger on checkbox - that would mean we dispatched click events while recording.
+        // Checkbox is handled in click, no need to record a duplicate action for the input event.
         return;
       }
 
-      // Non-navigating actions are simply recorded by Playwright.
-      if (this._consumedDueWrongTarget(event))
-        return;
       this._recordAction({
         name: 'fill',
-        selector: this._activeModel!.selector,
-        signals: [],
+        selector: this._activeSelectorForEvent(event),
         text: target.isContentEditable ? target.innerText : (target as HTMLInputElement).value,
       });
     }
@@ -459,9 +414,8 @@ class RecordActionTool implements RecorderTool {
       const selectElement = target as HTMLSelectElement;
       this._recordAction({
         name: 'select',
-        selector: this._activeModel!.selector,
+        selector: this._activeSelectorForEvent(event),
         options: [...selectElement.selectedOptions].map(option => option.value),
-        signals: []
       });
     }
   }
@@ -471,46 +425,24 @@ class RecordActionTool implements RecorderTool {
       return;
     if (!this._shouldGenerateKeyPressFor(event))
       return;
-    if (this._actionInProgress(event)) {
-      this._expectProgrammaticKeyUp = true;
-      return;
-    }
-    if (this._consumedDueWrongTarget(event))
-      return;
     // Similarly to click, trigger checkbox on key event, not input.
     if (event.key === ' ') {
       const checkbox = asCheckbox(this._recorder.deepEventTarget(event));
       if (checkbox && event.detail === 0) {
-        this._performAction({
+        this._recordAction({
           name: checkbox.checked ? 'uncheck' : 'check',
-          selector: this._activeModel!.selector,
-          signals: [],
-        });
+          selector: this._activeSelectorForEvent(event),
+        }, { autoExpect: true });
         return;
       }
     }
 
-    this._performAction({
+    this._recordAction({
       name: 'press',
-      selector: this._activeModel!.selector,
-      signals: [],
+      selector: this._activeSelectorForEvent(event),
       key: event.key,
       modifiers: modifiersForEvent(event),
-    });
-  }
-
-  onKeyUp(event: KeyboardEvent) {
-    if (this._dialog.isShowing())
-      return;
-    if (!this._shouldGenerateKeyPressFor(event))
-      return;
-
-    // Only allow programmatic keyups, ignore user input.
-    if (!this._expectProgrammaticKeyUp) {
-      consumeEvent(event);
-      return;
-    }
-    this._expectProgrammaticKeyUp = false;
+    }, { autoExpect: true });
   }
 
   onScroll(event: Event) {
@@ -519,8 +451,12 @@ class RecordActionTool implements RecorderTool {
     this._resetHoveredModel();
   }
 
-  private _showActionListDialog(model: HighlightModelWithSelector, event: MouseEvent) {
+  private _showActionListDialog(event: MouseEvent) {
+    // Right click is always intercepted and opens the actions dialog instead of being passed to the page.
     consumeEvent(event);
+    const model = this._hoveredModel ?? this._modelForElement(this._recorder.deepEventTarget(event));
+    if (!model)
+      return;
     const actionPosition = positionForEvent(event);
     const actions: { title: string, cb: () => void }[] = [
       {
@@ -529,10 +465,9 @@ class RecordActionTool implements RecorderTool {
           name: 'click',
           selector: model.selector,
           position: actionPosition,
-          signals: [],
           button: 'left',
           modifiers: 0,
-          clickCount: 0,
+          clickCount: 1,
         }),
       },
       {
@@ -541,10 +476,9 @@ class RecordActionTool implements RecorderTool {
           name: 'click',
           selector: model.selector,
           position: actionPosition,
-          signals: [],
           button: 'right',
           modifiers: 0,
-          clickCount: 0,
+          clickCount: 1,
         }),
       },
       {
@@ -553,7 +487,6 @@ class RecordActionTool implements RecorderTool {
           name: 'click',
           selector: model.selector,
           position: actionPosition,
-          signals: [],
           button: 'left',
           modifiers: 0,
           clickCount: 2,
@@ -561,11 +494,10 @@ class RecordActionTool implements RecorderTool {
       },
       {
         title: 'Hover',
-        cb: () => this._performAction({
+        cb: () => this._recordAction({
           name: 'hover',
           selector: model.selector,
           position: actionPosition,
-          signals: [],
         }),
       },
       {
@@ -623,39 +555,26 @@ class RecordActionTool implements RecorderTool {
     return shouldIgnoreMouseEvent(this._recorder.deepEventTarget(event));
   }
 
-  private _actionInProgress(event: Event): boolean {
-    // If Playwright is performing action for us, bail.
-    const isKeyEvent = event instanceof KeyboardEvent;
-    const isMouseOrPointerEvent = event instanceof MouseEvent || event instanceof PointerEvent;
-    for (const action of this._performingActions) {
-      if (isKeyEvent && action.name === 'press' && event.key === action.key)
-        return true;
-      if (isMouseOrPointerEvent && (action.name === 'click' || action.name === 'hover' || action.name === 'check' || action.name === 'uncheck'))
-        return true;
-    }
-
-    // Consume event if action is not being executed.
-    consumeEvent(event);
-    return false;
-  }
-
-  private _consumedDueToNoModel(event: Event, model: HighlightModel | null): boolean {
-    if (model)
-      return false;
-    consumeEvent(event);
-    return true;
-  }
-
-  private _consumedDueWrongTarget(event: Event): boolean {
-    if (this._activeModel && this._activeModel.elements[0] === this._recorder.deepEventTarget(event))
-      return false;
-    consumeEvent(event);
-    return true;
-  }
-
-  private _consumeWhenAboutToPerform(event: Event) {
-    if (!this._performingActions.size)
+  private _consumeRightButtonEvent(event: MouseEvent) {
+    // Right click is intercepted to open the actions dialog, so the page should not see it.
+    if (event.button === 2 && !this._performingActions.size)
       consumeEvent(event);
+  }
+
+  private _selectorForElement(element: HTMLElement): string {
+    return this._recorder.injectedScript.generateSelector(element, { testIdAttributeName: this._recorder.state.testIdAttributeName }).selector;
+  }
+
+  private _modelForElement(element: HTMLElement): HighlightModelWithSelector | null {
+    const { selector, elements } = this._recorder.injectedScript.generateSelector(element, { testIdAttributeName: this._recorder.state.testIdAttributeName });
+    return selector ? { selector, elements, color: HighlightColors.action } : null;
+  }
+
+  private _activeSelectorForEvent(event: Event): string {
+    const target = this._recorder.deepEventTarget(event);
+    if (this._activeModel && this._activeModel.elements[0] === target)
+      return this._activeModel.selector;
+    return this._selectorForElement(target);
   }
 
   private _reportPerformedActionForTests() {
@@ -669,11 +588,11 @@ class RecordActionTool implements RecorderTool {
     }));
   }
 
-  private _recordAction(action: actions.Action) {
-    void this._recorder.recordAction(action).then(() => this._reportPerformedActionForTests());
+  private _recordAction(action: actions.Action, options?: { autoExpect?: boolean }) {
+    void this._recorder.recordAction(action, options).then(() => this._reportPerformedActionForTests());
   }
 
-  private _performAction(action: actions.PerformOnRecordAction) {
+  private _performAction(action: actions.PerformableAction) {
     this._recorder.updateHighlight(null, false);
 
     this._performingActions.add(action);
@@ -775,7 +694,6 @@ class JsonRecordActionTool implements RecorderTool {
         name: checkbox.checked ? 'check' : 'uncheck',
         selector,
         ref,
-        signals: [],
         ariaSnapshot,
       });
       return;
@@ -787,7 +705,6 @@ class JsonRecordActionTool implements RecorderTool {
       ref,
       ariaSnapshot,
       position: positionForEvent(event),
-      signals: [],
       button: buttonForEvent(event),
       modifiers: modifiersForEvent(event),
       clickCount: event.detail,
@@ -803,7 +720,6 @@ class JsonRecordActionTool implements RecorderTool {
       ref,
       ariaSnapshot,
       position: positionForEvent(event),
-      signals: [],
       button: 'right',
       modifiers: modifiersForEvent(event),
       clickCount: 1,
@@ -820,7 +736,6 @@ class JsonRecordActionTool implements RecorderTool {
         selector,
         ref,
         ariaSnapshot,
-        signals: [],
         text: element.value,
       });
       return;
@@ -837,7 +752,6 @@ class JsonRecordActionTool implements RecorderTool {
         ref,
         selector,
         ariaSnapshot,
-        signals: [],
         text: element.isContentEditable ? element.innerText : (element as HTMLInputElement).value,
       });
       return;
@@ -851,7 +765,6 @@ class JsonRecordActionTool implements RecorderTool {
         ref,
         ariaSnapshot,
         options: [...selectElement.selectedOptions].map(option => option.value),
-        signals: []
       });
       return;
     }
@@ -873,7 +786,6 @@ class JsonRecordActionTool implements RecorderTool {
           selector,
           ref,
           ariaSnapshot,
-          signals: [],
         });
         return;
       }
@@ -884,7 +796,6 @@ class JsonRecordActionTool implements RecorderTool {
       selector,
       ref,
       ariaSnapshot,
-      signals: [],
       key: event.key,
       modifiers: modifiersForEvent(event),
     });
@@ -1036,7 +947,6 @@ class TextAssertionTool implements RecorderTool {
         return {
           name: 'assertChecked',
           selector,
-          signals: [],
           // Interestingly, inputElement.checked is reversed inside this event handler.
           checked: !(target as HTMLInputElement).checked,
         };
@@ -1044,7 +954,6 @@ class TextAssertionTool implements RecorderTool {
         return {
           name: 'assertValue',
           selector,
-          signals: [],
           value: (target as (HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement)).value,
         };
       }
@@ -1057,7 +966,6 @@ class TextAssertionTool implements RecorderTool {
       return {
         name: 'assertSnapshot',
         selector: this._hoverHighlight.selector,
-        signals: [],
         ariaSnapshot: this._recorder.injectedScript.ariaSnapshot(target, { mode: 'codegen' }),
       };
     } else {
@@ -1069,7 +977,6 @@ class TextAssertionTool implements RecorderTool {
       return {
         name: 'assertText',
         selector: this._hoverHighlight.selector,
-        signals: [],
         text: this._recorder.injectedScript.utils.elementText(this._textCache, target).normalized,
         substring: true,
       };
@@ -1695,22 +1602,25 @@ export class Recorder {
     return documentElement ? this.injectedScript.utils.generateAriaTree(documentElement, { mode: 'autoexpect' }) : undefined;
   }
 
-  async performAction(action: actions.PerformOnRecordAction) {
+  private _computeAutoExpectPrecondition(action: actions.Action, autoExpect: boolean): string | undefined {
     const previousSnapshot = this._lastActionAutoexpectSnapshot;
     this._lastActionAutoexpectSnapshot = this._captureAutoExpectSnapshot();
-    let preconditionSelector: string | undefined;
-    if (!isAssertAction(action) && this._lastActionAutoexpectSnapshot) {
-      const element = this.injectedScript.utils.findNewElement(previousSnapshot?.root, this._lastActionAutoexpectSnapshot?.root);
-      preconditionSelector = element ? this.injectedScript.generateSelector(element, { testIdAttributeName: this.state.testIdAttributeName }).selector : undefined;
-      if (preconditionSelector === action.selector)
-        preconditionSelector = undefined;
-    }
-    await this._delegate.performAction?.(action, preconditionSelector).catch(() => {});
+    if (!autoExpect || isAssertAction(action) || !this._lastActionAutoexpectSnapshot)
+      return;
+    const element = this.injectedScript.utils.findNewElement(previousSnapshot?.root, this._lastActionAutoexpectSnapshot.root);
+    let preconditionSelector = element ? this.injectedScript.generateSelector(element, { testIdAttributeName: this.state.testIdAttributeName }).selector : undefined;
+    if ('selector' in action && preconditionSelector === action.selector)
+      preconditionSelector = undefined;
+    return preconditionSelector;
   }
 
-  async recordAction(action: actions.Action) {
-    this._lastActionAutoexpectSnapshot = this._captureAutoExpectSnapshot();
-    await this._delegate.recordAction?.(action);
+  async performAction(action: actions.PerformableAction) {
+    await this._delegate.performAction?.(action).catch(() => {});
+  }
+
+  async recordAction(action: actions.Action, options?: { autoExpect?: boolean }) {
+    const preconditionSelector = this._computeAutoExpectPrecondition(action, !!options?.autoExpect);
+    await this._delegate.recordAction?.(action, preconditionSelector);
   }
 
   setOverlayState(state: { offsetX: number; }) {

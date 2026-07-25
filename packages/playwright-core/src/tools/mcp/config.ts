@@ -74,6 +74,7 @@ export type CLIOptions = {
   testIdAttribute?: string;
   timeoutAction?: number;
   timeoutNavigation?: number;
+  timeoutSettle?: number;
   userAgent?: string;
   userDataDir?: string;
   viewportSize?: ViewportSize;
@@ -88,6 +89,7 @@ const defaultConfig: MergedConfig = {
     action: 5000,
     navigation: 60000,
     expect: 5000,
+    settle: 500,
   },
 };
 
@@ -378,6 +380,7 @@ function configFromCLIOptions(cliOptions: CLIOptions): Config & { configFile?: s
     timeouts: {
       action: cliOptions.timeoutAction,
       navigation: cliOptions.timeoutNavigation,
+      settle: cliOptions.timeoutSettle,
     },
   };
 
@@ -434,6 +437,7 @@ export function configFromEnv(env?: NodeJS.ProcessEnv): Config & { configFile?: 
   options.testIdAttribute = envToString(e.PLAYWRIGHT_MCP_TEST_ID_ATTRIBUTE);
   options.timeoutAction = numberParser(e.PLAYWRIGHT_MCP_TIMEOUT_ACTION);
   options.timeoutNavigation = numberParser(e.PLAYWRIGHT_MCP_TIMEOUT_NAVIGATION);
+  options.timeoutSettle = numberParser(e.PLAYWRIGHT_MCP_TIMEOUT_SETTLE);
   options.userAgent = envToString(e.PLAYWRIGHT_MCP_USER_AGENT);
   options.userDataDir = envToString(e.PLAYWRIGHT_MCP_USER_DATA_DIR);
   options.viewportSize = resolutionParser('--viewport-size', e.PLAYWRIGHT_MCP_VIEWPORT_SIZE);
@@ -447,10 +451,16 @@ export async function loadConfig(configFile: string | undefined): Promise<Config
   if (configFile.endsWith('.ini'))
     return configFromIniFile(configFile);
 
+  const raw = await fs.promises.readFile(configFile, 'utf8');
+  const data = raw.charCodeAt(0) === 0xFEFF ? raw.slice(1) : raw;
   try {
-    const data = await fs.promises.readFile(configFile, 'utf8');
-    return JSON.parse(data.charCodeAt(0) === 0xFEFF ? data.slice(1) : data);
-  } catch {
+    return JSON.parse(data);
+  } catch (jsonError) {
+    // A JSON config is always an object, so JSON-looking input must surface its
+    // parse error rather than silently falling back to INI (and the default
+    // config). A leading `[` stays with INI — it is a `[section]` header there.
+    if (/^\s*\{/.test(data))
+      throw jsonError;
     return configFromIniFile(configFile);
   }
 }

@@ -24,9 +24,8 @@ import { test as testNs } from '../common';
 import * as babel from '../transform/babelBundle';
 import { wrapReporterAsV2 } from './reporterV2';
 
-import type { AnyReporter, ReporterV2 } from './reporterV2';
+import type { AnyReporter, ReporterPreprocessParams, ReporterV2 } from './reporterV2';
 import type { FullConfig, FullResult, TestCase, TestError, TestResult, TestStep, WorkerInfo } from '../../types/testReporter';
-
 
 export class InternalReporter implements ReporterV2 {
   private _reporter: Multiplexer;
@@ -54,13 +53,8 @@ export class InternalReporter implements ReporterV2 {
     this._reporter.onConfigure?.(config);
   }
 
-  async preprocessSuite(config: FullConfig, suite: testNs.Suite) {
-    suite._preprocessing = true;
-    try {
-      return await this._reporter.preprocessSuite?.(config, suite);
-    } finally {
-      suite._preprocessing = false;
-    }
+  async preprocess(params: ReporterPreprocessParams) {
+    await this._reporter.preprocess(params);
   }
 
   onBegin(suite: testNs.Suite) {

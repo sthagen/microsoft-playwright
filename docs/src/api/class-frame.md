@@ -745,6 +745,9 @@ await bodyHandle.DisposeAsync();
 
 Optional argument to pass to [`param: expression`].
 
+### option: Frame.evaluate.exposeFunctions = %%-js-evaluate-expose-functions-%%
+* since: v1.62
+
 ## async method: Frame.evaluateHandle
 * since: v1.8
 - returns: <[JSHandle]>
@@ -856,6 +859,9 @@ await resultHandle.DisposeAsync();
 - `arg` ?<[EvaluationArgument]>
 
 Optional argument to pass to [`param: expression`].
+
+### option: Frame.evaluateHandle.exposeFunctions = %%-js-evaluate-expose-functions-%%
+* since: v1.62
 
 ## async method: Frame.fill
 * since: v1.8
@@ -1068,8 +1074,6 @@ Attribute name to get the value for.
 ### option: Frame.getByRole.exact = %%-locator-get-by-role-option-exact-%%
 
 ### option: Frame.getByRole.description = %%-locator-get-by-role-option-description-%%
-
-### option: Frame.getByRole.busy = %%-locator-get-by-role-option-busy-%%
 
 ## method: Frame.getByTestId
 * since: v1.27
@@ -1434,6 +1438,46 @@ Returns the page containing this frame.
 - returns: <[null]|[Frame]>
 
 Parent frame, if any. Detached frames and main frames return `null`.
+
+## method: Frame.pierceFrames
+* since: v1.63
+- returns: <[FrameLocator]>
+
+When working with iframes, you can create a frame locator that will search for elements in the main frame
+and in all iframes on the page, so that you don't need to locate each iframe first.
+
+Note that all elements matching the locator must belong to a single frame. For example, if the page contains
+two iframes, each with a `Submit` button, piercing frames and locating a button will throw an error
+because it matches elements from multiple frames.
+
+**Usage**
+
+Following snippet locates a button, either in the main frame or in one of the iframes:
+
+```js
+const locator = frame.pierceFrames().getByRole('button');
+await locator.click();
+```
+
+```java
+Locator locator = frame.pierceFrames().getByRole(AriaRole.BUTTON);
+locator.click();
+```
+
+```python async
+locator = frame.pierce_frames.get_by_role("button")
+await locator.click()
+```
+
+```python sync
+locator = frame.pierce_frames.get_by_role("button")
+locator.click()
+```
+
+```csharp
+var locator = frame.PierceFrames.GetByRole(AriaRole.Button);
+await locator.ClickAsync();
+```
 
 ## async method: Frame.press
 * since: v1.8

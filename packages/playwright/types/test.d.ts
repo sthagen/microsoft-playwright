@@ -19,8 +19,11 @@ import type { APIRequestContext, Browser, BrowserContext, BrowserContextOptions,
 export * from 'playwright-core';
 
 export type BlobReporterOptions = { outputDir?: string, fileName?: string };
-export type ListReporterOptions = { printSteps?: boolean, printFailuresInline?: boolean };
-export type JUnitReporterOptions = { outputFile?: string, stripANSIControlSequences?: boolean, includeProjectInTestName?: boolean, includeRetries?: boolean };
+export type DotReporterOptions = { omitTags?: boolean };
+export type LineReporterOptions = { omitTags?: boolean };
+export type ListReporterOptions = { printSteps?: boolean, printFailuresInline?: boolean, omitTags?: boolean };
+export type GitHubReporterOptions = { omitTags?: boolean };
+export type JUnitReporterOptions = { outputFile?: string, stripANSIControlSequences?: boolean, includeProjectInTestName?: boolean, includeRetries?: boolean, omitTags?: boolean };
 export type JsonReporterOptions = { outputFile?: string };
 export type HtmlReporterOptions = {
   outputFolder?: string;
@@ -32,14 +35,15 @@ export type HtmlReporterOptions = {
   noSnippets?: boolean;
   noCopyPrompt?: boolean;
   doNotInlineAssets?: boolean;
+  mergeFiles?: boolean;
 };
 
 export type ReporterDescription = Readonly<
   ['blob'] | ['blob', BlobReporterOptions] |
-  ['dot'] |
-  ['line'] |
+  ['dot'] | ['dot', DotReporterOptions] |
+  ['line'] | ['line', LineReporterOptions] |
   ['list'] | ['list', ListReporterOptions] |
-  ['github'] |
+  ['github'] | ['github', GitHubReporterOptions] |
   ['junit'] | ['junit', JUnitReporterOptions] |
   ['json'] | ['json', JsonReporterOptions] |
   ['html'] | ['html', HtmlReporterOptions] |
@@ -1644,8 +1648,9 @@ interface TestConfig<TestArgs = {}, WorkerArgs = {}> {
    * Controls when failed tests are retried. Defaults to `'immediate'`.
    * - `'immediate'` - A failed test is retried as soon as a worker is available, interleaved with the rest of the
    *   run. This is the default.
-   * - `'deferred'` - Retries are run only after all tests have had their first attempt, in parallel up to the
-   *   configured number of [workers](#test-config-workers).
+   * - `'isolated'` - Retries are run at the end, after all other tests have finished, one by one in a single worker.
+   *   This minimizes the interference between retried tests and the rest of the suite, at the expense of the total
+   *   run time.
    *
    * Learn more about [test retries](https://playwright.dev/docs/test-retries#retries).
    *
@@ -1657,12 +1662,12 @@ interface TestConfig<TestArgs = {}, WorkerArgs = {}> {
    *
    * export default defineConfig({
    *   retries: 2,
-   *   retryStrategy: 'deferred',
+   *   retryStrategy: 'isolated',
    * });
    * ```
    *
    */
-  retryStrategy?: "immediate"|"deferred";
+  retryStrategy?: "immediate"|"isolated";
 
   /**
    * Shard tests and execute only the selected shard. Specify in the one-based form like `{ total: 5, current: 2 }`.
@@ -2717,6 +2722,7 @@ export type TestAnnotation = TestDetailsAnnotation & {
 export type TestDetails = {
   tag?: string | string[];
   annotation?: TestDetailsAnnotation | TestDetailsAnnotation[];
+  lock?: string | string[];
 }
 
 type TestBody<TestArgs> = (args: TestArgs, testInfo: TestInfo) => Promise<unknown> | unknown;
@@ -2808,6 +2814,26 @@ export interface TestType<TestArgs extends {}, WorkerArgs extends {}> {
    * [testInfo.annotations](https://playwright.dev/docs/api/class-testinfo#test-info-annotations).
    *
    * Learn more about [test annotations](https://playwright.dev/docs/test-annotations).
+   *
+   * **Locks**
+   *
+   * You can declare named locks to prevent specific tests from running at the same time, while all other tests continue
+   * to run in parallel. Tests that share a lock name never run concurrently, even when they are declared in different
+   * files or belong to different [projects](https://playwright.dev/docs/test-projects). This is useful when a few tests access a shared
+   * resource that does not support concurrent access.
+   *
+   * ```js
+   * import { test, expect } from '@playwright/test';
+   *
+   * test('update user settings', {
+   *   lock: 'user-settings',
+   * }, async ({ page }) => {
+   *   // This test never runs concurrently with other tests
+   *   // that declare the 'user-settings' lock.
+   * });
+   * ```
+   *
+   * Learn more about [test locks](https://playwright.dev/docs/test-parallel#test-locks).
    * @param title Test title.
    * @param details Additional test details.
    * @param body Test body that takes one or two arguments: an object with fixtures and optional
@@ -2885,6 +2911,26 @@ export interface TestType<TestArgs extends {}, WorkerArgs extends {}> {
    * [testInfo.annotations](https://playwright.dev/docs/api/class-testinfo#test-info-annotations).
    *
    * Learn more about [test annotations](https://playwright.dev/docs/test-annotations).
+   *
+   * **Locks**
+   *
+   * You can declare named locks to prevent specific tests from running at the same time, while all other tests continue
+   * to run in parallel. Tests that share a lock name never run concurrently, even when they are declared in different
+   * files or belong to different [projects](https://playwright.dev/docs/test-projects). This is useful when a few tests access a shared
+   * resource that does not support concurrent access.
+   *
+   * ```js
+   * import { test, expect } from '@playwright/test';
+   *
+   * test('update user settings', {
+   *   lock: 'user-settings',
+   * }, async ({ page }) => {
+   *   // This test never runs concurrently with other tests
+   *   // that declare the 'user-settings' lock.
+   * });
+   * ```
+   *
+   * Learn more about [test locks](https://playwright.dev/docs/test-parallel#test-locks).
    * @param title Test title.
    * @param details Additional test details.
    * @param body Test body that takes one or two arguments: an object with fixtures and optional
@@ -3021,6 +3067,28 @@ export interface TestType<TestArgs extends {}, WorkerArgs extends {}> {
    * ```
    *
    * Learn more about [test annotations](https://playwright.dev/docs/test-annotations).
+   *
+   * **Locks**
+   *
+   * You can declare named locks for all tests in a group by providing additional details. Tests that share a lock name
+   * never run concurrently. Learn more about [test locks](https://playwright.dev/docs/test-parallel#test-locks).
+   *
+   * ```js
+   * import { test, expect } from '@playwright/test';
+   *
+   * test.describe('two tests with a lock', {
+   *   lock: 'user-settings',
+   * }, () => {
+   *   test('one', async ({ page }) => {
+   *     // ...
+   *   });
+   *
+   *   test('two', async ({ page }) => {
+   *     // ...
+   *   });
+   * });
+   * ```
+   *
    * @param title Group title.
    * @param details Additional details for all tests in the group.
    * @param callback A callback that is run immediately when calling
@@ -3116,6 +3184,28 @@ export interface TestType<TestArgs extends {}, WorkerArgs extends {}> {
      * ```
      *
      * Learn more about [test annotations](https://playwright.dev/docs/test-annotations).
+     *
+     * **Locks**
+     *
+     * You can declare named locks for all tests in a group by providing additional details. Tests that share a lock name
+     * never run concurrently. Learn more about [test locks](https://playwright.dev/docs/test-parallel#test-locks).
+     *
+     * ```js
+     * import { test, expect } from '@playwright/test';
+     *
+     * test.describe('two tests with a lock', {
+     *   lock: 'user-settings',
+     * }, () => {
+     *   test('one', async ({ page }) => {
+     *     // ...
+     *   });
+     *
+     *   test('two', async ({ page }) => {
+     *     // ...
+     *   });
+     * });
+     * ```
+     *
      * @param title Group title.
      * @param details Additional details for all tests in the group.
      * @param callback A callback that is run immediately when calling
@@ -3211,6 +3301,28 @@ export interface TestType<TestArgs extends {}, WorkerArgs extends {}> {
      * ```
      *
      * Learn more about [test annotations](https://playwright.dev/docs/test-annotations).
+     *
+     * **Locks**
+     *
+     * You can declare named locks for all tests in a group by providing additional details. Tests that share a lock name
+     * never run concurrently. Learn more about [test locks](https://playwright.dev/docs/test-parallel#test-locks).
+     *
+     * ```js
+     * import { test, expect } from '@playwright/test';
+     *
+     * test.describe('two tests with a lock', {
+     *   lock: 'user-settings',
+     * }, () => {
+     *   test('one', async ({ page }) => {
+     *     // ...
+     *   });
+     *
+     *   test('two', async ({ page }) => {
+     *     // ...
+     *   });
+     * });
+     * ```
+     *
      * @param title Group title.
      * @param details Additional details for all tests in the group.
      * @param callback A callback that is run immediately when calling
@@ -3306,6 +3418,28 @@ export interface TestType<TestArgs extends {}, WorkerArgs extends {}> {
      * ```
      *
      * Learn more about [test annotations](https://playwright.dev/docs/test-annotations).
+     *
+     * **Locks**
+     *
+     * You can declare named locks for all tests in a group by providing additional details. Tests that share a lock name
+     * never run concurrently. Learn more about [test locks](https://playwright.dev/docs/test-parallel#test-locks).
+     *
+     * ```js
+     * import { test, expect } from '@playwright/test';
+     *
+     * test.describe('two tests with a lock', {
+     *   lock: 'user-settings',
+     * }, () => {
+     *   test('one', async ({ page }) => {
+     *     // ...
+     *   });
+     *
+     *   test('two', async ({ page }) => {
+     *     // ...
+     *   });
+     * });
+     * ```
+     *
      * @param title Group title.
      * @param details Additional details for all tests in the group.
      * @param callback A callback that is run immediately when calling
@@ -6943,6 +7077,61 @@ export interface PlaywrightWorkerOptions {
    */
   connectOptions: ConnectOptions | undefined;
   /**
+   * **NOTE** This option trades test isolation for speed and is intended for component tests that drive a story gallery. Leave
+   * it unset for end-to-end tests - a fresh browser context per test is one of the core guarantees of Playwright Test.
+   *
+   * **Experimental.** When set to `true`, all tests in a worker process run in a single browser context that is reused
+   * between tests, instead of getting a brand new context per test. Defaults to `false`.
+   *
+   * Between tests, Playwright resets the state that component tests typically touch: it clears cookies, cache, local
+   * storage and IndexedDB of visited origins, unregisters service workers, closes extra pages, removes routes, bindings
+   * and init scripts, and re-applies the configured storage state, viewport and emulation options.
+   *
+   * This reset is best-effort, not a guarantee of isolation. State that is **not** reset includes:
+   * - Permissions granted with
+   *   [browserContext.grantPermissions(permissions[, options])](https://playwright.dev/docs/api/class-browsercontext#browser-context-grant-permissions)
+   *   during a test.
+   * - Runtime changes made through
+   *   [browserContext.setGeolocation(geolocation)](https://playwright.dev/docs/api/class-browsercontext#browser-context-set-geolocation),
+   *   [browserContext.setOffline(offline)](https://playwright.dev/docs/api/class-browsercontext#browser-context-set-offline)
+   *   and
+   *   [browserContext.setExtraHTTPHeaders(headers)](https://playwright.dev/docs/api/class-browsercontext#browser-context-set-extra-http-headers).
+   * - Browsing history, `window.name` and any browser-process-wide state.
+   *
+   * Additional restrictions:
+   * - The option is ignored when
+   *   [testOptions.video](https://playwright.dev/docs/api/class-testoptions#test-options-video) recording is enabled.
+   * - Only a few context options may differ between consecutive tests: `colorScheme`, `forcedColors`,
+   *   `reducedMotion`, `contrast`, `screen`, `userAgent`, `viewport` and `testIdAttribute`. Changing any other option
+   *   in [test.use(options)](https://playwright.dev/docs/api/class-test#test-use), for example `locale` or
+   *   `storageState`, silently forces a fresh context and negates the speedup.
+   * - Do not combine with
+   *   [testOptions.connectOptions](https://playwright.dev/docs/api/class-testoptions#test-options-connect-options)
+   *   pointing multiple workers at a shared browser - workers would compete for the single reusable context.
+   * - `recordHar` in
+   *   [testOptions.contextOptions](https://playwright.dev/docs/api/class-testoptions#test-options-context-options) is
+   *   not supported and produces no HAR file.
+   *
+   * **Usage**
+   *
+   * ```js
+   * // playwright.config.ts
+   * import { defineConfig } from '@playwright/test';
+   *
+   * export default defineConfig({
+   *   projects: [
+   *     {
+   *       name: 'components',
+   *       testDir: './tests/components',
+   *       use: { reuseContext: true },
+   *     },
+   *   ],
+   * });
+   * ```
+   *
+   */
+  reuseContext: boolean;
+  /**
    * Whether to automatically capture a screenshot after each test. Defaults to `'off'`.
    * - `'off'`: Do not capture screenshots.
    * - `'on'`: Capture screenshot after each test.
@@ -7041,7 +7230,7 @@ export interface PlaywrightWorkerOptions {
    *
    * Learn more about [recording video](https://playwright.dev/docs/test-use-options#recording-options).
    */
-  video: VideoMode | /** deprecated */ 'retry-with-video' | { mode: VideoMode, size?: ViewportSize, show?: { actions?: { duration?: number, position?: 'top-left' | 'top' | 'top-right' | 'bottom-left' | 'bottom' | 'bottom-right', fontSize?: number }, test?: { level?: 'file' | 'title' | 'step', position?: 'top-left' | 'top' | 'top-right' | 'bottom-left' | 'bottom' | 'bottom-right', fontSize?: number } } };
+  video: VideoMode | /** deprecated */ 'retry-with-video' | { mode: VideoMode, size?: ViewportSize, show?: { actions?: { duration?: number, position?: 'top-left' | 'top' | 'top-right' | 'bottom-left' | 'bottom' | 'bottom-right', fontSize?: number, cursor?: 'none' | 'pointer' }, test?: { level?: 'file' | 'title' | 'step', position?: 'top-left' | 'top' | 'top-right' | 'bottom-left' | 'bottom' | 'bottom-right', fontSize?: number } } };
 }
 
 export type ScreenshotMode = 'off' | 'on' | 'only-on-failure' | 'on-first-failure';
@@ -7260,6 +7449,9 @@ export interface PlaywrightTestOptions {
    * Credentials for [HTTP authentication](https://developer.mozilla.org/en-US/docs/Web/HTTP/Authentication). If no
    * origin is specified, the username and password are sent to any servers upon unauthorized responses.
    *
+   * Pass an array to use different credentials for different origins. The first entry that matches the request origin
+   * is used, and entries with no origin match any request.
+   *
    * **Usage**
    *
    * ```js
@@ -7277,7 +7469,7 @@ export interface PlaywrightTestOptions {
    * ```
    *
    */
-  httpCredentials: HTTPCredentials | undefined;
+  httpCredentials: HTTPCredentials | HTTPCredentials[] | undefined;
   /**
    * Whether to ignore HTTPS errors when sending network requests. Defaults to `false`.
    *
@@ -7717,6 +7909,12 @@ export interface PlaywrightWorkerArgs {
   browser: Browser;
 }
 
+type StoryProps<Story> =
+  Story extends (props: infer Props) => any ? Props :
+  Story extends new (...args: any[]) => { $props: infer Props } ? Props :
+  Story extends new (props: infer Props, ...args: any[]) => any ? Props :
+  Story;
+
 /**
  * Playwright Test is based on the concept of the [test fixtures](https://playwright.dev/docs/test-fixtures). Test fixtures are used to
  * establish environment for each test, giving the test everything it needs and nothing else.
@@ -7808,6 +8006,48 @@ export interface PlaywrightTestArgs {
    *
    */
   request: APIRequestContext;
+  /**
+   * Mounts a component story and returns a [Locator](https://playwright.dev/docs/api/class-locator) pointing to the
+   * root element the story was rendered into. Scope your queries from the returned locator:
+   * `component.getByRole('button')`, not `page.getByRole('button')`.
+   *
+   * A **story** is a small wrapper component that embeds the component under test in one specific scenario: hard-coded
+   * props, mock data, providers, recorded callbacks. Stories are rendered by a **gallery** page that you implement and
+   * serve at [testOptions.baseURL](https://playwright.dev/docs/api/class-testoptions#test-options-base-url). The
+   * gallery exposes `window.mount(params)` and `window.unmount()` functions that render a story into its root element.
+   * Each call to [fixtures.mount(storyId[, props])](https://playwright.dev/docs/api/class-fixtures#fixtures-mount)
+   * navigates to [testOptions.baseURL](https://playwright.dev/docs/api/class-testoptions#test-options-base-url) and
+   * calls `window.mount()` with the story id and props, so tests are fully isolated from each other.
+   *
+   * **Usage**
+   *
+   * ```js
+   * test('click should expand', async ({ mount }) => {
+   *   const component = await mount('components/Expandable/Stateful');
+   *   await component.getByRole('button').click();
+   *   await expect(component.getByTestId('expanded')).toHaveValue('true');
+   * });
+   * ```
+   *
+   * Pass the story type as a template argument to type-check the props:
+   *
+   * ```js
+   * import type { WithTitle } from './Button.story';
+   *
+   * test('renders the title', async ({ mount }) => {
+   *   const component = await mount<typeof WithTitle>('Button/WithTitle', { title: 'Hello' });
+   *   await expect(component).toContainText('Hello');
+   * });
+   * ```
+   *
+   * The returned locator is augmented with two methods:
+   * - `update(props)` - re-renders the same story with new props without remounting, preserving component state;
+   * - `unmount()` - unmounts the story.
+   * @param storyId Identifier of the story to mount, as resolved by the gallery page. Conventionally, the story file path plus the
+   * exported story name, for example `'components/Button/Primary'`.
+   * @param props Optional plain, serializable props passed to the story.
+   */
+  mount: <Story = Record<string, any>>(storyId: string, props?: StoryProps<Story>) => Promise<Locator & { update(props?: StoryProps<Story>): Promise<void>, unmount(): Promise<void> }>;
 }
 
 type ExcludeProps<A, B> = {
@@ -8669,7 +8909,6 @@ export function mergeExpects<List extends any[]>(...expects: List): MergedExpect
 
 // This is required to not export everything by default. See https://github.com/Microsoft/TypeScript/issues/19545#issuecomment-340490459
 export { };
-
 
 
 /**
@@ -9549,10 +9788,14 @@ interface LocatorAssertions {
    * ```js
    * const locator = page.getByRole('button');
    * await expect(locator).toHaveScreenshot('image.png');
+   *
+   * // Store the snapshot in the WebP format.
+   * await expect(locator).toHaveScreenshot('image.webp');
    * ```
    *
    * Note that screenshot assertions only work with Playwright test runner.
-   * @param name Snapshot name.
+   * @param name Snapshot name. Must have a `.png` or `.webp` extension, the screenshot is captured in the corresponding format.
+   * Both formats are lossless.
    * @param options
    */
   toHaveScreenshot(name: string|ReadonlyArray<string>, options?: {
@@ -9615,6 +9858,13 @@ interface LocatorAssertions {
     scale?: "css"|"device";
 
     /**
+     * An optional [`AbortSignal`](https://developer.mozilla.org/en-US/docs/Web/API/AbortSignal) that can cancel the
+     * assertion. Aborting the signal fails the assertion like a timeout: if the signal is aborted while the assertion is
+     * retrying, or is already aborted before the assertion starts, the assertion fails without retrying further.
+     */
+    signal?: AbortSignal;
+
+    /**
      * File name containing the stylesheet to apply while making the screenshot. This is where you can hide dynamic
      * elements, make elements invisible or change their properties to help you creating repeatable screenshots. This
      * stylesheet pierces the Shadow DOM and applies to the inner frames.
@@ -9637,6 +9887,9 @@ interface LocatorAssertions {
   /**
    * This function will wait until two consecutive locator screenshots yield the same result, and then compare the last
    * screenshot with the expectation.
+   *
+   * The snapshot is stored in the PNG format. To store it in the WebP format instead, pass a snapshot name with the
+   * `.webp` extension.
    *
    * **Usage**
    *
@@ -9706,6 +9959,13 @@ interface LocatorAssertions {
      * Defaults to `"css"`.
      */
     scale?: "css"|"device";
+
+    /**
+     * An optional [`AbortSignal`](https://developer.mozilla.org/en-US/docs/Web/API/AbortSignal) that can cancel the
+     * assertion. Aborting the signal fails the assertion like a timeout: if the signal is aborted while the assertion is
+     * retrying, or is already aborted before the assertion starts, the assertion fails without retrying further.
+     */
+    signal?: AbortSignal;
 
     /**
      * File name containing the stylesheet to apply while making the screenshot. This is where you can hide dynamic
@@ -9976,10 +10236,14 @@ interface PageAssertions {
    *
    * ```js
    * await expect(page).toHaveScreenshot('image.png');
+   *
+   * // Store the snapshot in the WebP format.
+   * await expect(page).toHaveScreenshot('image.webp');
    * ```
    *
    * Note that screenshot assertions only work with Playwright test runner.
-   * @param name Snapshot name.
+   * @param name Snapshot name. Must have a `.png` or `.webp` extension, the screenshot is captured in the corresponding format.
+   * Both formats are lossless.
    * @param options
    */
   toHaveScreenshot(name: string|ReadonlyArray<string>, options?: PageAssertionsToHaveScreenshotOptions): Promise<void>;
@@ -9987,6 +10251,9 @@ interface PageAssertions {
   /**
    * This function will wait until two consecutive page screenshots yield the same result, and then compare the last
    * screenshot with the expectation.
+   *
+   * The snapshot is stored in the PNG format. To store it in the WebP format instead, pass a snapshot name with the
+   * `.webp` extension.
    *
    * **Usage**
    *
@@ -10590,6 +10857,13 @@ export interface PageAssertionsToHaveScreenshotOptions {
    * Defaults to `"css"`.
    */
   scale?: "css"|"device";
+
+  /**
+   * An optional [`AbortSignal`](https://developer.mozilla.org/en-US/docs/Web/API/AbortSignal) that can cancel the
+   * assertion. Aborting the signal fails the assertion like a timeout: if the signal is aborted while the assertion is
+   * retrying, or is already aborted before the assertion starts, the assertion fails without retrying further.
+   */
+  signal?: AbortSignal;
 
   /**
    * File name containing the stylesheet to apply while making the screenshot. This is where you can hide dynamic

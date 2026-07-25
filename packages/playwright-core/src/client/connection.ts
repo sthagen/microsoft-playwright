@@ -47,6 +47,7 @@ import { Stream } from './stream';
 import { Tracing } from './tracing';
 import { Worker } from './worker';
 import { WritableStream } from './writableStream';
+import { kNoTimeout } from './timeoutSettings';
 import type { ClientInstrumentation } from './clientInstrumentation';
 import type { HeadersArray } from './types';
 import type { ValidatorContext } from '@protocol/validator';
@@ -60,7 +61,7 @@ class Root extends ChannelOwner<channels.RootChannel> {
   async initialize(): Promise<Playwright> {
     return Playwright.from((await this._channel.initialize({
       sdkLanguage: 'javascript',
-    }, undefined)).playwright);
+    }, kNoTimeout)).playwright);
   }
 }
 
@@ -174,7 +175,7 @@ export class Connection extends EventEmitter {
       this._tracingCount--;
   }
 
-  async sendMessageToServer(object: ChannelOwner, method: string, params: any, options: { apiName?: string, title?: string, internal?: boolean, frames?: channels.StackFrame[], stepId?: string, signal?: AbortSignal }): Promise<any> {
+  async sendMessageToServer(object: ChannelOwner, method: string, params: any, options: { apiName?: string, title?: string, internal?: boolean, frames?: channels.StackFrame[], stepId?: string, signal?: AbortSignal, timeout: number }): Promise<any> {
     // Fire-and-forget: server intentionally never replies to __waitInfo__,
     // so silently drop it after the connection is closed or the object was collected.
     if (method === '__waitInfo__' && (this._closedError || object._wasCollected))
@@ -197,7 +198,7 @@ export class Connection extends EventEmitter {
       debugLogger.log('channel', 'SEND> ' + JSON.stringify(message));
     }
     const location = options.frames?.[0] ? { file: options.frames[0].file, line: options.frames[0].line, column: options.frames[0].column } : undefined;
-    const metadata: channels.Metadata = { title: options.title, location, internal: options.internal, stepId: options.stepId };
+    const metadata: channels.Metadata = { title: options.title, location, internal: options.internal, stepId: options.stepId, timeout: options.timeout };
     if (this._tracingCount && options.frames && type !== 'LocalUtils')
       this._localUtils?.addStackToTracingNoReply({ callData: { stack: options.frames ?? [], id } }).catch(() => {});
     // We need to exit zones before calling into the server, otherwise

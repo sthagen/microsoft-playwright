@@ -106,7 +106,10 @@ class NetworkRequest {
     this.httpChannel = httpChannel;
 
     const loadInfo = this.httpChannel.loadInfo;
-    const browsingContext = loadInfo?.frameBrowsingContext || loadInfo?.workerAssociatedBrowsingContext || loadInfo?.browsingContext;
+    const browsingContext = loadInfo?.frameBrowsingContext
+      || loadInfo?.associatedBrowsingContext
+      || loadInfo?.workerAssociatedBrowsingContext
+      || loadInfo?.browsingContext;
 
     this._frameId = helper.browsingContextToFrameId(browsingContext);
 
@@ -298,12 +301,11 @@ class NetworkRequest {
       const proxy = this._networkObserver._targetRegistry.getProxyInfo(aChannel);
       credentials = proxy ? {username: proxy.username, password: proxy.password} : null;
     } else {
-      credentials = pageNetwork._target.browserContext().httpCredentials;
+      const origin = (aChannel.URI.scheme + '://' + aChannel.URI.hostPort).toLowerCase();
+      const httpCredentials = pageNetwork._target.browserContext().httpCredentials || [];
+      credentials = httpCredentials.find(c => !c.origin || c.origin.toLowerCase() === origin) || null;
     }
     if (!credentials)
-      return false;
-    const origin = aChannel.URI.scheme + '://' + aChannel.URI.hostPort;
-    if (credentials.origin && origin.toLowerCase() !== credentials.origin.toLowerCase())
       return false;
     authInfo.username = credentials.username;
     authInfo.password = credentials.password;
@@ -906,13 +908,18 @@ class ResponseStorage {
       const encodingHeader = request.httpChannel.getResponseHeader("Content-Encoding");
       encodings = encodingHeader.split(/\s*\t*,\s*\t*/);
     }
-    this._responses.set(request.requestId, {body, encodings});
+    this._responses.set(request.requestId, {
+      body,
+      encodings,
+      httpChannel: encodings.length ? request.httpChannel : null,
+    });
     this._totalSize += body.length;
     if (this._totalSize > this._maxTotalSize) {
       for (let [requestId, response] of this._responses) {
         this._totalSize -= response.body.length;
         response.body = '';
         response.evicted = true;
+        response.httpChannel = null;
         if (this._totalSize < this._maxTotalSize)
           break;
       }
@@ -928,7 +935,7 @@ class ResponseStorage {
     let result = response.body;
     if (response.encodings && response.encodings.length) {
       for (const encoding of response.encodings)
-        result = convertString(result, encoding, 'uncompressed');
+        result = convertString(result, encoding, 'uncompressed', response.httpChannel);
     }
     return {base64body: btoa(result)};
   }
@@ -984,7 +991,7 @@ function setPostData(httpChannel, postData, headers) {
   httpChannel.explicitSetUploadStream(synthesized, contentType, -1, httpChannel.requestMethod, false);
 }
 
-function convertString(s, source, dest) {
+function convertString(s, source, dest, request) {
   const is = Cc["@mozilla.org/io/string-input-stream;1"].createInstance(
     Ci.nsIStringInputStream
   );
@@ -1018,9 +1025,9 @@ function convertString(s, source, dest) {
     listener,
     null
   );
-  converter.onStartRequest(null, null);
-  converter.onDataAvailable(null, is, 0, s.length);
-  converter.onStopRequest(null, null, null);
+  converter.onStartRequest(request, null);
+  converter.onDataAvailable(request, is, 0, s.length);
+  converter.onStopRequest(request, null, null);
   return result.join('');
 }
 
@@ -1047,4 +1054,3 @@ PageNetwork.Events = {
   RequestFinished: Symbol('PageNetwork.Events.RequestFinished'),
   RequestFailed: Symbol('PageNetwork.Events.RequestFailed'),
 };
-

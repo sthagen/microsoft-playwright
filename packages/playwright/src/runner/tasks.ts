@@ -395,6 +395,9 @@ function createPhasesTask(): Task<TestRun> {
       const projectToSuite = new Map(testRun.rootSuite!.suites.map(suite => [suite._fullProject!, suite]));
       const allProjects = [...projectToSuite.keys()];
       const teardownToSetups = buildTeardownToSetupsMap(allProjects);
+      // Teardown projects keep running after maxFailures is reached, so that cleanup
+      // is not skipped. Nothing to ignore when maxFailures cannot stop the run.
+      const ignoreMaxFailuresProjectIds = new Set(testRun.config.config.maxFailures > 0 ? [...teardownToSetups.keys()].map(project => project.id) : []);
       const teardownToSetupsDependents = new Map<commonConfig.FullProjectInternal, commonConfig.FullProjectInternal[]>();
       for (const [teardown, setups] of teardownToSetups) {
         const closure = buildDependentProjects(setups, allProjects);
@@ -414,14 +417,17 @@ function createPhasesTask(): Task<TestRun> {
           phaseProjects.push(project);
         }
 
-        // Create a new phase.
         for (const project of phaseProjects)
           processed.add(project);
-        if (phaseProjects.length) {
+        // Projects that ignore maxFailures run in their own phase.
+        for (const ignoreMaxFailures of [false, true]) {
+          const projects = phaseProjects.filter(project => ignoreMaxFailuresProjectIds.has(project.id) === ignoreMaxFailures);
+          if (!projects.length)
+            continue;
           let testGroupsInPhase = 0;
-          const phase: Phase = { dispatcher: new Dispatcher(testRun), projects: [] };
+          const phase: Phase = { dispatcher: new Dispatcher(testRun, { ignoreMaxFailures }), projects: [] };
           testRun.phases.push(phase);
-          for (const project of phaseProjects) {
+          for (const project of projects) {
             const projectSuite = projectToSuite.get(project)!;
             const testGroups = createTestGroups(projectSuite, testRun.config.config.workers);
             phase.projects.push({ project, projectSuite, testGroups });

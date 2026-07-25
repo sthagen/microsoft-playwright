@@ -270,7 +270,7 @@ it('local network request is allowed from public origin', {
   it.skip(browserName === 'webkit');
   it.skip(browserName === 'chromium' && browserMajorVersion < 145, 'local-network-access permission support has changed between versions');
 
-  if (browserName === 'chromium')
+  if (browserName === 'chromium' || browserName === 'firefox')
     await context.grantPermissions(['local-network-access']);
   const serverRequests = [];
   server.setRoute('/cors', (req, res) => {
@@ -321,4 +321,77 @@ it('can request screen-wake-lock', {
   await page.route('**/*', route => route.fulfill({ status: 200, body: '<div>Hello there!</div>', contentType: 'text/html' }));
   await page.goto('https://example.com');
   await page.evaluate(() => navigator.wakeLock.request('screen'));
+});
+
+it.describe('camera and microphone', () => {
+  // WebKit exposes deterministic mock capture devices; capture is gated on the
+  // 'camera'/'microphone' permissions. Chromium needs --use-fake-device-for-media-stream
+  // and Firefox has no camera/microphone permission mapping, so scope to WebKit.
+  it.skip(({ browserName }) => browserName !== 'webkit', 'WebKit mock-capture-device based test');
+  // Native Windows WebKit is built without a media-capture backend, so getUserMedia is
+  // unavailable there; WSL runs the Linux build, which does have mock capture.
+  it.skip(({ isWindows, channel }) => isWindows && channel !== 'webkit-wsl', 'WebKit has no media capture on Windows');
+
+  async function getUserMedia(page, constraints) {
+    return await page.evaluate(async constraints => {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia(constraints);
+        const tracks = stream.getTracks().map(track => ({ kind: track.kind, live: track.readyState === 'live' }));
+        stream.getTracks().forEach(track => track.stop());
+        tracks.sort((a, b) => a.kind.localeCompare(b.kind));
+        return { tracks };
+      } catch (error) {
+        return { error: error.name };
+      }
+    }, constraints);
+  }
+
+  it('should capture when camera and microphone are granted', {
+    annotation: { type: 'issue', description: 'https://github.com/microsoft/playwright/issues/2973' }
+  }, async ({ page, context, server, isFrozenWebkit }) => {
+    it.skip(isFrozenWebkit, 'Mock capture device support requires a newer WebKit build');
+
+    await context.grantPermissions(['camera', 'microphone'], { origin: server.PREFIX });
+    await page.goto(server.EMPTY_PAGE);
+    expect(await getUserMedia(page, { video: true, audio: true })).toEqual({
+      tracks: [
+        { kind: 'audio', live: true },
+        { kind: 'video', live: true },
+      ],
+    });
+  });
+
+  it('should reject when no permission is granted', {
+    annotation: { type: 'issue', description: 'https://github.com/microsoft/playwright/issues/2973' }
+  }, async ({ page, server, isFrozenWebkit }) => {
+    it.skip(isFrozenWebkit, 'Mock capture device support requires a newer WebKit build');
+
+    await page.goto(server.EMPTY_PAGE);
+    expect(await getUserMedia(page, { video: true, audio: true })).toEqual({ error: 'NotAllowedError' });
+  });
+
+  it('should gate audio and video independently', {
+    annotation: { type: 'issue', description: 'https://github.com/microsoft/playwright/issues/2973' }
+  }, async ({ page, context, server, isFrozenWebkit }) => {
+    it.skip(isFrozenWebkit, 'Mock capture device support requires a newer WebKit build');
+
+    await context.grantPermissions(['camera'], { origin: server.PREFIX });
+    await page.goto(server.EMPTY_PAGE);
+    // Camera-only request is allowed.
+    expect(await getUserMedia(page, { video: true })).toEqual({ tracks: [{ kind: 'video', live: true }] });
+    // Microphone request is rejected because it was not granted.
+    expect(await getUserMedia(page, { audio: true })).toEqual({ error: 'NotAllowedError' });
+  });
+
+  it('should stop capturing after permissions are cleared', {
+    annotation: { type: 'issue', description: 'https://github.com/microsoft/playwright/issues/2973' }
+  }, async ({ page, context, server, isFrozenWebkit }) => {
+    it.skip(isFrozenWebkit, 'Mock capture device support requires a newer WebKit build');
+
+    await context.grantPermissions(['camera'], { origin: server.PREFIX });
+    await page.goto(server.EMPTY_PAGE);
+    expect(await getUserMedia(page, { video: true })).toEqual({ tracks: [{ kind: 'video', live: true }] });
+    await context.clearPermissions();
+    expect(await getUserMedia(page, { video: true })).toEqual({ error: 'NotAllowedError' });
+  });
 });

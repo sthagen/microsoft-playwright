@@ -382,8 +382,8 @@ it('should resolve worker script allHeaders in main frame', {
 
 it('should resolve worker script allHeaders in iframe', {
   annotation: { type: 'issue', description: 'https://github.com/microsoft/playwright/issues/39948' },
-}, async function({ page, server, browserName }) {
-  it.fixme(browserName === 'chromium', 'https://github.com/microsoft/playwright/issues/39948');
+}, async function({ page, server, browserName, browserMajorVersion }) {
+  it.skip(browserName === 'chromium' && browserMajorVersion < 151, 'needs proper Network.requestWillBeSentExtraInfo');
 
   const [request] = await Promise.all([
     page.waitForEvent('requestfinished', request => request.url() === server.PREFIX + '/worker/worker.js'),
@@ -401,14 +401,14 @@ it('should resolve worker script allHeaders in nested worker inside iframe', {
 }, async function({ page, server, browserName }) {
   it.fixme(browserName === 'webkit', 'cannot evaluate in nested worker');
   it.fixme(browserName === 'firefox', 'nested worker script request is not reported at all');
-  it.fixme(browserName === 'chromium', 'https://github.com/microsoft/playwright/issues/39948');
 
+  const url = server.PREFIX + '/worker/worker.js';
   const [worker] = await Promise.all([
     page.waitForEvent('worker'),
+    page.waitForEvent('requestfinished', request => request.url() === url),
     attachFrame(page, 'frame1', server.PREFIX + '/worker/worker.html'),
   ]);
 
-  const url = server.PREFIX + '/worker/worker.js';
   const [request] = await Promise.all([
     page.waitForEvent('requestfinished', request => request.url() === url),
     worker.evaluate(url => {

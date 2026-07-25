@@ -315,6 +315,13 @@ Attribute name.
 
 Expected attribute value.
 
+### param: LocatorAssertions.NotToHaveAttribute.value
+* since: v1.62
+* langs: python
+- `value` ?<[string]|[RegExp]>
+
+Expected attribute value. If not specified, the assertion verifies that the attribute is absent.
+
 ### option: LocatorAssertions.NotToHaveAttribute.ignoreCase = %%-assertions-ignore-case-%%
 * since: v1.40
 
@@ -1533,6 +1540,8 @@ from playwright.async_api import expect
 
 locator = page.locator("input")
 await expect(locator).to_have_attribute("type", "text")
+await expect(locator).to_have_attribute("disabled")
+await expect(locator).not_to_have_attribute("readonly")
 ```
 
 ```python sync
@@ -1540,6 +1549,8 @@ from playwright.sync_api import expect
 
 locator = page.locator("input")
 expect(locator).to_have_attribute("type", "text")
+expect(locator).to_have_attribute("disabled")
+expect(locator).not_to_have_attribute("readonly")
 ```
 
 ```csharp
@@ -1558,6 +1569,13 @@ Attribute name.
 - `value` <[string]|[RegExp]>
 
 Expected attribute value.
+
+### param: LocatorAssertions.toHaveAttribute.value
+* since: v1.62
+* langs: python
+- `value` ?<[string]|[RegExp]>
+
+Expected attribute value. If not specified, the assertion verifies that the attribute is present.
 
 ### option: LocatorAssertions.toHaveAttribute.timeout = %%-js-assertions-timeout-%%
 * since: v1.18
@@ -1992,6 +2010,9 @@ yield the same result, and then compare the last screenshot with the expectation
 ```js
 const locator = page.getByRole('button');
 await expect(locator).toHaveScreenshot('image.png');
+
+// Store the snapshot in the WebP format.
+await expect(locator).toHaveScreenshot('image.webp');
 ```
 
 Note that screenshot assertions only work with Playwright test runner.
@@ -2000,10 +2021,13 @@ Note that screenshot assertions only work with Playwright test runner.
 * since: v1.23
 - `name` <[string]|[Array]<[string]>>
 
-Snapshot name.
+Snapshot name. Must have a `.png` or `.webp` extension, the screenshot is captured in the corresponding format. Both formats are lossless.
 
 ### option: LocatorAssertions.toHaveScreenshot#1.timeout = %%-js-assertions-timeout-%%
 * since: v1.23
+
+### option: LocatorAssertions.toHaveScreenshot#1.signal = %%-js-assertions-signal-%%
+* since: v1.62
 
 ### option: LocatorAssertions.toHaveScreenshot#1.animations = %%-screenshot-option-animations-default-disabled-%%
 * since: v1.23
@@ -2042,6 +2066,8 @@ Snapshot name.
 This function will wait until two consecutive locator screenshots
 yield the same result, and then compare the last screenshot with the expectation.
 
+The snapshot is stored in the PNG format. To store it in the WebP format instead, pass a snapshot name with the `.webp` extension.
+
 **Usage**
 
 ```js
@@ -2053,6 +2079,9 @@ Note that screenshot assertions only work with Playwright test runner.
 
 ### option: LocatorAssertions.toHaveScreenshot#2.timeout = %%-js-assertions-timeout-%%
 * since: v1.23
+
+### option: LocatorAssertions.toHaveScreenshot#2.signal = %%-js-assertions-signal-%%
+* since: v1.62
 
 ### option: LocatorAssertions.toHaveScreenshot#2.animations = %%-screenshot-option-animations-default-disabled-%%
 * since: v1.23

@@ -18,8 +18,11 @@ import type { APIRequestContext, Browser, BrowserContext, BrowserContextOptions,
 export * from 'playwright-core';
 
 export type BlobReporterOptions = { outputDir?: string, fileName?: string };
-export type ListReporterOptions = { printSteps?: boolean, printFailuresInline?: boolean };
-export type JUnitReporterOptions = { outputFile?: string, stripANSIControlSequences?: boolean, includeProjectInTestName?: boolean, includeRetries?: boolean };
+export type DotReporterOptions = { omitTags?: boolean };
+export type LineReporterOptions = { omitTags?: boolean };
+export type ListReporterOptions = { printSteps?: boolean, printFailuresInline?: boolean, omitTags?: boolean };
+export type GitHubReporterOptions = { omitTags?: boolean };
+export type JUnitReporterOptions = { outputFile?: string, stripANSIControlSequences?: boolean, includeProjectInTestName?: boolean, includeRetries?: boolean, omitTags?: boolean };
 export type JsonReporterOptions = { outputFile?: string };
 export type HtmlReporterOptions = {
   outputFolder?: string;
@@ -31,14 +34,15 @@ export type HtmlReporterOptions = {
   noSnippets?: boolean;
   noCopyPrompt?: boolean;
   doNotInlineAssets?: boolean;
+  mergeFiles?: boolean;
 };
 
 export type ReporterDescription = Readonly<
   ['blob'] | ['blob', BlobReporterOptions] |
-  ['dot'] |
-  ['line'] |
+  ['dot'] | ['dot', DotReporterOptions] |
+  ['line'] | ['line', LineReporterOptions] |
   ['list'] | ['list', ListReporterOptions] |
-  ['github'] |
+  ['github'] | ['github', GitHubReporterOptions] |
   ['junit'] | ['junit', JUnitReporterOptions] |
   ['json'] | ['json', JsonReporterOptions] |
   ['html'] | ['html', HtmlReporterOptions] |
@@ -98,6 +102,7 @@ export type TestAnnotation = TestDetailsAnnotation & {
 export type TestDetails = {
   tag?: string | string[];
   annotation?: TestDetailsAnnotation | TestDetailsAnnotation[];
+  lock?: string | string[];
 }
 
 type TestBody<TestArgs> = (args: TestArgs, testInfo: TestInfo) => Promise<unknown> | unknown;
@@ -260,9 +265,10 @@ export interface PlaywrightWorkerOptions {
   channel: BrowserChannel | undefined;
   launchOptions: Omit<LaunchOptions, 'tracesDir'>;
   connectOptions: ConnectOptions | undefined;
+  reuseContext: boolean;
   screenshot: ScreenshotMode | { mode: ScreenshotMode } & Pick<PageScreenshotOptions, 'fullPage' | 'omitBackground'>;
   trace: TraceMode | /** deprecated */ 'retry-with-trace' | { mode: TraceMode, snapshots?: boolean, screenshots?: boolean, sources?: boolean, attachments?: boolean };
-  video: VideoMode | /** deprecated */ 'retry-with-video' | { mode: VideoMode, size?: ViewportSize, show?: { actions?: { duration?: number, position?: 'top-left' | 'top' | 'top-right' | 'bottom-left' | 'bottom' | 'bottom-right', fontSize?: number }, test?: { level?: 'file' | 'title' | 'step', position?: 'top-left' | 'top' | 'top-right' | 'bottom-left' | 'bottom' | 'bottom-right', fontSize?: number } } };
+  video: VideoMode | /** deprecated */ 'retry-with-video' | { mode: VideoMode, size?: ViewportSize, show?: { actions?: { duration?: number, position?: 'top-left' | 'top' | 'top-right' | 'bottom-left' | 'bottom' | 'bottom-right', fontSize?: number, cursor?: 'none' | 'pointer' }, test?: { level?: 'file' | 'title' | 'step', position?: 'top-left' | 'top' | 'top-right' | 'bottom-left' | 'bottom' | 'bottom-right', fontSize?: number } } };
 }
 
 export type ScreenshotMode = 'off' | 'on' | 'only-on-failure' | 'on-first-failure';
@@ -277,7 +283,7 @@ export interface PlaywrightTestOptions {
   extraHTTPHeaders: ExtraHTTPHeaders | undefined;
   geolocation: Geolocation | undefined;
   hasTouch: boolean;
-  httpCredentials: HTTPCredentials | undefined;
+  httpCredentials: HTTPCredentials | HTTPCredentials[] | undefined;
   ignoreHTTPSErrors: boolean;
   isMobile: boolean;
   javaScriptEnabled: boolean;
@@ -303,10 +309,17 @@ export interface PlaywrightWorkerArgs {
   browser: Browser;
 }
 
+type StoryProps<Story> =
+  Story extends (props: infer Props) => any ? Props :
+  Story extends new (...args: any[]) => { $props: infer Props } ? Props :
+  Story extends new (props: infer Props, ...args: any[]) => any ? Props :
+  Story;
+
 export interface PlaywrightTestArgs {
   context: BrowserContext;
   page: Page;
   request: APIRequestContext;
+  mount: <Story = Record<string, any>>(storyId: string, props?: StoryProps<Story>) => Promise<Locator & { update(props?: StoryProps<Story>): Promise<void>, unmount(): Promise<void> }>;
 }
 
 type ExcludeProps<A, B> = {
@@ -541,4 +554,3 @@ export function mergeExpects<List extends any[]>(...expects: List): MergedExpect
 
 // This is required to not export everything by default. See https://github.com/Microsoft/TypeScript/issues/19545#issuecomment-340490459
 export { };
-

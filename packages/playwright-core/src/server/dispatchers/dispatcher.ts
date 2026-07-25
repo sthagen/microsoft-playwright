@@ -266,14 +266,6 @@ export class DispatcherConnection {
     return this._dispatcherByObject.get(object) as DispatcherType | undefined;
   }
 
-  getDispatcher<DispatcherType>(type: string): DispatcherType | undefined {
-    for (const dispatcher of this._dispatcherByGuid.values()) {
-      if (dispatcher._type === type)
-        return dispatcher as DispatcherType;
-    }
-    return undefined;
-  }
-
   registerDispatcher(dispatcher: DispatcherScope) {
     assert(!this._dispatcherByGuid.has(dispatcher._guid));
     this._dispatcherByGuid.set(dispatcher._guid, dispatcher);
@@ -312,7 +304,7 @@ export class DispatcherConnection {
       return;
     }
     if (method === '__abort__') {
-      await this._activeProgressControllers.get(`call@${params.id}`)?.abort(new AbortError(undefined, { cause: params.reason }));
+      await this._activeProgressControllers.get(`call@${params.id}`)?.abort(new AbortError(params.reason));
       return;
     }
     if (!dispatcher) {
@@ -356,8 +348,10 @@ export class DispatcherConnection {
       type: dispatcher._type,
       method,
       params: params || {},
+      timeout: validMetadata.timeout,
       log: [],
     };
+
     const controller = dispatcher.createProgressController(callMetadata);
     this._activeProgressControllers.set(callMetadata.id, controller);
 
@@ -367,7 +361,7 @@ export class DispatcherConnection {
       // If the dispatcher has been disposed while running the instrumentation call, error out.
       if (this._dispatcherByGuid.get(guid) !== dispatcher)
         throw new TargetClosedError(sdkObject.closeReason());
-      const result = await controller.run(progress => (dispatcher as any)[method](validParams, progress), validParams?.timeout);
+      const result = await controller.run(progress => (dispatcher as any)[method](validParams, progress), validMetadata.timeout);
       const validator = findValidator(dispatcher._type, method, 'Result');
       response.result = validator(result, '', this._validatorToWireContext());
       callMetadata.result = result;

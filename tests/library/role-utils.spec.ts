@@ -329,6 +329,36 @@ test('native controls', async ({ page }) => {
   expect.soft(await getNameAndRole(page, '#file2')).toEqual({ role: 'button', name: 'FILE2' });
 });
 
+test('input type=search maps to searchbox unless list points at a datalist', {
+  annotation: { type: 'issue', description: 'https://github.com/microsoft/playwright/issues/41899' },
+}, async ({ page }) => {
+  await page.setContent(`
+    <input id="search1" type=search>
+    <input id="search2" type=search list=nope>
+    <input id="search3" type=search list=dv><div id=dv></div>
+    <input id="search4" type=search list=dl><datalist id=dl></datalist>
+  `);
+  expect.soft(await getNameAndRole(page, '#search1')).toEqual({ role: 'searchbox', name: '' });
+  expect.soft(await getNameAndRole(page, '#search2')).toEqual({ role: 'searchbox', name: '' });
+  expect.soft(await getNameAndRole(page, '#search3')).toEqual({ role: 'searchbox', name: '' });
+  expect.soft(await getNameAndRole(page, '#search4')).toEqual({ role: 'combobox', name: '' });
+});
+
+test('meter and progress get their name from an associated label', {
+  annotation: { type: 'issue', description: 'https://github.com/microsoft/playwright/issues/41891' },
+}, async ({ page }) => {
+  await page.setContent(`
+    <label for="meter1">Battery</label><meter id="meter1" value=0.5></meter>
+    <label for="progress1">Loading</label><progress id="progress1" value=0.3></progress>
+    <label>Charge <meter id="meter2" value=0.5></meter></label>
+    <label for="meter3">Ignored</label><meter id="meter3" aria-label="Overridden" value=0.5></meter>
+  `);
+  expect.soft(await getNameAndRole(page, '#meter1')).toEqual({ role: 'meter', name: 'Battery' });
+  expect.soft(await getNameAndRole(page, '#progress1')).toEqual({ role: 'progressbar', name: 'Loading' });
+  expect.soft(await getNameAndRole(page, '#meter2')).toEqual({ role: 'meter', name: 'Charge' });
+  expect.soft(await getNameAndRole(page, '#meter3')).toEqual({ role: 'meter', name: 'Overridden' });
+});
+
 test('native controls labelled-by', async ({ page }) => {
   await page.setContent(`
     <label id="for-text1">TEXT1</label><input aria-labelledby="for-text1" id="text1" type=text>

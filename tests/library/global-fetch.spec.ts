@@ -14,9 +14,10 @@
  * limitations under the License.
  */
 
+import fs from 'fs';
 import os from 'os';
 import * as util from 'util';
-import { getPlaywrightVersion } from '../../packages/playwright-core/lib/coreBundle';
+import { getPlaywrightVersion, utils } from '../../packages/playwright-core/lib/coreBundle';
 import { expect, playwrightTest as base } from '../config/browserTest';
 
 const it = base.extend({
@@ -219,6 +220,49 @@ it('should support HTTPCredentials.send', async ({ playwright, server }) => {
   await request.dispose();
 });
 
+it('should support multiple httpCredentials', async ({ playwright, server }) => {
+  server.setAuth('/empty.html', 'user1', 'pass1');
+  const request = await playwright.request.newContext({
+    httpCredentials: [
+      { username: 'user1', password: 'pass1', origin: server.PREFIX },
+      { username: 'user2', password: 'pass2', origin: server.CROSS_PROCESS_PREFIX },
+    ]
+  });
+  const response1 = await request.get(server.EMPTY_PAGE);
+  expect(response1.status()).toBe(200);
+  // Wrong credentials are picked for the other origin.
+  const response2 = await request.get(server.CROSS_PROCESS_PREFIX + '/empty.html');
+  expect(response2.status()).toBe(401);
+  await request.dispose();
+});
+
+it('should support HTTPCredentials.send with multiple httpCredentials', async ({ playwright, server }) => {
+  const request = await playwright.request.newContext({
+    httpCredentials: [
+      { username: 'user1', password: 'pass1', origin: server.PREFIX, send: 'always' },
+      { username: 'user2', password: 'pass2', origin: server.CROSS_PROCESS_PREFIX, send: 'unauthorized' },
+    ]
+  });
+  {
+    const [serverRequest, response] = await Promise.all([
+      server.waitForRequest('/empty.html'),
+      request.get(server.EMPTY_PAGE)
+    ]);
+    expect(serverRequest.headers.authorization).toBe('Basic ' + Buffer.from('user1:pass1').toString('base64'));
+    expect(response.status()).toBe(200);
+  }
+  {
+    const [serverRequest, response] = await Promise.all([
+      server.waitForRequest('/empty.html'),
+      request.get(server.CROSS_PROCESS_PREFIX + '/empty.html')
+    ]);
+    // This origin has send: 'unauthorized', so credentials are not sent proactively.
+    expect(serverRequest.headers.authorization).toBe(undefined);
+    expect(response.status()).toBe(200);
+  }
+  await request.dispose();
+});
+
 it('should support global ignoreHTTPSErrors option', async ({ playwright, httpsServer }) => {
   const request = await playwright.request.newContext({ ignoreHTTPSErrors: true });
   const response = await request.get(httpsServer.EMPTY_PAGE);
@@ -261,6 +305,30 @@ it('should return null security details for http response', async ({ playwright,
   const response = await request.get(server.EMPTY_PAGE);
   expect(await response.securityDetails()).toBeNull();
   await request.dispose();
+});
+
+it('should return security details for certificate with multiple CN attributes', {
+  annotation: { type: 'issue', description: 'https://github.com/microsoft/playwright/issues/41815' },
+}, async ({ playwright, asset }) => {
+  const server = utils.createHttpsServer({
+    key: fs.readFileSync(asset('multi-value-rdn/key.pem')),
+    cert: fs.readFileSync(asset('multi-value-rdn/cert.pem')),
+  }, (req, res) => {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ ok: true }));
+  });
+  await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
+  try {
+    const request = await playwright.request.newContext({ ignoreHTTPSErrors: true });
+    const response = await request.get(`https://localhost:${server.address().port}/`);
+    expect(response.status()).toBe(200);
+    const securityDetails = await response.securityDetails();
+    expect(securityDetails.subjectName).toBe('localhost');
+    expect(securityDetails.issuer).toBe('localhost');
+    await request.dispose();
+  } finally {
+    await new Promise(resolve => server.close(resolve));
+  }
 });
 
 it('should resolve url relative to global baseURL option', async ({ playwright, server }) => {

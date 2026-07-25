@@ -227,12 +227,6 @@ it('reverse engineer getByRole', async ({ page }) => {
     java: `getByRole(AriaRole.BUTTON, new Page.GetByRoleOptions().setChecked(true).setLevel(3).setPressed(false))`,
     csharp: `GetByRole(AriaRole.Button, new() { Checked = true, Level = 3, Pressed = false })`,
   });
-  expect.soft(generate(page.getByRole('cell', { busy: false }))).toEqual({
-    javascript: `getByRole('cell', { busy: false })`,
-    python: `get_by_role("cell", busy=False)`,
-    java: `getByRole(AriaRole.CELL, new Page.GetByRoleOptions().setBusy(false))`,
-    csharp: `GetByRole(AriaRole.Cell, new() { Busy = false })`,
-  });
   expect.soft(generate(page.getByRole('alert', { name: 'Upload', description: 'doc.pdf' }))).toEqual({
     javascript: `getByRole('alert', { name: 'Upload', description: 'doc.pdf' })`,
     python: `get_by_role("alert", name="Upload", description="doc.pdf")`,
@@ -446,6 +440,22 @@ it('reverse engineer frameLocator', async ({ page }) => {
   // Note that frame locators with ">>" are not restored back due to ambiguity.
   const selector = (page.frameLocator('div >> iframe').locator('span') as any)._selector;
   expect.soft(asLocator('javascript', selector)).toBe(`locator('div').locator('iframe').contentFrame().locator('span')`);
+});
+
+it('reverse engineer pierceFrames', async ({ page }) => {
+  expect.soft(generate(page.pierceFrames().getByText('foo').locator('span'))).toEqual({
+    csharp: `PierceFrames.GetByText("foo").Locator("span")`,
+    java: `pierceFrames().getByText("foo").locator("span")`,
+    javascript: `pierceFrames().getByText('foo').locator('span')`,
+    python: `pierce_frames.get_by_text("foo").locator("span")`,
+  });
+
+  // Note that bare `pierce_frames` and `PierceFrames` are not restored back,
+  // because they are indistinguishable from a css selector.
+  expect.soft(asLocator('javascript', 'internal:control=pierce-frames')).toBe(`pierceFrames()`);
+  expect.soft(asLocator('python', 'internal:control=pierce-frames')).toBe(`pierce_frames`);
+  expect.soft(asLocator('java', 'internal:control=pierce-frames')).toBe(`pierceFrames()`);
+  expect.soft(asLocator('csharp', 'internal:control=pierce-frames')).toBe(`PierceFrames`);
 });
 
 it('generate multiple locators', async ({ page }) => {

@@ -21,9 +21,8 @@
  * - /cdp/guid - Full CDP interface for Playwright MCP
  * - /extension/guid - Extension connection
  *
- * Protocol version is controlled by PLAYWRIGHT_EXTENSION_PROTOCOL env variable:
- * - v1: single-tab, extension manages debugger attachment
- * - v2 (default): multi-tab, relay manages debugger via chrome.* APIs
+ * The protocol version advertised to the extension can be overridden with the
+ * PLAYWRIGHT_EXTENSION_PROTOCOL env variable (used in tests).
  */
 
 import { spawn } from 'child_process';
@@ -35,16 +34,15 @@ import ws, { WebSocketServer as wsServer } from 'ws';
 import { ManualPromise } from '@isomorphic/manualPromise';
 import { registry } from '../../server/registry/index';
 
-import { playwrightExtensionId } from '../utils/extension';
+import { findPlaywrightExtensionProfile, playwrightExtensionId } from '../utils/extension';
 import { addressToString } from '../utils/mcp/http';
 import { logUnhandledError } from './log';
-import { ExtensionProtocolV1 } from './cdpRelayV1';
 import { ExtensionProtocolV2 } from './cdpRelayV2';
 import * as protocol from './protocol';
 
 import type websocket from 'ws';
-import type { ExtensionCommand, ExtensionEvents } from './protocol';
-import type { CDPMessage, ExtensionProtocolHandler } from './cdpRelayHandler';
+import type { ExtensionCommandV2, ExtensionEventsV2 } from './protocol';
+import type { CDPMessage } from './browserModel';
 import type { WebSocket, WebSocketServer } from 'ws';
 
 
@@ -63,31 +61,29 @@ export class CDPRelayServer {
   private _wsHost: string;
   private _browserChannel: string;
   private _executablePath?: string;
+  private _userDataDir?: string;
   private _cdpPath: string;
   private _extensionPath: string;
   private _wss: WebSocketServer;
   private _cdpConnection: WebSocket | null = null;
   private _extensionConnection: ExtensionConnection | null = null;
   private _protocolVersion: number;
-  private _handler: ExtensionProtocolHandler;
+  private _handler: ExtensionProtocolV2;
   private _extensionConnectionPromise = new ManualPromise<void>();
 
-  constructor(server: http.Server, browserChannel: string, executablePath?: string) {
+  constructor(server: http.Server, browserChannel: string, executablePath?: string, userDataDir?: string) {
     this._wsHost = addressToString(server.address(), { protocol: 'ws' });
     this._browserChannel = browserChannel;
     this._executablePath = executablePath;
-    this._protocolVersion = parseInt(process.env.PLAYWRIGHT_EXTENSION_PROTOCOL ?? protocol.DEFAULT_VERSION.toString(), 10);
+    this._userDataDir = userDataDir;
+    this._protocolVersion = parseInt(process.env.PLAYWRIGHT_EXTENSION_PROTOCOL ?? protocol.VERSION.toString(), 10);
 
     const sendCommand = (method: string, params: any): Promise<any> => {
       if (!this._extensionConnection)
         throw new Error('Extension not connected');
-      return this._extensionConnection.send(method as keyof ExtensionCommand, params);
+      return this._extensionConnection.send(method as keyof ExtensionCommandV2, params);
     };
-
-    if (this._protocolVersion >= 2)
-      this._handler = new ExtensionProtocolV2(sendCommand);
-    else
-      this._handler = new ExtensionProtocolV1(sendCommand);
+    this._handler = new ExtensionProtocolV2(sendCommand);
 
     const uuid = crypto.randomUUID();
     this._cdpPath = `/cdp/${uuid}`;
@@ -108,14 +104,14 @@ export class CDPRelayServer {
 
   async establishExtensionConnection(clientName: string) {
     debugLogger('Establishing extension connection');
-    this._openConnectPageInBrowser(clientName);
+    await this._openConnectPageInBrowser(clientName);
     debugLogger('Waiting for incoming extension connection');
     await this._extensionConnectionPromise;
     await this._handler.ready();
     debugLogger('Extension connection established');
   }
 
-  private _openConnectPageInBrowser(clientName: string) {
+  private async _openConnectPageInBrowser(clientName: string) {
     const mcpRelayEndpoint = `${this._wsHost}${this._extensionPath}`;
     const url = new URL(`chrome-extension://${playwrightExtensionId}/connect.html`);
     url.searchParams.set('mcpRelayUrl', mcpRelayEndpoint);
@@ -143,9 +139,13 @@ export class CDPRelayServer {
     }
 
     const args: string[] = [];
-    const userDataDir = process.env.PWTEST_EXTENSION_USER_DATA_DIR;
-    if (userDataDir)
-      args.push(`--user-data-dir=${userDataDir}`);
+    const testUserDataDir = process.env.PWTEST_EXTENSION_USER_DATA_DIR;
+    if (testUserDataDir)
+      args.push(`--user-data-dir=${testUserDataDir}`);
+    const userDataDir = testUserDataDir ?? this._userDataDir;
+    const profileDirectory = userDataDir ? await findPlaywrightExtensionProfile(userDataDir) : undefined;
+    if (profileDirectory)
+      args.push(`--profile-directory=${profileDirectory}`);
     if (os.platform() === 'linux' && channel === 'chromium')
       args.push('--no-sandbox');
     args.push(href);
@@ -290,7 +290,7 @@ class ExtensionConnection {
   private readonly _callbacks = new Map<number, { resolve: (o: any) => void, reject: (e: Error) => void, error: Error }>();
   private _lastId = 0;
 
-  onmessage?: <M extends keyof ExtensionEvents>(method: M, params: ExtensionEvents[M]['params']) => void;
+  onmessage?: <M extends keyof ExtensionEventsV2>(method: M, params: ExtensionEventsV2[M]['params']) => void;
   onclose?: (reason: string) => void;
 
   constructor(ws: WebSocket) {
@@ -300,7 +300,7 @@ class ExtensionConnection {
     this._ws.on('error', this._onError.bind(this));
   }
 
-  async send<M extends keyof ExtensionCommand>(method: M, params: ExtensionCommand[M]['params']): Promise<any> {
+  async send<M extends keyof ExtensionCommandV2>(method: M, params: ExtensionCommandV2[M]['params']): Promise<any> {
     if (this._ws.readyState !== ws.OPEN)
       throw new Error(`Unexpected WebSocket state: ${this._ws.readyState}`);
     const id = ++this._lastId;
@@ -349,7 +349,7 @@ class ExtensionConnection {
     } else if (object.id) {
       debugLogger('← Extension: unexpected response', object);
     } else {
-      this.onmessage?.(object.method! as keyof ExtensionEvents, object.params);
+      this.onmessage?.(object.method! as keyof ExtensionEventsV2, object.params);
     }
   }
 

@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+import { kNoTimeout } from './timeoutSettings';
 import type * as api from '../../types/types';
 import type * as channels from './channels';
 
@@ -25,18 +26,18 @@ export class Coverage implements api.Coverage {
   }
 
   async startJSCoverage(options: channels.PageStartJSCoverageOptions = {}) {
-    await this._channel.startJSCoverage(options, undefined);
+    await this._channel.startJSCoverage(options, kNoTimeout);
   }
 
   async stopJSCoverage(): Promise<channels.PageStopJSCoverageResult['entries']> {
-    return (await this._channel.stopJSCoverage({}, undefined)).entries;
+    return (await this._channel.stopJSCoverage({}, kNoTimeout)).entries;
   }
 
   async startCSSCoverage(options: channels.PageStartCSSCoverageOptions = {}) {
-    await this._channel.startCSSCoverage(options, undefined);
+    await this._channel.startCSSCoverage(options, kNoTimeout);
   }
 
   async stopCSSCoverage(): Promise<channels.PageStopCSSCoverageResult['entries']> {
-    return (await this._channel.stopCSSCoverage({}, undefined)).entries;
+    return (await this._channel.stopCSSCoverage({}, kNoTimeout)).entries;
   }
 }

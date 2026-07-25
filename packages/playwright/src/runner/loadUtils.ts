@@ -23,7 +23,8 @@ import { toPosixPath } from '@utils/fileUtils';
 import { InProcessLoaderHost, OutOfProcessLoaderHost } from './loaderHost';
 import { createTitleMatcher, errorWithFile, parseLocationArg } from '../util';
 import { buildProjectsClosure, collectFilesForProject } from './projectUtils';
-import {  createTestGroups, filterForShard } from './testGroups';
+import { ReporterTestRunImpl } from './reporterTestRun';
+import { createTestGroups, filterForShard } from './testGroups';
 import { cc, config as commonConfig, FullConfigInternal, suiteUtils, test as testNs, transform } from '../common';
 
 import type { RawSourceMap } from 'source-map';
@@ -31,7 +32,6 @@ import type { TestRun } from './tasks';
 import type { TestGroup } from './testGroups';
 import type { FullConfig, Reporter, TestError } from '../../types/testReporter';
 import type { Matcher, TestCaseFilter } from '../util';
-
 
 export async function collectProjectsAndTestFiles(testRun: TestRun, doNotRunTestsOutsideProjectFilter: boolean) {
   const fsCache = new Map();
@@ -165,9 +165,30 @@ export async function createRootSuite(testRun: TestRun, errors: TestError[], sho
     }
   }
 
-  const preprocessResult = await testRun.reporter.preprocessSuite(config.config, rootSuite);
+  // Temporarily prepend unfiltered dependency projects for preprocessing.
+  const dependencySuites = new Map<commonConfig.FullProjectInternal, testNs.Suite>();
+  for (const [project, type] of projectClosure) {
+    if (type !== 'dependency')
+      continue;
+    const dependencySuite = buildProjectSuite(project, projectSuites.get(project)!);
+    dependencySuites.set(project, dependencySuite);
+    rootSuite._prependSuite(dependencySuite);
+  }
+
+  const reporterTestRun = new ReporterTestRunImpl(rootSuite, new Set(dependencySuites.values()));
+  await testRun.reporter.preprocess({
+    config: config.config,
+    suite: rootSuite,
+    testRun: reporterTestRun,
+  });
+  reporterTestRun.close();
+
+  // Continue sharding and filtering pipeline with top-level projects only.
+  for (const dependencySuite of dependencySuites.values())
+    rootSuite._detach(dependencySuite);
+
   // Shard only the top-level projects.
-  if (config.config.shard && !preprocessResult?.implementsSharding) {
+  if (config.config.shard && !reporterTestRun.shouldSkipSharding()) {
     // Create test groups for top-level projects.
     const testGroups: TestGroup[] = [];
     for (const projectSuite of rootSuite.suites) {
@@ -193,20 +214,20 @@ export async function createRootSuite(testRun: TestRun, errors: TestError[], sho
     suiteUtils.filterTestsRemoveEmptySuites(rootSuite, test => testRun.postShardTestFilters.every(filter => filter(test)));
 
   const topLevelProjects = [];
-  // Now prepend dependency projects without filtration.
   {
     // Filtering 'only' and sharding might have reduced the number of top-level projects.
     // Build the project closure to only include dependencies that are still needed.
-    const projectClosure = new Map(buildProjectsClosure(rootSuite.suites.map(suite => suite._fullProject!)));
-
-    // Clone file suites for dependency projects.
-    for (const [project, level] of projectClosure.entries()) {
-      if (level === 'dependency')
-        rootSuite._prependSuite(buildProjectSuite(project, projectSuites.get(project)!));
+    const finalProjectClosure = buildProjectsClosure(rootSuite.suites.map(suite => suite._fullProject!));
+    for (const [project, type] of finalProjectClosure) {
+      if (type === 'dependency')
+        rootSuite._addSuite(dependencySuites.get(project)!);
       else
         topLevelProjects.push(project);
     }
   }
+
+  // Keep project suites in the order they are declared in the config.
+  rootSuite._entries.sort((a, b) => config.projects.indexOf((a as testNs.Suite)._fullProject!) - config.projects.indexOf((b as testNs.Suite)._fullProject!));
 
   testRun.rootSuite = rootSuite;
   testRun.topLevelProjects = topLevelProjects;

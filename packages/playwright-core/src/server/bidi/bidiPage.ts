@@ -16,6 +16,7 @@
 
 import { debugLogger } from '@utils/debugLogger';
 import { eventsHelper } from '@utils/eventsHelper';
+import { monotonicTime } from '@isomorphic/time';
 import * as dialog from '../dialog';
 import * as dom from '../dom';
 import * as js from '../javascript';
@@ -58,7 +59,8 @@ export class BidiPage implements PageDelegate {
   private readonly _fragmentNavigations = new Set<string>();
   private readonly _failedNavigations = new Map<string, string>();
   private _screencastTimer: NodeJS.Timeout | undefined;
-  private _waitingForScreenshot = false;
+  private _screencastGeneration = 0;
+  private _screencastRunning = false;
 
   constructor(browserContext: BidiBrowserContext, bidiSession: BidiSession, opener: BidiPage | null) {
     this._session = bidiSession;
@@ -140,41 +142,46 @@ export class BidiPage implements PageDelegate {
     }
     if (this._contextIdToContext.has(realmInfo.realm))
       return;
-    if (realmInfo.type !== 'window')
+    if (realmInfo.type !== 'window' || realmInfo.sandbox)
       return;
     const frame = this._page.frameManager.frame(realmInfo.context);
     if (!frame)
       return;
-    let worldName: types.World;
-    if (!realmInfo.sandbox) {
-      worldName = 'main';
-      // Force creating utility world every time the main world is created (e.g. due to navigation).
-      this._touchUtilityWorld(realmInfo.context);
-    } else if (realmInfo.sandbox === UTILITY_WORLD_NAME) {
-      worldName = 'utility';
-    } else {
-      return;
-    }
     const delegate = new BidiExecutionContext(this._session, realmInfo);
-    const context = new dom.FrameExecutionContext(delegate, frame, worldName);
-    frame.contextCreated(worldName, context);
+    const context = new dom.FrameExecutionContext(delegate, frame, 'main');
+    frame.contextCreated('main', context);
     this._contextIdToContext.set(realmInfo.realm, context);
+    this._createUtilityWorld(realmInfo, frame, context);
   }
 
-  private async _touchUtilityWorld(context: bidi.BrowsingContext.BrowsingContext) {
-    await this._session.sendMayFail('script.evaluate', {
-      expression: '1 + 1',
-      target: {
-        context,
-        sandbox: UTILITY_WORLD_NAME,
-      },
-      serializationOptions: {
-        maxObjectDepth: 10,
-        maxDomDepth: 10,
-      },
-      awaitPromise: true,
-      userActivation: true,
-    });
+  private async _createUtilityWorld(realmInfo: bidi.Script.WindowRealmInfo, frame: frames.Frame, mainContext: dom.FrameExecutionContext) {
+    try {
+      const result = await this._session.send('script.evaluate', {
+        expression: '1 + 1',
+        target: {
+          context: realmInfo.context,
+          sandbox: UTILITY_WORLD_NAME,
+        },
+        serializationOptions: {
+          maxObjectDepth: 10,
+          maxDomDepth: 10,
+        },
+        awaitPromise: true,
+        userActivation: true,
+      });
+      if (await frame.mainContext() !== mainContext)
+        return;
+      const delegate = new BidiExecutionContext(this._session, {
+        ...realmInfo,
+        realm: result.realm,
+        sandbox: UTILITY_WORLD_NAME
+      });
+      const utilityContext = new dom.FrameExecutionContext(delegate, frame, 'utility');
+      frame.contextCreated('utility', utilityContext);
+      this._contextIdToContext.set(result.realm, utilityContext);
+    } catch (error) {
+      debugLogger.log('error', error);
+    }
   }
 
   _onRealmDestroyed(params: bidi.Script.RealmDestroyedParameters): boolean {
@@ -251,7 +258,9 @@ export class BidiPage implements PageDelegate {
   }
 
   private _onDownloadWillBegin(event: bidi.BrowsingContext.DownloadWillBeginParams) {
-    if (!event.navigation)
+    // TODO: remove the event.navigation fallback when Chrome supports event.download
+    // See https://github.com/GoogleChromeLabs/chromium-bidi/issues/4155
+    if (!event.download && !event.navigation)
       return;
 
     this._page.frameManager.frameAbortedNavigation(event.context, 'Download is starting');
@@ -263,13 +272,15 @@ export class BidiPage implements PageDelegate {
     if (!originPage)
       return;
 
-    this._browserContext._browser.downloadCreated(originPage, event.navigation, event.url, event.suggestedFilename, event.suggestedFilename);
+    this._browserContext._browser.downloadCreated(originPage, event.download ?? event.navigation, event.url, event.suggestedFilename, event.suggestedFilename);
   }
 
   private _onDownloadEnded(event: bidi.BrowsingContext.DownloadEndParams) {
-    if (!event.navigation)
+    // TODO: remove the event.navigation fallback when Chrome supports event.download
+    // See https://github.com/GoogleChromeLabs/chromium-bidi/issues/4155
+    if (!event.download && !event.navigation)
       return;
-    this._browserContext._browser.downloadFinished(event.navigation, event.status === 'canceled' ? 'canceled' : undefined);
+    this._browserContext._browser.downloadFinished(event.download ?? event.navigation, event.status === 'canceled' ? 'canceled' : undefined);
   }
 
   private _onLogEntryAdded(params: bidi.Log.Entry) {
@@ -493,13 +504,11 @@ export class BidiPage implements PageDelegate {
   }
 
   async takeScreenshot(progress: Progress, format: string, documentRect: types.Rect | undefined, viewportRect: types.Rect | undefined, quality: number | undefined, fitsViewport: boolean, scale: 'css' | 'device'): Promise<Buffer> {
-    if (format === 'webp')
-      throw new Error('webp screenshots are not supported via WebDriver BiDi');
     const rect = (documentRect || viewportRect)!;
     const { data } = await progress.race(this._session.send('browsingContext.captureScreenshot', {
       context: this._session.sessionId,
       format: {
-        type: `image/${format === 'png' ? 'png' : 'jpeg'}`,
+        type: `image/${format === 'png' || format === 'webp' ? format : 'jpeg'}`,
         quality: quality !== undefined ? quality / 100 : undefined,
       },
       origin: documentRect ? 'document' : 'viewport',
@@ -582,19 +591,18 @@ export class BidiPage implements PageDelegate {
   }
 
   startScreencast(options: { width: number, height: number, quality: number }) {
-    if (this._screencastTimer)
+    if (this._screencastRunning)
       return;
 
-    this._waitingForScreenshot = false;
-    this._screencastTimer = setInterval(async () => {
-      if (this._waitingForScreenshot)
-        return;
+    this._screencastRunning = true;
+    const generation = ++this._screencastGeneration;
+    const captureFrame = async () => {
       if (this._session.isDisposed()) {
         this.stopScreencast();
         return;
       }
 
-      this._waitingForScreenshot = true;
+      const startTime = monotonicTime();
       const payload = await this._session.sendMayFail('browsingContext.captureScreenshot', {
         context: this._session.sessionId,
         format: {
@@ -605,20 +613,24 @@ export class BidiPage implements PageDelegate {
       if (payload) {
         const buffer = Buffer.from(payload.data, 'base64');
         const { width, height } = jpegDimensions(buffer);
-        this._page.screencast.onScreencastFrame({
+        await this._page.screencast.onScreencastFrame({
           buffer,
           frameSwapWallTime: Date.now(),
           viewportWidth: width,
           viewportHeight: height,
         });
       }
-      this._waitingForScreenshot = false;
-    }, 40);
+      if (!this._screencastRunning || generation !== this._screencastGeneration)
+        return;
+      this._screencastTimer = setTimeout(captureFrame, Math.max(0, 40 - (monotonicTime() - startTime)));
+    };
+    void captureFrame();
   }
 
   stopScreencast() {
+    this._screencastRunning = false;
     if (this._screencastTimer) {
-      clearInterval(this._screencastTimer);
+      clearTimeout(this._screencastTimer);
       this._screencastTimer = undefined;
     }
   }

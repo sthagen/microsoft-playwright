@@ -46,7 +46,6 @@ export type ContextConfig = {
   };
   outputDir?: string;
   outputMaxSize?: number;
-  outputMode?: 'file' | 'stdout';
   saveSession?: boolean;
   secrets?: Record<string, string>;
   snapshot?: {
@@ -57,6 +56,7 @@ export type ContextConfig = {
     action?: number;
     navigation?: number;
     expect?: number;
+    settle?: number;
   };
   browser?: {
     initScript?: string[];

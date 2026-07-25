@@ -152,7 +152,6 @@ function addTestMCPServerCommand(program: Command) {
       version: packageJSON.version,
       toolSchemas: testServerBackendTools.map(tool => tool.schema),
       create: async () => new TestServerBackend(options.config, { muteConsole: options.port === undefined, headless: options.headless }),
-      disposed: async () => { }
     };
     // TODO: add all options from mcp.startHttpServer.
     await tools.start(factory, { port: options.port === undefined ? undefined : +options.port, host: options.host });
@@ -187,15 +186,18 @@ function addInitAgentsCommand(program: Command) {
 
 function addInitSkillsCommand(program: Command) {
   const command = program.command('init-skills');
-  command.description('Initialize the workspace and install Playwright CLI skills');
+  command.description('Install Playwright agent skills');
   const option = command.createOption('--loop <loop>', 'Agentic loop provider');
-  option.choices(['claude', 'generic']);
-  option.default('generic');
+  option.choices(['claude', 'agents']);
+  option.default('claude');
   command.addOption(option);
   command.action(async opts => {
-    // Claude Code only reads skills from `.claude/skills`, every other agent reads
-    // them from the universal `.agents/skills` folder.
-    await tools.initWorkspace(opts.loop === 'claude' ? 'claude' : 'agents');
+    try {
+      await tools.installSkills(tools.allSkills, opts.loop);
+    } catch (e) {
+      console.error(e);
+      gracefullyProcessExitDoNotHang(1);
+    }
   });
 }
 

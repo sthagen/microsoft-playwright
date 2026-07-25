@@ -651,6 +651,9 @@ Path to the JavaScript file. If `path` is a relative path, then it is resolved r
 
 Script to be evaluated in all pages in the browser context. Optional.
 
+### option: Page.addInitScript.exposeFunctions = %%-js-init-script-expose-functions-%%
+* since: v1.62
+
 ## async method: Page.addScriptTag
 * since: v1.8
 - returns: <[ElementHandle]>
@@ -1587,6 +1590,9 @@ await bodyHandle.DisposeAsync();
 
 Optional argument to pass to [`param: expression`].
 
+### option: Page.evaluate.exposeFunctions = %%-js-evaluate-expose-functions-%%
+* since: v1.62
+
 ## async method: Page.evaluateHandle
 * since: v1.8
 - returns: <[JSHandle]>
@@ -1695,6 +1701,9 @@ await resultHandle.DisposeAsync();
 - `arg` ?<[EvaluationArgument]>
 
 Optional argument to pass to [`param: expression`].
+
+### option: Page.evaluateHandle.exposeFunctions = %%-js-evaluate-expose-functions-%%
+* since: v1.62
 
 ## async method: Page.exposeBinding
 * since: v1.8
@@ -2310,8 +2319,6 @@ Attribute name to get the value for.
 
 ### option: Page.getByRole.description = %%-locator-get-by-role-option-description-%%
 
-### option: Page.getByRole.busy = %%-locator-get-by-role-option-busy-%%
-
 ## method: Page.getByTestId
 * since: v1.27
 - returns: <[Locator]>
@@ -2350,6 +2357,11 @@ last redirect. If cannot go back, returns `null`.
 
 Navigate to the previous page in history.
 
+:::warning
+**Testing Back/Forward Cache (BFCache) is not supported.**
+By default, Playwright disables the Back/Forward Cache across all browsers. Even if explicitly enabled, Playwright's internal state relies on network-level navigation events. Because BFCache restores unfreeze the DOM without firing these events, using `page.goBack()` or `page.goForward()` to trigger a BFCache restore will result in timeouts and a desynchronized `Page` state.
+:::
+
 ### option: Page.goBack.waitUntil = %%-navigation-wait-until-%%
 * since: v1.8
 
@@ -2369,6 +2381,11 @@ Returns the main resource response. In case of multiple redirects, the navigatio
 last redirect. If cannot go forward, returns `null`.
 
 Navigate to the next page in history.
+
+:::warning
+**Testing Back/Forward Cache (BFCache) is not supported.**
+By default, Playwright disables the Back/Forward Cache across all browsers. Even if explicitly enabled, Playwright's internal state relies on network-level navigation events. Because BFCache restores unfreeze the DOM without firing these events, using `page.goBack()` or `page.goForward()` to trigger a BFCache restore will result in timeouts and a desynchronized `Page` state.
+:::
 
 ## async method: Page.requestGC
 * since: v1.48
@@ -3143,6 +3160,46 @@ print(locator)
 ```csharp
 var locator = await page.PickLocatorAsync();
 Console.WriteLine(locator);
+```
+
+## method: Page.pierceFrames
+* since: v1.63
+- returns: <[FrameLocator]>
+
+When working with iframes, you can create a frame locator that will search for elements in the main frame
+and in all iframes on the page, so that you don't need to locate each iframe first.
+
+Note that all elements matching the locator must belong to a single frame. For example, if the page contains
+two iframes, each with a `Submit` button, piercing frames and locating a button will throw an error
+because it matches elements from multiple frames.
+
+**Usage**
+
+Following snippet locates a button, either in the main frame or in one of the iframes:
+
+```js
+const locator = page.pierceFrames().getByRole('button');
+await locator.click();
+```
+
+```java
+Locator locator = page.pierceFrames().getByRole(AriaRole.BUTTON);
+locator.click();
+```
+
+```python async
+locator = page.pierce_frames.get_by_role("button")
+await locator.click()
+```
+
+```python sync
+locator = page.pierce_frames.get_by_role("button")
+locator.click()
+```
+
+```csharp
+var locator = page.PierceFrames.GetByRole(AriaRole.Button);
+await locator.ClickAsync();
 ```
 
 ## async method: Page.press

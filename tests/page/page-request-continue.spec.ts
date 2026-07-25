@@ -1010,3 +1010,15 @@ it('should not forward Host header on cross-origin redirect', {
   expect(firstHost).toBe(new URL(server.PREFIX).host);
   expect(redirectedHost).toBe(new URL(server.CROSS_PROCESS_PREFIX).host);
 });
+
+it('postData should return empty string when overriding body with empty string', async ({ page, server }) => {
+  await page.goto(server.EMPTY_PAGE);
+  await page.route('**/*', route => {
+    void route.continue({ postData: '' });
+  });
+  const [request] = await Promise.all([
+    page.waitForRequest('**'),
+    page.evaluate(({ url }) => fetch(url, { method: 'POST', body: 'original' }), { url: server.PREFIX + '/sleep.zzz' }),
+  ]);
+  expect(request.postData()).toBe('');
+});

@@ -62,14 +62,16 @@ export class ProgressController {
     });
   }
 
-
   async abort(error: Error) {
+    const logMessage = `operation was aborted: ${error.message}`;
     if (this._state === 'running') {
+      this.metadata.log.push(logMessage);
       (error as any)[kAbortErrorSymbol] = true;
       this._state = { error };
       this._forceAbortPromise.reject(error);
       this._controller.abort(error);
     } else if (this._state === 'before') {
+      this.metadata.log.push(logMessage);
       (error as any)[kAbortErrorSymbol] = true;
       this._pendingAbortError = error;
     }

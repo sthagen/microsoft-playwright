@@ -123,12 +123,12 @@ const kImplicitRoleByTagName: { [tagName: string]: (e: Element) => AriaRole | nu
   'IMG': (e: Element) => (e.getAttribute('alt') === '') && !e.getAttribute('title') && !hasGlobalAriaAttribute(e) && !hasTabIndex(e) ? 'presentation' : 'img',
   'INPUT': (e: Element) => {
     const type = (e as HTMLInputElement).type.toLowerCase();
-    if (type === 'search')
-      return e.hasAttribute('list') ? 'combobox' : 'searchbox';
-    if (['email', 'tel', 'text', 'url', ''].includes(type)) {
+    if (['email', 'search', 'tel', 'text', 'url', ''].includes(type)) {
       // https://html.spec.whatwg.org/multipage/input.html#concept-input-list
       const list = getIdRefs(e, e.getAttribute('list'))[0];
-      return (list && elementSafeTagName(list) === 'DATALIST') ? 'combobox' : 'textbox';
+      if (list && elementSafeTagName(list) === 'DATALIST')
+        return 'combobox';
+      return type === 'search' ? 'searchbox' : 'textbox';
     }
     if (type === 'hidden')
       return null;
@@ -279,6 +279,15 @@ function hasPresentationConflictResolution(element: Element, role: string | null
 }
 
 export function getAriaRole(element: Element): AriaRole | null {
+  const cached = cacheAriaRole?.get(element);
+  if (cached !== undefined)
+    return cached;
+  const role = computeAriaRole(element);
+  cacheAriaRole?.set(element, role);
+  return role;
+}
+
+function computeAriaRole(element: Element): AriaRole | null {
   const explicitRole = getExplicitAriaRole(element);
   if (!explicitRole)
     return getImplicitAriaRole(element);
@@ -839,9 +848,9 @@ function getTextAlternativeInternal(element: Element, options: AccessibleNameOpt
     // For "other form elements", we count select and any other input.
     //
     // Note: WebKit does not follow the spec and uses placeholder when aria-labelledby is present.
-    if (!labelledBy && (tagName === 'TEXTAREA' || tagName === 'SELECT' || tagName === 'INPUT')) {
+    if (!labelledBy && (tagName === 'TEXTAREA' || tagName === 'SELECT' || tagName === 'INPUT' || tagName === 'METER' || tagName === 'PROGRESS')) {
       options.visitedElements.add(element);
-      const labels = (element as (HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement)).labels || [];
+      const labels = (element as (HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement | HTMLMeterElement | HTMLProgressElement)).labels || [];
       if (labels.length)
         return getAccessibleNameFromAssociatedLabels(labels, options);
 
@@ -970,7 +979,7 @@ function getTextAlternativeInternal(element: Element, options: AccessibleNameOpt
   }
 
   // step 2i.
-  if (!['presentation', 'none'].includes(role) || tagName === 'IFRAME') {
+  if (!['presentation', 'none'].includes(role) || tagName === 'IFRAME' || tagName === 'FRAME') {
     options.visitedElements.add(element);
     const title = element.getAttribute('title') || '';
     if (trimFlatString(title))
@@ -1164,25 +1173,28 @@ function belongsToDisabledFieldSet(element: Element): boolean {
   return !legendElement || !legendElement.contains(element);
 }
 
-function hasExplicitAriaDisabled(element: Element | undefined, isAncestor = false): boolean {
-  if (!element)
+function hasExplicitAriaDisabled(element: Element): boolean {
+  if (!kAriaDisabledRoles.includes(getAriaRole(element) || ''))
     return false;
-  if (isAncestor || kAriaDisabledRoles.includes(getAriaRole(element) || '')) {
-    const attribute = (element.getAttribute('aria-disabled') || '').toLowerCase();
-    if (attribute === 'true')
-      return true;
-    if (attribute === 'false')
-      return false;
-    // aria-disabled works across shadow boundaries.
-    return hasExplicitAriaDisabled(parentElementOrShadowHost(element), true);
-  }
-  return false;
+  return hasAriaDisabledInChain(element);
 }
 
-export function getAriaBusy(element: Element): boolean {
-  // https://www.w3.org/TR/wai-aria-1.2/#aria-busy
-  // aria-busy is a global state with a default value of "false".
-  return getAriaBoolean(element.getAttribute('aria-busy')) === true;
+function hasAriaDisabledInChain(element: Element): boolean {
+  let result = cacheAriaDisabled?.get(element);
+  if (result === undefined) {
+    const attribute = (element.getAttribute('aria-disabled') || '').toLowerCase();
+    if (attribute === 'true') {
+      result = true;
+    } else if (attribute === 'false') {
+      result = false;
+    } else {
+      // aria-disabled works across shadow boundaries.
+      const parent = parentElementOrShadowHost(element);
+      result = parent ? hasAriaDisabledInChain(parent) : false;
+    }
+    cacheAriaDisabled?.set(element, result);
+  }
+  return result;
 }
 
 function getAccessibleNameFromAssociatedLabels(labels: Iterable<HTMLLabelElement>, options: AccessibleNameOptions): CompositeString {
@@ -1242,11 +1254,15 @@ let cachePseudoContent: Map<Element, string | undefined> | undefined;
 let cachePseudoContentBefore: Map<Element, string | undefined> | undefined;
 let cachePseudoContentAfter: Map<Element, string | undefined> | undefined;
 let cachePointerEvents: Map<Element, boolean> | undefined;
+let cacheAriaRole: Map<Element, AriaRole | null> | undefined;
+let cacheAriaDisabled: Map<Element, boolean> | undefined;
 let cachesCounter = 0;
 
 export function beginAriaCaches() {
   beginDOMCaches();
   ++cachesCounter;
+  cacheAriaRole ??= new Map();
+  cacheAriaDisabled ??= new Map();
   cacheAccessibleName ??= new Map();
   cacheAccessibleNameHidden ??= new Map();
   cacheAccessibleNameText ??= new Map();
@@ -1275,6 +1291,8 @@ export function endAriaCaches() {
     cachePseudoContentBefore = undefined;
     cachePseudoContentAfter = undefined;
     cachePointerEvents = undefined;
+    cacheAriaRole = undefined;
+    cacheAriaDisabled = undefined;
   }
   endDOMCaches();
 }

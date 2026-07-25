@@ -130,6 +130,25 @@ it.describe('screencast', () => {
     expectRedFrames(videoFile, size);
   });
 
+  it('should pad a short frame to the video size', async ({ browser }, testInfo) => {
+    const videoSize = { width: 800, height: 600 };
+    const context = await browser.newContext({
+      recordVideo: {
+        dir: testInfo.outputPath(''),
+        size: videoSize,
+      },
+      viewport: { width: 800, height: 396 },
+    });
+    const page = await context.newPage();
+    await ensureSomeFrames(page);
+    await context.close();
+
+    const videoFile = await page.video().path();
+    const videoPlayer = new VideoPlayer(videoFile);
+    expect(videoPlayer.videoWidth).toBe(videoSize.width);
+    expect(videoPlayer.videoHeight).toBe(videoSize.height);
+  });
+
   it('should continue recording main page after popup closes', async ({ browser, browserName }, testInfo) => {
     it.info().annotations.push({ type: 'issue', description: 'https://github.com/microsoft/playwright/issues/30837' });
     // Firefox does not have a mobile variant and has a large minimum size (500 on windows and 450 elsewhere).

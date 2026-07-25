@@ -107,13 +107,13 @@ Page:
       group: configuration
       parameters:
         name: string
+        noGlobal: boolean?
       returns:
         disposable: Disposable
 
     goBack:
       title: Go back
       parameters:
-        timeout: float
         waitUntil: LifecycleEvent?
       returns:
         response: Response?
@@ -125,7 +125,6 @@ Page:
     goForward:
       title: Go forward
       parameters:
-        timeout: float
         waitUntil: LifecycleEvent?
       returns:
         response: Response?
@@ -160,7 +159,6 @@ Page:
     reload:
       title: Reload
       parameters:
-        timeout: float
         waitUntil: LifecycleEvent?
       returns:
         response: Response?
@@ -173,7 +171,6 @@ Page:
       title: Expect screenshot
       parameters:
         expected: binary?
-        timeout: float
         isNot: boolean
         locator:
           type: object?
@@ -210,7 +207,6 @@ Page:
     screenshot:
       title: Screenshot
       parameters:
-        timeout: float
         type:
           type: enum?
           literals:
@@ -590,6 +586,11 @@ Page:
       returns:
         artifact: Artifact?
 
+    screencastFrameAck:
+      internal: true
+      parameters:
+        frameId: int
+
     screencastStop:
       title: Stop screencast
       group: configuration
@@ -721,6 +722,7 @@ Page:
 
     screencastFrame:
       parameters:
+        frameId: int
         data: binary
         timestamp: float
         viewportWidth: int

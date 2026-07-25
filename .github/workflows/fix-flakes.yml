@@ -58,6 +58,9 @@ jobs:
           an expensive runner to fix a flaky or red test is most worthwhile right now, and hand
           off only that runner label. Do NOT fix anything.
 
+          The GitHub CLI is not authenticated in this job. Do not run gh; use GitHub MCP tools
+          for all GitHub reads.
+
           Optimise for the OS with the highest-impact actionable flakiness/reds that isn't
           already being worked on OR already fixed. A candidate is dead if a fix PR touches it
           (open, or recently merged/closed) — the DB window still holds the failing runs from
@@ -70,11 +73,12 @@ jobs:
           via the playwright-test-results skill. \`bot_name\` encodes the OS.
 
           Write your answer to output/runner.txt, and nothing else there: exactly one of these
-          six runner labels, or the single word \`none\` if no OS is worth a run.
+          seven runner labels, or the single word \`none\` if no platform is worth a run.
             ubuntu-22.04   ubuntu-22.04-arm   ubuntu-24.04
-            macos-14-xlarge   macos-15-xlarge   windows-latest
-          Map a candidate's \`bot_name\` to the closest of those (e.g. \`*-macos-15-*\` ->
-          macos-15-xlarge). Explain your reasoning briefly in your final message.
+            macos-14-xlarge   macos-15-large   macos-15-xlarge   windows-latest
+          Map \`*-macos-15-large\` to \`macos-15-large\` and \`*-macos-15-xlarge\` to
+          \`macos-15-xlarge\`; never substitute one architecture for another. Explain your
+          reasoning briefly in your final message.
 
           ${HINT:+Focus hint from the operator: $HINT}
           EOF
@@ -99,7 +103,7 @@ jobs:
             exit 0
           fi
           case "$runner" in
-            ubuntu-22.04|ubuntu-22.04-arm|ubuntu-24.04|macos-14-xlarge|macos-15-xlarge|windows-latest) ;;
+            ubuntu-22.04|ubuntu-22.04-arm|ubuntu-24.04|macos-14-xlarge|macos-15-large|macos-15-xlarge|windows-latest) ;;
             *) echo "::error::Triage chose a non-allowlisted runner: '$runner'." >&2; exit 1 ;;
           esac
           echo "Triage chose runner: $runner"
@@ -269,7 +273,7 @@ jobs:
       - uses: actions/create-github-app-token@v3
         id: app-token
         with:
-          app-id: ${{ vars.PLAYWRIGHT_APP_ID }}
+          client-id: ${{ vars.PLAYWRIGHT_APP_CLIENT_ID }}
           private-key: ${{ secrets.PLAYWRIGHT_PRIVATE_KEY }}
 
       - name: Apply commit and open PR

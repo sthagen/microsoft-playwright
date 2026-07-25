@@ -38,32 +38,11 @@ export type ClientInfo = {
   clientName: string;
 };
 
-class BackendManager {
-  private _backends = new Map<ServerBackend, ServerBackendFactory>();
-
-  async createBackend(factory: ServerBackendFactory, clientInfo: ClientInfo): Promise<ServerBackend> {
-    const backend = await factory.create(clientInfo);
-    await backend.initialize?.(clientInfo);
-    this._backends.set(backend, factory);
-    return backend;
-  }
-
-  async disposeBackend(backend: ServerBackend) {
-    const factory = this._backends.get(backend);
-    if (!factory)
-      return;
-    await backend.dispose?.();
-    await factory.disposed(backend).catch(serverDebug);
-    this._backends.delete(backend);
-  }
-}
-
-const backendManager = new BackendManager();
-
 export interface ServerBackend {
   initialize?(clientInfo: ClientInfo): Promise<void>;
-  callTool(name: string, args: CallToolRequest['params']['arguments'], signal: AbortSignal): Promise<CallToolResult & { isClose?: boolean }>;
+  callTool(name: string, args: CallToolRequest['params']['arguments'], signal: AbortSignal): Promise<CallToolResult>;
   dispose?(): Promise<void>;
+  once(event: 'disposed', listener: () => void): void;
 }
 
 export type ServerBackendFactory = {
@@ -72,7 +51,6 @@ export type ServerBackendFactory = {
   version: string;
   toolSchemas: ToolSchema<any>[];
   create: (clientInfo: ClientInfo) => Promise<ServerBackend>;
-  disposed: (backend: ServerBackend) => Promise<void>;
 };
 
 export async function connect(factory: ServerBackendFactory, transport: Transport, transportInitialized: Promise<void>, runHeartbeat: boolean) {
@@ -94,7 +72,7 @@ export function createServer(name: string, version: string, factory: ServerBacke
 
   let backendPromise: Promise<ServerBackend> | undefined;
 
-  const onClose = () => backendPromise?.then(b => backendManager.disposeBackend(b)).catch(serverDebug);
+  const onClose = () => backendPromise?.then(b => b.dispose?.()).catch(serverDebug);
   addServerListener(server, 'close', onClose);
 
   server.setRequestHandler(CallToolRequestSchema, async (request, extra) => {
@@ -102,7 +80,10 @@ export function createServer(name: string, version: string, factory: ServerBacke
 
     try {
       if (!backendPromise) {
-        backendPromise = initializeServer(server, factory, transportInitialized, runHeartbeat).catch(e => {
+        backendPromise = initializeServer(server, factory, transportInitialized, runHeartbeat).then(backend => {
+          backend.once('disposed', () => { backendPromise = undefined; });
+          return backend;
+        }).catch(e => {
           backendPromise = undefined;
           throw e;
         });
@@ -110,12 +91,6 @@ export function createServer(name: string, version: string, factory: ServerBacke
 
       const backend = await backendPromise;
       const toolResult = await backend.callTool(request.params.name, request.params.arguments || {}, extra.signal);
-      if (toolResult.isClose) {
-        await backendManager.disposeBackend(backend).catch(serverDebug);
-        backendPromise = undefined;
-        delete toolResult.isClose;
-      }
-
       const mergedResult = mergeTextParts(toolResult);
       serverDebugResponse('callResult', mergedResult);
       return mergedResult;
@@ -146,7 +121,8 @@ const initializeServer = async (server: ServerType, factory: ServerBackendFactor
     clientName: server.getClientVersion()?.name ?? 'Playwright MCP',
   };
 
-  const backend = await backendManager.createBackend(factory, clientInfo);
+  const backend = await factory.create(clientInfo);
+  await backend.initialize?.(clientInfo);
   if (runHeartbeat)
     startHeartbeat(server);
   return backend;

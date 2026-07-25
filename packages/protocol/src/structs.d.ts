@@ -79,6 +79,8 @@ export type APIResponse = {
   headers: NameValue[],
   securityDetails?: SecurityDetails,
   serverAddr?: RemoteAddr,
+  timing?: ResourceTiming,
+  responseEndTiming?: number,
 };
 
 export type Metadata = {
@@ -90,6 +92,7 @@ export type Metadata = {
   title?: string,
   internal?: boolean,
   stepId?: string,
+  timeout?: number,
 };
 
 export type ClientSideCallMetadata = {
@@ -105,6 +108,13 @@ export type WaitInfo = {
   event?: string,
   message?: string,
   error?: string,
+};
+
+export type HttpCredentials = {
+  username: string,
+  password: string,
+  origin?: string,
+  send?: 'always' | 'unauthorized',
 };
 
 export type SetNetworkCookie = {
@@ -281,6 +291,7 @@ export type SerializedValue = {
     v: SerializedValue,
   }[],
   h?: number,
+  fn?: string,
   id?: number,
   ref?: number,
 };

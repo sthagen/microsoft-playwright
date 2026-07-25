@@ -189,7 +189,7 @@ class FfmpegVideoRecorder {
     });
     this._process = launchedProcess;
     this._gracefullyClose = gracefullyClose;
-    launchedProcess.stdin!.write(writeHeader(w, h));
+    launchedProcess.stdin!.write(writeHeader());
   }
 
   writeFrame(frame: Buffer, timestamp: number) {

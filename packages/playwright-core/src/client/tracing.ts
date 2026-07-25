@@ -18,6 +18,7 @@ import { isRegExp, isString } from '@isomorphic/rtti';
 import { Artifact } from './artifact';
 import { ChannelOwner } from './channelOwner';
 import { DisposableStub } from './disposable';
+import { kNoTimeout } from './timeoutSettings';
 
 import type { Page } from './page';
 import type * as api from '../../types/types';
@@ -50,15 +51,15 @@ export class Tracing extends ChannelOwner<channels.TracingChannel> implements ap
         snapshots: options.snapshots,
         screenshots: options.screenshots,
         live: options.live,
-      }, undefined);
-      const { traceName } = await this._channel.tracingStartChunk({ name: options.name, title: options.title }, undefined);
+      }, kNoTimeout);
+      const { traceName } = await this._channel.tracingStartChunk({ name: options.name, title: options.title }, kNoTimeout);
       await this._startCollectingStacks(traceName, this._isLive);
     });
   }
 
   async startChunk(options: { name?: string, title?: string } = {}) {
     await this._wrapApiCall(async () => {
-      const { traceName } = await this._channel.tracingStartChunk(options, undefined);
+      const { traceName } = await this._channel.tracingStartChunk(options, kNoTimeout);
       await this._startCollectingStacks(traceName, this._isLive);
     });
   }
@@ -66,12 +67,12 @@ export class Tracing extends ChannelOwner<channels.TracingChannel> implements ap
   async group(name: string, options: { location?: { file: string, line?: number, column?: number } } = {}) {
     if (options.location)
       this._additionalSources.add(options.location.file);
-    await this._channel.tracingGroup({ name, location: options.location }, undefined);
+    await this._channel.tracingGroup({ name, location: options.location }, kNoTimeout);
     return new DisposableStub(() => this.groupEnd());
   }
 
   async groupEnd() {
-    await this._channel.tracingGroupEnd({}, undefined);
+    await this._channel.tracingGroupEnd({}, kNoTimeout);
   }
 
   private async _startCollectingStacks(traceName: string, live: boolean) {
@@ -92,7 +93,7 @@ export class Tracing extends ChannelOwner<channels.TracingChannel> implements ap
   async stop(options: { path?: string } = {}) {
     await this._wrapApiCall(async () => {
       await this._doStopChunk(options.path);
-      await this._channel.tracingStop({}, undefined);
+      await this._channel.tracingStop({}, kNoTimeout);
     });
   }
 
@@ -136,7 +137,7 @@ export class Tracing extends ChannelOwner<channels.TracingChannel> implements ap
         harPath: isZip ? undefined : har,
         resourcesDir: options.resourcesDir,
       },
-    }, undefined);
+    }, kNoTimeout);
     this._harRecorders.set(harId, { path: har, resourcesDir: options.resourcesDir });
     return harId;
   }
@@ -150,7 +151,7 @@ export class Tracing extends ChannelOwner<channels.TracingChannel> implements ap
     const isZip = harParams.path.endsWith('.zip');
 
     if (isLocal) {
-      const { entries } = await this._channel.harExport({ harId, mode: 'entries' }, undefined);
+      const { entries } = await this._channel.harExport({ harId, mode: 'entries' }, kNoTimeout);
       if (!isZip) {
         // Server wrote HAR and resources to the user's chosen paths.
         return;
@@ -162,7 +163,7 @@ export class Tracing extends ChannelOwner<channels.TracingChannel> implements ap
       return;
     }
 
-    const { artifact: artifactChannel } = await this._channel.harExport({ harId, mode: 'archive' }, undefined);
+    const { artifact: artifactChannel } = await this._channel.harExport({ harId, mode: 'archive' }, kNoTimeout);
     const artifact = Artifact.from(artifactChannel!);
     if (isZip) {
       await artifact.saveAs(harParams.path);
@@ -191,7 +192,7 @@ export class Tracing extends ChannelOwner<channels.TracingChannel> implements ap
 
     if (!filePath) {
       // Not interested in artifacts.
-      await this._channel.tracingStopChunk({ mode: 'discard' }, undefined);
+      await this._channel.tracingStopChunk({ mode: 'discard' }, kNoTimeout);
       if (this._stacksId)
         await this._connection.localUtils()!.traceDiscarded({ stacksId: this._stacksId });
       return;
@@ -204,12 +205,12 @@ export class Tracing extends ChannelOwner<channels.TracingChannel> implements ap
     const isLocal = !this._connection.isRemote();
 
     if (isLocal) {
-      const result = await this._channel.tracingStopChunk({ mode: 'entries' }, undefined);
+      const result = await this._channel.tracingStopChunk({ mode: 'entries' }, kNoTimeout);
       await localUtils.zip({ zipFile: filePath, entries: result.entries!, mode: 'write', stacksId: this._stacksId, includeSources: this._includeSources, additionalSources });
       return;
     }
 
-    const result = await this._channel.tracingStopChunk({ mode: 'archive' }, undefined);
+    const result = await this._channel.tracingStopChunk({ mode: 'archive' }, kNoTimeout);
 
     // The artifact may be missing if the browser closed while stopping tracing.
     if (!result.artifact) {

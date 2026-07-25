@@ -39,14 +39,13 @@ import type { Browser, BrowserOptions } from './browser';
 import type { ConsoleMessage } from './console';
 import type { Download } from './download';
 import type * as frames from './frames';
-import type { HarBackend } from './harBackend';
 import type { PageError } from './page';
 import type { Progress } from './progress';
 import type { ClientCertificatesProxy } from './socksClientCertificatesInterceptor';
 import type { SerializedStorage } from '@injected/storageScript';
 import type * as types from './types';
-import type { URLMatch } from '@isomorphic/urlMatch';
 import type * as channels from './channels';
+import type { HttpCredentials } from '@protocol/structs';
 
 const BrowserContextEvent = {
   Console: 'console',
@@ -83,7 +82,7 @@ export type BrowserContextEventMap = {
   [BrowserContextEvent.RequestFulfilled]: [request: network.Request];
   [BrowserContextEvent.RequestContinued]: [request: network.Request];
   [BrowserContextEvent.BeforeClose]: [];
-  [BrowserContextEvent.RecorderEvent]: [event: { event: 'actionAdded' | 'actionUpdated' | 'signalAdded', data: any, page: Page, code: string }];
+  [BrowserContextEvent.RecorderEvent]: [event: { event: 'actionAdded' | 'signalAdded', data: any, page: Page, code: string }];
   [BrowserContextEvent.PageClosed]: [page: Page];
   [BrowserContextEvent.InternalFrameNavigatedToNewDocument]: [frame: frames.Frame];
   [BrowserContextEvent.FrameAttached]: [frame: frames.Frame];
@@ -122,7 +121,6 @@ export abstract class BrowserContext<EM extends EventMap = EventMap> extends Sdk
   private _playwrightBindingExposed?: Promise<void>;
   readonly dialogManager: DialogManager;
   private _consoleApiExposed = false;
-  private _harForAPIRequests: HarForAPIRequestsRegistration[] = [];
 
   constructor(browser: Browser, options: types.BrowserContextOptions, browserContextId: string | undefined) {
     super(browser, 'browser-context');
@@ -268,10 +266,9 @@ export abstract class BrowserContext<EM extends EventMap = EventMap> extends Sdk
       // at the same time.
       return;
     }
+    this._closedStatus = 'closed';
     this._clientCertificatesProxy?.close().catch(() => {});
     this.tracing.abort();
-    if (this._isPersistentContext)
-      this.onClosePersistent();
     this._closePromiseFulfill!(new Error('Context closed'));
     this.emit(BrowserContext.Events.Close);
   }
@@ -292,7 +289,7 @@ export abstract class BrowserContext<EM extends EventMap = EventMap> extends Sdk
   protected abstract doClearCookies(): Promise<void>;
   protected abstract doGrantPermissions(origin: string, permissions: string[]): Promise<void>;
   protected abstract doClearPermissions(): Promise<void>;
-  protected abstract doSetHTTPCredentials(httpCredentials?: types.Credentials): Promise<void>;
+  protected abstract doSetHTTPCredentials(httpCredentials?: HttpCredentials[]): Promise<void>;
   protected abstract doAddInitScript(initScript: InitScript): Promise<void>;
   protected abstract doRemoveInitScripts(initScripts: InitScript[]): Promise<void>;
   protected abstract doUpdateExtraHTTPHeaders(): Promise<void>;
@@ -302,7 +299,6 @@ export abstract class BrowserContext<EM extends EventMap = EventMap> extends Sdk
   protected abstract doUpdateDefaultEmulatedMedia(): Promise<void>;
   protected abstract doExposePlaywrightBinding(): Promise<void>;
   protected abstract doClose(reason: string | undefined): Promise<void | 'close-browser'>;
-  protected abstract onClosePersistent(): void;
 
   async cookies(progress: Progress, urls: string | string[] | undefined = []): Promise<channels.NetworkCookie[]> {
     return await progress.race(this._cookies(urls));
@@ -348,11 +344,11 @@ export abstract class BrowserContext<EM extends EventMap = EventMap> extends Sdk
     })));
   }
 
-  setHTTPCredentials(progress: Progress, httpCredentials?: types.Credentials): Promise<void> {
+  setHTTPCredentials(progress: Progress, httpCredentials?: HttpCredentials[]): Promise<void> {
     return progress.race(this.innerSetHTTPCredentials(httpCredentials));
   }
 
-  innerSetHTTPCredentials(httpCredentials?: types.Credentials): Promise<void> {
+  innerSetHTTPCredentials(httpCredentials?: HttpCredentials[]): Promise<void> {
     return this.doSetHTTPCredentials(httpCredentials);
   }
 
@@ -376,7 +372,7 @@ export abstract class BrowserContext<EM extends EventMap = EventMap> extends Sdk
     return this._playwrightBindingExposed !== undefined;
   }
 
-  async exposeBinding(progress: Progress, name: string, playwrightBinding: frames.FunctionWithSource, forClient?: unknown): Promise<PageBinding> {
+  async exposeBinding(progress: Progress, name: string, playwrightBinding: frames.FunctionWithSource, forClient?: unknown, noGlobal?: boolean): Promise<PageBinding> {
     if (this._pageBindings.has(name))
       throw new Error(`Function "${name}" has been already registered`);
     for (const page of this.pages()) {
@@ -384,7 +380,7 @@ export abstract class BrowserContext<EM extends EventMap = EventMap> extends Sdk
         throw new Error(`Function "${name}" has been already registered in one of the pages`);
     }
     await progress.race(this.exposePlaywrightBindingIfNeeded());
-    const binding = new PageBinding(this, name, playwrightBinding);
+    const binding = new PageBinding(this, name, playwrightBinding, noGlobal);
     binding.forClient = forClient;
     this._pageBindings.set(name, binding);
     try {
@@ -484,7 +480,7 @@ export abstract class BrowserContext<EM extends EventMap = EventMap> extends Sdk
     const proxy = this._options.proxy || this._browser.options.proxy || { username: undefined, password: undefined };
     const { username, password } = proxy;
     if (username) {
-      this._options.httpCredentials = { username, password: password! };
+      this._options.httpCredentials = [{ username, password: password! }];
       const token = Buffer.from(`${username}:${password}`).toString('base64');
       this._options.extraHTTPHeaders = network.mergeHeaders([
         this._options.extraHTTPHeaders,
@@ -499,7 +495,7 @@ export abstract class BrowserContext<EM extends EventMap = EventMap> extends Sdk
       return;
     const { username, password } = proxy;
     if (username)
-      this._options.httpCredentials = { username, password: password || '' };
+      this._options.httpCredentials = [{ username, password: password || '' }];
   }
 
   async addInitScript(progress: Progress, source: string): Promise<InitScript> {
@@ -752,36 +748,7 @@ export abstract class BrowserContext<EM extends EventMap = EventMap> extends Sdk
   async notifyRoutesInFlightAboutRemovedHandler(handler: network.RouteHandler): Promise<void> {
     await Promise.all([...this._routesInFlight].map(route => route.removeHandler(handler)));
   }
-
-  routeAPIRequestsFromHar(options: { harBackend: HarBackend, urlMatch: URLMatch | undefined, notFound: 'abort' | 'fallback', baseURL: string | undefined }): { dispose: () => void } {
-    const registration: HarForAPIRequestsRegistration = {
-      harBackend: options.harBackend,
-      urlMatch: options.urlMatch,
-      notFound: options.notFound,
-      baseURL: options.baseURL,
-    };
-    // Give priority to the newest registration, mirroring BrowserContext.route/Page.route.
-    this._harForAPIRequests.unshift(registration);
-    return {
-      dispose: () => {
-        const index = this._harForAPIRequests.indexOf(registration);
-        if (index !== -1)
-          this._harForAPIRequests.splice(index, 1);
-      },
-    };
-  }
-
-  harForAPIRequests(): readonly HarForAPIRequestsRegistration[] {
-    return this._harForAPIRequests;
-  }
 }
-
-export type HarForAPIRequestsRegistration = {
-  harBackend: HarBackend;
-  urlMatch: URLMatch | undefined;
-  notFound: 'abort' | 'fallback';
-  baseURL: string | undefined;
-};
 
 export function validateBrowserContextOptions(options: types.BrowserContextOptions, browserOptions: BrowserOptions) {
   if (options.noDefaultViewport && options.deviceScaleFactor !== undefined)
@@ -800,6 +767,11 @@ export function validateBrowserContextOptions(options: types.BrowserContextOptio
   if (options.proxy)
     options.proxy = normalizeProxySettings(options.proxy);
   verifyGeolocation(options.geolocation);
+}
+
+export function findMatchingHttpCredentials(credentials: HttpCredentials[] | undefined, url: string): HttpCredentials | undefined {
+  const origin = new URL(url).origin.toLowerCase();
+  return credentials?.find(c => !c.origin || c.origin.toLowerCase() === origin);
 }
 
 export function verifyGeolocation(geolocation?: types.Geolocation): asserts geolocation is types.Geolocation {

@@ -452,9 +452,11 @@ const playwrightFixtures: Fixtures<TestFixtures, WorkerFixtures, UtilityTestFixt
   _optionContextReuseMode: ['none', { scope: 'worker', option: true, box: true }],
   _optionConnectOptions: [undefined, { scope: 'worker', option: true, box: true }],
 
-  _reuseContext: [async ({ video, _optionContextReuseMode }, use) => {
+  reuseContext: [false, { scope: 'worker', option: true, box: true }],
+
+  _reuseContext: [async ({ video, _optionContextReuseMode, reuseContext }, use) => {
     let mode = _optionContextReuseMode;
-    if (process.env.PW_TEST_REUSE_CONTEXT)
+    if (process.env.PW_TEST_REUSE_CONTEXT || reuseContext)
       mode = 'when-possible';
     const reuse = mode === 'when-possible' && normalizeVideoMode(video) === 'off';
     await use(reuse);
@@ -491,6 +493,34 @@ const playwrightFixtures: Fixtures<TestFixtures, WorkerFixtures, UtilityTestFixt
     if (!page)
       page = await context.newPage();
     await use(page);
+  },
+
+  mount: async ({ page, baseURL }, use) => {
+    // exposeFunctions turns any callbacks in props into real, browser-callable
+    // functions that dispatch back to the test.
+    const callMount = (params: { story: string, props?: Record<string, any> }) =>
+      page.evaluate(async p => {
+        const w = window as any;
+        if (typeof w.mount !== 'function')
+          throw new Error('The gallery page does not define window.mount().');
+        await w.mount(p);
+      }, params, { exposeFunctions: true });
+    await use(async (storyId: string, props?: any) => {
+      if (!baseURL)
+        throw new Error('mount() requires `baseURL` to point at the component gallery. Set it in your Playwright config.');
+      // The gallery is a single page (served at baseURL) that exposes window.mount()/window.unmount().
+      await page.goto(baseURL);
+      await callMount({ story: storyId, props });
+      // Points at the gallery root, scope the queries: component.getByRole(...).
+      return Object.assign(page.locator('#root'), {
+        // update() re-renders the same story with new props without navigating; if the gallery
+        // reuses its root/instance, the framework reconciles and component state is preserved.
+        update: (newProps?: any) => callMount({ story: storyId, props: newProps }),
+        unmount: () => page.evaluate(async () => {
+          await (window as any).unmount?.();
+        }),
+      });
+    });
   },
 });
 

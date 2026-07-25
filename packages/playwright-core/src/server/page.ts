@@ -17,7 +17,7 @@
 
 import { isInvalidSelectorError } from '@isomorphic/selectorParser';
 import { ManualPromise } from '@isomorphic/manualPromise';
-import { parseEvaluationResultValue } from '@isomorphic/utilityScriptSerializers';
+import { kBindingsControllerProperty, parseEvaluationResultValue } from '@isomorphic/utilityScriptSerializers';
 import { getComparator } from '@utils/comparators';
 import { debugLogger } from '@utils/debugLogger';
 import { LongStandingScope } from '@isomorphic/manualPromise';
@@ -120,7 +120,6 @@ type EmulatedMedia = {
 };
 
 type ExpectScreenshotOptions = ImageComparatorOptions & ScreenshotOptions & {
-  timeout: number,
   expected?: Buffer,
   isNot?: boolean,
   locator?: {
@@ -350,13 +349,13 @@ export class Page extends SdkObject<PageEventMap> {
     return this.frameManager.frames();
   }
 
-  async exposeBinding(progress: Progress, name: string, playwrightBinding: frames.FunctionWithSource): Promise<PageBinding> {
+  async exposeBinding(progress: Progress, name: string, playwrightBinding: frames.FunctionWithSource, noGlobal?: boolean): Promise<PageBinding> {
     if (this._pageBindings.has(name))
       throw new Error(`Function "${name}" has been already registered`);
     if (this.browserContext._pageBindings.has(name))
       throw new Error(`Function "${name}" has been already registered in the browser context`);
     await progress.race(this.browserContext.exposePlaywrightBindingIfNeeded());
-    const binding = new PageBinding(this, name, playwrightBinding);
+    const binding = new PageBinding(this, name, playwrightBinding, noGlobal);
     this._pageBindings.set(name, binding);
     try {
       await progress.race(this.delegate.addInitScript(binding.initScript));
@@ -554,7 +553,7 @@ export class Page extends SdkObject<PageEventMap> {
     if (!mainFrame || !mainFrame.pendingDocument())
       return;
     const url = mainFrame.pendingDocument()?.request?.url();
-    const toUrl = url ? `" ${trimStringWithEllipsis(url, 200)}"` : '';
+    const toUrl = url ? ` "${trimStringWithEllipsis(url, 200)}"` : '';
     progress.log(`  waiting for${toUrl} navigation to finish...`);
     await helper.waitForEvent(progress, mainFrame, frames.Frame.Events.InternalNavigation, (e: frames.NavigationEvent) => {
       if (!e.isPublic)
@@ -1047,7 +1046,6 @@ export class Worker extends SdkObject<WorkerEventMap> {
 }
 
 export class PageBinding extends DisposableObject {
-  private static kController = '__playwright__binding__controller__';
   static kBindingName = '__playwright__binding__';
 
   static createInitScript(browserContext: BrowserContext): InitScript {
@@ -1055,7 +1053,7 @@ export class PageBinding extends DisposableObject {
       (() => {
         const module = {};
         ${rawBindingsControllerSource.source}
-        const property = '${PageBinding.kController}';
+        const property = '${kBindingsControllerProperty}';
         if (!globalThis[property])
           globalThis[property] = new (module.exports.BindingsController())(globalThis, '${PageBinding.kBindingName}');
       })();
@@ -1068,12 +1066,12 @@ export class PageBinding extends DisposableObject {
   readonly cleanupScript: string;
   forClient?: unknown;
 
-  constructor(parent: BrowserContext | Page, name: string, playwrightFunction: frames.FunctionWithSource) {
+  constructor(parent: BrowserContext | Page, name: string, playwrightFunction: frames.FunctionWithSource, noGlobal?: boolean) {
     super(parent);
     this.name = name;
     this.playwrightFunction = playwrightFunction;
-    this.initScript = new InitScript(parent, `globalThis['${PageBinding.kController}'].addBinding(${JSON.stringify(name)})`);
-    this.cleanupScript = `globalThis['${PageBinding.kController}'].removeBinding(${JSON.stringify(name)})`;
+    this.initScript = new InitScript(parent, `globalThis['${kBindingsControllerProperty}'].addBinding(${JSON.stringify(name)}, ${!!noGlobal})`);
+    this.cleanupScript = `globalThis['${kBindingsControllerProperty}'].removeBinding(${JSON.stringify(name)})`;
   }
 
   static async dispatch(page: Page, payload: string, context: dom.FrameExecutionContext) {
@@ -1087,9 +1085,9 @@ export class PageBinding extends DisposableObject {
         throw new Error(`serializedArgs is not an array. This can happen when Array.prototype.toJSON is defined incorrectly`);
       const args = serializedArgs.map(a => parseEvaluationResultValue(a));
       const result = await binding.playwrightFunction({ frame: context.frame, page, context: page.browserContext }, ...args);
-      context.evaluateExpressionHandle(`arg => globalThis['${PageBinding.kController}'].deliverBindingResult(arg)`, { isFunction: true }, { name, seq, result }).catch(e => debugLogger.log('error', e));
+      context.evaluateExpressionHandle(`arg => globalThis['${kBindingsControllerProperty}'].deliverBindingResult(arg)`, { isFunction: true }, { name, seq, result }).catch(e => debugLogger.log('error', e));
     } catch (error) {
-      context.evaluateExpressionHandle(`arg => globalThis['${PageBinding.kController}'].deliverBindingResult(arg)`, { isFunction: true }, { name, seq, error }).catch(e => debugLogger.log('error', e));
+      context.evaluateExpressionHandle(`arg => globalThis['${kBindingsControllerProperty}'].deliverBindingResult(arg)`, { isFunction: true }, { name, seq, error }).catch(e => debugLogger.log('error', e));
     }
   }
 
@@ -1113,11 +1111,13 @@ export class InitScript extends DisposableObject {
   }
 }
 
-export async function ariaSnapshotForFrame(progress: Progress, frame: frames.Frame, selector: string | undefined, options: { mode?: 'ai' | 'default', doNotRenderActive?: boolean, depth?: number, boxes?: boolean } = {}): Promise<string[]> {
+export async function ariaSnapshotForFrame(progress: Progress, frame: frames.Frame, selector: string | undefined, options: { mode?: 'ai' | 'default', doNotRenderActive?: boolean, depth?: number, boxes?: boolean, strict?: boolean } = {}): Promise<string[]> {
   const snapshot = await frame.retryWithProgressAndTimeouts(progress, [1000, 2000, 4000, 8000], async (progress, continuePolling) => {
     try {
       // Note: the resolved frame might differ from the original |frame|.
-      const resolved = await progress.race(frame.selectors.callOnSelector(selector || 'body', { strict: true }, ({ injected, elements }, ariaOptions) => {
+      // See https://developer.mozilla.org/en-US/docs/Web/API/Document/body for body/frameset explanation.
+      // Non-strict, because pages with nested framesets have multiple "frameset" elements.
+      const resolved = await progress.race(frame.selectors.callOnSelector(selector || 'body,frameset', { strict: options.strict ?? !!selector }, ({ injected, elements }, ariaOptions) => {
         return injected.ariaSnapshotWithRefs(elements[0], ariaOptions);
       }, {
         mode: options.mode ?? 'default',
@@ -1144,9 +1144,10 @@ export async function ariaSnapshotForFrame(progress: Progress, frame: frames.Fra
   progress.setAllowConcurrentOrNestedRaces(true);
   const childSnapshotPromises = renderedIframeRefs.map(async ref => {
     const childDepth = options.depth ? options.depth - snapshot.iframeDepths[ref] - 1 : undefined;
-    const frameBodySelector = `aria-ref=${ref} >> internal:control=enter-frame >> body`;
+    // Non-strict, because child frameset documents have multiple "frameset" elements.
+    const frameRootSelector = `aria-ref=${ref} >> internal:control=enter-frame >> body,frameset`;
     try {
-      return await ariaSnapshotForFrame(progress, snapshot.resolvedFrame, frameBodySelector, { ...options, depth: childDepth });
+      return await ariaSnapshotForFrame(progress, snapshot.resolvedFrame, frameRootSelector, { ...options, depth: childDepth, strict: false });
     } catch {
       return [];
     }

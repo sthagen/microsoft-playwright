@@ -36,7 +36,6 @@ export type ActionName =
 
 export type ActionBase = {
   name: ActionName,
-  signals: Signal[],
   ariaSnapshot?: string,
 };
 
@@ -128,7 +127,7 @@ export type AssertSnapshotAction = ActionWithSelector & {
 
 export type Action = ClickAction | HoverAction | CheckAction | ClosesPageAction | OpenPageAction | UncheckAction | FillAction | NavigateAction | PressAction | SelectAction | SetInputFilesAction | AssertTextAction | AssertValueAction | AssertCheckedAction | AssertVisibleAction | AssertSnapshotAction;
 export type AssertAction = AssertCheckedAction | AssertValueAction | AssertTextAction | AssertVisibleAction | AssertSnapshotAction;
-export type PerformOnRecordAction = ClickAction | HoverAction | CheckAction | UncheckAction | PressAction | SelectAction;
+export type PerformableAction = ClickAction;
 
 // Signals.
 
@@ -142,7 +141,7 @@ export type NavigationSignal = BaseSignal & {
 
 export type PopupSignal = BaseSignal & {
   name: 'popup',
-  popupAlias: string,
+  popupPageGuid: string,
 };
 
 export type DownloadSignal = BaseSignal & {
@@ -163,20 +162,13 @@ export type ExpectSignal = BaseSignal & {
 
 export type Signal = NavigationSignal | PopupSignal | DownloadSignal | DialogSignal | ExpectSignal;
 
-export type FrameDescription = {
-  pageGuid: string;
-  pageAlias: string;
-};
-
 export type ActionInContext = {
-  frame: FrameDescription;
+  pageGuid: string;
   action: Action;
-  startTime: number;
-  endTime?: number;
+  signals: Signal[];
 };
 
 export type SignalInContext = {
-  frame: FrameDescription;
+  pageGuid: string;
   signal: Signal;
-  timestamp: number;
 };
