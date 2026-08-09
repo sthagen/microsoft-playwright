@@ -59,6 +59,8 @@ import type { RouteHandlerCallback, WebSocketRouteHandlerCallback } from './netw
 import type { FilePayload, Headers, LifecycleEvent, SelectOption, SelectOptionOptions, Size, TimeoutOptions, WaitForEventOptions, WaitForFunctionOptions } from './types';
 import type * as structs from '../../types/structs';
 import type * as api from '../../types/types';
+import type { AriaSnapshotJSON } from '@isomorphic/ariaSnapshot';
+import type { By } from '@isomorphic/by';
 import type { ByRoleOptions } from '@isomorphic/locatorUtils';
 import type { URLMatch } from '@isomorphic/urlMatch';
 import type * as channels from './channels';
@@ -178,6 +180,7 @@ export class Page extends ChannelOwner<channels.PageChannel> implements api.Page
     this._setEventToSubscriptionMapping(new Map<string, channels.PageUpdateSubscriptionParams['event']>([
       [Events.Page.Console, 'console'],
       [Events.Page.Dialog, 'dialog'],
+      [Events.Page.DialogClosed, 'dialogClosed'],
       [Events.Page.Request, 'request'],
       [Events.Page.Response, 'response'],
       [Events.Page.RequestFinished, 'requestFinished'],
@@ -750,6 +753,10 @@ export class Page extends ChannelOwner<channels.PageChannel> implements api.Page
     return this.mainFrame().locator(selector, options);
   }
 
+  get(by: By): Locator {
+    return this.mainFrame().get(by);
+  }
+
   getByTestId(testId: string | RegExp): Locator {
     return this.mainFrame().getByTestId(testId);
   }
@@ -782,8 +789,8 @@ export class Page extends ChannelOwner<channels.PageChannel> implements api.Page
     return this.mainFrame().frameLocator(selector);
   }
 
-  pierceFrames(): FrameLocator {
-    return this.mainFrame().pierceFrames();
+  pierceFrames(options?: { pierce?: boolean }): FrameLocator {
+    return this.mainFrame().pierceFrames(options);
   }
 
   async focus(selector: string, options?: channels.FrameFocusOptions & TimeoutOptions) {
@@ -920,6 +927,11 @@ export class Page extends ChannelOwner<channels.PageChannel> implements api.Page
 
   async ariaSnapshot(options: TimeoutOptions & { mode?: 'ai' | 'default', depth?: number, boxes?: boolean } = {}): Promise<string> {
     const result = await this.mainFrame()._channel.ariaSnapshot({ mode: options.mode, depth: options.depth, boxes: options.boxes }, this._timeoutSettings.timeout(options));
+    return result.snapshot;
+  }
+
+  async ariaSnapshotJSON(options: TimeoutOptions & { mode?: 'ai' | 'default', depth?: number, boxes?: boolean } = {}): Promise<AriaSnapshotJSON> {
+    const result = await this.mainFrame()._channel.ariaSnapshotJSON({ mode: options.mode, depth: options.depth, boxes: options.boxes }, this._timeoutSettings.timeout(options));
     return result.snapshot;
   }
 

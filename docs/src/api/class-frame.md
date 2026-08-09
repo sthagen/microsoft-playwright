@@ -1002,6 +1002,19 @@ await locator.ClickAsync();
 ### param: Frame.frameLocator.selector = %%-find-selector-%%
 * since: v1.17
 
+## method: Frame.get
+* since: v1.63
+* langs: js
+- returns: <[Locator]>
+
+%%-template-locator-get-%%
+
+### param: Frame.get.by
+* since: v1.63
+- `by` <[By]>
+
+Page-free locator built with [`property: Playwright.by`].
+
 ## async method: Frame.getAttribute
 * since: v1.8
 * discouraged: Use locator-based [`method: Locator.getAttribute`] instead. Read more about [locators](../locators.md).
@@ -1443,16 +1456,16 @@ Parent frame, if any. Detached frames and main frames return `null`.
 * since: v1.63
 - returns: <[FrameLocator]>
 
-When working with iframes, you can create a frame locator that will search for elements in the main frame
-and in all iframes on the page, so that you don't need to locate each iframe first.
+When working with iframes, you can create a frame locator that will search for elements in this frame
+and in all iframes inside it, so that you don't need to locate each iframe first.
 
-Note that all elements matching the locator must belong to a single frame. For example, if the page contains
+Note that all elements matching the locator must belong to a single frame. For example, if the frame contains
 two iframes, each with a `Submit` button, piercing frames and locating a button will throw an error
 because it matches elements from multiple frames.
 
 **Usage**
 
-Following snippet locates a button, either in the main frame or in one of the iframes:
+Following snippet locates a button, either in the frame or in one of the iframes inside it:
 
 ```js
 const locator = frame.pierceFrames().getByRole('button');
@@ -1478,6 +1491,13 @@ locator.click()
 var locator = frame.PierceFrames.GetByRole(AriaRole.Button);
 await locator.ClickAsync();
 ```
+
+### option: Frame.pierceFrames.pierce
+* since: v1.63
+- `pierce` <[boolean]>
+
+Whether to pierce frames. Pass `false` to opt out of frame piercing enabled
+by the [`option: Browser.newContext.pierceFrames`] context option. Defaults to `true`.
 
 ## async method: Frame.press
 * since: v1.8

@@ -395,6 +395,30 @@ it('should omit redundant name when a contributor is a skipped leaf generic', as
   `);
 });
 
+it('should keep the name when the contributing wrapper collapses into repeating text', async ({ page }) => {
+  it.info().annotations.push({ type: 'issue', description: 'https://github.com/microsoft/playwright/issues/41985' });
+  // The outer span is marked as represented while it still wraps the icon. Once the nameless
+  // image is dropped, the span collapses into a lone text repeating the button's name and removes
+  // itself, so the button must keep the name derived from it.
+  await page.setContent(`
+    <button>
+      <span>
+        <span>
+          <svg focusable="false" tabindex="-1" aria-hidden="true" viewBox="0 0 448 512">
+            <path d="M416 208H272V64c0-17.67-14.33-32-32-32h-32c-17.67 0-32 14.33-32 32v144H32c-17.67 0-32 14.33-32 32v32c0 17.67 14.33 32 32 32h144v144c0 17.67 14.33 32 32 32h32c17.67 0 32-14.33 32-32V304h144c17.67 0 32-14.33 32-32v-32c0-17.67-14.33-32-32-32z"/>
+          </svg>
+        </span>
+        <span>Add New Item</span>
+      </span>
+    </button>
+  `);
+
+  const snapshot = await snapshotForAI(page);
+  expect(snapshot).toContainYaml(`
+    - button "Add New Item" [ref=e2]
+  `);
+});
+
 it('should keep names not derived from printed nodes', async ({ page }) => {
   await page.setContent(`
     <h3 aria-label="Clipboard API issue"><a style="cursor: pointer" href="/issues/1">Clipboard API</a></h3>
@@ -416,13 +440,13 @@ it('should omit images without an accessible name', async ({ page }) => {
   `);
 
   const snapshot = await snapshotForAI(page);
-  // A nameless image carries no information and is omitted, whether or not it is clickable. Only
-  // the named image is kept - and the body wrapper, left with a single child, is unwrapped.
+  // A nameless image that cannot be clicked carries no information and is omitted.
   expect(snapshot).toContainYaml(`
-    - img "A cat" [ref=e3]
+    - generic [active] [ref=e1]:
+      - img "A cat" [ref=e3]
+      - img [ref=e4] [cursor=pointer]
   `);
   expect(snapshot).not.toContain('[ref=e2]');
-  expect(snapshot).not.toContain('[ref=e4]');
 });
 
 it('should omit a nameless image nested inside a link', async ({ page }) => {
@@ -437,6 +461,27 @@ it('should omit a nameless image nested inside a link', async ({ page }) => {
       - /url: /issue/1
   `);
   expect(snapshot).not.toContain('img');
+});
+
+it('should keep icon-only clickable elements', {
+  annotation: { type: 'issue', description: 'https://github.com/microsoft/playwright/issues/42013' },
+}, async ({ page }) => {
+  const icon = `<svg viewBox="0 0 1024 1024"><use xlink:href="#icon"></use></svg>`;
+  await page.setContent(`
+    <div style="cursor: pointer" aria-haspopup="true"><i>${icon}</i></div>
+    <img style="cursor: pointer" src="data:image/gif;base64,R0lGODlhAQABAAAAACwAAAAAAQABAAA=">
+    <a style="cursor: pointer" href="/target">${icon}</a>
+    <div onclick="void 0">${icon}</div>
+  `);
+
+  const snapshot = await snapshotForAI(page);
+  expect(snapshot).toContainYaml(`
+    - generic [active] [ref=e1]:
+      - generic [ref=e2] [cursor=pointer]
+      - img [ref=e5] [cursor=pointer]
+      - link [ref=e6] [cursor=pointer]:
+        - /url: /target
+  `);
 });
 
 it('should omit leaf generic whose text is already in an ancestor name', async ({ page }) => {

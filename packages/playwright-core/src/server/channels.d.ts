@@ -429,6 +429,7 @@ export type AndroidDeviceLaunchBrowserParams = {
     },
   },
   strictSelectors?: boolean,
+  pierceFrames?: boolean,
   serviceWorkers?: 'allow' | 'block',
   selectorEngines?: SelectorEngine[],
   testIdAttributeName?: string,
@@ -496,6 +497,7 @@ export type AndroidDeviceLaunchBrowserOptions = {
     },
   },
   strictSelectors?: boolean,
+  pierceFrames?: boolean,
   serviceWorkers?: 'allow' | 'block',
   selectorEngines?: SelectorEngine[],
   testIdAttributeName?: string,
@@ -876,6 +878,7 @@ export type BrowserNewContextParams = {
     },
   },
   strictSelectors?: boolean,
+  pierceFrames?: boolean,
   serviceWorkers?: 'allow' | 'block',
   selectorEngines?: SelectorEngine[],
   testIdAttributeName?: string,
@@ -946,6 +949,7 @@ export type BrowserNewContextOptions = {
     },
   },
   strictSelectors?: boolean,
+  pierceFrames?: boolean,
   serviceWorkers?: 'allow' | 'block',
   selectorEngines?: SelectorEngine[],
   testIdAttributeName?: string,
@@ -1019,6 +1023,7 @@ export type BrowserNewContextForReuseParams = {
     },
   },
   strictSelectors?: boolean,
+  pierceFrames?: boolean,
   serviceWorkers?: 'allow' | 'block',
   selectorEngines?: SelectorEngine[],
   testIdAttributeName?: string,
@@ -1089,6 +1094,7 @@ export type BrowserNewContextForReuseOptions = {
     },
   },
   strictSelectors?: boolean,
+  pierceFrames?: boolean,
   serviceWorkers?: 'allow' | 'block',
   selectorEngines?: SelectorEngine[],
   testIdAttributeName?: string,
@@ -1201,6 +1207,7 @@ export type BrowserContextInitializer = {
       },
     },
     strictSelectors?: boolean,
+    pierceFrames?: boolean,
     serviceWorkers?: 'allow' | 'block',
     selectorEngines?: SelectorEngine[],
     testIdAttributeName?: string,
@@ -1211,6 +1218,7 @@ export interface BrowserContextEventTarget {
   _dispatchEvent(event: 'console', params?: BrowserContextConsoleEvent): void;
   _dispatchEvent(event: 'close', params?: BrowserContextCloseEvent): void;
   _dispatchEvent(event: 'dialog', params?: BrowserContextDialogEvent): void;
+  _dispatchEvent(event: 'dialogClosed', params?: BrowserContextDialogClosedEvent): void;
   _dispatchEvent(event: 'page', params?: BrowserContextPageEvent): void;
   _dispatchEvent(event: 'pageError', params?: BrowserContextPageErrorEvent): void;
   _dispatchEvent(event: 'route', params?: BrowserContextRouteEvent): void;
@@ -1280,6 +1288,9 @@ export type BrowserContextConsoleEvent = {
 };
 export type BrowserContextCloseEvent = {};
 export type BrowserContextDialogEvent = {
+  dialog: DialogChannel,
+};
+export type BrowserContextDialogClosedEvent = {
   dialog: DialogChannel,
 };
 export type BrowserContextPageEvent = {
@@ -1576,7 +1587,7 @@ export type BrowserContextCreateTempFilesResult = {
   writableStreams: WritableStreamChannel[],
 };
 export type BrowserContextUpdateSubscriptionParams = {
-  event: 'console' | 'dialog' | 'request' | 'response' | 'requestFinished' | 'requestFailed',
+  event: 'console' | 'dialog' | 'dialogClosed' | 'request' | 'response' | 'requestFinished' | 'requestFailed',
   enabled: boolean,
 };
 export type BrowserContextUpdateSubscriptionOptions = {
@@ -1683,6 +1694,7 @@ export interface BrowserContextEvents {
   'console': BrowserContextConsoleEvent;
   'close': BrowserContextCloseEvent;
   'dialog': BrowserContextDialogEvent;
+  'dialogClosed': BrowserContextDialogClosedEvent;
   'page': BrowserContextPageEvent;
   'pageError': BrowserContextPageErrorEvent;
   'route': BrowserContextRouteEvent;
@@ -1839,6 +1851,7 @@ export type BrowserTypeLaunchPersistentContextParams = {
     },
   },
   strictSelectors?: boolean,
+  pierceFrames?: boolean,
   serviceWorkers?: 'allow' | 'block',
   selectorEngines?: SelectorEngine[],
   testIdAttributeName?: string,
@@ -1922,6 +1935,7 @@ export type BrowserTypeLaunchPersistentContextOptions = {
     },
   },
   strictSelectors?: boolean,
+  pierceFrames?: boolean,
   serviceWorkers?: 'allow' | 'block',
   selectorEngines?: SelectorEngine[],
   testIdAttributeName?: string,
@@ -2022,6 +2036,7 @@ export type ElectronLaunchParams = {
     },
   },
   strictSelectors?: boolean,
+  pierceFrames?: boolean,
   timezoneId?: string,
   tracesDir?: string,
   artifactsDir?: string,
@@ -2061,6 +2076,7 @@ export type ElectronLaunchOptions = {
     },
   },
   strictSelectors?: boolean,
+  pierceFrames?: boolean,
   timezoneId?: string,
   tracesDir?: string,
   artifactsDir?: string,
@@ -2164,6 +2180,7 @@ export interface FrameChannel extends FrameEventTarget, Channel {
   addScriptTag(params: FrameAddScriptTagParams, progress: Progress): Promise<FrameAddScriptTagResult>;
   addStyleTag(params: FrameAddStyleTagParams, progress: Progress): Promise<FrameAddStyleTagResult>;
   ariaSnapshot(params: FrameAriaSnapshotParams, progress: Progress): Promise<FrameAriaSnapshotResult>;
+  ariaSnapshotJSON(params: FrameAriaSnapshotJSONParams, progress: Progress): Promise<FrameAriaSnapshotJSONResult>;
   blur(params: FrameBlurParams, progress: Progress): Promise<FrameBlurResult>;
   check(params: FrameCheckParams, progress: Progress): Promise<FrameCheckResult>;
   click(params: FrameClickParams, progress: Progress): Promise<FrameClickResult>;
@@ -2285,6 +2302,21 @@ export type FrameAriaSnapshotOptions = {
 };
 export type FrameAriaSnapshotResult = {
   snapshot: string,
+};
+export type FrameAriaSnapshotJSONParams = {
+  mode?: 'ai' | 'default',
+  selector?: string,
+  depth?: number,
+  boxes?: boolean,
+};
+export type FrameAriaSnapshotJSONOptions = {
+  mode?: 'ai' | 'default',
+  selector?: string,
+  depth?: number,
+  boxes?: boolean,
+};
+export type FrameAriaSnapshotJSONResult = {
+  snapshot: any,
 };
 export type FrameBlurParams = {
   selector: string,
@@ -4463,7 +4495,7 @@ export type PageScreencastStopParams = {};
 export type PageScreencastStopOptions = {};
 export type PageScreencastStopResult = void;
 export type PageUpdateSubscriptionParams = {
-  event: 'console' | 'dialog' | 'fileChooser' | 'request' | 'response' | 'requestFinished' | 'requestFailed',
+  event: 'console' | 'dialog' | 'dialogClosed' | 'fileChooser' | 'request' | 'response' | 'requestFinished' | 'requestFailed',
   enabled: boolean,
 };
 export type PageUpdateSubscriptionOptions = {

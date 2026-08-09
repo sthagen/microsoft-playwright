@@ -27,6 +27,7 @@ import { ModalState } from './tool';
 import { handleDialog } from './dialogs';
 import { uploadFile } from './files';
 
+import type { AriaSnapshotJSON } from '@isomorphic/ariaSnapshot';
 import type { Disposable } from '@isomorphic/disposable';
 import type { Context, ContextConfig } from './context';
 import type * as playwright from '../../..';
@@ -83,6 +84,7 @@ export type TabHeader = {
 
 type TabSnapshot = {
   ariaSnapshot: string;
+  ariaSnapshotJSON?: AriaSnapshotJSON;
   modalStates: ModalState[];
   events: EventEntry[];
   consoleLink?: string;
@@ -129,6 +131,7 @@ export class Tab extends EventEmitter<TabEventsInterface> {
         });
       }),
       eventsHelper.addEventListener(p, 'dialog', dialog => this._dialogShown(dialog)),
+      eventsHelper.addEventListener(p, 'dialogclosed', dialog => this._dialogClosed(dialog)),
       eventsHelper.addEventListener(p, 'download', download => {
         void this._downloadStarted(download);
       }),
@@ -205,6 +208,12 @@ export class Tab extends EventEmitter<TabEventsInterface> {
       dialog,
       clearedBy: { tool: handleDialog.schema.name, skill: 'dialog-accept or dialog-dismiss' }
     });
+  }
+
+  private _dialogClosed(dialog: playwright.Dialog) {
+    const modalState = this._modalStates.find(state => state.type === 'dialog' && state.dialog === dialog);
+    if (modalState)
+      this.clearModalState(modalState);
   }
 
   private async _downloadStarted(download: playwright.Download) {
@@ -404,19 +413,43 @@ export class Tab extends EventEmitter<TabEventsInterface> {
     this._requests.length = 0;
   }
 
-  async captureSnapshot(root: playwright.Locator | undefined, depth: number | undefined, boxes: boolean | undefined, relativeTo: string | undefined): Promise<TabSnapshot> {
+  async captureSnapshot(root: playwright.Locator | undefined, depth: number | undefined, boxes: boolean | undefined, relativeTo: string | undefined, ariaFormat: 'none' | 'text' | 'json' = 'text'): Promise<TabSnapshot> {
     await this._initializedPromise;
     let tabSnapshot: TabSnapshot | undefined;
-    const modalStates = await this._raceAgainstModalStates(async () => {
-      const ariaSnapshot = root
-        ? await root.ariaSnapshot({ mode: 'ai', depth, boxes })
-        : await this.page.ariaSnapshot({ mode: 'ai', depth, boxes });
-      tabSnapshot = {
-        ariaSnapshot,
-        modalStates: [],
-        events: [],
-      };
-    });
+    let modalStates: ModalState[] = [];
+    if (ariaFormat !== 'none') {
+      modalStates = await this._raceAgainstModalStates(async () => {
+        if (ariaFormat === 'json') {
+          const ariaSnapshotJSON = root
+            ? await root.ariaSnapshotJSON({ mode: 'ai', depth, boxes })
+            : await this.page.ariaSnapshotJSON({ mode: 'ai', depth, boxes });
+          tabSnapshot = {
+            ariaSnapshot: '',
+            ariaSnapshotJSON,
+            modalStates: [],
+            events: [],
+          };
+        } else {
+          const ariaSnapshot = root
+            ? await root.ariaSnapshot({ mode: 'ai', depth, boxes })
+            : await this.page.ariaSnapshot({ mode: 'ai', depth, boxes });
+          tabSnapshot = {
+            ariaSnapshot,
+            modalStates: [],
+            events: [],
+          };
+        }
+      });
+    } else if (this.modalStates().length) {
+      // Matches the aria path's modal fallback below, without the race: there
+      // is no tree walk for a modal to interrupt.
+      modalStates = this.modalStates();
+    } else {
+      // The caller will not render the aria snapshot, so skip the accessibility
+      // tree walk, which dominates response latency on heavy pages. Console and
+      // events are still reported via the shared tail below.
+      tabSnapshot = { ariaSnapshot: '', modalStates: [], events: [] };
+    }
     if (tabSnapshot) {
       tabSnapshot.consoleLink = await this._consoleLog.take(relativeTo);
       tabSnapshot.events = this._recentEventEntries;
@@ -456,12 +489,12 @@ export class Tab extends EventEmitter<TabEventsInterface> {
     await this._raceAgainstModalStates(() => waitForCompletion(this, callback));
   }
 
-  async targetLocator(params: { element?: string, target: string }): Promise<{ locator: playwright.Locator, resolved: string }> {
+  async targetLocator(params: { element?: string, target: string }): Promise<{ locator: playwright.Locator, resolved: string, selector: string }> {
     await this._initializedPromise;
     return (await this.targetLocators([params]))[0];
   }
 
-  async targetLocators(params: { element?: string, target: string }[]): Promise<{ locator: playwright.Locator, resolved: string }[]> {
+  async targetLocators(params: { element?: string, target: string }[]): Promise<{ locator: playwright.Locator, resolved: string, selector: string }[]> {
     await this._initializedPromise;
     return Promise.all(params.map(async param => {
       if (!param.target.match(/^(f\d+)?e\d+$/)) {
@@ -470,14 +503,14 @@ export class Tab extends EventEmitter<TabEventsInterface> {
         if (!handle)
           throw new Error(`"${param.target}" does not match any elements.`);
         handle.dispose().catch(() => {});
-        return { locator: this.page.locator(selector), resolved: asLocator('javascript', selector) };
+        return { locator: this.page.locator(selector), resolved: asLocator('javascript', selector), selector };
       } else {
         try {
           let locator = this.page.locator(`aria-ref=${param.target}`);
           if (param.element)
             locator = locator.describe(param.element);
           const resolved = await locator.normalize();
-          return { locator, resolved: resolved.toString() };
+          return { locator, resolved: resolved.toString(), selector: locatorSelector(resolved) };
         } catch (e) {
           throw new Error(`Ref ${param.target} not found in the current page snapshot. Try capturing new snapshot.`);
         }
@@ -501,6 +534,10 @@ export type ConsoleMessage = {
   text: string;
   toString(): string;
 };
+
+export function locatorSelector(locator: playwright.Locator): string {
+  return (locator as unknown as { _selector: string })._selector;
+}
 
 function messageToConsoleMessage(message: playwright.ConsoleMessage): ConsoleMessage {
   return {

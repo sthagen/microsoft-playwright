@@ -43,7 +43,7 @@ export type CLIOptions = {
   cdpEndpoint?: string;
   cdpHeader?: Record<string, string>;
   cdpTimeout?: number;
-  codegen?: 'typescript' | 'none';
+  codegen?: 'typescript' | 'python' | 'java' | 'csharp' | 'none';
   config?: string;
   consoleLevel?: 'error' | 'warning' | 'info' | 'debug';
   device?: string;
@@ -69,6 +69,7 @@ export type CLIOptions = {
   saveSession?: boolean;
   secrets?: Record<string, string>;
   sharedBrowserContext?: boolean;
+  snapshotBoxes?: boolean;
   snapshotMode?: 'full' | 'none';
   storageState?: string;
   testIdAttribute?: string;
@@ -80,11 +81,17 @@ export type CLIOptions = {
   viewportSize?: ViewportSize;
 };
 
+export const defaultCodegenLanguage: 'typescript' | 'python' | 'java' | 'csharp' =
+  process.env.PW_LANG_NAME === 'python' || process.env.PW_LANG_NAME === 'java' || process.env.PW_LANG_NAME === 'csharp'
+    ? process.env.PW_LANG_NAME
+    : 'typescript';
+
 const defaultConfig: MergedConfig = {
   browser: {
     launchOptions: {},
     contextOptions: {},
   },
+  codegen: defaultCodegenLanguage,
   timeouts: {
     action: 5000,
     navigation: 60000,
@@ -372,7 +379,7 @@ function configFromCLIOptions(cliOptions: CLIOptions): Config & { configFile?: s
     saveSession: cliOptions.saveSession,
     secrets: cliOptions.secrets,
     sharedBrowserContext: cliOptions.sharedBrowserContext,
-    snapshot: cliOptions.snapshotMode ? { mode: cliOptions.snapshotMode } : undefined,
+    snapshot: cliOptions.snapshotMode || cliOptions.snapshotBoxes !== undefined ? { mode: cliOptions.snapshotMode, boxes: cliOptions.snapshotBoxes } : undefined,
     outputDir: cliOptions.outputDir,
     outputMaxSize: cliOptions.outputMaxSize,
     imageResponses: cliOptions.imageResponses,
@@ -405,6 +412,8 @@ export function configFromEnv(env?: NodeJS.ProcessEnv): Config & { configFile?: 
   options.cdpEndpoint = envToString(e.PLAYWRIGHT_MCP_CDP_ENDPOINT);
   options.cdpHeader = headerParser(envToString(e.PLAYWRIGHT_MCP_CDP_HEADERS));
   options.cdpTimeout = numberParser(e.PLAYWRIGHT_MCP_CDP_TIMEOUT);
+  if (e.PLAYWRIGHT_MCP_CODEGEN)
+    options.codegen = enumParser<'typescript' | 'python' | 'java' | 'csharp' | 'none'>('--codegen', ['none', 'typescript', 'python', 'java', 'csharp'], e.PLAYWRIGHT_MCP_CODEGEN);
   options.config = envToString(e.PLAYWRIGHT_MCP_CONFIG);
   if (e.PLAYWRIGHT_MCP_CONSOLE_LEVEL)
     options.consoleLevel = enumParser<'error' | 'warning' | 'info' | 'debug'>('--console-level', ['error', 'warning', 'info', 'debug'], e.PLAYWRIGHT_MCP_CONSOLE_LEVEL);

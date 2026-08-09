@@ -196,6 +196,7 @@ scheme.AndroidDeviceLaunchBrowserParams = tObject({
     })),
   })),
   strictSelectors: tOptional(tBoolean),
+  pierceFrames: tOptional(tBoolean),
   serviceWorkers: tOptional(tEnum(['allow', 'block'])),
   selectorEngines: tOptional(tArray(tType('SelectorEngine'))),
   testIdAttributeName: tOptional(tString),
@@ -477,6 +478,7 @@ scheme.BrowserNewContextParams = tObject({
     })),
   })),
   strictSelectors: tOptional(tBoolean),
+  pierceFrames: tOptional(tBoolean),
   serviceWorkers: tOptional(tEnum(['allow', 'block'])),
   selectorEngines: tOptional(tArray(tType('SelectorEngine'))),
   testIdAttributeName: tOptional(tString),
@@ -550,6 +552,7 @@ scheme.BrowserNewContextForReuseParams = tObject({
     })),
   })),
   strictSelectors: tOptional(tBoolean),
+  pierceFrames: tOptional(tBoolean),
   serviceWorkers: tOptional(tEnum(['allow', 'block'])),
   selectorEngines: tOptional(tArray(tType('SelectorEngine'))),
   testIdAttributeName: tOptional(tString),
@@ -645,6 +648,7 @@ scheme.BrowserContextInitializer = tObject({
       })),
     })),
     strictSelectors: tOptional(tBoolean),
+    pierceFrames: tOptional(tBoolean),
     serviceWorkers: tOptional(tEnum(['allow', 'block'])),
     selectorEngines: tOptional(tArray(tType('SelectorEngine'))),
     testIdAttributeName: tOptional(tString),
@@ -668,6 +672,9 @@ scheme.BrowserContextConsoleEvent = tObject({
 });
 scheme.BrowserContextCloseEvent = tOptional(tObject({}));
 scheme.BrowserContextDialogEvent = tObject({
+  dialog: tChannel(['Dialog']),
+});
+scheme.BrowserContextDialogClosedEvent = tObject({
   dialog: tChannel(['Dialog']),
 });
 scheme.BrowserContextPageEvent = tObject({
@@ -870,7 +877,7 @@ scheme.BrowserContextCreateTempFilesResult = tObject({
   writableStreams: tArray(tChannel(['WritableStream'])),
 });
 scheme.BrowserContextUpdateSubscriptionParams = tObject({
-  event: tEnum(['console', 'dialog', 'request', 'response', 'requestFinished', 'requestFailed']),
+  event: tEnum(['console', 'dialog', 'dialogClosed', 'request', 'response', 'requestFinished', 'requestFailed']),
   enabled: tBoolean,
 });
 scheme.BrowserContextUpdateSubscriptionResult = tOptional(tObject({}));
@@ -1038,6 +1045,7 @@ scheme.BrowserTypeLaunchPersistentContextParams = tObject({
     })),
   })),
   strictSelectors: tOptional(tBoolean),
+  pierceFrames: tOptional(tBoolean),
   serviceWorkers: tOptional(tEnum(['allow', 'block'])),
   selectorEngines: tOptional(tArray(tType('SelectorEngine'))),
   testIdAttributeName: tOptional(tString),
@@ -1127,6 +1135,7 @@ scheme.ElectronLaunchParams = tObject({
     })),
   })),
   strictSelectors: tOptional(tBoolean),
+  pierceFrames: tOptional(tBoolean),
   timezoneId: tOptional(tString),
   tracesDir: tOptional(tString),
   artifactsDir: tOptional(tString),
@@ -1238,6 +1247,15 @@ scheme.FrameAriaSnapshotParams = tObject({
 });
 scheme.FrameAriaSnapshotResult = tObject({
   snapshot: tString,
+});
+scheme.FrameAriaSnapshotJSONParams = tObject({
+  mode: tOptional(tEnum(['ai', 'default'])),
+  selector: tOptional(tString),
+  depth: tOptional(tInt),
+  boxes: tOptional(tBoolean),
+});
+scheme.FrameAriaSnapshotJSONResult = tObject({
+  snapshot: tAny,
 });
 scheme.FrameBlurParams = tObject({
   selector: tString,
@@ -2592,7 +2610,7 @@ scheme.PageScreencastFrameAckResult = tOptional(tObject({}));
 scheme.PageScreencastStopParams = tOptional(tObject({}));
 scheme.PageScreencastStopResult = tOptional(tObject({}));
 scheme.PageUpdateSubscriptionParams = tObject({
-  event: tEnum(['console', 'dialog', 'fileChooser', 'request', 'response', 'requestFinished', 'requestFailed']),
+  event: tEnum(['console', 'dialog', 'dialogClosed', 'fileChooser', 'request', 'response', 'requestFinished', 'requestFailed']),
   enabled: tBoolean,
 });
 scheme.PageUpdateSubscriptionResult = tOptional(tObject({}));

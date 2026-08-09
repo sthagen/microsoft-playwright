@@ -19,6 +19,7 @@ import fs from 'fs';
 
 import { assertionAbortedMessage } from '@isomorphic/abortSignal';
 import { assert } from '@isomorphic/assert';
+import { resolveBy } from '@isomorphic/by';
 import { getByAltTextSelector, getByLabelSelector, getByPlaceholderSelector, getByRoleSelector, getByTestIdSelector, getByTextSelector, getByTitleSelector } from '@isomorphic/locatorUtils';
 import { urlMatches } from '@isomorphic/urlMatch';
 import { EventEmitter } from './eventEmitter';
@@ -28,7 +29,7 @@ import { ElementHandle, convertInputFiles, convertSelectOptionValues } from './e
 import { AbortError, PlaywrightError } from './errors';
 import { Events } from './events';
 import { JSHandle, assertEvaluateOptions, assertMaxArguments, parseResult, serializeArgument, serializeArgumentWithCallbacks } from './jsHandle';
-import { FrameLocator, kPierceFramesSelector, Locator, testIdAttributeName } from './locator';
+import { FrameLocator, kNoPierceFramesSelector, kPierceFramesSelector, Locator, testIdAttributeName } from './locator';
 import * as network from './network';
 import { kLifecycleEvents } from './types';
 import { Waiter } from './waiter';
@@ -40,6 +41,7 @@ import type { Page } from './page';
 import type { DropPayload, FilePayload, LifecycleEvent, SelectOption, SelectOptionOptions, StrictOptions, TimeoutOptions, WaitForFunctionOptions } from './types';
 import type * as structs from '../../types/structs';
 import type * as api from '../../types/types';
+import type { By } from '@isomorphic/by';
 import type { ByRoleOptions } from '@isomorphic/locatorUtils';
 import type { URLMatch } from '@isomorphic/urlMatch';
 import type * as channels from './channels';
@@ -365,6 +367,10 @@ export class Frame extends ChannelOwner<channels.FrameChannel> implements api.Fr
     return new Locator(this, selector, options);
   }
 
+  get(by: By): Locator {
+    return this.locator(resolveBy(by, testIdAttributeName()));
+  }
+
   getByTestId(testId: string | RegExp): Locator {
     return this.locator(getByTestIdSelector(testIdAttributeName(), testId));
   }
@@ -397,8 +403,8 @@ export class Frame extends ChannelOwner<channels.FrameChannel> implements api.Fr
     return new FrameLocator(this, selector);
   }
 
-  pierceFrames(): FrameLocator {
-    return new FrameLocator(this, kPierceFramesSelector);
+  pierceFrames(options?: { pierce?: boolean }): FrameLocator {
+    return new FrameLocator(this, options?.pierce === false ? kNoPierceFramesSelector : kPierceFramesSelector);
   }
 
   async focus(selector: string, options: channels.FrameFocusOptions & TimeoutOptions = {}) {

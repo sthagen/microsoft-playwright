@@ -885,6 +885,12 @@ Actual picture of each page will be scaled down if necessary to fit the specifie
 
 Network proxy settings to use with this context. Defaults to none.
 
+## context-option-pierce-frames
+- `pierceFrames` <[boolean]>
+
+If set to true, all selectors in this context will pierce frames by default, as if every locator
+was created through [`method: Page.pierceFrames`]. Defaults to `false`.
+
 ## context-option-strict
 - `strictSelectors` <[boolean]>
 
@@ -1124,6 +1130,7 @@ between the same pixel in compared images, between zero (strict) and one (lax), 
 - %%-context-option-recordvideo-%%
 - %%-context-option-recordvideo-dir-%%
 - %%-context-option-recordvideo-size-%%
+- %%-context-option-pierce-frames-%%
 - %%-context-option-strict-%%
 - %%-context-option-service-worker-policy-%%
 
@@ -1529,6 +1536,38 @@ The method returns an element locator that can be used to perform actions on thi
 Locator is resolved to the element immediately before performing an action, so a series of actions on the same locator can in fact be performed on different DOM elements. That would happen if the DOM structure between those actions has changed.
 
 [Learn more about locators](../locators.md).
+
+## template-locator-get
+
+Binds a page-free [By] locator, returning a [Locator] scoped to this object.
+
+**Usage**
+
+Consider a page object that describes elements without a page:
+
+```js
+// todo-page.ts
+import { by } from '@playwright/test';
+
+export const newTodo = by.placeholder('What needs to be done?');
+export const todoItems = by.testId('todo-list').role('listitem');
+```
+
+```js
+import { expect, test } from '@playwright/test';
+import { newTodo, todoItems } from './todo-page';
+
+test('adds a todo', async ({ page }) => {
+  await page.get(newTodo).fill('buy milk');
+  await expect(page.get(todoItems)).toHaveCount(1);
+});
+```
+
+**Details**
+
+The resolved [Locator] is the same one the equivalent `getBy*` chain would produce, so
+`page.get(by.testId('list').text('Row'))` and `page.getByTestId('list').getByText('Row')` match the
+same element.
 
 ## template-locator-get-by-test-id
 

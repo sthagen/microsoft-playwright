@@ -120,8 +120,9 @@ export class FrameSelectors {
     return jumptToFrame;
   }
 
-  private async _resolveFramesForSelector(selector: string, options: types.StrictOptions = {}, scope?: ElementHandle): Promise<SelectorInFrame[]> {
-    const { pierce, chunks } = splitSelectorByFrame(selector);
+  private async _resolveFramesForSelector(selector: string, options: types.StrictOptions & { noDefaultPierce?: boolean } = {}, scope?: ElementHandle): Promise<SelectorInFrame[]> {
+    const pierceByDefault = !!this.frame._page.browserContext._options.pierceFrames && !options.noDefaultPierce;
+    const { pierce, chunks } = splitSelectorByFrame(selector, pierceByDefault);
     for (const chunk of chunks) {
       visitAllSelectorParts(chunk, (part, nested) => {
         if (nested && part.name === 'internal:control' && part.body === 'enter-frame') {
@@ -136,7 +137,7 @@ export class FrameSelectors {
     }
 
     if (pierce) {
-      const parsed = chunks[0];  // Only one chunk is allowed with pierce.
+      const parsed = chunks[0];  // Only one chunk is allowed with pierce, it may contain enter-frame parts.
       if (parsed.parts.some((part, index) => part.name === 'nth' && index !== parsed.parts.length - 1)) {
         const locator = asLocator(this.frame._page.browserContext._browser.sdkLanguage(), selector);
         throw new InvalidSelectorError(`nth can only be the last locator when piercing frames, while querying "${locator}"`);
@@ -181,18 +182,20 @@ export class FrameSelectors {
   private async _resolveFramePiercingSelector(parsed: ParsedSelector, options: types.StrictOptions, scope: ElementHandle | undefined) {
     const candidates = new Map<Frame, Set<number>>();
     const infos = parsed.parts.map(part => this._parseSelector({ parts: [part] }, options));
-    for (const frame of this.frame._page.frameManager.frames())
-      await this._pierceFramesRecursivelyIfNotSeen(frame, infos, scope, 0, candidates);
+    await this._pierceFramesRecursivelyIfNotSeen(this.frame, infos, scope, 0, candidates);
     const result: SelectorInFrame[] = [];
-    for (const [frame, matches] of candidates) {
-      for (const match of matches) {
-        const suffix = infos.slice(match);
+    for (const [frame, startIndexes] of candidates) {
+      for (const startIndex of startIndexes) {
+        const suffix = infos.slice(startIndex);
+        // A leftover "enter-frame" token means we are not going to match anything in this frame.
+        if (suffix.some(info => isEnterFramePart(info.parsed.parts[0])))
+          continue;
         const partialInfo: SelectorInfo = {
           parsed: { parts: suffix.map(info => info.parsed.parts[0]) },
           world: suffix.some(info => info.world === 'main') ? 'main' : 'utility',
           strict: !!options.strict,
         };
-        result.push({ frame, info: partialInfo });
+        result.push({ frame, info: partialInfo, scope: frame === this.frame && startIndex === 0 ? scope : undefined });
       }
     }
     return result;
@@ -206,7 +209,7 @@ export class FrameSelectors {
     }
     if (!set.has(startIndex)) {
       set.add(startIndex);
-      await this._pierceFramesRecursively(frame, infos, undefined, startIndex, result);
+      await this._pierceFramesRecursively(frame, infos, scope, startIndex, result);
     }
   }
 
@@ -215,7 +218,8 @@ export class FrameSelectors {
       const injected = await context.injectedScript();
       const frameCandidatesHandle = await injected.evaluateHandle((injected, { infos, scope, startIndex }) => {
         const frameElements = injected.querySelectorAll(injected.parseSelector('css=frame,iframe'), scope || document);
-        const result = frameElements.map(frameElement => ({ frameElement, matches: [] as number[] }));
+        // Any frame inside the search root may contain the whole selector suffix, so seed with startIndex.
+        const result = frameElements.map(frameElement => ({ frameElement, nextIndexes: [startIndex] }));
 
         let roots = [scope || document];
         for (let index = startIndex; index < infos.length; index++) {
@@ -225,11 +229,20 @@ export class FrameSelectors {
             for (const element of all)
               next.add(element);
           }
+          const nextPart = index + 1 < infos.length ? infos[index + 1].parsed.parts[0] : undefined;
+          if (nextPart && nextPart.name === 'internal:control' && nextPart.body === 'enter-frame') {
+            // We must enter the iframe now, so stop matching any further.
+            for (const { frameElement, nextIndexes } of result) {
+              if (next.has(frameElement))
+                nextIndexes.push(index + 2);
+            }
+            break;
+          }
           roots = [...next];
-          if (index + 1 < infos.length && !['nth', 'visible'].includes(infos[index + 1].parsed.parts[0].name)) {
-            for (const { frameElement, matches } of result) {
+          if (nextPart && !['nth', 'visible'].includes(nextPart.name)) {
+            for (const { frameElement, nextIndexes } of result) {
               if (roots.some(root => injected.utils.isInsideScope(root, frameElement)))
-                matches.push(index);
+                nextIndexes.push(index + 1);
             }
           }
         }
@@ -242,9 +255,9 @@ export class FrameSelectors {
           const frameElement = await frameCandidatesHandle.evaluateHandle((list, i) => list[i].frameElement, i) as ElementHandle<Element>;
           const childFrame = await frame._page.delegate.getContentFrame(frameElement).catch(() => null);
           if (childFrame) {
-            const matches = await frameCandidatesHandle.evaluate((list, i) => list[i].matches, i) as number[];
-            for (const match of matches)
-              await this._pierceFramesRecursivelyIfNotSeen(childFrame, infos, undefined, match + 1, result);
+            const nextIndexes = await frameCandidatesHandle.evaluate((list, i) => list[i].nextIndexes, i) as number[];
+            for (const nextIndex of nextIndexes)
+              await this._pierceFramesRecursivelyIfNotSeen(childFrame, infos, undefined, nextIndex, result);
           }
         } catch {
           // Ignore errors for this frame candidate.
@@ -267,7 +280,7 @@ export class FrameSelectors {
 
   private async _callOnSelectorInternal<Arg, R>(
     selector: string,
-    options: types.StrictOptions & { mainWorld?: boolean, callWithoutMatches?: boolean, scope?: ElementHandle, markTargets?: 'all' | 'first' | 'none' },
+    options: types.StrictOptions & { mainWorld?: boolean, callWithoutMatches?: boolean, scope?: ElementHandle, markTargets?: 'all' | 'first' | 'none', noDefaultPierce?: boolean },
     pageFunction: MatchedElementsCallback<Arg, R>,
     arg: Arg,
     returnByValue: boolean,
@@ -323,7 +336,7 @@ export class FrameSelectors {
 
   async callOnSelector<Arg, R>(
     selector: string,
-    options: types.StrictOptions & { mainWorld?: boolean, callWithoutMatches?: boolean, scope?: ElementHandle, markTargets?: 'all' | 'first' | 'none' },
+    options: types.StrictOptions & { mainWorld?: boolean, callWithoutMatches?: boolean, scope?: ElementHandle, markTargets?: 'all' | 'first' | 'none', noDefaultPierce?: boolean },
     pageFunction: MatchedElementsCallback<Arg, R>,
     arg: Arg,
   ): Promise<{ frame: Frame, info: SelectorInfo, result: R } | null> {
@@ -340,6 +353,10 @@ export class FrameSelectors {
     const result = await this._callOnSelectorInternal(selector, { ...options, callWithoutMatches: false }, pageFunction, arg, false /* returnByValue */);
     return result as { frame: Frame, info: SelectorInfo, result: SmartHandle<R> } | null;
   }
+}
+
+function isEnterFramePart(part: ParsedSelector['parts'][0]): boolean {
+  return part.name === 'internal:control' && part.body === 'enter-frame';
 }
 
 async function adoptIfNeeded<T extends Node>(handle: ElementHandle<T>, context: FrameExecutionContext): Promise<ElementHandle<T>> {

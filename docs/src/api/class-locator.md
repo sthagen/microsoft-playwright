@@ -239,6 +239,61 @@ When `true`, appends each element's bounding box as `[box=x,y,width,height]` to 
 relative to the viewport, in CSS pixels, as returned by [`Element.getBoundingClientRect()`](https://developer.mozilla.org/en-US/docs/Web/API/Element/getBoundingClientRect).
 Defaults to `false`.
 
+## async method: Locator.ariaSnapshotJSON
+* since: v1.63
+* langs: js
+- returns: <[Serializable]>
+
+Captures the aria snapshot of the given element as a free form JSON object.
+
+**Usage**
+
+```js
+await page.getByRole('list').ariaSnapshotJSON();
+```
+
+**Details**
+
+This method returns the same tree as [`method: Locator.ariaSnapshot`], serialized as a JSON value instead of YAML markup.
+The result is a list of nodes, each node being an object with the following properties:
+* `role` Aria role of the element, or `"text"` for a static text fragment.
+* `name` Accessible name of the element, if any.
+* `text` Text content of the element when it is the only child, or the content of a static text fragment.
+* `children` Child nodes and text fragments.
+* Boolean and value properties for element state flags: `checked`, `disabled`, `expanded`, `active`, `invalid`, `level`, `pressed` and `selected`.
+* Additional element properties, for example `url` for links and `placeholder` for text boxes.
+* `ref` Element reference for AI-optimized snapshots.
+* `cursor` Set to `"pointer"` for clickable elements in AI-optimized snapshots.
+* `box` Bounding box of the element when [`option: Locator.ariaSnapshotJSON.boxes`] is set.
+
+### option: Locator.ariaSnapshotJSON.mode
+* since: v1.63
+- `mode` <[AriaSnapshotMode]<"ai"|"default">>
+
+When set to `"ai"`, returns a snapshot optimized for AI consumption. Defaults to `"default"`. See details in [`method: Locator.ariaSnapshot`].
+
+### option: Locator.ariaSnapshotJSON.timeout = %%-input-timeout-%%
+* since: v1.63
+
+### option: Locator.ariaSnapshotJSON.timeout = %%-input-timeout-js-%%
+* since: v1.63
+
+### option: Locator.ariaSnapshotJSON.signal = %%-input-signal-%%
+
+### option: Locator.ariaSnapshotJSON.depth
+* since: v1.63
+- `depth` <[int]>
+
+When specified, limits the depth of the snapshot.
+
+### option: Locator.ariaSnapshotJSON.boxes
+* since: v1.63
+- `boxes` <[boolean]>
+
+When `true`, includes each element's bounding box as a `box` property with `x`, `y`, `width` and `height`. Coordinates are
+relative to the viewport, in CSS pixels, as returned by [`Element.getBoundingClientRect()`](https://developer.mozilla.org/en-US/docs/Web/API/Element/getBoundingClientRect).
+Defaults to `false`.
+
 ## async method: Locator.blur
 * since: v1.28
 
@@ -1423,6 +1478,19 @@ await locator.ClickAsync();
 
 ### param: Locator.frameLocator.selector = %%-find-selector-%%
 * since: v1.17
+
+## method: Locator.get
+* since: v1.63
+* langs: js
+- returns: <[Locator]>
+
+%%-template-locator-get-%%
+
+### param: Locator.get.by
+* since: v1.63
+- `by` <[By]>
+
+Page-free locator built with [`property: Playwright.by`].
 
 ## async method: Locator.getAttribute
 * since: v1.14

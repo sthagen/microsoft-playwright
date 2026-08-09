@@ -343,10 +343,10 @@ const fileUpload = declareCommand({
   description: 'Upload one or multiple files',
   category: 'core',
   args: z.object({
-    file: z.string().describe('The absolute paths to the files to upload'),
+    files: stringArrayArg.describe('The absolute paths to the files to upload'),
   }),
   toolName: 'browser_file_upload',
-  toolParams: ({ file }) => ({ paths: [file] }),
+  toolParams: ({ files }) => ({ paths: files }),
 });
 
 const check = declareCommand({
@@ -1114,6 +1114,7 @@ const install = declareCommand({
   args: z.object({}),
   options: z.object({
     skills: z.string().optional().describe('Install skills, possible values: claude (default), agents.'),
+    global: z.boolean().optional().describe('Install skills into the home directory instead of the workspace (alias: -g). Requires --skills.'),
   }),
   toolName: '',
   toolParams: () => ({}),

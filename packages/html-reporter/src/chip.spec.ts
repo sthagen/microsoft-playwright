@@ -16,7 +16,7 @@
 
 import { expect, test } from '@playwright/test';
 
-import type { Auto, AutoCollapsed, Stateful, WithBody } from './chip.story';
+import type { Auto, AutoCollapsed, NotExpandable, Stateful, WithBody } from './chip.story';
 
 test.use({ viewport: { width: 500, height: 500 } });
 
@@ -48,6 +48,26 @@ test('body render prop is rendered', async ({ mount }) => {
   const component = await mount<typeof WithBody>('chip/WithBody');
   await expect(component.getByText('Body from render prop')).toBeVisible();
   await expect(component.getByText('Chip children')).toBeVisible();
+});
+
+test('chip without setExpanded is a heading', async ({ mount }) => {
+  const component = await mount<typeof NotExpandable>('chip/NotExpandable');
+  await expect(component.getByRole('button')).toHaveCount(0);
+  await expect(component).toMatchAriaSnapshot(`
+    - heading "Title" [level=2]
+    - region: Body
+  `);
+});
+
+test('expand collapse with the keyboard', async ({ mount, page }) => {
+  const component = await mount<typeof AutoCollapsed>('chip/AutoCollapsed');
+  const header = component.getByRole('button', { name: 'Title' });
+  await header.focus();
+  await expect(header).toBeFocused();
+  await page.keyboard.press('Enter');
+  await expect(component.getByText('Body')).toBeVisible();
+  await page.keyboard.press('Space');
+  await expect(component.getByText('Body')).not.toBeVisible();
 });
 
 test('setExpanded should work', async ({ mount }) => {

@@ -16,7 +16,7 @@
 
 import { Option as ProgramOption } from 'commander';
 import * as mcpServer from '../utils/mcp/server';
-import { commaSeparatedList, dotenvFileLoader, enumParser, headerParser, numberParser, resolutionParser, resolveCLIConfigForMCP, semicolonSeparatedList } from './config';
+import { commaSeparatedList, defaultCodegenLanguage, dotenvFileLoader, enumParser, headerParser, numberParser, resolutionParser, resolveCLIConfigForMCP, semicolonSeparatedList } from './config';
 import { setupExitWatchdog } from './watchdog';
 import { createBrowserWithInfo } from './browserFactory';
 import { BrowserBackend } from '../backend/browserBackend';
@@ -42,7 +42,7 @@ export function decorateMCPCommand(command: Command) {
       .option('--cdp-endpoint <endpoint>', 'CDP endpoint to connect to.')
       .option('--cdp-header <headers...>', 'CDP headers to send with the connect request, multiple can be specified.', headerParser)
       .option('--cdp-timeout <timeout>', 'timeout in milliseconds for connecting to CDP endpoint, defaults to 30000ms', numberParser)
-      .option('--codegen <lang>', 'specify the language to use for code generation, possible values: "typescript", "none". Default is "typescript".', enumParser.bind(null, '--codegen', ['none', 'typescript']))
+      .option('--codegen <lang>', `specify the language to use for code generation, possible values: "typescript", "python", "java", "csharp", "none". Default is "${defaultCodegenLanguage}".`, enumParser.bind(null, '--codegen', ['none', 'typescript', 'python', 'java', 'csharp']))
       .option('--config <path>', 'path to the configuration file.')
       .option('--console-level <level>', 'level of console messages to return: "error", "warning", "info", "debug". Each level includes the messages of more severe levels.', enumParser.bind(null, '--console-level', ['error', 'warning', 'info', 'debug']))
       .option('--device <device>', 'device to emulate, for example: "iPhone 15"')
@@ -69,6 +69,7 @@ export function decorateMCPCommand(command: Command) {
       .option('--save-session', 'Whether to save the Playwright MCP session into the output directory.')
       .option('--secrets <path>', 'path to a file containing secrets in the dotenv format', dotenvFileLoader)
       .option('--shared-browser-context', 'reuse the same browser context between all connected HTTP clients.')
+      .option('--snapshot-boxes', 'include each element\'s bounding box as [box=x,y,width,height] in snapshots. Coordinates are viewport-relative, in CSS pixels.')
       .option('--snapshot-mode <mode>', 'when taking snapshots for responses, specifies the mode to use. Can be "full" or "none". Default is "full".')
       .option('--storage-state <path>', 'path to the storage state file for isolated sessions.')
       .option('--test-id-attribute <attribute>', 'specify the attribute to use for test ids, defaults to "data-testid"')
@@ -110,41 +111,55 @@ export function decorateMCPCommand(command: Command) {
           toolSchemas: tools.map(tool => tool.schema),
           create: async (clientInfo: ClientInfo) => {
             if (useSharedBrowser && !sharedBrowserPromise) {
-              sharedBrowserPromise = (async () => {
+              const promise = (async () => {
                 const { browser, canBind } = await createBrowserWithInfo(config, clientInfo, options);
                 if (canBind)
                   await browser.bind(clientInfo.clientName, { workspaceDir: clientInfo.cwd });
+                browser.once('disconnected', () => {
+                  if (sharedBrowserPromise === promise)
+                    sharedBrowserPromise = undefined;
+                });
                 return browser;
               })().catch(error => {
-                sharedBrowserPromise = undefined;
+                if (sharedBrowserPromise === promise)
+                  sharedBrowserPromise = undefined;
                 throw error;
               });
+              sharedBrowserPromise = promise;
             }
             clientCount++;
-            const { browser, canBind } = sharedBrowserPromise ? { browser: await sharedBrowserPromise, canBind: false } : await createBrowserWithInfo(config, clientInfo, options);
-            if (canBind) {
-              const count = (clientNameCounters.get(clientInfo.clientName) ?? 0) + 1;
-              clientNameCounters.set(clientInfo.clientName, count);
-              const sessionName = count > 1 ? `${clientInfo.clientName} (${count})` : clientInfo.clientName;
-              await browser.bind(sessionName, { workspaceDir: clientInfo.cwd });
-            }
-            const browserContext = config.browser.isolated ? await browser.newContext(config.browser.contextOptions) : browser.contexts()[0];
-            return new BrowserBackend(config, browserContext, tools, async () => {
-              clientCount--;
-
-              if (sharedBrowserPromise && clientCount > 0) {
-                if (config.browser.isolated) {
-                  testDebug('close context');
-                  await browserContext.close().catch(() => { });
-                }
-                return;
+            try {
+              const promise = sharedBrowserPromise;
+              const { browser, canBind } = promise ? { browser: await promise, canBind: false } : await createBrowserWithInfo(config, clientInfo, options);
+              if (canBind) {
+                const count = (clientNameCounters.get(clientInfo.clientName) ?? 0) + 1;
+                clientNameCounters.set(clientInfo.clientName, count);
+                const sessionName = count > 1 ? `${clientInfo.clientName} (${count})` : clientInfo.clientName;
+                await browser.bind(sessionName, { workspaceDir: clientInfo.cwd });
               }
+              const browserContext = config.browser.isolated ? await browser.newContext(config.browser.contextOptions) : browser.contexts()[0];
+              return new BrowserBackend(config, browserContext, tools, async () => {
+                clientCount--;
 
-              testDebug('close browser');
-              sharedBrowserPromise = undefined;
-              await browserContext.close().catch(() => { });
-              await browserContext.browser()?.close().catch(() => { });
-            });
+                if (sharedBrowserPromise && clientCount > 0) {
+                  if (config.browser.isolated) {
+                    testDebug('close context');
+                    await browserContext.close().catch(() => { });
+                  }
+                  return;
+                }
+
+                testDebug('close browser');
+                if (sharedBrowserPromise === promise)
+                  sharedBrowserPromise = undefined;
+                await browserContext.close().catch(() => { });
+                await browser.close().catch(() => { });
+              });
+            } catch (error) {
+              // The dispose callback never runs for a failed create.
+              clientCount--;
+              throw error;
+            }
           },
         };
         await mcpServer.start(factory, config.server);

@@ -53,6 +53,7 @@ import type * as types from './types';
 import type { ImageComparatorOptions } from '@utils/comparators';
 import type * as channels from './channels';
 import type { BindingPayload } from '@injected/bindingsController';
+import type { AriaNodeJSON, AriaSnapshotJSON } from '@isomorphic/ariaSnapshot';
 
 export interface PageDelegate {
   readonly rawMouse: input.RawMouse;
@@ -1111,14 +1112,14 @@ export class InitScript extends DisposableObject {
   }
 }
 
-export async function ariaSnapshotForFrame(progress: Progress, frame: frames.Frame, selector: string | undefined, options: { mode?: 'ai' | 'default', doNotRenderActive?: boolean, depth?: number, boxes?: boolean, strict?: boolean } = {}): Promise<string[]> {
+export async function ariaSnapshotJSONForFrame(progress: Progress, frame: frames.Frame, selector: string | undefined, options: { mode?: 'ai' | 'default', doNotRenderActive?: boolean, depth?: number, boxes?: boolean, strict?: boolean, noDefaultPierce?: boolean } = {}): Promise<AriaSnapshotJSON> {
   const snapshot = await frame.retryWithProgressAndTimeouts(progress, [1000, 2000, 4000, 8000], async (progress, continuePolling) => {
     try {
       // Note: the resolved frame might differ from the original |frame|.
       // See https://developer.mozilla.org/en-US/docs/Web/API/Document/body for body/frameset explanation.
       // Non-strict, because pages with nested framesets have multiple "frameset" elements.
-      const resolved = await progress.race(frame.selectors.callOnSelector(selector || 'body,frameset', { strict: options.strict ?? !!selector }, ({ injected, elements }, ariaOptions) => {
-        return injected.ariaSnapshotWithRefs(elements[0], ariaOptions);
+      const resolved = await progress.race(frame.selectors.callOnSelector(selector || 'body,frameset', { strict: options.strict ?? !!selector, noDefaultPierce: !selector || options.noDefaultPierce }, ({ injected, elements }, ariaOptions) => {
+        return injected.ariaSnapshotJSON(elements[0], ariaOptions);
       }, {
         mode: options.mode ?? 'default',
         doNotRenderActive: options.doNotRenderActive,
@@ -1128,7 +1129,7 @@ export async function ariaSnapshotForFrame(progress: Progress, frame: frames.Fra
       if (!resolved) {
         if (selector)
           throw new NonRecoverableDOMError(`Selector "${selector}" does not match any element`);
-        // Retry only for the main frame "body" being absent, so that `page.ariaSnapshot()` does not fail.
+        // Retry only for the main frame "body" being absent, so that `page.ariaSnapshotJSON()` does not fail.
         return continuePolling;
       }
       return { ...resolved.result, resolvedFrame: resolved.frame };
@@ -1147,7 +1148,7 @@ export async function ariaSnapshotForFrame(progress: Progress, frame: frames.Fra
     // Non-strict, because child frameset documents have multiple "frameset" elements.
     const frameRootSelector = `aria-ref=${ref} >> internal:control=enter-frame >> body,frameset`;
     try {
-      return await ariaSnapshotForFrame(progress, snapshot.resolvedFrame, frameRootSelector, { ...options, depth: childDepth, strict: false });
+      return await ariaSnapshotJSONForFrame(progress, snapshot.resolvedFrame, frameRootSelector, { ...options, depth: childDepth, strict: false, noDefaultPierce: true });
     } catch {
       return [];
     }
@@ -1155,20 +1156,19 @@ export async function ariaSnapshotForFrame(progress: Progress, frame: frames.Fra
   const childSnapshots = await Promise.all(childSnapshotPromises);
   progress.setAllowConcurrentOrNestedRaces(false);
 
-  const lines = [];
-  for (const line of snapshot.text.split('\n')) {
-    const match = line.match(/^(\s*)- iframe (?:\[active\] )?\[ref=([^\]]*)\]/);
-    if (!match) {
-      lines.push(line);
-      continue;
+  const mergeIframeChildren = (node: AriaNodeJSON | string) => {
+    if (typeof node === 'string')
+      return;
+    if (node.role === 'iframe' && typeof node.ref === 'string') {
+      const childSnapshot = childSnapshots[renderedIframeRefs.indexOf(node.ref)];
+      if (childSnapshot?.length)
+        node.children = childSnapshot;
+      return;
     }
-    const leadingSpace = match[1];
-    const ref = match[2];
-    const childSnapshot = childSnapshots[renderedIframeRefs.indexOf(ref)] ?? [];
-    lines.push(childSnapshot.length ? line + ':' : line);
-    lines.push(...childSnapshot.map(l => leadingSpace + '  ' + l));
-  }
-  return lines;
+    (node.children || []).forEach(mergeIframeChildren);
+  };
+  snapshot.json.forEach(mergeIframeChildren);
+  return snapshot.json;
 }
 
 function ensureArrayLimit<T>(array: T[], limit: number): T[] {

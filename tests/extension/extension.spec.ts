@@ -17,7 +17,9 @@
 import fs from 'fs/promises';
 import path from 'path';
 
-import { test, testWithOldExtensionVersion, expect, extensionId, clickAllowAndSelect, connectAndNavigate, startWithExtensionFlag } from './extension-fixtures';
+import WebSocket from 'ws';
+
+import { test, testWithOldExtensionVersion, expect, extensionId, clickAllowAndSelect, connectAndNavigate, readExtensionToken, startWithExtensionFlag } from './extension-fixtures';
 import { utils } from '../../packages/playwright-core/lib/coreBundle';
 
 const { defaultUserDataDirForChannel } = utils;
@@ -169,6 +171,37 @@ test(`snapshot of an existing page`, async ({ browserWithExtension, startClient,
   expect(await navigateResponse).toHaveResponse({
     inlineSnapshot: expect.stringContaining(`- generic [active] [ref=e1]: Hello, world!`),
   });
+});
+
+test(`extension connection uses noDefaults`, {
+  annotation: { type: 'issue', description: 'https://github.com/microsoft/playwright/issues/42117' },
+}, async ({ browserWithExtension, startClient, server }) => {
+  const browserContext = await browserWithExtension.launch();
+
+  const page = await browserContext.newPage();
+  await page.goto(server.HELLO_WORLD);
+  await page.emulateMedia({ media: 'print' });
+  expect(await page.evaluate(() => matchMedia('print').matches)).toBe(true);
+
+  const client = await startWithExtensionFlag(browserWithExtension, startClient);
+
+  const confirmationPagePromise = browserContext.waitForEvent('page', page => {
+    return page.url().startsWith(`chrome-extension://${extensionId}/connect.html`);
+  });
+
+  const snapshotResponse = client.callTool({
+    name: 'browser_snapshot',
+    arguments: { },
+  });
+
+  const selectorPage = await confirmationPagePromise;
+  await clickAllowAndSelect(selectorPage, 'Title');
+
+  expect(await snapshotResponse).toHaveResponse({
+    inlineSnapshot: expect.stringContaining(`Hello, world!`),
+  });
+
+  expect(await page.evaluate(() => matchMedia('print').matches)).toBe(true);
 });
 
 testWithOldExtensionVersion(`works with old extension version`, async ({ startExtensionClient, server }) => {
@@ -342,18 +375,14 @@ test(`browser_cookie_list and browser_cookie_set work in extension mode`, {
 
 test(`bypass connection dialog with token`, async ({ browserWithExtension, startClient, server }) => {
   const browserContext = await browserWithExtension.launch();
-
-  const page = await browserContext.newPage();
-  await page.goto(`chrome-extension://${extensionId}/status.html`);
-  const token = await page.locator('.auth-token-code').textContent();
-  const [, value] = token?.split('=') || [];
+  const token = await readExtensionToken(browserContext);
 
   const clientName = 'token-bypass-client';
   const { client } = await startClient({
     clientName,
     args: [`--extension`],
     env: {
-      PLAYWRIGHT_MCP_EXTENSION_TOKEN: value,
+      PLAYWRIGHT_MCP_EXTENSION_TOKEN: token,
       PWTEST_EXTENSION_USER_DATA_DIR: browserWithExtension.userDataDir,
     },
   });
@@ -367,6 +396,87 @@ test(`bypass connection dialog with token`, async ({ browserWithExtension, start
     snapshot: expect.stringContaining(`- generic [active] [ref=f1e1]: Hello, world!`),
   });
 
+  const page = await browserContext.newPage();
   await page.goto(`chrome-extension://${extensionId}/status.html`);
   await expect(page.locator('.client-info')).toContainText(`Connected to "${clientName}"`);
 });
+
+test(`reconnects after the extension connection drops`, {
+  annotation: { type: 'issue', description: 'https://github.com/microsoft/playwright/issues/41874' },
+}, async ({ browserWithExtension, startClient, server }) => {
+  const browserContext = await browserWithExtension.launch();
+  const token = await readExtensionToken(browserContext);
+
+  const { client, stderr } = await startClient({
+    args: [`--extension`],
+    env: {
+      DEBUG: 'pw:mcp:backend',
+      PLAYWRIGHT_MCP_EXTENSION_TOKEN: token,
+      PWTEST_EXTENSION_USER_DATA_DIR: browserWithExtension.userDataDir,
+    },
+  });
+
+  expect(await client.callTool({
+    name: 'browser_navigate',
+    arguments: { url: server.HELLO_WORLD },
+  })).toHaveResponse({
+    snapshot: expect.stringContaining(`Hello, world!`),
+  });
+
+  // Closing the last controlled tab drops the relay WebSocket, like the MV3
+  // service worker idle timeout would.
+  await browserContext.pages().find(page => page.url() === server.HELLO_WORLD)!.close();
+
+  // Wait for the MCP server to observe the disconnect.
+  await expect.poll(() => stderr()).toContain('browser disconnected');
+
+  // The next tool call reconnects transparently; the token bypasses the dialog.
+  expect(await client.callTool({
+    name: 'browser_navigate',
+    arguments: { url: server.HELLO_WORLD },
+  })).toHaveResponse({
+    snapshot: expect.stringContaining(`Hello, world!`),
+  });
+});
+
+test(`relay rejects websocket upgrades with forged host or origin`, {
+  annotation: { type: 'issue', description: 'https://github.com/microsoft/playwright-mcp/issues/1694' },
+}, async ({ startExtensionClient, server }) => {
+  const { browserContext, client } = await startExtensionClient();
+
+  const confirmationPagePromise = browserContext.waitForEvent('page', page => {
+    return page.url().startsWith(`chrome-extension://${extensionId}/connect.html`);
+  });
+  const navigateResponse = client.callTool({
+    name: 'browser_navigate',
+    arguments: { url: server.HELLO_WORLD },
+  });
+  const connectPage = await confirmationPagePromise;
+  const relayUrl = new URL(connectPage.url()).searchParams.get('mcpRelayUrl')!;
+  expect(relayUrl).toBeTruthy();
+  await clickAllowAndSelect(connectPage, 'Welcome');
+  await navigateResponse;
+
+  expect(await wsUpgradeResult(relayUrl, { host: 'evil.com' })).toBe(403);
+  expect(await wsUpgradeResult(relayUrl, { host: 'evil.com:80' })).toBe(403);
+  expect(await wsUpgradeResult(relayUrl, { origin: 'http://evil.com' })).toBe(403);
+  expect(await wsUpgradeResult(relayUrl, { origin: 'https://evil.com' })).toBe(403);
+
+  // Control: default headers pass the upgrade validation.
+  expect(await wsUpgradeResult(relayUrl)).toBe('connected');
+});
+
+function wsUpgradeResult(url: string, headers?: Record<string, string>): Promise<number | 'connected'> {
+  return new Promise((resolve, reject) => {
+    const ws = new WebSocket(url, { headers });
+    ws.on('open', () => {
+      ws.close();
+      resolve('connected');
+    });
+    ws.on('unexpected-response', (request, response) => {
+      request.destroy();
+      resolve(response.statusCode!);
+    });
+    ws.on('error', reject);
+  });
+}

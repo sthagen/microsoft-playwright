@@ -18,12 +18,15 @@ import fs from 'fs';
 import path from 'path';
 
 import debug from 'debug';
+import { actionInContext, renderCode, substituteSecrets } from './codegen';
 import { renderModalStates } from './tab';
 import { scaleImageToFitMessage } from './screenshot';
 
 import { outputDir as resolveOutputDir } from './context';
 
 import type * as playwright from '../../..';
+import type * as actions from '@isomorphic/codegen/actions';
+import type { CodeItem } from './codegen';
 import type { TabHeader } from './tab';
 import type { CallToolResult, ImageContent, TextContent } from '@modelcontextprotocol/sdk/types.js';
 import type { Context, FilenameTemplate } from './context';
@@ -36,17 +39,19 @@ type ResolvedFile = {
   printableLink: string;
 };
 
+type SectionContent = string[] | { json: unknown };
+
 type Section = {
   title: string;
-  content: string[];
+  content: SectionContent;
   isError?: boolean;
-  codeframe?: 'yaml' | 'js';
+  codeframe?: 'yaml' | 'js' | 'json' | 'python' | 'java' | 'csharp';
 };
 
 export class Response {
   private _results: string[] = [];
   private _errors: string[] = [];
-  private _code: string[] = [];
+  private _code: CodeItem[] = [];
   private _context: Context;
   private _includeSnapshot: 'none' | 'full' | 'explicit' = 'none';
   private _includeSnapshotFileName: string | undefined;
@@ -143,15 +148,20 @@ export class Response {
     this._code.push(code);
   }
 
+  addAction(action: actions.Action) {
+    this._code.push(actionInContext(action));
+  }
+
   setIncludeSnapshot() {
     this._includeSnapshot = this._context.config.snapshot?.mode ?? 'full';
+    this._includeSnapshotBoxes = this._context.config.snapshot?.boxes;
   }
 
   setIncludeFullSnapshot(includeSnapshotFileName?: string, root?: playwright.Locator, depth?: number, boxes?: boolean) {
     this._includeSnapshot = 'explicit';
     this._includeSnapshotFileName = includeSnapshotFileName;
     this._includeSnapshotDepth = depth;
-    this._includeSnapshotBoxes = boxes;
+    this._includeSnapshotBoxes = boxes ?? this._context.config.snapshot?.boxes;
     this._includeSnapshotRoot = root;
   }
 
@@ -168,9 +178,14 @@ export class Response {
       if (isError)
         payload.isError = true;
       for (const section of sections) {
+        const key = section.title.toLowerCase();
+        if (!Array.isArray(section.content)) {
+          if (section.content.json !== undefined)
+            payload[key] = section.content.json;
+          continue;
+        }
         if (!section.content.length)
           continue;
-        const key = section.title.toLowerCase();
         if (key === 'snapshot') {
           const match = section.content[0]?.match(/^- \[Snapshot\]\(([^)]+)\)$/);
           payload.snapshot = match ? { file: match[1] } : section.content.join('\n');
@@ -182,17 +197,18 @@ export class Response {
     } else {
       const text: string[] = [];
       for (const section of sections) {
-        if (!section.content.length)
+        const lines = Array.isArray(section.content) ? section.content : (section.content.json === undefined ? [] : [JSON.stringify(section.content.json, null, 2)]);
+        if (!lines.length)
           continue;
         if (!this._raw) {
           text.push(`### ${section.title}`);
           if (section.codeframe)
             text.push(`\`\`\`${section.codeframe}`);
-          text.push(...section.content);
+          text.push(...lines);
           if (section.codeframe)
             text.push('```');
         } else {
-          text.push(...section.content);
+          text.push(...lines);
         }
       }
       serializedText = text.join('\n');
@@ -253,7 +269,7 @@ export class Response {
 
   private async _build(): Promise<Section[]> {
     const sections: Section[] = [];
-    const addSection = (title: string, content: string[], codeframe?: 'yaml' | 'js') => {
+    const addSection = (title: string, content: SectionContent, codeframe?: Section['codeframe']) => {
       const section = { title, content, isError: title === 'Error', codeframe };
       sections.push(section);
       return content;
@@ -266,11 +282,16 @@ export class Response {
       addSection('Result', this._results);
 
     // Code
-    if (this._context.config.codegen !== 'none' && this._code.length)
-      addSection('Ran Playwright code', this._code, 'js');
+    const codegen = this._context.config.codegen ?? 'typescript';
+    if (codegen !== 'none' && this._code.length) {
+      const code = substituteSecrets(renderCode(this._code, codegen), codegen, Object.keys(this._context.config.secrets ?? {}));
+      addSection('Ran Playwright code', code, codegen === 'typescript' ? 'js' : codegen);
+    }
 
     // Render tab titles upon changes or when more than one tab.
-    const tabSnapshot = this._context.currentTab() ? await this._context.currentTabOrDie().captureSnapshot(this._includeSnapshotRoot, this._includeSnapshotDepth, this._includeSnapshotBoxes, this._clientWorkspace) : undefined;
+    const snapshotToFile = this._includeSnapshot !== 'explicit' || !!this._includeSnapshotFileName;
+    const ariaFormat = this._includeSnapshot === 'none' ? 'none' : (this._json && !snapshotToFile ? 'json' : 'text');
+    const tabSnapshot = this._context.currentTab() ? await this._context.currentTabOrDie().captureSnapshot(this._includeSnapshotRoot, this._includeSnapshotDepth, this._includeSnapshotBoxes, this._clientWorkspace, ariaFormat) : undefined;
     const tabHeaders = await Promise.all(this._context.tabs().map(tab => tab.headerSnapshot()));
     if (this._includeSnapshot !== 'none' || tabHeaders.some(header => header.changed)) {
       if (tabHeaders.length !== 1)
@@ -284,11 +305,13 @@ export class Response {
 
     // Handle tab snapshot
     if (tabSnapshot && this._includeSnapshot !== 'none') {
-      if (this._includeSnapshot !== 'explicit' || this._includeSnapshotFileName) {
+      if (snapshotToFile) {
         const suggestedFilename = this._includeSnapshotFileName === '<auto>' ? undefined : this._includeSnapshotFileName;
         const resolvedFile = await this.resolveClientFile({ prefix: 'page', ext: 'yml', suggestedFilename }, 'Snapshot');
         await this._writeFile(resolvedFile, tabSnapshot.ariaSnapshot);
         addSection('Snapshot', [resolvedFile.printableLink]);
+      } else if (tabSnapshot.ariaSnapshotJSON !== undefined) {
+        addSection('Snapshot', { json: tabSnapshot.ariaSnapshotJSON }, 'json');
       } else {
         addSection('Snapshot', [tabSnapshot.ariaSnapshot], 'yaml');
       }
@@ -398,7 +421,7 @@ export function parseResponse(response: CallToolResult, cwd?: string) {
   const events = sections.get('Events');
   const modalState = sections.get('Modal state');
   const paused = sections.get('Paused');
-  const codeNoFrame = code?.replace(/^```js\n/, '').replace(/\n```$/, '');
+  const codeNoFrame = code?.replace(/^```(?:js|python|java|csharp)\n/, '').replace(/\n```$/, '');
   const isError = response.isError;
   const attachments = response.content.length > 1 ? response.content.slice(1) : undefined;
 

@@ -79,10 +79,10 @@ test('click with --modifiers', { annotation: { type: 'issue', description: 'http
   await cli('open', server.PREFIX);
 
   const single = await cli('click', 'e2', '--modifiers', 'Control');
-  expect(single.output).toContain(`await page.getByRole('button', { name: 'Submit' }).click({\n  modifiers: ['Control']\n});`);
+  expect(single.output).toContain(`await page.getByRole('button', { name: 'Submit' }).click({\n  modifiers: ['ControlOrMeta']\n});`);
 
   const repeated = await cli('click', 'e2', '--modifiers', 'Control', '--modifiers', 'Shift');
-  expect(repeated.output).toContain(`await page.getByRole('button', { name: 'Submit' }).click({\n  modifiers: ['Control', 'Shift']\n});`);
+  expect(repeated.output).toContain(`await page.getByRole('button', { name: 'Submit' }).click({\n  modifiers: ['ControlOrMeta', 'Shift']\n});`);
 });
 
 test('type', async ({ cli, server }) => {
@@ -146,6 +146,33 @@ test('uncheck', async ({ cli, server, mcpBrowser }) => {
   expect(inlineSnapshot).toContain(`- checkbox ${active}[ref=e2]`);
 });
 
+test('upload multiple files', { annotation: { type: 'issue', description: 'https://github.com/microsoft/playwright/issues/42047' } }, async ({ cli, server }, testInfo) => {
+  server.setContent('/', `
+    <input type="file" multiple>
+    <div id="result"></div>
+    <script>
+      document.querySelector('input').addEventListener('change', event => {
+        document.getElementById('result').textContent = 'Received: ' + [...event.target.files].map(f => f.name).join(', ');
+      });
+    </script>
+  `, 'text/html');
+
+  const front = testInfo.outputPath('front.txt');
+  const back = testInfo.outputPath('back.txt');
+  await fs.promises.writeFile(front, 'front');
+  await fs.promises.writeFile(back, 'back');
+
+  await cli('open', server.PREFIX);
+  await cli('click', 'e2');
+  const { output, snapshot } = await cli('upload', front, back);
+  expect(output).toContain('await fileChooser.setFiles(');
+  expect(snapshot).toContain('Received: front.txt, back.txt');
+
+  await cli('click', 'e2');
+  const single = await cli('upload', back);
+  expect(single.snapshot).toContain('Received: back.txt');
+});
+
 test('eval', async ({ cli, server }) => {
   await cli('open', server.HELLO_WORLD);
   const { output } = await cli('eval', '() => document.title');
@@ -165,9 +192,12 @@ test('eval <ref>', async ({ cli, server }) => {
   expect(output).toContain('"BUTTON"');
 });
 
-test('dialog-accept', async ({ cli, server }) => {
+// Firefox can deliver Page.dialogOpened after the default 5s action timeout
+// (seen after the FF 153 roll, especially on Windows), so the click loses the
+// modal race and the response never includes the dialog. Keep the race open longer.
+test('dialog-accept', async ({ cli, server, mcpBrowser }) => {
   server.setContent('/', `<button onclick="alert('MyAlert')">Button</button>`, 'text/html');
-  await cli('open', server.PREFIX);
+  await cli('open', server.PREFIX, { env: { PLAYWRIGHT_MCP_TIMEOUT_ACTION: mcpBrowser === 'firefox' ? '30000' : '' } });
   const { output } = await cli('click', 'e2');
   expect(output).toContain('MyAlert');
   expect(output).toContain('["alert" dialog with message "MyAlert"]: can be handled by dialog-accept or dialog-dismiss');
@@ -176,9 +206,9 @@ test('dialog-accept', async ({ cli, server }) => {
   expect(inlineSnapshot).not.toContain('MyAlert');
 });
 
-test('dialog-dismiss', async ({ cli, server }) => {
+test('dialog-dismiss', async ({ cli, server, mcpBrowser }) => {
   server.setContent('/', `<button onclick="alert('MyAlert')">Button</button>`, 'text/html');
-  await cli('open', server.PREFIX);
+  await cli('open', server.PREFIX, { env: { PLAYWRIGHT_MCP_TIMEOUT_ACTION: mcpBrowser === 'firefox' ? '30000' : '' } });
   const { output } = await cli('click', 'e2');
   expect(output).toContain('MyAlert');
   await cli('dialog-dismiss');
@@ -186,9 +216,9 @@ test('dialog-dismiss', async ({ cli, server }) => {
   expect(inlineSnapshot).not.toContain('MyAlert');
 });
 
-test('dialog-accept <prompt>', async ({ cli, server }) => {
+test('dialog-accept <prompt>', async ({ cli, server, mcpBrowser }) => {
   server.setContent('/', `<button onclick="document.body.textContent = prompt('MyAlert')">Button</button>`, 'text/html');
-  await cli('open', server.PREFIX);
+  await cli('open', server.PREFIX, { env: { PLAYWRIGHT_MCP_TIMEOUT_ACTION: mcpBrowser === 'firefox' ? '30000' : '' } });
   await cli('click', 'e2');
   await cli('dialog-accept', 'my reply');
   const { inlineSnapshot } = await cli('snapshot');
@@ -367,6 +397,18 @@ test('--raw on command without output', async ({ cli, server }) => {
   const { output } = await cli('click', '--raw', 'e2');
   expect(output).not.toContain('### ');
   expect(output).not.toContain('Page URL');
+});
+
+test('tool error exits with non-zero code', { annotation: { type: 'issue', description: 'https://github.com/microsoft/playwright/issues/42028' } }, async ({ cli, server }) => {
+  await cli('open', server.HELLO_WORLD);
+
+  const { output, exitCode } = await cli('click', 'e999');
+  expect(output).toContain('Ref e999 not found in the current page snapshot.');
+  expect(exitCode).toBe(1);
+
+  const { output: jsonOutput, exitCode: jsonExitCode } = await cli('--json', 'click', 'e999');
+  expect(JSON.parse(jsonOutput).isError).toBe(true);
+  expect(jsonExitCode).toBe(1);
 });
 
 test('codegen escapes single quotes in user input', async ({ cli, server }) => {

@@ -55,6 +55,28 @@ export function hasPointerCursor(ariaNode: AriaNode): boolean {
   return ariaNode.box.cursor === 'pointer';
 }
 
+export type AriaNodeJSON = {
+  role: AriaRole | 'iframe' | 'text';
+  name?: string;
+  checked?: true | 'mixed';
+  disabled?: true;
+  expanded?: true;
+  active?: true;
+  invalid?: true | 'grammar' | 'spelling';
+  level?: number;
+  pressed?: true | 'mixed';
+  selected?: true;
+  ref?: string;
+  cursor?: 'pointer';
+  box?: { x: number, y: number, width: number, height: number };
+  url?: string;
+  placeholder?: string;
+  text?: string;
+  children?: (AriaNodeJSON | string)[];
+};
+
+export type AriaSnapshotJSON = AriaNodeJSON[];
+
 // We pass parsed template between worlds using JSON, make it easy.
 export type AriaRegex = { pattern: string };
 
