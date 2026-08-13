@@ -60,7 +60,7 @@ The `action` command displays available snapshot phases (before, input, after) a
 ### Requests
 
 ```bash
-# All network requests: method, status, URL, duration, size
+# All network requests: start time (on the `trace actions` clock), method, status, URL, duration, size
 npx playwright trace requests
 
 # Filter by URL pattern
@@ -94,6 +94,9 @@ npx playwright trace console --browser
 
 # Only stdout/stderr (no browser console)
 npx playwright trace console --stdio
+
+# Filter by message text pattern
+npx playwright trace console --grep "failed to fetch"
 ```
 
 ### Errors

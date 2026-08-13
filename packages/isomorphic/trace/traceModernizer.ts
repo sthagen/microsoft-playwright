@@ -93,17 +93,25 @@ export class TraceModernizer {
         contextEntry.platform = event.platform;
         contextEntry.playwrightVersion = event.playwrightVersion;
         contextEntry.wallTime = event.wallTime;
+        contextEntry.monotonicTime = event.monotonicTime;
         contextEntry.startTime = event.monotonicTime;
         contextEntry.sdkLanguage = event.sdkLanguage;
         contextEntry.options = event.options;
         contextEntry.testIdAttributeName = event.testIdAttributeName;
-        contextEntry.contextId = event.contextId ?? '';
         contextEntry.testTimeout = event.testTimeout;
         contextEntry.annotations = event.annotations;
         break;
       }
       case 'screencast-frame': {
         this._pageEntry(event.pageId).screencastFrames.push(event);
+        break;
+      }
+      case 'screenshot': {
+        contextEntry.screenshots.push(event);
+        break;
+      }
+      case 'aria-snapshot': {
+        contextEntry.ariaSnapshots.push(event);
         break;
       }
       case 'before': {
@@ -114,6 +122,7 @@ export class TraceModernizer {
         const existing = this._actionMap.get(event.callId);
         existing!.inputSnapshot = event.inputSnapshot;
         existing!.point = event.point;
+        existing!.box = event.box;
         break;
       }
       case 'log': {
@@ -164,11 +173,11 @@ export class TraceModernizer {
         break;
       }
       case 'resource-snapshot':
-        this._snapshotStorage.addResource(this._contextEntry.contextId, event.snapshot);
+        this._snapshotStorage.addResource(event.snapshot);
         contextEntry.resources.push(event.snapshot);
         break;
       case 'frame-snapshot':
-        this._snapshotStorage.addFrameSnapshot(this._contextEntry.contextId, event.snapshot, this._pageEntry(event.snapshot.pageId).screencastFrames);
+        this._snapshotStorage.addFrameSnapshot(event.snapshot, this._pageEntry(event.snapshot.pageId).screencastFrames);
         break;
     }
     // Make sure there is a page entry for each page, even without screencast frames,
@@ -200,7 +209,46 @@ export class TraceModernizer {
     let events = [event];
     for (; version < latestVersion; ++version)
       events = (this as any)[`_modernize_${version}_to_${version + 1}`].call(this, events);
+    for (const e of events)
+      this._normalizeResourceReferences(e);
     return events;
+  }
+
+  // Traces recorded before trace-relative paths referenced blobs by bare sha1-style names:
+  // `_sha1` in har entry content, `sha1` in snapshot resource overrides, screencast frames
+  // and attachments.
+  private _normalizeResourceReferences(event: any) {
+    if (event.type === 'resource-snapshot') {
+      const { request, response } = event.snapshot;
+      if (request?.postData?._sha1) {
+        request.postData._file = 'resources/' + request.postData._sha1;
+        delete request.postData._sha1;
+      }
+      if (response?.content?._sha1) {
+        response.content._file = 'resources/' + response.content._sha1;
+        delete response.content._sha1;
+      }
+    }
+    if (event.type === 'frame-snapshot') {
+      for (const override of event.snapshot.resourceOverrides || []) {
+        if (override.sha1) {
+          override.file = 'resources/' + override.sha1;
+          delete override.sha1;
+        }
+      }
+    }
+    if (event.type === 'screencast-frame' && event.sha1) {
+      event.file = 'resources/' + event.sha1;
+      delete event.sha1;
+    }
+    if (event.type === 'after' || event.type === 'action') {
+      for (const attachment of event.attachments || []) {
+        if (attachment.sha1) {
+          attachment.file = 'resources/' + attachment.sha1;
+          delete attachment.sha1;
+        }
+      }
+    }
   }
 
   _modernize_0_to_1(events: any[]): any[] {
@@ -407,9 +455,10 @@ export class TraceModernizer {
         continue;
       }
       if (event.type === 'before' || event.type === 'action') {
-        // Take wall and monotonic time from the first event.
-        if (!this._contextEntry.wallTime)
+        if (!this._contextEntry.monotonicTime) {
+          this._contextEntry.monotonicTime = (event as traceV6.BeforeActionTraceEvent).startTime;
           this._contextEntry.wallTime = event.wallTime;
+        }
         const eventAsV6 = event as traceV6.BeforeActionTraceEvent;
         const eventAsV7 = event as traceV7.BeforeActionTraceEvent;
         eventAsV7.stepId = `${eventAsV6.apiName}@${eventAsV6.wallTime}`;

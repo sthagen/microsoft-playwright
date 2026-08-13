@@ -166,6 +166,10 @@ export interface JSHandle<T = any> {
   asElement(): T extends Node ? ElementHandle<T> : null;
 }
 
+export interface APIResponse<T = any> {
+  json(): Promise<T>;
+}
+
 export interface ElementHandle<T=Node> extends JSHandle<T> {
   $<K extends keyof HTMLElementTagNameMap>(selector: K, options?: { strict: boolean }): Promise<ElementHandleForTag<K> | null>;
   $(selector: string, options?: { strict: boolean }): Promise<ElementHandle<SVGElement | HTMLElement> | null>;
@@ -252,11 +256,6 @@ export interface Screencast {
       height: number;
     };
     quality?: number;
-    annotate?: {
-      duration?: number;
-      position?: 'top-left' | 'top' | 'top-right' | 'bottom-left' | 'bottom' | 'bottom-right';
-      fontSize?: number;
-    };
   }): Promise<Disposable>;
 }
 

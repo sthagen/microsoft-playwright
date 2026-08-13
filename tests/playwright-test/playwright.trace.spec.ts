@@ -188,9 +188,11 @@ test('should not mixup network files between contexts', async ({ runInlineTest, 
       test.beforeAll(async ({ browser }) => {
         page1 = await browser.newPage();
         await page1.goto("${server.EMPTY_PAGE}");
+        await page1.request.get("${server.PREFIX}/simple.json?context=1");
 
         page2 = await browser.newPage();
         await page2.goto("${server.EMPTY_PAGE}");
+        await page2.request.get("${server.PREFIX}/simple.json?context=2");
       });
 
       test.afterAll(async () => {
@@ -200,12 +202,43 @@ test('should not mixup network files between contexts', async ({ runInlineTest, 
 
       test('example', async ({ page }) => {
         await page.goto("${server.EMPTY_PAGE}");
+        await page.request.get("${server.PREFIX}/simple.json?context=3");
       });
     `,
   }, { workers: 1, timeout: 15000 });
   expect(result.exitCode).toEqual(0);
   expect(result.passed).toBe(1);
-  expect(fs.existsSync(testInfo.outputPath('test-results', 'a-example', 'trace.zip'))).toBe(true);
+  const tracePath = testInfo.outputPath('test-results', 'a-example', 'trace.zip');
+  const { resources } = await parseTraceRaw(tracePath);
+  const traceEntries = [...resources].filter(([name]) => name.endsWith('.trace')).map(([name, content]) => ({
+    prefix: name.slice(0, -'.trace'.length),
+    contextOptions: JSON.parse(content.toString().split('\n')[0]),
+  })).filter(entry => entry.contextOptions.origin === 'library');
+  // Each of the 3 browser contexts and 3 api request contexts produces
+  // a trace chunk per test phase it was recording during.
+  const browserTraces = traceEntries.filter(entry => entry.contextOptions.browserName);
+  const apiTraces = traceEntries.filter(entry => !entry.contextOptions.browserName);
+  expect(browserTraces.length).toBeGreaterThanOrEqual(3);
+  expect(apiTraces.length).toBeGreaterThanOrEqual(3);
+  for (const entry of browserTraces) {
+    const network = resources.get(entry.prefix + '.network')!.toString();
+    expect(network).not.toContain('?context=');
+  }
+  const apiURLs = [
+    server.PREFIX + '/simple.json?context=1',
+    server.PREFIX + '/simple.json?context=2',
+    server.PREFIX + '/simple.json?context=3',
+  ];
+  // Api request context network files are chunk-specific, so each of the requests
+  // must show up in exactly one network file.
+  const apiURLsByTrace = apiTraces.map(entry => {
+    const network = resources.get(entry.prefix + '.network')!.toString();
+    return apiURLs.filter(url => network.includes(url));
+  });
+  expect(apiURLsByTrace.every(urls => urls.length <= 1)).toBe(true);
+  expect(apiURLsByTrace.flat().sort()).toEqual(apiURLs);
+  const trace = await parseTrace(tracePath);
+  expect(trace.model.resources.filter(resource => resource._apiRequest).map(resource => resource.request.url).sort()).toEqual(apiURLs);
 });
 
 test('should save sources when requested', async ({ runInlineTest }, testInfo) => {
@@ -226,7 +259,62 @@ test('should save sources when requested', async ({ runInlineTest }, testInfo) =
   }, { workers: 1 });
   expect(result.exitCode).toEqual(0);
   const { resources } = await parseTraceRaw(testInfo.outputPath('test-results', 'a-pass', 'trace.zip'));
-  expect([...resources.keys()].filter(name => name.startsWith('resources/src@'))).toHaveLength(1);
+  expect([...resources.keys()].filter(name => name.startsWith('src/'))).toHaveLength(1);
+});
+
+test('should expand snapshots object in trace option', async ({ runInlineTest }, testInfo) => {
+  const result = await runInlineTest({
+    'playwright.config.ts': `
+      module.exports = {
+        use: {
+          trace: { mode: 'on', snapshots: { dom: true, aria: true, screen: true } },
+        }
+      };
+    `,
+    'a.spec.ts': `
+      import { test, expect } from '@playwright/test';
+      test('pass', async ({ page }) => {
+        await page.setContent('<button>Click me</button>');
+        await page.locator('button').click();
+      });
+    `,
+  }, { workers: 1 });
+  expect(result.exitCode).toEqual(0);
+  expect(result.passed).toBe(1);
+
+  const { model } = await parseTrace(testInfo.outputPath('test-results', 'a-pass', 'trace.zip'));
+  const click = model.actions.find(a => a.method === 'click')!;
+  expect(click.afterSnapshot).toBeTruthy();
+  expect(model.screenshotForCall(click.callId, 'after')).toBeTruthy();
+  expect(model.ariaSnapshotForCall(click.callId, 'after')).toBeTruthy();
+});
+
+test('should keep trace config options when forcing mode with --trace', async ({ runInlineTest }, testInfo) => {
+  const result = await runInlineTest({
+    'playwright.config.ts': `
+      module.exports = {
+        use: {
+          trace: { mode: 'on-first-retry', snapshots: { dom: true, aria: true, screen: true } },
+        }
+      };
+    `,
+    'a.spec.ts': `
+      import { test, expect } from '@playwright/test';
+      test('pass', async ({ page }) => {
+        await page.setContent('<button>Click me</button>');
+        await page.locator('button').click();
+      });
+    `,
+  }, { workers: 1, trace: 'on' });
+  expect(result.exitCode).toEqual(0);
+  expect(result.passed).toBe(1);
+
+  // The 'on' mode is forced, while the snapshots configuration is preserved.
+  const { model } = await parseTrace(testInfo.outputPath('test-results', 'a-pass', 'trace.zip'));
+  const click = model.actions.find(a => a.method === 'click')!;
+  expect(click.afterSnapshot).toBeTruthy();
+  expect(model.screenshotForCall(click.callId, 'after')).toBeTruthy();
+  expect(model.ariaSnapshotForCall(click.callId, 'after')).toBeTruthy();
 });
 
 test('should not save sources when not requested', async ({ runInlineTest }, testInfo) => {
@@ -250,7 +338,7 @@ test('should not save sources when not requested', async ({ runInlineTest }, tes
   }, { workers: 1 });
   expect(result.exitCode).toEqual(0);
   const { resources } = await parseTraceRaw(testInfo.outputPath('test-results', 'a-pass', 'trace.zip'));
-  expect([...resources.keys()].filter(name => name.startsWith('resources/src@'))).toHaveLength(0);
+  expect([...resources.keys()].filter(name => name.startsWith('src/'))).toHaveLength(0);
 });
 
 test('should work in serial mode', async ({ runInlineTest }, testInfo) => {
@@ -522,10 +610,10 @@ test('should include attachments by default', async ({ runInlineTest, server }, 
   expect(trace.model.actions[1].attachments).toEqual([{
     name: 'foo',
     contentType: 'text/plain',
-    sha1: expect.any(String),
+    file: expect.any(String),
   }]);
   const { resources } = await parseTraceRaw(tracePath);
-  expect([...resources.keys()]).toContain(`resources/${trace.model.actions[1].attachments[0].sha1}`);
+  expect([...resources.keys()]).toContain(trace.model.actions[1].attachments[0].file);
 });
 
 test('should opt out of attachments', async ({ runInlineTest, server }, testInfo) => {
@@ -553,7 +641,7 @@ test('should opt out of attachments', async ({ runInlineTest, server }, testInfo
   ]);
   expect(trace.model.actions[1].attachments).toEqual(undefined);
   const { resources } = await parseTraceRaw(tracePath);
-  expect([...resources.keys()].filter(f => f.startsWith('resources/') && !f.startsWith('resources/src@'))).toHaveLength(0);
+  expect([...resources.keys()].filter(f => f.startsWith('attachments/') || f.startsWith('resources/'))).toHaveLength(0);
 });
 
 test('should record with custom page fixture', async ({ runInlineTest }, testInfo) => {

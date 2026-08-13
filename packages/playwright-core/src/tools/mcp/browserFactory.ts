@@ -60,7 +60,7 @@ export async function createBrowserWithInfo(config: FullConfig, clientInfo: Clie
     ownership = 'own';
   } else if (config.extension) {
     const { channel, executablePath } = resolveExtensionOptions(cliOptions);
-    browser = await createExtensionBrowser(channel, executablePath, clientInfo.clientName);
+    browser = await createExtensionBrowser(channel, executablePath, config.browser.userDataDir, clientInfo.clientName);
     ownership = 'attached';
   } else {
     browser = await createPersistentBrowser(config, clientInfo);
@@ -152,7 +152,7 @@ async function createRemoteBrowser(config: FullConfig): Promise<BrowserWithInfo>
   // created, so create one when attaching to such a server.
   if (!browser.contexts().length)
     await browser.newContext(config.browser.contextOptions);
-  return { browser, browserInfo: browserInfo(browser, config), canBind: false, ownership: 'attached' };
+  return { browser, browserInfo: { ...browserInfo(browser, config), browserName: browser._browserName }, canBind: false, ownership: 'attached' };
 }
 
 async function createPersistentBrowser(config: FullConfig, clientInfo: ClientInfo): Promise<playwrightTypes.Browser> {

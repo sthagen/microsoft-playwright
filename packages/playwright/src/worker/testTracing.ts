@@ -38,7 +38,7 @@ const version: trace.VERSION = 8;
 let traceOrdinal = 0;
 
 type TraceFixtureValue =  PlaywrightWorkerOptions['trace'] | undefined;
-type TraceOptions = { screenshots: boolean, snapshots: boolean, sources: boolean, attachments: boolean, live: boolean, mode: TraceMode };
+type TraceOptions = { screenshots: boolean, snapshots: boolean | { dom?: boolean, aria?: boolean, screen?: boolean }, sources: boolean, attachments: boolean, live: boolean, mode: TraceMode };
 
 export class TestTracing {
   private _testInfo: TestInfoImpl;
@@ -177,9 +177,7 @@ export class TestTracing {
     if (!this._options)
       return;
 
-    const error = await this._liveTraceFile?.fs.syncAndGetError();
-    if (error)
-      throw error;
+    await this._liveTraceFile?.fs.sync();
 
     if (this._shouldAbandonTrace()) {
       for (const file of this._temporaryTraceFiles)
@@ -206,7 +204,7 @@ export class TestTracing {
       }
       for (const sourceFile of sourceFiles) {
         await fs.promises.readFile(sourceFile, 'utf8').then(source => {
-          zipFile.addBuffer(Buffer.from(source), 'resources/src@' + calculateSha1(sourceFile) + '.txt');
+          zipFile.addBuffer(Buffer.from(source), 'src/' + calculateSha1(sourceFile) + path.extname(sourceFile));
         }).catch(() => {});
       }
     }
@@ -225,13 +223,13 @@ export class TestTracing {
           continue;
 
         const sha1 = calculateSha1(content);
-        attachment.sha1 = sha1;
+        attachment.file = 'attachments/' + sha1;
         delete attachment.path;
         delete attachment.base64;
         if (sha1s.has(sha1))
           continue;
         sha1s.add(sha1);
-        zipFile.addBuffer(content, 'resources/' + sha1);
+        zipFile.addBuffer(content, attachment.file);
       }
     }
 

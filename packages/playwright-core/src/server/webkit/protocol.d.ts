@@ -1108,8 +1108,8 @@ export namespace Protocol {
     /**
      * The type of rendering context backing the canvas element.
      */
-    export type ContextType = "canvas-2d"|"offscreen-canvas-2d"|"bitmaprenderer"|"offscreen-bitmaprenderer"|"webgl"|"offscreen-webgl"|"webgl2"|"offscreen-webgl2";
-    export type ProgramType = "compute"|"render";
+    export type ContextType = "canvas-2d"|"offscreen-canvas-2d"|"bitmaprenderer"|"offscreen-bitmaprenderer"|"webgl"|"offscreen-webgl"|"webgl2"|"offscreen-webgl2"|"webgpu";
+    export type ProgramType = "compute"|"render"|"vertex";
     export type ShaderType = "compute"|"fragment"|"vertex";
     /**
      * Drawing surface attributes.
@@ -1172,42 +1172,41 @@ export namespace Protocol {
        * The type of rendering context backing the canvas.
        */
       contextType: ContextType;
+      sizes?: GenericTypes.Size[];
       /**
-       * Width of the canvas in pixels.
+       * The CSS canvas identifiers, for canvases created with <code>document.getCSSCanvasContext</code>.
        */
-      width: number;
-      /**
-       * Height of the canvas in pixels.
-       */
-      height: number;
-      /**
-       * The corresponding DOM node id.
-       */
-      nodeId?: DOM.NodeId;
-      /**
-       * The CSS canvas identifier, for canvases created with <code>document.getCSSCanvasContext</code>.
-       */
-      cssCanvasName?: string;
+      cssCanvasNames?: string[];
       /**
        * Context attributes for rendering contexts.
        */
       contextAttributes?: ContextAttributes;
       /**
-       * Memory usage of the canvas in bytes.
+       * Enabled WebGPU device features.
+       */
+      features?: string[];
+      /**
+       * Estimated memory usage of the graphics context and its associated resources, in bytes.
        */
       memoryCost?: number;
       /**
        * Backtrace that was captured when this canvas context was created.
        */
       stackTrace?: Console.StackTrace;
+      name?: string;
     }
     /**
-     * Information about a WebGL/WebGL2 shader program.
+     * Information about a WebGL/WebGL2 shader program or WebGPU shader pipeline.
      */
     export interface ShaderProgram {
       programId: ProgramId;
       programType: ProgramType;
       canvasId: CanvasId;
+      /**
+       * Indicates whether the vertex and fragment shader modules are the same object for a WebGPU render pipeline.
+       */
+      sharesVertexFragmentShader?: boolean;
+      name?: string;
     }
     
     export type canvasAddedPayload = {
@@ -1227,14 +1226,7 @@ export namespace Protocol {
        * Identifier of canvas that changed.
        */
       canvasId: CanvasId;
-      /**
-       * Width of the canvas in pixels.
-       */
-      width: number;
-      /**
-       * Height of the canvas in pixels.
-       */
-      height: number;
+      sizes?: GenericTypes.Size[];
     }
     export type canvasMemoryChangedPayload = {
       /**
@@ -1242,7 +1234,7 @@ export namespace Protocol {
        */
       canvasId: CanvasId;
       /**
-       * New memory cost value for the canvas in bytes.
+       * New estimated memory cost of the graphics context and its associated resources, in bytes.
        */
       memoryCost: number;
     }
@@ -1253,11 +1245,27 @@ export namespace Protocol {
        */
       extension: string;
     }
-    export type clientNodesChangedPayload = {
+    export type nodesChangedPayload = {
       /**
        * Identifier of canvas that changed.
        */
       canvasId: CanvasId;
+    }
+    export type cssCanvasClientNodesChangedPayload = {
+      /**
+       * Identifier of canvas that changed.
+       */
+      canvasId: CanvasId;
+    }
+    export type cssCanvasNamesChangedPayload = {
+      /**
+       * Identifier of canvas that changed.
+       */
+      canvasId: CanvasId;
+      /**
+       * The CSS canvas identifiers, for canvases created with <code>document.getCSSCanvasContext</code>.
+       */
+      cssCanvasNames: string[];
     }
     export type recordingStartedPayload = {
       canvasId: CanvasId;
@@ -1297,19 +1305,19 @@ export namespace Protocol {
     export type disableReturnValue = {
     }
     /**
-     * Gets the NodeId for the canvas node with the given CanvasId.
+     * Gets the NodeIds for the canvas nodes with the given CanvasId.
      */
-    export type requestNodeParameters = {
+    export type requestNodesParameters = {
       /**
        * Canvas identifier.
        */
       canvasId: CanvasId;
     }
-    export type requestNodeReturnValue = {
+    export type requestNodesReturnValue = {
       /**
-       * Node identifier for given canvas.
+       * Node identifiers for the given canvas.
        */
-      nodeId: DOM.NodeId;
+      nodeIds: DOM.NodeId[];
     }
     /**
      * Gets the data for the canvas node with the given CanvasId.
@@ -1327,12 +1335,12 @@ export namespace Protocol {
       content: string;
     }
     /**
-     * Gets all <code>-webkit-canvas</code> nodes or active <code>HTMLCanvasElement</code> for a <code>WebGPUDevice</code>.
+     * Gets all nodes using a <code>-webkit-canvas</code> image associated with the given CanvasId.
      */
-    export type requestClientNodesParameters = {
+    export type requestCSSCanvasClientNodesParameters = {
       canvasId: CanvasId;
     }
-    export type requestClientNodesReturnValue = {
+    export type requestCSSCanvasClientNodesReturnValue = {
       clientNodeIds: DOM.NodeId[];
     }
     /**
@@ -4480,6 +4488,13 @@ might return multiple quads for inline nodes.
        * Line with match content.
        */
       lineContent: string;
+    }
+    /**
+     * A two-dimensional size.
+     */
+    export interface Size {
+      width: number;
+      height: number;
     }
     
     
@@ -7640,7 +7655,7 @@ the top of the viewport and Y increases as it proceeds towards the bottom of the
     /**
      * The type of the recording.
      */
-    export type Type = "canvas-2d"|"offscreen-canvas-2d"|"canvas-bitmaprenderer"|"offscreen-canvas-bitmaprenderer"|"canvas-webgl"|"offscreen-canvas-webgl"|"canvas-webgl2"|"offscreen-canvas-webgl2";
+    export type Type = "canvas-2d"|"offscreen-canvas-2d"|"canvas-bitmaprenderer"|"offscreen-canvas-bitmaprenderer"|"canvas-webgl"|"offscreen-canvas-webgl"|"canvas-webgl2"|"offscreen-canvas-webgl2"|"canvas-webgpu";
     export type Initiator = "frontend"|"console"|"auto-capture";
     /**
      * Information about the initial state of the recorded object.
@@ -7668,7 +7683,7 @@ the top of the viewport and Y increases as it proceeds towards the bottom of the
      */
     export interface Frame {
       /**
-       * Information about an action made to the recorded object. Follows the structure [name, parameters, swizzleTypes, stackTrace, snapshot], where name is a string, parameters is an array, swizzleTypes is an array, stackTrace is a Console.StackTrace, and snapshot is a data URL image of the current contents after this action.
+       * Information about an action made to the recorded object. Follows the structure [name, parameters, swizzleTypes, stackTrace, result, receiver, snapshot], where name is a string, parameters is an array, swizzleTypes is an array, stackTrace is a Console.StackTrace, result and receiver follow the structure [identifier, swizzleType] for the object returned by the action and the object that received it, respectively, and snapshot is a data URL image of the current contents after this action.
        */
       actions: any[];
       /**
@@ -9192,7 +9207,9 @@ the top of the viewport and Y increases as it proceeds towards the bottom of the
     "Canvas.canvasSizeChanged": Canvas.canvasSizeChangedPayload;
     "Canvas.canvasMemoryChanged": Canvas.canvasMemoryChangedPayload;
     "Canvas.extensionEnabled": Canvas.extensionEnabledPayload;
-    "Canvas.clientNodesChanged": Canvas.clientNodesChangedPayload;
+    "Canvas.nodesChanged": Canvas.nodesChangedPayload;
+    "Canvas.cssCanvasClientNodesChanged": Canvas.cssCanvasClientNodesChangedPayload;
+    "Canvas.cssCanvasNamesChanged": Canvas.cssCanvasNamesChangedPayload;
     "Canvas.recordingStarted": Canvas.recordingStartedPayload;
     "Canvas.recordingProgress": Canvas.recordingProgressPayload;
     "Canvas.recordingFinished": Canvas.recordingFinishedPayload;
@@ -9320,7 +9337,9 @@ the top of the viewport and Y increases as it proceeds towards the bottom of the
     ["Canvas.canvasSizeChanged"]: [Canvas.canvasSizeChangedPayload];
     ["Canvas.canvasMemoryChanged"]: [Canvas.canvasMemoryChangedPayload];
     ["Canvas.extensionEnabled"]: [Canvas.extensionEnabledPayload];
-    ["Canvas.clientNodesChanged"]: [Canvas.clientNodesChangedPayload];
+    ["Canvas.nodesChanged"]: [Canvas.nodesChangedPayload];
+    ["Canvas.cssCanvasClientNodesChanged"]: [Canvas.cssCanvasClientNodesChangedPayload];
+    ["Canvas.cssCanvasNamesChanged"]: [Canvas.cssCanvasNamesChangedPayload];
     ["Canvas.recordingStarted"]: [Canvas.recordingStartedPayload];
     ["Canvas.recordingProgress"]: [Canvas.recordingProgressPayload];
     ["Canvas.recordingFinished"]: [Canvas.recordingFinishedPayload];
@@ -9460,9 +9479,9 @@ the top of the viewport and Y increases as it proceeds towards the bottom of the
     "CSS.setLayoutContextTypeChangedMode": CSS.setLayoutContextTypeChangedModeParameters;
     "Canvas.enable": Canvas.enableParameters;
     "Canvas.disable": Canvas.disableParameters;
-    "Canvas.requestNode": Canvas.requestNodeParameters;
+    "Canvas.requestNodes": Canvas.requestNodesParameters;
     "Canvas.requestContent": Canvas.requestContentParameters;
-    "Canvas.requestClientNodes": Canvas.requestClientNodesParameters;
+    "Canvas.requestCSSCanvasClientNodes": Canvas.requestCSSCanvasClientNodesParameters;
     "Canvas.resolveContext": Canvas.resolveContextParameters;
     "Canvas.setRecordingAutoCaptureFrameCount": Canvas.setRecordingAutoCaptureFrameCountParameters;
     "Canvas.startRecording": Canvas.startRecordingParameters;
@@ -9770,9 +9789,9 @@ the top of the viewport and Y increases as it proceeds towards the bottom of the
     "CSS.setLayoutContextTypeChangedMode": CSS.setLayoutContextTypeChangedModeReturnValue;
     "Canvas.enable": Canvas.enableReturnValue;
     "Canvas.disable": Canvas.disableReturnValue;
-    "Canvas.requestNode": Canvas.requestNodeReturnValue;
+    "Canvas.requestNodes": Canvas.requestNodesReturnValue;
     "Canvas.requestContent": Canvas.requestContentReturnValue;
-    "Canvas.requestClientNodes": Canvas.requestClientNodesReturnValue;
+    "Canvas.requestCSSCanvasClientNodes": Canvas.requestCSSCanvasClientNodesReturnValue;
     "Canvas.resolveContext": Canvas.resolveContextReturnValue;
     "Canvas.setRecordingAutoCaptureFrameCount": Canvas.setRecordingAutoCaptureFrameCountReturnValue;
     "Canvas.startRecording": Canvas.startRecordingReturnValue;

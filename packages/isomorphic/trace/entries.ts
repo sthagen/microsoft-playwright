@@ -29,6 +29,7 @@ export type ContextEntry = {
   platform?: string;
   playwrightVersion?: string;
   wallTime: number;
+  monotonicTime: number;
   sdkLanguage?: Language;
   testIdAttributeName?: string;
   title?: string;
@@ -36,11 +37,12 @@ export type ContextEntry = {
   pages: PageEntry[];
   resources: ResourceSnapshot[];
   actions: ActionEntry[];
+  screenshots: trace.ScreenshotTraceEvent[];
+  ariaSnapshots: trace.AriaSnapshotTraceEvent[];
   events: (trace.EventTraceEvent | trace.ConsoleMessageTraceEvent)[];
   stdio: trace.StdioTraceEvent[];
   errors: trace.ErrorTraceEvent[];
   hasSource: boolean;
-  contextId: string;
   testTimeout?: number;
   annotations?: trace.TraceEventAnnotation[];
 };
@@ -48,7 +50,7 @@ export type ContextEntry = {
 export type PageEntry = {
   pageId: string,
   screencastFrames: {
-    sha1: string,
+    file: string,
     timestamp: number,
     frameSwapWallTime?: number,
     width: number,

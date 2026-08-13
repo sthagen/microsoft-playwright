@@ -16,7 +16,7 @@
 
 import type { FrameSnapshot, ResourceSnapshot } from './snapshot';
 import type { Language } from '@isomorphic/locatorGenerators';
-import type { Point } from '@isomorphic/types';
+import type { Point, Rect } from '@isomorphic/types';
 
 export type Size = { width: number, height: number };
 
@@ -92,7 +92,6 @@ export type ContextCreatedTraceEvent = {
   options: BrowserContextEventOptions,
   sdkLanguage?: Language,
   testIdAttributeName?: string,
-  contextId?: string,
   testTimeout?: number,
   annotations?: TraceEventAnnotation[],
 };
@@ -100,11 +99,27 @@ export type ContextCreatedTraceEvent = {
 export type ScreencastFrameTraceEvent = {
   type: 'screencast-frame',
   pageId: string,
-  sha1: string,
+  file: string,
   width: number,
   height: number,
   timestamp: number,
   frameSwapWallTime?: number,
+};
+
+export type ActionPhase = 'before' | 'action' | 'after';
+
+export type ScreenshotTraceEvent = {
+  type: 'screenshot',
+  callId: string,
+  phase: ActionPhase,
+  file: string,
+};
+
+export type AriaSnapshotTraceEvent = {
+  type: 'aria-snapshot',
+  callId: string,
+  phase: ActionPhase,
+  file: string,
 };
 
 export type BeforeActionTraceEvent = {
@@ -128,13 +143,14 @@ export type InputActionTraceEvent = {
   callId: string;
   inputSnapshot?: string;
   point?: Point;
+  box?: Rect;
 };
 
 export type AfterActionTraceEventAttachment = {
   name: string;
   contentType: string;
   path?: string;
-  sha1?: string;
+  file?: string;
   base64?: string;
 };
 
@@ -217,6 +233,8 @@ export type ErrorTraceEvent = {
 export type TraceEvent =
     ContextCreatedTraceEvent |
     ScreencastFrameTraceEvent |
+    ScreenshotTraceEvent |
+    AriaSnapshotTraceEvent |
     ActionTraceEvent |
     BeforeActionTraceEvent |
     InputActionTraceEvent |
