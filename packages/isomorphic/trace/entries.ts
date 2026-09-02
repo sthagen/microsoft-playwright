@@ -15,8 +15,7 @@
  */
 
 import type { Language } from '../locatorGenerators';
-import type { ResourceSnapshot } from '@trace/snapshot';
-import type * as trace from '@trace/trace';
+import type * as trace from './trace';
 
 // *Entry structures are used to pass the trace between the sw and the page.
 
@@ -35,10 +34,12 @@ export type ContextEntry = {
   title?: string;
   options: trace.BrowserContextEventOptions;
   pages: PageEntry[];
-  resources: ResourceSnapshot[];
+  resources: trace.ResourceSnapshot[];
   actions: ActionEntry[];
   screenshots: trace.ScreenshotTraceEvent[];
   ariaSnapshots: trace.AriaSnapshotTraceEvent[];
+  domSnapshots: { callId: string, phase: trace.ActionPhase }[];
+  videos: trace.VideoTraceEvent[];
   events: (trace.EventTraceEvent | trace.ConsoleMessageTraceEvent)[];
   stdio: trace.StdioTraceEvent[];
   errors: trace.ErrorTraceEvent[];

@@ -196,7 +196,6 @@ scheme.AndroidDeviceLaunchBrowserParams = tObject({
     })),
   })),
   strictSelectors: tOptional(tBoolean),
-  pierceFrames: tOptional(tBoolean),
   serviceWorkers: tOptional(tEnum(['allow', 'block'])),
   selectorEngines: tOptional(tArray(tType('SelectorEngine'))),
   testIdAttributeName: tOptional(tString),
@@ -325,6 +324,7 @@ scheme.APIRequestContextFetchLogResult = tObject({
 });
 scheme.APIRequestContextStorageStateParams = tObject({
   indexedDB: tOptional(tBoolean),
+  opfs: tOptional(tBoolean),
 });
 scheme.APIRequestContextStorageStateResult = tObject({
   cookies: tArray(tType('NetworkCookie')),
@@ -478,7 +478,6 @@ scheme.BrowserNewContextParams = tObject({
     })),
   })),
   strictSelectors: tOptional(tBoolean),
-  pierceFrames: tOptional(tBoolean),
   serviceWorkers: tOptional(tEnum(['allow', 'block'])),
   selectorEngines: tOptional(tArray(tType('SelectorEngine'))),
   testIdAttributeName: tOptional(tString),
@@ -552,7 +551,6 @@ scheme.BrowserNewContextForReuseParams = tObject({
     })),
   })),
   strictSelectors: tOptional(tBoolean),
-  pierceFrames: tOptional(tBoolean),
   serviceWorkers: tOptional(tEnum(['allow', 'block'])),
   selectorEngines: tOptional(tArray(tType('SelectorEngine'))),
   testIdAttributeName: tOptional(tString),
@@ -648,7 +646,6 @@ scheme.BrowserContextInitializer = tObject({
       })),
     })),
     strictSelectors: tOptional(tBoolean),
-    pierceFrames: tOptional(tBoolean),
     serviceWorkers: tOptional(tEnum(['allow', 'block'])),
     selectorEngines: tOptional(tArray(tType('SelectorEngine'))),
     testIdAttributeName: tOptional(tString),
@@ -719,7 +716,7 @@ scheme.BrowserContextResponseEvent = tObject({
   page: tOptional(tChannel(['Page'])),
 });
 scheme.BrowserContextRecorderEventEvent = tObject({
-  event: tEnum(['actionAdded', 'signalAdded']),
+  event: tEnum(['actionAdded', 'actionUpdated', 'signalAdded']),
   data: tAny,
   page: tChannel(['Page']),
   code: tString,
@@ -822,6 +819,7 @@ scheme.BrowserContextSetOfflineParams = tObject({
 scheme.BrowserContextSetOfflineResult = tOptional(tObject({}));
 scheme.BrowserContextStorageStateParams = tObject({
   indexedDB: tOptional(tBoolean),
+  opfs: tOptional(tBoolean),
   credentials: tOptional(tBoolean),
 });
 scheme.BrowserContextStorageStateResult = tObject({
@@ -1045,7 +1043,6 @@ scheme.BrowserTypeLaunchPersistentContextParams = tObject({
     })),
   })),
   strictSelectors: tOptional(tBoolean),
-  pierceFrames: tOptional(tBoolean),
   serviceWorkers: tOptional(tEnum(['allow', 'block'])),
   selectorEngines: tOptional(tArray(tType('SelectorEngine'))),
   testIdAttributeName: tOptional(tString),
@@ -1062,6 +1059,7 @@ scheme.BrowserTypeConnectOverCDPParams = tObject({
   slowMo: tOptional(tFloat),
   isLocal: tOptional(tBoolean),
   noDefaults: tOptional(tBoolean),
+  isWebView: tOptional(tBoolean),
   artifactsDir: tOptional(tString),
   transport: tOptional(tBinary),
 });
@@ -1135,7 +1133,6 @@ scheme.ElectronLaunchParams = tObject({
     })),
   })),
   strictSelectors: tOptional(tBoolean),
-  pierceFrames: tOptional(tBoolean),
   timezoneId: tOptional(tString),
   tracesDir: tOptional(tString),
   artifactsDir: tOptional(tString),
@@ -2852,15 +2849,22 @@ scheme.IndexedDBDatabase = tObject({
     })),
   })),
 });
+scheme.OPFSEntry = tObject({
+  path: tString,
+  type: tEnum(['file', 'directory']),
+  base64: tOptional(tString),
+});
 scheme.SetOriginStorage = tObject({
   origin: tString,
   localStorage: tArray(tType('NameValue')),
   indexedDB: tOptional(tArray(tType('IndexedDBDatabase'))),
+  opfs: tOptional(tArray(tType('OPFSEntry'))),
 });
 scheme.OriginStorage = tObject({
   origin: tString,
   localStorage: tArray(tType('NameValue')),
   indexedDB: tOptional(tArray(tType('IndexedDBDatabase'))),
+  opfs: tOptional(tArray(tType('OPFSEntry'))),
 });
 scheme.RecordHarOptions = tObject({
   content: tOptional(tEnum(['embed', 'attach', 'omit'])),

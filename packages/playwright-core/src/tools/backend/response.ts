@@ -18,9 +18,8 @@ import fs from 'fs';
 import path from 'path';
 
 import debug from 'debug';
-import { actionInContext, renderCode, substituteSecrets } from './codegen';
+import { actionInContext, codeframeForLanguage, renderCode, substituteSecrets } from './codegen';
 import { renderModalStates } from './tab';
-import { scaleImageToFitMessage } from './screenshot';
 
 import { outputDir as resolveOutputDir } from './context';
 
@@ -223,10 +222,8 @@ export class Response {
 
     // Image attachments.
     if (this._context.config.imageResponses !== 'omit') {
-      for (const imageResult of this._imageResults) {
-        const scaledData = scaleImageToFitMessage(imageResult.data, imageResult.imageType);
-        content.push({ type: 'image', data: scaledData.toString('base64'), mimeType: `image/${imageResult.imageType}` });
-      }
+      for (const imageResult of this._imageResults)
+        content.push({ type: 'image', data: imageResult.data.toString('base64'), mimeType: `image/${imageResult.imageType}` });
     }
 
     return {
@@ -285,7 +282,7 @@ export class Response {
     const codegen = this._context.config.codegen ?? 'typescript';
     if (codegen !== 'none' && this._code.length) {
       const code = substituteSecrets(renderCode(this._code, codegen), codegen, Object.keys(this._context.config.secrets ?? {}));
-      addSection('Ran Playwright code', code, codegen === 'typescript' ? 'js' : codegen);
+      addSection('Ran Playwright code', code, codeframeForLanguage(codegen));
     }
 
     // Render tab titles upon changes or when more than one tab.

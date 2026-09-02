@@ -19,7 +19,7 @@ import { utils, iso } from '../../packages/playwright-core/lib/coreBundle';
 
 import type { iso as isoType } from '../../packages/playwright-core/lib/coreBundle';
 import type { Locator, Frame, Page } from 'playwright-core';
-import type { StackFrame, ActionTraceEvent, TraceEvent } from '@trace/trace';
+import type { StackFrame, ActionTraceEvent, TraceEvent } from '@isomorphic/trace/trace';
 
 const { TraceLoader, TraceModel } = iso;
 type TraceModel = InstanceType<typeof TraceModel>;
@@ -128,11 +128,9 @@ export async function parseTraceRaw(file: string): Promise<{ events: any[], reso
           actionMap.set(event.callId, action);
         } else if (event.type === 'input') {
           const existing = actionMap.get(event.callId);
-          existing.inputSnapshot = event.inputSnapshot;
           existing.point = event.point;
         } else if (event.type === 'after') {
           const existing = actionMap.get(event.callId);
-          existing.afterSnapshot = event.afterSnapshot;
           existing.endTime = event.endTime;
           existing.error = event.error;
           existing.result = event.result;
@@ -159,7 +157,7 @@ export async function parseTraceRaw(file: string): Promise<{ events: any[], reso
   return {
     events,
     resources,
-    actions: actionObjects.map(a => iso.renderTitleForCall({ ...a, type: a.class })),
+    actions: actionObjects.map(a => iso.renderFullTitleForCall({ ...a, type: a.class })),
     actionObjects,
     stacks,
   };

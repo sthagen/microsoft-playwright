@@ -14,12 +14,11 @@
  * limitations under the License.
  */
 
-import { getActionGroup, renderTitleForCall } from '../protocolFormatter';
+import { getActionGroup, renderFullTitleForCall } from '../protocolFormatter';
 
 import type { Language } from '../locatorGenerators';
-import type { ResourceSnapshot } from '@trace/snapshot';
-import type * as trace from '@trace/trace';
-import type { ActionTraceEvent } from '@trace/trace';
+import type * as trace from './trace';
+import type { ActionTraceEvent, ResourceSnapshot } from './trace';
 import type { ActionEntry, ContextEntry, PageEntry } from './entries';
 import type { ActionGroup } from '../protocolFormatter';
 
@@ -38,7 +37,11 @@ export type SourceModel = {
   content: string | undefined;
 };
 
-export type ResourceEntry = ResourceSnapshot & { id: string, contextTitle: string };
+export type ResourceEntry = ResourceSnapshot & { id: string };
+
+export function resourceOwnerRef(resource: ResourceSnapshot): string | undefined {
+  return resource.pageref ?? resource._serviceWorkerRef ?? resource._apiRequestRef;
+}
 
 export type ActionTreeItem = {
   id: string;
@@ -66,6 +69,7 @@ export class TraceModel {
   readonly title?: string;
   readonly options: trace.BrowserContextEventOptions;
   readonly pages: PageEntry[];
+  readonly videos: trace.VideoTraceEvent[];
   readonly actions: ActionEntry[];
   readonly attachments: Attachment[];
   readonly visibleAttachments: Attachment[];
@@ -75,6 +79,8 @@ export class TraceModel {
   readonly errorDescriptors: ErrorDescription[];
   readonly hasSource: boolean;
   readonly hasStepData: boolean;
+  readonly hasDomSnapshots: boolean;
+  readonly hasAriaSnapshots: boolean;
   readonly sdkLanguage: Language | undefined;
   readonly testIdAttributeName: string | undefined;
   readonly sources: Map<string, SourceModel>;
@@ -83,10 +89,11 @@ export class TraceModel {
   readonly traceUri: string;
   readonly testTimeout?: number;
   readonly annotations?: trace.TraceEventAnnotation[];
-  readonly pagerefToTitle = new Map<string, string>();
+  readonly resourceOwnerRefToTitle = new Map<string, string>();
   private _eventsForAction = new Map<ActionEntry, (trace.EventTraceEvent | trace.ConsoleMessageTraceEvent)[]>();
   private _screenshots = new Map<string, trace.ScreenshotTraceEvent>();
   private _ariaSnapshots = new Map<string, trace.AriaSnapshotTraceEvent>();
+  private _domSnapshots = new Set<string>();
 
   constructor(traceUri: string, contexts: ContextEntry[]) {
     const libraryContext = contexts.find(context => context.origin === 'library');
@@ -105,6 +112,7 @@ export class TraceModel {
     // Next call updates all timestamps for all events in library contexts, so it must be done first.
     this.actions = mergeActionsAndUpdateTiming(contexts);
     this.pages = ([] as PageEntry[]).concat(...contexts.map(c => c.pages));
+    this.videos = [];
     this.wallTime = contexts.map(c => c.wallTime).reduce((prev, cur) => Math.min(prev || Number.MAX_VALUE, cur!), Number.MAX_VALUE);
     this.startTime = contexts.map(c => c.startTime).reduce((prev, cur) => Math.min(prev, cur), Number.MAX_VALUE);
     this.endTime = contexts.map(c => c.endTime).reduce((prev, cur) => Math.max(prev, cur), Number.MIN_VALUE);
@@ -114,26 +122,37 @@ export class TraceModel {
     this.hasSource = contexts.some(c => c.hasSource);
     this.hasStepData = contexts.some(context => context.origin === 'testRunner');
     this.resources = [];
-    let lastApiContextId = 0;
-    let lastBrowserContextId = 0;
-    for (const context of contexts) {
-      const contextTitle = context.resources.some(resource => resource._apiRequest) ? 'api#' + (++lastApiContextId) : 'browser#' + (++lastBrowserContextId);
-      for (const entry of context.resources)
-        this.resources.push({ ...entry, id: `${entry.pageref ?? lastApiContextId}-${entry.startedDateTime}-${entry.request.url}`, contextTitle });
+    for (let i = 0; i < contexts.length; ++i) {
+      for (const entry of contexts[i].resources)
+        this.resources.push({ ...entry, id: `${resourceOwnerRef(entry) ?? i}-${entry.startedDateTime}-${entry.request.url}` });
     }
     for (const context of contexts) {
       for (const event of context.screenshots || [])
         this._screenshots.set(`${event.callId}/${event.phase}`, event);
       for (const event of context.ariaSnapshots || [])
         this._ariaSnapshots.set(`${event.callId}/${event.phase}`, event);
+      for (const entry of context.domSnapshots || [])
+        this._domSnapshots.add(`${entry.callId}/${entry.phase}`);
+      this.videos.push(...(context.videos || []));
     }
+    this.hasDomSnapshots = !!this._domSnapshots.size;
+    this.hasAriaSnapshots = !!this._screenshots.size || !!this._ariaSnapshots.size;
     this.attachments = this.actions.flatMap(action => action.attachments?.map(attachment => ({ ...attachment, callId: action.callId, traceUri })) ?? []);
     this.visibleAttachments = this.attachments.filter(attachment => !attachment.name.startsWith('_'));
 
-    this.pages.forEach((page, index) => this.pagerefToTitle.set(page.pageId, 'page#' + (index + 1)));
+    this.pages.forEach((page, index) => this.resourceOwnerRefToTitle.set(page.pageId, 'page#' + (index + 1)));
 
     this.events.sort((a1, a2) => a1.time - a2.time);
     this.resources.sort((a1, a2) => a1._monotonicTime! - a2._monotonicTime!);
+
+    let serviceWorkerCount = 0;
+    let apiRequestCount = 0;
+    for (const resource of this.resources) {
+      if (resource._serviceWorkerRef && !this.resourceOwnerRefToTitle.has(resource._serviceWorkerRef))
+        this.resourceOwnerRefToTitle.set(resource._serviceWorkerRef, `service-worker#${++serviceWorkerCount}`);
+      if (resource._apiRequestRef && !this.resourceOwnerRefToTitle.has(resource._apiRequestRef))
+        this.resourceOwnerRefToTitle.set(resource._apiRequestRef, `api#${++apiRequestCount}`);
+    }
     this.errorDescriptors = this.hasStepData ? this._errorDescriptorsFromTestRunner() : this._errorDescriptorsFromActions();
     this.sources = collectSources(this.actions, this.errorDescriptors);
 
@@ -158,6 +177,10 @@ export class TraceModel {
 
   screenshotForCall(callId: string, phase: trace.ActionPhase): trace.ScreenshotTraceEvent | undefined {
     return this._screenshots.get(`${callId}/${phase}`);
+  }
+
+  hasDomSnapshotForCall(callId: string, phase: trace.ActionPhase): boolean {
+    return this._domSnapshots.has(`${callId}/${phase}`);
   }
 
   ariaSnapshotForCall(callId: string, phase: trace.ActionPhase): trace.AriaSnapshotTraceEvent | undefined {
@@ -206,7 +229,7 @@ export class TraceModel {
     const { rootItem } = buildActionTree(actions);
     const actionTree: string[] = [];
     const visit = (actionItem: ActionTreeItem, indent: string) => {
-      const title = renderTitleForCall({ ...actionItem.action, type: actionItem.action.class });
+      const title = renderFullTitleForCall({ ...actionItem.action, type: actionItem.action.class });
       actionTree.push(`${indent}${title || actionItem.id}`);
       for (const child of actionItem.children)
         visit(child, indent + '  ');
@@ -344,6 +367,12 @@ function adjustMonotonicTime(context: ContextEntry, monotonicTimeDelta: number) 
     for (const frame of page.screencastFrames)
       frame.timestamp += monotonicTimeDelta;
   }
+  for (const video of context.videos || [])
+    video.timestamp += monotonicTimeDelta;
+  for (const screenshot of context.screenshots || [])
+    screenshot.timestamp += monotonicTimeDelta;
+  for (const ariaSnapshot of context.ariaSnapshots || [])
+    ariaSnapshot.timestamp += monotonicTimeDelta;
   for (const resource of context.resources) {
     if (resource._monotonicTime)
       resource._monotonicTime += monotonicTimeDelta;

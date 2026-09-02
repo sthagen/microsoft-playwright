@@ -82,7 +82,7 @@ export type BrowserContextEventMap = {
   [BrowserContextEvent.RequestFulfilled]: [request: network.Request];
   [BrowserContextEvent.RequestContinued]: [request: network.Request];
   [BrowserContextEvent.BeforeClose]: [];
-  [BrowserContextEvent.RecorderEvent]: [event: { event: 'actionAdded' | 'signalAdded', data: any, page: Page, code: string }];
+  [BrowserContextEvent.RecorderEvent]: [event: { event: 'actionAdded' | 'actionUpdated' | 'signalAdded', data: any, page: Page, code: string }];
   [BrowserContextEvent.PageClosed]: [page: Page];
   [BrowserContextEvent.InternalFrameNavigatedToNewDocument]: [frame: frames.Frame];
   [BrowserContextEvent.FrameAttached]: [frame: frames.Frame];
@@ -159,14 +159,14 @@ export abstract class BrowserContext<EM extends EventMap = EventMap> extends Sdk
       this._debugger.setPauseAt();
       this._debugger.on(Debugger.Events.PausedStateChanged, () => {
         if (this._debugger.isPaused())
-          RecorderApp.showInspectorNoReply(this);
+          RecorderApp.enable(this, {}).catch(() => {});
       });
     }
 
     // When PWDEBUG=1, show inspector for each context.
     if (debugMode() === 'inspector') {
       this._debugger.setPauseAt({ next: true });
-      await RecorderApp.show(this, { pauseOnNextStatement: true });
+      await RecorderApp.enable(this, { pauseOnNextStatement: true });
     }
 
     if (debugMode() === 'console')
@@ -616,7 +616,7 @@ export abstract class BrowserContext<EM extends EventMap = EventMap> extends Sdk
     this._origins.add(origin);
   }
 
-  async storageState(progress: Progress, indexedDB = false, credentials = false): Promise<channels.BrowserContextStorageStateResult> {
+  async storageState(progress: Progress, { indexedDB = false, opfs = false, credentials = false }: { indexedDB?: boolean, opfs?: boolean, credentials?: boolean } = {}): Promise<channels.BrowserContextStorageStateResult> {
     const result: channels.BrowserContextStorageStateResult = {
       cookies: await this.cookies(progress),
       origins: []
@@ -624,12 +624,13 @@ export abstract class BrowserContext<EM extends EventMap = EventMap> extends Sdk
     if (credentials)
       result.credentials = await progress.race(this.credentials.get());
     const originsToSave = new Set(this._origins);
+    const hasStorage = (storage: SerializedStorage) => !!(storage.localStorage.length || storage.indexedDB?.length || storage.opfs?.length);
 
     const collectScript = `(() => {
       const module = {};
       ${rawStorageSource.source}
-      const script = new (module.exports.StorageScript())(${this._browser.options.name === 'firefox'});
-      return script.collect(${indexedDB});
+      const script = new (module.exports.StorageScript())(${JSON.stringify(this._browser.options.name)});
+      return script.collect({ indexedDB: ${indexedDB}, opfs: ${opfs} });
     })()`;
 
     // First try collecting storage stage from existing pages.
@@ -639,8 +640,8 @@ export abstract class BrowserContext<EM extends EventMap = EventMap> extends Sdk
         continue;
       try {
         const storage: SerializedStorage = await progress.race(page.mainFrame().nonStallingEvaluateInExistingContext(collectScript, 'utility'));
-        if (storage.localStorage.length || storage.indexedDB?.length)
-          result.origins.push({ origin, localStorage: storage.localStorage, indexedDB: storage.indexedDB });
+        if (hasStorage(storage))
+          result.origins.push({ origin, ...storage });
         originsToSave.delete(origin);
       } catch {
         // When failed on the live page, we'll retry on the blank page below.
@@ -658,8 +659,8 @@ export abstract class BrowserContext<EM extends EventMap = EventMap> extends Sdk
           const frame = page.mainFrame();
           await frame.gotoImpl(progress, origin, {});
           const storage: SerializedStorage = await frame.evaluateExpression(progress, collectScript, { world: 'utility' });
-          if (storage.localStorage.length || storage.indexedDB?.length)
-            result.origins.push({ origin, localStorage: storage.localStorage, indexedDB: storage.indexedDB });
+          if (hasStorage(storage))
+            result.origins.push({ origin, ...storage });
         }
       } finally {
         await page.close(progress);
@@ -713,7 +714,7 @@ export abstract class BrowserContext<EM extends EventMap = EventMap> extends Sdk
           const restoreScript = `(() => {
             const module = {};
             ${rawStorageSource.source}
-            const script = new (module.exports.StorageScript())(${this._browser.options.name === 'firefox'});
+            const script = new (module.exports.StorageScript())(${JSON.stringify(this._browser.options.name)});
             return script.restore(${JSON.stringify(newOrigins.get(origin))});
           })()`;
           await frame.evaluateExpression(progress, restoreScript, { world: 'utility' });
@@ -856,7 +857,6 @@ const defaultNewContextParamValues: channels.BrowserNewContextForReuseParams = {
   hasTouch: false,
   acceptDownloads: 'accept',
   strictSelectors: false,
-  pierceFrames: false,
   serviceWorkers: 'allow',
   locale: 'en-US',
 };

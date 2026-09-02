@@ -169,6 +169,8 @@ BrowserContext:
 
     setOffline:
       title: Set offline mode
+      renderParams:
+      - offline
       parameters:
         offline: boolean
 
@@ -177,6 +179,7 @@ BrowserContext:
       group: configuration
       parameters:
         indexedDB: boolean?
+        opfs: boolean?
         credentials: boolean?
       returns:
         cookies:
@@ -431,6 +434,7 @@ BrowserContext:
           type: enum
           literals:
           - actionAdded
+          - actionUpdated
           - signalAdded
         data: json
         page: Page

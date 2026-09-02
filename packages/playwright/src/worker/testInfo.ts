@@ -41,10 +41,9 @@ export type TestStepCategory = 'expect' | 'fixture' | 'hook' | 'pw:api' | 'test.
 
 interface TestStepData {
   title: string;
-  shortTitle?: string;
+  subtitle?: string;
   category: TestStepCategory;
   location?: Location;
-  apiName?: string;
   params?: Record<string, any>;
   box?: boolean;
   // steps with any defined group are hidden from the report
@@ -377,7 +376,9 @@ export class TestInfoImpl implements TestInfo {
         stepId,
         parentStepId: parentStep ? parentStep.stepId : undefined,
         title: step.title,
+        subtitle: step.subtitle,
         category: step.category,
+        params: toReportedParams(step.params),
         wallTime: Date.now(),
         location: step.location,
       };
@@ -387,7 +388,8 @@ export class TestInfoImpl implements TestInfo {
       this._tracing.appendBeforeActionForStep({
         stepId,
         parentId: parentStep?.stepId,
-        title: step.shortTitle ?? step.title,
+        title: step.title,
+        subtitle: step.subtitle,
         category: step.category,
         params: step.params,
         stack: step.location ? [step.location] : [],
@@ -730,3 +732,13 @@ export class StepSkipError extends Error {
 }
 
 const stepSymbol = Symbol('step');
+
+function toReportedParams(params: Record<string, any> | undefined): Record<string, any> | undefined {
+  if (!params)
+    return undefined;
+  try {
+    return JSON.parse(JSON.stringify(params));
+  } catch {
+    return undefined;
+  }
+}

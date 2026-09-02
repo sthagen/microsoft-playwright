@@ -1479,19 +1479,6 @@ await locator.ClickAsync();
 ### param: Locator.frameLocator.selector = %%-find-selector-%%
 * since: v1.17
 
-## method: Locator.get
-* since: v1.63
-* langs: js
-- returns: <[Locator]>
-
-%%-template-locator-get-%%
-
-### param: Locator.get.by
-* since: v1.63
-- `by` <[By]>
-
-Page-free locator built with [`property: Playwright.by`].
-
 ## async method: Locator.getAttribute
 * since: v1.14
 - returns: <[null]|[string]>
@@ -2021,7 +2008,7 @@ Locator banana = page.getByRole(AriaRole.LISTITEM).last();
 ```
 
 ```csharp
-var banana = await page.GetByRole(AriaRole.Listitem).Last(1);
+var banana = page.GetByRole(AriaRole.Listitem).Last;
 ```
 
 ## method: Locator.locator
@@ -2920,6 +2907,47 @@ When all steps combined have not finished during the specified [`option: timeout
 
 ### option: Locator.uncheck.trial = %%-input-trial-%%
 * since: v1.14
+
+## method: Locator.visible
+* since: v1.63
+- returns: <[Locator]>
+
+Returns a locator that matches only [visible](../actionability.md#visible) elements, ignoring the invisible ones. This is the recommended way to distinguish elements by visibility, as opposed to the `:visible` CSS pseudo-class.
+
+Note that visibility is checked every time the locator is used, and not at the moment of the [`method: Locator.visible`] call.
+
+**Usage**
+
+Consider a page with two buttons, the first invisible and the second visible.
+
+```html
+<button style='display: none'>Invisible</button>
+<button>Visible</button>
+```
+
+This will only find the second button, because it is visible, and then click it.
+
+```js
+await page.locator('button').visible().click();
+```
+
+```java
+page.locator("button").visible().click();
+```
+
+```python async
+await page.locator("button").visible.click()
+```
+
+```python sync
+page.locator("button").visible.click()
+```
+
+```csharp
+await page.Locator("button").Visible.ClickAsync();
+```
+
+To match invisible elements instead, use [`method: Locator.filter`] with the [`option: Locator.filter.visible`] option set to `false`.
 
 ## async method: Locator.waitFor
 * since: v1.16

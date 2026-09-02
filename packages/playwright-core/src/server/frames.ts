@@ -25,7 +25,6 @@ import { LongStandingScope } from '@isomorphic/manualPromise';
 import { asLocator } from '@isomorphic/locatorGenerators';
 import { assert } from '@isomorphic/assert';
 import { constructURLBasedOnBaseURL } from '@isomorphic/urlMatch';
-import { makeWaitForNextTask } from '@utils/task';
 import { createGuid } from '@utils/crypto';
 import { BrowserContext } from './browserContext';
 import * as dom from './dom';
@@ -157,7 +156,7 @@ export class FrameManager {
 
     function collect(frame: Frame) {
       frames.push(frame);
-      for (const subframe of frame._getChildFrames())
+      for (const subframe of frame.childFrames())
         collect(subframe);
     }
   }
@@ -199,7 +198,7 @@ export class FrameManager {
       await progress.race(this._page.delegate.inputActionEpilogue());
       await barrier.waitFor(progress);
       // Resolve in the next task, after all waitForNavigations.
-      await new Promise<void>(makeWaitForNextTask());
+      await new Promise<void>(f => setImmediate(f));
       return result;
     } finally {
       this._signalBarriers.delete(barrier);
@@ -370,7 +369,7 @@ export class FrameManager {
   }
 
   removeChildFramesRecursively(frame: Frame) {
-    for (const child of frame._getChildFrames())
+    for (const child of frame.childFrames())
       this._removeFramesRecursively(child);
   }
 
@@ -434,20 +433,19 @@ export class FrameManager {
     this._webSockets.set(requestId, ws);
   }
 
-  onWebSocketRequest(requestId: string, requestData?: { headers: types.HeadersArray, wallTimeMs?: number }) {
+  onWebSocketRequest(requestId: string, requestData: { headers: types.HeadersArray, wallTimeMs?: number }) {
     const ws = this._webSockets.get(requestId);
     if (!ws)
       return;
 
-    ws.setWallTimeMs(requestData?.wallTimeMs);
+    ws.setWallTimeMs(requestData.wallTimeMs);
 
     if (ws.markAsNotified()) {
       this._page.emit(Page.Events.WebSocket, ws);
       this._page.browserContext.emit(BrowserContext.Events.WebSocket, ws, this._page);
     }
 
-    if (requestData)
-      ws.requestSent(requestData.headers);
+    ws.requestSent(requestData.headers);
   }
 
   onWebSocketResponse(requestId: string, responseData: { status: number, statusText: string, headers: types.HeadersArray }) {
@@ -1009,7 +1007,7 @@ export class Frame extends SdkObject<FrameEventMap> {
     return this._parentFrame;
   }
 
-  _getChildFrames(): Frame[] {
+  childFrames(): Frame[] {
     return Array.from(this._childFrames);
   }
 
@@ -1373,26 +1371,6 @@ export class Frame extends SdkObject<FrameEventMap> {
     return result;
   }
 
-  async addHighlight(progress: Progress, selector: string, style?: string) {
-    await progress.race(this.selectors.callOnSelector(selector, { strict: false, callWithoutMatches: true }, ({ injected, info }, style) => {
-      return injected.addHighlight(info.parsed, style);
-    }, style));
-  }
-
-  async removeHighlight(progress: Progress, selector: string) {
-    await progress.race(this.selectors.callOnSelector(selector, { strict: false, callWithoutMatches: true }, ({ injected, info }) => {
-      return injected.removeHighlight(info.parsed);
-    }, {}));
-  }
-
-  async hideHighlight() {
-    return this.raceAgainstEvaluationStallingEvents(async () => {
-      const context = this._contextData.get('utility')?.context;
-      const injectedScript = await context?.injectedScript();
-      await injectedScript?.evaluate(injected => injected.hideHighlight());
-    });
-  }
-
   private async _elementState(progress: Progress, selector: string, state: ElementStateWithoutStable, options: types.QueryOnSelectorOptions, scope?: dom.ElementHandle): Promise<boolean> {
     const { result } = await this._waitForFunctionOnSelector(progress, selector, (injected, element, data) => {
       return { result: injected.elementState(element, data.state) };
@@ -1568,7 +1546,7 @@ export class Frame extends SdkObject<FrameEventMap> {
     let missingReceived = false;
 
     // Non-array expectations are strict (callOnSelector throws on multiple); array ones are not.
-    const resolved = await progress.race(this.selectors.callOnSelector(effectiveSelector, { strict: !isArray, mainWorld, markTargets: 'all', noDefaultPierce: !selector }, async ({ injected, elements }, options) => {
+    const resolved = await progress.race(this.selectors.callOnSelector(effectiveSelector, { strict: !isArray, mainWorld, markTargets: 'all' }, async ({ injected, elements }, options) => {
       const isArray = options.expression === 'to.have.count' || options.expression.endsWith('.array');
       const log = isArray
         ? `  locator resolved to ${elements.length} element${elements.length === 1 ? '' : 's'}`

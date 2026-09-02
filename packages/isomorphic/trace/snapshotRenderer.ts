@@ -16,7 +16,7 @@
 
 import { escapeHTMLAttribute, escapeHTML } from '../stringUtils';
 
-import type { FrameSnapshot, NodeNameAttributesChildNodesSnapshot, NodeSnapshot, RenderedFrameSnapshot, ResourceSnapshot, SubtreeReferenceSnapshot } from '@trace/snapshot';
+import type { FrameSnapshot, NodeNameAttributesChildNodesSnapshot, NodeSnapshot, RenderedFrameSnapshot, ResourceSnapshot, SubtreeReferenceSnapshot } from './trace';
 import type { PageEntry } from './entries';
 import type { LRUCache } from '../lruCache';
 
@@ -79,12 +79,7 @@ export class SnapshotRenderer {
     const visit = (n: NodeSnapshot, snapshotIndex: number, parentTag: string | undefined, parentAttrs: [string, string][] | undefined) => {
       // Text node.
       if (typeof n === 'string') {
-        // Best-effort Electron support: rewrite custom protocol in url() links in stylesheets.
-        // Old snapshotter was sending lower-case.
-        if (parentTag === 'STYLE' || parentTag === 'style')
-          result.push(escapeURLsInStyleSheet(rewriteURLsInStyleSheetForCustomProtocol(n)));
-        else
-          result.push(escapeHTML(n));
+        result.push(escapeHTML(n));
         return;
       }
 
@@ -162,6 +157,13 @@ export class SnapshotRenderer {
           if (!isAnchor && (attr.toLowerCase() === 'href' || attr.toLowerCase() === 'src' || attr === kCurrentSrcAttribute))
             attrValue = rewriteURLForCustomProtocol(value);
           result.push(' ', attrName, '="', escapeHTMLAttribute(attrValue), '"');
+        }
+        if (upperName === 'STYLE') {
+          // Style has always exactly one child which is a text node.
+          const styleContent = typeof children[0] === 'string' ? children[0] : '';
+          result.push(' ', '__playwright_style_content__', '="', escapeHTMLAttribute(rewriteURLsInStyleSheetForCustomProtocol(styleContent)), '"');
+          result.push('></', nodeName, '>');
+          return;
         }
         result.push('>');
         for (const child of children)
@@ -324,7 +326,7 @@ function snapshotScript(viewport: ViewportSize, ...targetIds: (string | undefine
     const canvasElements: HTMLCanvasElement[] = [];
 
     let topSnapshotWindow: Window = win;
-    while (topSnapshotWindow !== topSnapshotWindow.parent && !topSnapshotWindow.location.pathname.match(/\/page@[a-z0-9]+$/))
+    while (topSnapshotWindow !== topSnapshotWindow.parent && new URLSearchParams(topSnapshotWindow.location.search).has('frameId'))
       topSnapshotWindow = topSnapshotWindow.parent;
 
     const visit = (root: Document | ShadowRoot) => {
@@ -333,6 +335,11 @@ function snapshotScript(viewport: ViewportSize, ...targetIds: (string | undefine
         scrollTops.push(e);
       for (const e of root.querySelectorAll(`[__playwright_scroll_left_]`))
         scrollLefts.push(e);
+
+      for (const element of root.querySelectorAll(`style[__playwright_style_content__]`)) {
+        element.textContent = element.getAttribute('__playwright_style_content__');
+        element.removeAttribute('__playwright_style_content__');
+      }
 
       for (const element of root.querySelectorAll(`[__playwright_value_]`)) {
         const inputElement = element as HTMLInputElement | HTMLTextAreaElement;
@@ -394,13 +401,12 @@ function snapshotScript(viewport: ViewportSize, ...targetIds: (string | undefine
         if (!src) {
           iframe.setAttribute('src', blankSnapshotUrl);
         } else {
-          // Retain query parameters to inherit name=, time=, pointX=, pointY= and other values from parent.
+          // The attribute value is recorded as `/snapshot/<frameId>` by the snapshotter.
+          const frameId = src.substring(src.lastIndexOf('/') + 1);
+          // All frames of a page share the snapshot name in the path, so we only swap the frame id.
+          // Retain query parameters to inherit time=, pointX=, pointY= and other values from parent.
           const url = new URL(win.location.href);
-          // We can be loading iframe from within iframe, reset base to be absolute.
-          const index = url.pathname.lastIndexOf('/snapshot/');
-          if (index !== -1)
-            url.pathname = url.pathname.substring(0, index + 1);
-          url.pathname += src.substring(1);
+          url.searchParams.set('frameId', frameId);
           iframe.setAttribute('src', url.toString());
         }
       }
@@ -663,21 +669,6 @@ function rewriteURLsInStyleSheetForCustomProtocol(text: string): string {
       return match;
     return match.replace(protocol + '//', `https://pw-${protocol.slice(0, -1)}--`);
   });
-}
-
-// url() inside a <style> tag can mess up with html parsing, so we encode some of them.
-// As an example, the following url will close the </style> tag:
-// url('data:image/svg+xml,<svg><defs><style>.a{fill:none}</style></defs><g class="a"></g></svg>')
-const urlToEscapeRegex1 = /url\(\s*'([^']*)'\s*\)/ig;
-const urlToEscapeRegex2 = /url\(\s*"([^"]*)"\s*\)/ig;
-function escapeURLsInStyleSheet(text: string): string {
-  const replacer = (match: string, url: string) => {
-    // Conservatively encode only urls with a closing tag.
-    if (url.includes('</'))
-      return match.replace(url, encodeURI(url));
-    return match;
-  };
-  return text.replace(urlToEscapeRegex1, replacer).replace(urlToEscapeRegex2, replacer);
 }
 
 export const blankSnapshotUrl = 'data:text/html;base64,' + btoa(`<body></body><style>body { color-scheme: light dark; background: light-dark(white, #333) }</style>`);

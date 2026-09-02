@@ -19,11 +19,12 @@ import path from 'path';
 
 import { TraceModel, buildActionTree } from '@isomorphic/trace/traceModel';
 import { TraceLoader } from '@isomorphic/trace/traceLoader';
-import { renderTitleForCall } from '@isomorphic/protocolFormatter';
+import { renderFullTitleForCall, renderSubtitleForCall, renderTitleForCall } from '@isomorphic/protocolFormatter';
 import { resolveWithinRoot } from '@utils/fileUtils';
 import { DirTraceLoaderBackend, extractTrace } from './traceParser';
 
 import type { ActionEntry } from '@isomorphic/trace/entries';
+import type { ActionPhase } from '@isomorphic/trace/trace';
 
 const traceDir = path.join('.playwright-cli', 'trace');
 const cliOutputDir = '.playwright-cli';
@@ -109,6 +110,14 @@ export function actionTitle(action: ActionEntry): string {
   return renderTitleForCall({ ...action, type: action.class }) || `${action.class}.${action.method}`;
 }
 
+export function actionSubtitle(action: ActionEntry): string | undefined {
+  return renderSubtitleForCall({ ...action, type: action.class });
+}
+
+export function actionFullTitle(action: ActionEntry): string {
+  return renderFullTitleForCall({ ...action, type: action.class }) || `${action.class}.${action.method}`;
+}
+
 export async function saveOutputFile(fileName: string, content: string | Buffer, explicitOutput?: string): Promise<string> {
   let outFile: string;
   if (explicitOutput) {
@@ -124,6 +133,8 @@ export async function saveOutputFile(fileName: string, content: string | Buffer,
   return outFile;
 }
 
+
+export const kActionPhases: ActionPhase[] = ['before', 'action', 'after'];
 
 function buildOrdinalMap(model: TraceModel): { ordinalToCallId: Map<number, string>, callIdToOrdinal: Map<string, number> } {
   const actions = model.actions.filter(a => a.group !== 'configuration');

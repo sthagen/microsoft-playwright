@@ -19,7 +19,7 @@ import { PNG, jpegjs } from 'playwright-core/lib/utilsBundle';
 import path from 'path';
 import { browserTest, contextTest as test, expect } from '../config/browserTest';
 import { parseTraceRaw } from '../config/utils';
-import type { StackFrame, ActionTraceEvent } from '../../packages/trace/src/trace';
+import type { StackFrame, ActionTraceEvent } from '../../packages/isomorphic/trace/trace';
 import { artifactsFolderName } from '../../packages/playwright/src/isomorphic/folders';
 import { rafraf } from '../page/pageTest';
 
@@ -42,14 +42,14 @@ test('should collect trace with resources, but no js', async ({ context, page, s
   const { events, actions } = await parseTraceRaw(testInfo.outputPath('trace.zip'));
   expect(events[0].type).toBe('context-options');
   expect(actions).toEqual([
-    'Navigate to "/frames/frame.html"',
+    'Navigate /frames/frame.html',
     'Set content',
-    'Click',
+    `Click locator('text="Click"')`,
     'Mouse move',
     'Double click',
     'Insert "abc"',
-    'Navigate to "/input/fileupload.html"',
-    'Set input files',
+    'Navigate /input/fileupload.html',
+    `Set input files locator('input[type="file"]')`,
     'Wait for timeout',
     'Close page',
   ]);
@@ -85,9 +85,9 @@ test('should use the correct title for event driven callbacks', async ({ context
   expect(events[0].type).toBe('context-options');
   expect(actions).toEqual([
     'Route requests',
-    'Navigate to "/empty.html"',
+    'Navigate /empty.html',
     'Continue request',
-    'Navigate to "/grid.html"',
+    'Navigate /grid.html',
     'Evaluate',
     'Reload',
     'Evaluate',
@@ -181,10 +181,11 @@ test('should not include buffers in the trace', async ({ context, page, server }
   await page.goto(server.PREFIX + '/empty.html');
   await page.screenshot();
   await context.tracing.stop({ path: testInfo.outputPath('trace.zip') });
-  const { actionObjects } = await parseTraceRaw(testInfo.outputPath('trace.zip'));
+  const { events, actionObjects } = await parseTraceRaw(testInfo.outputPath('trace.zip'));
   const screenshotEvent = actionObjects.find(a => a.method === 'screenshot');
-  expect(screenshotEvent.beforeSnapshot).toBeTruthy();
-  expect(screenshotEvent.afterSnapshot).toBeTruthy();
+  const phases = events.filter(e => e.type === 'frame-snapshot' && e.snapshot.callId === screenshotEvent.callId).map(e => e.snapshot.phase);
+  expect(phases).toContain('before');
+  expect(phases).toContain('after');
   expect(screenshotEvent.result).toEqual({
     'binary': '<Buffer>',
   });
@@ -201,7 +202,7 @@ test('should exclude internal pages', async ({ browserName, context, page, serve
   const trace = await parseTraceRaw(testInfo.outputPath('trace.zip'));
   const pageIds = new Set();
   trace.events.forEach(e => {
-    const pageId = e.pageId;
+    const pageId = e.pageId ?? e.params?.pageId;
     if (pageId)
       pageIds.add(pageId);
   });
@@ -222,17 +223,18 @@ test('should record context API request trace independently', async ({ context, 
   await context.request.tracing.stop({ path: apiTracePath });
 
   const browserTrace = await parseTraceRaw(browserTracePath);
-  expect(browserTrace.actions).toContain('Navigate to "/one-style.html"');
-  expect(browserTrace.actions).not.toContain('POST "/simple.json"');
-  expect(browserTrace.events.some(event => event.type === 'resource-snapshot' && event.snapshot._apiRequest)).toBe(false);
+  expect(browserTrace.actions).toContain('Navigate /one-style.html');
+  expect(browserTrace.actions).not.toContain('POST /simple.json');
+  expect(browserTrace.events.some(event => event.type === 'resource-snapshot' && event.snapshot.request.url.endsWith('/simple.json'))).toBe(false);
   expect(browserTrace.events.some(event => event.type === 'resource-snapshot' && event.snapshot.request.url.endsWith('/one-style.html'))).toBe(true);
 
   const apiTrace = await parseTraceRaw(apiTracePath);
-  expect(apiTrace.actions).toContain('POST "/simple.json"');
-  expect(apiTrace.actions).not.toContain('Navigate to "/one-style.html"');
+  expect(apiTrace.actions).toContain('POST /simple.json');
+  expect(apiTrace.actions).not.toContain('Navigate /one-style.html');
   const apiAction = apiTrace.actionObjects.find(action => action.class === 'APIRequestContext' && action.method === 'fetch')!;
   expect(relativeStack(apiAction, apiTrace.stacks)).toEqual(['tracing.spec.ts']);
   expect(apiTrace.events.filter(event => event.type === 'resource-snapshot').map(event => event.snapshot.request.url)).toEqual([apiURL]);
+  expect(apiTrace.events.filter(event => event.type === 'resource-snapshot').map(event => event.snapshot._apiRequestRef)).toEqual([expect.stringMatching(/^request-context@/)]);
 });
 
 test('should collect two traces', async ({ context, page, server }, testInfo) => {
@@ -251,9 +253,9 @@ test('should collect two traces', async ({ context, page, server }, testInfo) =>
     const { events, actions } = await parseTraceRaw(testInfo.outputPath('trace1.zip'));
     expect(events[0].type).toBe('context-options');
     expect(actions).toEqual([
-      'Navigate to "/empty.html"',
+      'Navigate /empty.html',
       'Set content',
-      'Click',
+      `Click locator('text="Click"')`,
     ]);
   }
 
@@ -261,7 +263,7 @@ test('should collect two traces', async ({ context, page, server }, testInfo) =>
     const { events, actions } = await parseTraceRaw(testInfo.outputPath('trace2.zip'));
     expect(events[0].type).toBe('context-options');
     expect(actions).toEqual([
-      'Double click',
+      `Double click locator('text="Click"')`,
       'Close page',
     ]);
   }
@@ -295,7 +297,7 @@ test('should respect tracesDir and name', async ({ browserType, server, mode }, 
 
   {
     const { resources, actions } = await parseTraceRaw(testInfo.outputPath('trace1.zip'));
-    expect(actions).toEqual(['Navigate to "/one-style.html"']);
+    expect(actions).toEqual(['Navigate /one-style.html']);
     expect(resourceNames(resources)).toEqual([
       'resources/XXX.css',
       'resources/XXX.html',
@@ -307,7 +309,7 @@ test('should respect tracesDir and name', async ({ browserType, server, mode }, 
 
   {
     const { resources, actions } = await parseTraceRaw(testInfo.outputPath('trace2.zip'));
-    expect(actions).toEqual(['Navigate to "/har.html"']);
+    expect(actions).toEqual(['Navigate /har.html']);
     expect(resourceNames(resources)).toEqual([
       'resources/XXX.css',
       'resources/XXX.html',
@@ -417,6 +419,44 @@ test('should record network failures', async ({ context, page, server }, testInf
   expect(requestEvent).toBeTruthy();
   expect(requestEvent.snapshot._monotonicTime).toBeGreaterThan(0);
   expect(requestEvent.snapshot.time).toBeGreaterThanOrEqual(0);
+});
+
+test('should recover tracing after a failed stop', async ({ context, page, server }, testInfo) => {
+  test.info().annotations.push({ type: 'issue', description: 'https://github.com/microsoft/playwright/issues/42423' });
+  await context.tracing.start();
+  // Saving fails: a parent of the destination is a file, not a directory.
+  const blocker = testInfo.outputPath('blocker');
+  await fs.promises.writeFile(blocker, '');
+  await expect(context.tracing.stop({ path: path.join(blocker, 'trace1.zip') })).rejects.toThrow(/ENOTDIR|ENOENT|EEXIST/);
+
+  // The failed stop must not wedge tracing for the rest of the context lifetime.
+  await context.tracing.start();
+  await page.goto(server.PREFIX + '/input/button.html');
+  await page.click('button');
+  await context.tracing.stop({ path: testInfo.outputPath('trace2.zip') });
+
+  const { events, actions } = await parseTraceRaw(testInfo.outputPath('trace2.zip'));
+  expect(events[0].type).toBe('context-options');
+  expect(actions).toContain(`Click locator('button')`);
+});
+
+test('should release the stack session when saving the trace fails', async ({ browserType }, testInfo) => {
+  test.info().annotations.push({ type: 'issue', description: 'https://github.com/microsoft/playwright/issues/42423' });
+  // Override the test runner's tracesDir, so that the stack session owns a temporary directory.
+  const browser = await browserType.launch({ tracesDir: undefined });
+  try {
+    const context = await browser.newContext();
+    await context.tracing.start();
+    const stacksDir = path.dirname((context.tracing as any)._stacksId);
+    expect(fs.existsSync(stacksDir)).toBe(true);
+
+    const blocker = testInfo.outputPath('blocker');
+    await fs.promises.writeFile(blocker, '');
+    await expect(context.tracing.stop({ path: path.join(blocker, 'trace.zip') })).rejects.toThrow(/ENOTDIR|ENOENT|EEXIST/);
+    expect(fs.existsSync(stacksDir)).toBe(false);
+  } finally {
+    await browser.close();
+  }
 });
 
 test('should not crash when browser closes mid-trace', async ({ browserType, server }, testInfo) => {
@@ -548,7 +588,7 @@ test('should include interrupted actions', async ({ context, page, server }, tes
   await context.close();
 
   const { actions } = await parseTraceRaw(testInfo.outputPath('trace.zip'));
-  expect(actions).toContain('Click');
+  expect(actions).toContain(`Click locator('text="ClickNoButton"')`);
 });
 
 test('should throw when starting with different options', async ({ context }) => {
@@ -589,8 +629,8 @@ test('should work with multiple chunks', async ({ context, page, server }, testI
   expect(trace1.events[0].type).toBe('context-options');
   expect(trace1.actions).toEqual([
     'Set content',
-    'Click',
-    'Click',
+    `Click locator('text="Click"')`,
+    `Click locator('text="ClickNoButton"')`,
     'Evaluate',
   ]);
   expect(trace1.events.some(e => e.type === 'frame-snapshot')).toBeTruthy();
@@ -599,7 +639,7 @@ test('should work with multiple chunks', async ({ context, page, server }, testI
   const trace2 = await parseTraceRaw(testInfo.outputPath('trace2.zip'));
   expect(trace2.events[0].type).toBe('context-options');
   expect(trace2.actions).toEqual([
-    'Hover',
+    `Hover locator('text="Click"')`,
   ]);
   expect(trace2.events.some(e => e.type === 'frame-snapshot')).toBeTruthy();
   expect(trace2.events.some(e => e.type === 'resource-snapshot' && e.snapshot.request.url.endsWith('style.css'))).toBeTruthy();
@@ -647,7 +687,7 @@ test('should ignore iframes in head', async ({ context, page, server }, testInfo
   await context.tracing.stopChunk({ path: testInfo.outputPath('trace.zip') });
 
   const trace = await parseTraceRaw(testInfo.outputPath('trace.zip'));
-  expect(trace.actions).toEqual(['Click']);
+  expect(trace.actions).toEqual([`Click locator('button')`]);
   expect(trace.events.find(e => e.type === 'frame-snapshot')).toBeTruthy();
   expect(trace.events.find(e => e.type === 'frame-snapshot' && JSON.stringify(e.snapshot.html).includes('IFRAME'))).toBeFalsy();
 });

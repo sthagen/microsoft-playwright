@@ -54,8 +54,6 @@ export type OverlayState = {
 export type UIState = {
   mode: Mode;
   actionPoint?: Point;
-  actionSelector?: string;
-  ariaTemplate?: AriaTemplateNode;
   language: Language;
   testIdAttributeName: string;
   overlay: OverlayState;
@@ -66,15 +64,12 @@ export type CallLogStatus = 'in-progress' | 'done' | 'error' | 'paused';
 export type CallLog = {
   id: string;
   title: string;
+  subtitle?: string;
   messages: string[];
   status: CallLogStatus;
   error?: string;
   reveal?: boolean;
   duration?: number;
-  params: {
-    url?: string;
-    selector?: string;
-  };
 };
 
 export type SourceHighlight = {

@@ -18,8 +18,8 @@
 
 import type { Progress } from './progress';
 
-import type { Binary, Channel, AndroidWebView, AndroidSelector, AndroidElementInfo, APIResponse, Metadata, ClientSideCallMetadata, SDKLanguage, WaitInfo, HttpCredentials, SetNetworkCookie, NetworkCookie, ResourceTiming, SecurityDetails, RequestSizes, RemoteAddr, ExpectedTextValue, SelectorEngine, FormField, LifecycleEvent, ConsoleMessagesFilter, RecorderSource, IndexedDBDatabase, SetOriginStorage, OriginStorage, RecordHarOptions, SerializedValue, SerializedArgument, SerializedError, StackFrame, VirtualCredential, Point, Rect, URLPattern, NameValue } from '@protocol/structs';
-export type { Binary, Channel, AndroidWebView, AndroidSelector, AndroidElementInfo, APIResponse, Metadata, ClientSideCallMetadata, SDKLanguage, WaitInfo, HttpCredentials, SetNetworkCookie, NetworkCookie, ResourceTiming, SecurityDetails, RequestSizes, RemoteAddr, ExpectedTextValue, SelectorEngine, FormField, LifecycleEvent, ConsoleMessagesFilter, RecorderSource, IndexedDBDatabase, SetOriginStorage, OriginStorage, RecordHarOptions, SerializedValue, SerializedArgument, SerializedError, StackFrame, VirtualCredential, Point, Rect, URLPattern, NameValue } from '@protocol/structs';
+import type { Binary, Channel, AndroidWebView, AndroidSelector, AndroidElementInfo, APIResponse, Metadata, ClientSideCallMetadata, SDKLanguage, WaitInfo, HttpCredentials, SetNetworkCookie, NetworkCookie, ResourceTiming, SecurityDetails, RequestSizes, RemoteAddr, ExpectedTextValue, SelectorEngine, FormField, LifecycleEvent, ConsoleMessagesFilter, RecorderSource, IndexedDBDatabase, OPFSEntry, SetOriginStorage, OriginStorage, RecordHarOptions, SerializedValue, SerializedArgument, SerializedError, StackFrame, VirtualCredential, Point, Rect, URLPattern, NameValue } from '@protocol/structs';
+export type { Binary, Channel, AndroidWebView, AndroidSelector, AndroidElementInfo, APIResponse, Metadata, ClientSideCallMetadata, SDKLanguage, WaitInfo, HttpCredentials, SetNetworkCookie, NetworkCookie, ResourceTiming, SecurityDetails, RequestSizes, RemoteAddr, ExpectedTextValue, SelectorEngine, FormField, LifecycleEvent, ConsoleMessagesFilter, RecorderSource, IndexedDBDatabase, OPFSEntry, SetOriginStorage, OriginStorage, RecordHarOptions, SerializedValue, SerializedArgument, SerializedError, StackFrame, VirtualCredential, Point, Rect, URLPattern, NameValue } from '@protocol/structs';
 
 // ----------- Initializer Traits -----------
 export type InitializerTraits<T> =
@@ -429,7 +429,6 @@ export type AndroidDeviceLaunchBrowserParams = {
     },
   },
   strictSelectors?: boolean,
-  pierceFrames?: boolean,
   serviceWorkers?: 'allow' | 'block',
   selectorEngines?: SelectorEngine[],
   testIdAttributeName?: string,
@@ -497,7 +496,6 @@ export type AndroidDeviceLaunchBrowserOptions = {
     },
   },
   strictSelectors?: boolean,
-  pierceFrames?: boolean,
   serviceWorkers?: 'allow' | 'block',
   selectorEngines?: SelectorEngine[],
   testIdAttributeName?: string,
@@ -634,9 +632,11 @@ export type APIRequestContextFetchLogResult = {
 };
 export type APIRequestContextStorageStateParams = {
   indexedDB?: boolean,
+  opfs?: boolean,
 };
 export type APIRequestContextStorageStateOptions = {
   indexedDB?: boolean,
+  opfs?: boolean,
 };
 export type APIRequestContextStorageStateResult = {
   cookies: NetworkCookie[],
@@ -878,7 +878,6 @@ export type BrowserNewContextParams = {
     },
   },
   strictSelectors?: boolean,
-  pierceFrames?: boolean,
   serviceWorkers?: 'allow' | 'block',
   selectorEngines?: SelectorEngine[],
   testIdAttributeName?: string,
@@ -949,7 +948,6 @@ export type BrowserNewContextOptions = {
     },
   },
   strictSelectors?: boolean,
-  pierceFrames?: boolean,
   serviceWorkers?: 'allow' | 'block',
   selectorEngines?: SelectorEngine[],
   testIdAttributeName?: string,
@@ -1023,7 +1021,6 @@ export type BrowserNewContextForReuseParams = {
     },
   },
   strictSelectors?: boolean,
-  pierceFrames?: boolean,
   serviceWorkers?: 'allow' | 'block',
   selectorEngines?: SelectorEngine[],
   testIdAttributeName?: string,
@@ -1094,7 +1091,6 @@ export type BrowserNewContextForReuseOptions = {
     },
   },
   strictSelectors?: boolean,
-  pierceFrames?: boolean,
   serviceWorkers?: 'allow' | 'block',
   selectorEngines?: SelectorEngine[],
   testIdAttributeName?: string,
@@ -1207,7 +1203,6 @@ export type BrowserContextInitializer = {
       },
     },
     strictSelectors?: boolean,
-    pierceFrames?: boolean,
     serviceWorkers?: 'allow' | 'block',
     selectorEngines?: SelectorEngine[],
     testIdAttributeName?: string,
@@ -1335,7 +1330,7 @@ export type BrowserContextResponseEvent = {
   page?: PageChannel,
 };
 export type BrowserContextRecorderEventEvent = {
-  event: 'actionAdded' | 'signalAdded',
+  event: 'actionAdded' | 'actionUpdated' | 'signalAdded',
   data: any,
   page: PageChannel,
   code: string,
@@ -1497,10 +1492,12 @@ export type BrowserContextSetOfflineOptions = {
 export type BrowserContextSetOfflineResult = void;
 export type BrowserContextStorageStateParams = {
   indexedDB?: boolean,
+  opfs?: boolean,
   credentials?: boolean,
 };
 export type BrowserContextStorageStateOptions = {
   indexedDB?: boolean,
+  opfs?: boolean,
   credentials?: boolean,
 };
 export type BrowserContextStorageStateResult = {
@@ -1851,7 +1848,6 @@ export type BrowserTypeLaunchPersistentContextParams = {
     },
   },
   strictSelectors?: boolean,
-  pierceFrames?: boolean,
   serviceWorkers?: 'allow' | 'block',
   selectorEngines?: SelectorEngine[],
   testIdAttributeName?: string,
@@ -1935,7 +1931,6 @@ export type BrowserTypeLaunchPersistentContextOptions = {
     },
   },
   strictSelectors?: boolean,
-  pierceFrames?: boolean,
   serviceWorkers?: 'allow' | 'block',
   selectorEngines?: SelectorEngine[],
   testIdAttributeName?: string,
@@ -1951,6 +1946,7 @@ export type BrowserTypeConnectOverCDPParams = {
   slowMo?: number,
   isLocal?: boolean,
   noDefaults?: boolean,
+  isWebView?: boolean,
   artifactsDir?: string,
   transport?: Binary,
 };
@@ -1960,6 +1956,7 @@ export type BrowserTypeConnectOverCDPOptions = {
   slowMo?: number,
   isLocal?: boolean,
   noDefaults?: boolean,
+  isWebView?: boolean,
   artifactsDir?: string,
   transport?: Binary,
 };
@@ -2036,7 +2033,6 @@ export type ElectronLaunchParams = {
     },
   },
   strictSelectors?: boolean,
-  pierceFrames?: boolean,
   timezoneId?: string,
   tracesDir?: string,
   artifactsDir?: string,
@@ -2076,7 +2072,6 @@ export type ElectronLaunchOptions = {
     },
   },
   strictSelectors?: boolean,
-  pierceFrames?: boolean,
   timezoneId?: string,
   tracesDir?: string,
   artifactsDir?: string,

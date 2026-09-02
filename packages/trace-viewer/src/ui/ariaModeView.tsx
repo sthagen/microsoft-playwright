@@ -21,7 +21,7 @@ import { renderAriaSnapshotAsYaml } from '@isomorphic/ariaSnapshotRenderer';
 import { clsx, useMeasure } from '@web/uiUtils';
 import { PlaceholderPanel } from './placeholderPanel';
 
-import type { ActionPhase, ActionTraceEvent, ScreenshotTraceEvent } from '@trace/trace';
+import type { ActionPhase, ActionTraceEvent, ScreenshotTraceEvent } from '@isomorphic/trace/trace';
 import type { AriaNodeJSON, AriaSnapshotJSON } from '@isomorphic/ariaSnapshot';
 import type { TraceModel } from '@isomorphic/trace/traceModel';
 
@@ -35,6 +35,14 @@ export type AriaModeTargets = {
   before?: AriaModeTarget;
   after?: AriaModeTarget;
 };
+
+export function canToggleAriaMode(model: TraceModel | undefined): boolean {
+  return !!model?.hasDomSnapshots && !!model?.hasAriaSnapshots;
+}
+
+export function shouldDisplayAriaMode(model: TraceModel | undefined, setting: boolean): boolean {
+  return canToggleAriaMode(model) ? setting : !!model?.hasAriaSnapshots;
+}
 
 // Mirrors the fallback logic in collectSnapshots(), but for screenshot / aria-snapshot events.
 export function collectAriaModeTargets(model: TraceModel, action: ActionTraceEvent | undefined): AriaModeTargets {

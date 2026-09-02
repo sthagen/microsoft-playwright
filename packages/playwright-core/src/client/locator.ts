@@ -16,9 +16,9 @@
 
 import { inspect } from 'util';
 
-import { resolveBy } from '@isomorphic/by';
 import { asLocatorDescription, locatorCustomDescription } from '@isomorphic/locatorGenerators';
 import { getByAltTextSelector, getByLabelSelector, getByPlaceholderSelector, getByRoleSelector, getByTestIdSelector, getByTextSelector, getByTitleSelector } from '@isomorphic/locatorUtils';
+import { kAnyFrameSelector } from '@isomorphic/selectorParser';
 import { escapeForTextSelector } from '@isomorphic/stringUtils';
 import { isString } from '@isomorphic/rtti';
 import { monotonicTime } from '@isomorphic/time';
@@ -33,7 +33,6 @@ import type { DropPayload, FilePayload, FrameExpectParams, Rect, SelectOption, S
 import type * as structs from '../../types/structs';
 import type * as api from '../../types/types';
 import type { AriaSnapshotJSON } from '@isomorphic/ariaSnapshot';
-import type { By } from '@isomorphic/by';
 import type { ByRoleOptions } from '@isomorphic/locatorUtils';
 import type * as channels from './channels';
 
@@ -181,10 +180,6 @@ export class Locator implements api.Locator {
     return new Locator(this._frame, this._selector + ' >> internal:chain=' + JSON.stringify(selectorOrLocator._selector), options);
   }
 
-  get(by: By): Locator {
-    return this.locator(resolveBy(by, testIdAttributeName()));
-  }
-
   getByTestId(testId: string | RegExp): Locator {
     return this.locator(getByTestIdSelector(testIdAttributeName(), testId));
   }
@@ -219,6 +214,10 @@ export class Locator implements api.Locator {
 
   filter(options?: LocatorOptions): Locator {
     return new Locator(this._frame, this._selector, options);
+  }
+
+  visible(): Locator {
+    return new Locator(this._frame, this._selector, { visible: true });
   }
 
   async elementHandle(options?: TimeoutOptions): Promise<ElementHandle<SVGElement | HTMLElement>> {
@@ -433,14 +432,6 @@ export class Locator implements api.Locator {
   }
 }
 
-export const kPierceFramesSelector = 'internal:control=pierce-frames';
-
-export const kNoPierceFramesSelector = 'internal:control=no-pierce-frames';
-
-function selectorPiercesFrames(selector: string): boolean {
-  return selector === kPierceFramesSelector || selector.startsWith(kPierceFramesSelector + ' >> ');
-}
-
 export class FrameLocator implements api.FrameLocator {
   private _frame: Frame;
   private _frameSelector: string;
@@ -451,7 +442,7 @@ export class FrameLocator implements api.FrameLocator {
   }
 
   private _childSelector(selector: string): string {
-    if (this._frameSelector === kPierceFramesSelector || this._frameSelector === kNoPierceFramesSelector)
+    if (this._frameSelector === kAnyFrameSelector)
       return this._frameSelector + ' >> ' + selector;
     return this._frameSelector + ' >> internal:control=enter-frame >> ' + selector;
   }
@@ -462,10 +453,6 @@ export class FrameLocator implements api.FrameLocator {
     if (selectorOrLocator._frame !== this._frame)
       throw new Error(`Locators must belong to the same frame.`);
     return new Locator(this._frame, this._childSelector(selectorOrLocator._selector), options);
-  }
-
-  get(by: By): Locator {
-    return this.locator(resolveBy(by, testIdAttributeName()));
   }
 
   getByTestId(testId: string | RegExp): Locator {
@@ -505,10 +492,8 @@ export class FrameLocator implements api.FrameLocator {
   }
 
   private _nthSelector(nth: string): string {
-    if (selectorPiercesFrames(this._frameSelector))
-      throw new Error(`Selecting the nth frame is not allowed while piercing frames.`);
-    if (this._frameSelector === kNoPierceFramesSelector)
-      throw new Error(`Selecting the nth frame is not allowed on the root frame locator.`);
+    if (this._frameSelector === kAnyFrameSelector)
+      throw new Error(`Selecting the nth frame is not allowed on frameLocator().`);
     return this._frameSelector + ` >> nth=${nth}`;
   }
 

@@ -29,12 +29,12 @@ import { filteredStackTrace } from '@utils/stackTrace';
 import type { TestStepCategory, TestInfoImpl } from './testInfo';
 import type { PlaywrightWorkerOptions, TestInfo, TestInfoError, TraceMode } from '../../types/test';
 import type { StackFrame } from '@utils/stackTrace';
-import type * as trace from '@trace/trace';
+import type * as trace from '@isomorphic/trace/trace';
 import type EventEmitter from 'events';
 
 export type Attachment = TestInfo['attachments'][0];
 export const testTraceEntryName = 'test.trace';
-const version: trace.VERSION = 8;
+const version: trace.VERSION = 9;
 let traceOrdinal = 0;
 
 type TraceFixtureValue =  PlaywrightWorkerOptions['trace'] | undefined;
@@ -273,7 +273,7 @@ export class TestTracing {
     });
   }
 
-  appendBeforeActionForStep(options: { stepId: string, parentId?: string, title: string, category: TestStepCategory, params?: Record<string, any>, stack: StackFrame[], group?: string }) {
+  appendBeforeActionForStep(options: { stepId: string, parentId?: string, title: string, subtitle?: string, category: TestStepCategory, params?: Record<string, any>, stack: StackFrame[], group?: string }) {
     this._appendTraceEvent({
       type: 'before',
       callId: options.stepId,
@@ -283,6 +283,7 @@ export class TestTracing {
       class: 'Test',
       method: options.category,
       title: options.title,
+      subtitle: options.subtitle,
       params: Object.fromEntries(Object.entries(options.params || {}).map(([name, value]) => [name, generatePreview(value)])),
       stack: options.stack,
       group: options.group,

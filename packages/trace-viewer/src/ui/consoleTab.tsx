@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import type { SerializedError } from '@trace/trace';
+import type { SerializedError } from '@isomorphic/trace/trace';
 import * as React from 'react';
 import './consoleTab.css';
 import type { TraceModel } from '@isomorphic/trace/traceModel';
@@ -65,7 +65,7 @@ export function useConsoleTabModel(model: TraceModel | undefined, selectedTime: 
   const { entries } = React.useMemo(() => {
     if (!model)
       return { entries: [] };
-    const pageTitle = (id: string | undefined) => (id && model.pagerefToTitle.get(id)) || '';
+    const pageTitle = (id: string | undefined) => (id && model.resourceOwnerRefToTitle.get(id)) || '';
     const entries: ConsoleEntry[] = [];
     function addEntry(entry: Omit<ConsoleEntry, 'repeat'>) {
       const lastEntry = entries[entries.length - 1];

@@ -283,6 +283,43 @@ test('should pretty-print response bodies and show formatting errors', async ({ 
   await expect(prettyPrintError).toBeVisible();
 });
 
+test('should pretty-print JSON without losing number precision', async ({ runUITest, server }) => {
+  server.setRoute('/response-bigint', (_, res) => res.setHeader('Content-Type', 'application/json').end('{"id":12345678901234567890,"amount":9007199254740993,"ratio":1.0,"scaled":1e3}'));
+
+  const { page } = await runUITest({
+    'network-tab.test.ts': `
+      import { test } from '@playwright/test';
+      test('network response tab', async ({ request }) => {
+        await request.get('${server.PREFIX}/response-bigint').then(res => res.text());
+      });
+    `,
+  });
+
+  await page.getByText('network response tab').dblclick();
+  await expect(page.getByTestId('workbench-run-status')).toContainText('Passed');
+  await page.getByRole('tab', { name: 'Network' }).click();
+
+  await page.getByRole('listbox', { name: 'Network requests' }).getByRole('option').filter({ hasText: 'response-bigint' }).click();
+  await page.getByRole('tabpanel', { name: 'Network' }).getByRole('tab', { name: 'Response' }).click();
+
+  const responsePanel = page.getByRole('tabpanel', { name: 'Response' });
+  await expect(responsePanel.locator('.CodeMirror-code .CodeMirror-line')).toHaveText([
+    '{',
+    '  "id": 12345678901234567890,',
+    '  "amount": 9007199254740993,',
+    '  "ratio": 1.0,',
+    '  "scaled": 1e3',
+    '}',
+  ], { useInnerText: true });
+  await expect(responsePanel.getByTitle('Formatting failed')).toBeHidden();
+
+  // Raw view keeps the exact bytes as well.
+  await responsePanel.getByRole('button', { name: 'Pretty print', exact: true }).click();
+  await expect(responsePanel.locator('.CodeMirror-code .CodeMirror-line')).toHaveText([
+    '{"id":12345678901234567890,"amount":9007199254740993,"ratio":1.0,"scaled":1e3}',
+  ], { useInnerText: true });
+});
+
 test('should display list of query parameters (only if present)', async ({ runUITest, server }) => {
   const { page } = await runUITest({
     'network-tab.test.ts': `
@@ -390,6 +427,35 @@ test('should toggle sections inside network details', async ({ runUITest, server
   await page.getByRole('option').filter({ hasText: 'post-data-1' }).click();
   await expect(headersPanel.getByRole('region', { name: 'Request Headers × 16' })).toBeHidden();
   await expect(headersPanel.getByRole('region', { name: 'General' })).toContainText(/Start.+Duration\d+ms/);
+});
+
+test('should toggle sections inside network details with keyboard', {
+  annotation: { type: 'issue', description: 'https://github.com/microsoft/playwright/issues/42263' },
+}, async ({ runUITest, server }) => {
+  const { page } = await runUITest({
+    'network-tab.test.ts': `
+      import { test, expect } from '@playwright/test';
+      test('network tab test', async ({ page }) => {
+        await page.goto('${server.PREFIX}/network-tab/network.html');
+        await page.evaluate(() => (window as any).donePromise);
+      });
+    `,
+  });
+
+  await page.getByRole('treeitem', { name: 'network tab test' }).dblclick();
+  await expect(page.getByTestId('workbench-run-status')).toContainText('Passed');
+
+  await page.getByRole('tab', { name: 'Network' }).click();
+  await page.getByRole('option').filter({ hasText: 'post-data-1' }).click();
+  const headersPanel = page.getByRole('tabpanel', { name: 'Headers' });
+
+  const header = headersPanel.getByRole('button', { name: 'Request Headers × 16' });
+  await header.focus();
+  await expect(header).toBeFocused();
+  await header.press('Enter');
+  await expect(headersPanel.getByRole('region', { name: 'Request Headers × 16' })).toBeHidden();
+  await header.press(' ');
+  await expect(headersPanel.getByRole('region', { name: 'Request Headers × 16' })).toBeVisible();
 });
 
 test('should copy network request', async ({ runUITest, server }) => {

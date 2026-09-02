@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import type { ResourceSnapshot } from '@trace/snapshot';
+import type { ResourceSnapshot } from '@isomorphic/trace/trace';
 import * as React from 'react';
 import './networkResourceDetails.css';
 import { TabbedPane } from '@web/components/tabbedPane';
@@ -27,7 +27,7 @@ import type { Language } from '@isomorphic/locatorGenerators';
 import { isJsonMimeType, isXmlMimeType } from '@isomorphic/mimeType';
 import { useAsyncMemo, useSetting } from '@web/uiUtils';
 import { bytesToString, msToString } from '@isomorphic/formatUtils';
-import type { Entry, WebSocketMessage } from '@trace/har';
+import type { Entry, WebSocketMessage } from '@isomorphic/trace/versions/har';
 import { useTraceModel } from './traceModelContext';
 import { Expandable } from '@web/components/expandable';
 import { ListView } from '@web/components/listView';
@@ -140,13 +140,11 @@ const ExpandableSection: React.FC<{
     setExpanded={setExpanded}
     expandOnTitleClick
     title={
-      <>
-        <span className='network-request-details-header'>{title}
-          {showCount && <span className='network-request-details-header-count'> × {data?.length ?? 0}</span>}
-        </span>
-        { titleChildren }
-      </>
+      <span className='network-request-details-header'>{title}
+        {showCount && <span className='network-request-details-header-count'> × {data?.length ?? 0}</span>}
+      </span>
     }
+    titleSuffix={titleChildren}
     className={className}
   >
     {data && <table className='network-request-details-table'>
@@ -511,12 +509,21 @@ function formatXml(xml: string, indent = '  ') {
   return lines.join('\n');
 }
 
+// JSON.parse turns every number into a double, which rounds integers beyond
+// Number.MAX_SAFE_INTEGER. Preserve the original source text of each number instead.
+function formatJson(json: string): string {
+  const rawJSON = (JSON as { rawJSON?(text: string): unknown }).rawJSON;
+  const preserveNumbers = rawJSON && ((key: string, value: any, context?: { source?: string }) =>
+    typeof value === 'number' && context?.source !== undefined ? rawJSON(context.source) : value);
+  return JSON.stringify(JSON.parse(json, preserveNumbers), null, 2);
+}
+
 function formatBody(body: string, contentType?: string): string {
   if (!body.trim() || !contentType)
     return body;
 
   if (isJsonMimeType(contentType))
-    return JSON.stringify(JSON.parse(body), null, 2);
+    return formatJson(body);
 
   if (isXmlMimeType(contentType))
     return formatXml(body);

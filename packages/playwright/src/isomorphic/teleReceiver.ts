@@ -108,7 +108,9 @@ export type JsonTestStepStart = {
   id: string;
   parentStepId?: string;
   title: string;
+  subtitle?: string;
   category: string,
+  params?: Record<string, any>;
   startTime: number;
   location?: reporterTypes.Location;
 };
@@ -723,7 +725,9 @@ export class TeleTestCase implements reporterTypes.TestCase {
 
 class TeleTestStep implements reporterTypes.TestStep {
   title: string;
+  subtitle: string | undefined;
   category: string;
+  params: Record<string, any> | undefined;
   location: reporterTypes.Location | undefined;
   parent: reporterTypes.TestStep | undefined;
   duration: number = -1;
@@ -737,7 +741,9 @@ class TeleTestStep implements reporterTypes.TestStep {
 
   constructor(payload: JsonTestStepStart, parentStep: reporterTypes.TestStep | undefined, location: reporterTypes.Location | undefined, result: TeleTestResult) {
     this.title = payload.title;
+    this.subtitle = payload.subtitle;
     this.category = payload.category;
+    this.params = payload.params;
     this.location = location;
     this.parent = parentStep;
     this._startTime = payload.startTime;

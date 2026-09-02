@@ -95,6 +95,19 @@ export const TestResultView: React.FC<{
   const [stepFilterText, setStepFilterText] = React.useState('');
   React.useEffect(() => setStepFilterText(''), [result]);
 
+  const waterfall = React.useMemo(() => {
+    let startTime = Infinity;
+    let endTime = -Infinity;
+    const visit = (step: TestStep) => {
+      const start = new Date(step.startTime).valueOf();
+      startTime = Math.min(startTime, start);
+      endTime = Math.max(endTime, start + Math.max(0, step.duration));
+      step.steps.forEach(visit);
+    };
+    result.steps.forEach(visit);
+    return { startTime, duration: Math.max(1, endTime - startTime) };
+  }, [result]);
+
   const prompt = useAsyncMemo(async () => {
     if (report.json().options?.noCopyPrompt)
       return undefined;
@@ -141,7 +154,7 @@ export const TestResultView: React.FC<{
         {icons.search()}
         <input className='form-control subnav-search-input input-contrast width-full' type='search' spellCheck={false} placeholder='Filter steps' aria-label='Filter steps' value={stepFilterText} onChange={e => setStepFilterText(e.target.value)} />
       </form>
-      {result.steps.map((step, i) => <StepTreeItem key={`step-${i}`} step={step} result={result} test={test} depth={0} filterText={stepFilterText}/>)}
+      {result.steps.map((step, i) => <StepTreeItem key={`step-${i}`} step={step} result={result} test={test} depth={0} filterText={stepFilterText} waterfall={waterfall}/>)}
     </AutoChip>}
 
     {diffs.map((diff, index) =>
@@ -164,12 +177,12 @@ export const TestResultView: React.FC<{
     </AutoChip>}
 
     {!!traces.length && <Anchor id='attachment-trace'><AutoChip header='Traces' revealOnAnchorId='attachment-trace'>
-      {<div>
-        <a href={formatUrl(generateTraceUrl(traces))}>
+      {traces.map((a, i) => <div key={`trace-${i}`}>
+        <a href={formatUrl(generateTraceUrl([a]))}>
           <img className='screenshot' src={traceImage} style={{ width: 192, height: 117, marginLeft: 20 }} />
         </a>
-        {traces.map((a, i) => <AttachmentLink key={`trace-${i}`} attachment={a} result={result} linkName={traces.length === 1 ? 'trace' : `trace-${i + 1}`}></AttachmentLink>)}
-      </div>}
+        <AttachmentLink attachment={a} result={result} linkName={traces.length === 1 ? 'trace' : `trace-${i + 1}`}></AttachmentLink>
+      </div>)}
     </AutoChip></Anchor>}
 
     {!!videos.length && <Anchor id='attachment-video'><AutoChip header='Videos' revealOnAnchorId='attachment-video'>
@@ -209,15 +222,38 @@ function pickDiffForError(error: string, diffs: ImageDiff[]): ImageDiff | undefi
 }
 
 function stepMatchesFilter(step: TestStep, filterText: string): boolean {
-  return step.title.toLowerCase().includes(filterText.toLowerCase());
+  const text = step.subtitle ? `${step.title} ${step.subtitle}` : step.title;
+  return text.toLowerCase().includes(filterText.toLowerCase());
 }
 
 function stepChildrenMatchFilter(step: TestStep, filterText: string): boolean {
   return step.steps.some(s => stepMatchesFilter(s, filterText) || stepChildrenMatchFilter(s, filterText));
 }
 
+function highlightFilterText(text: string, filterText: string): React.ReactNode[] {
+  const unmatched = text.toLowerCase().split(filterText.toLowerCase());
+  const parts: React.ReactNode[] = [];
+  let index = 0;
+  for (let i = 0; i < unmatched.length; i++) {
+    if (i) {
+      parts.push(<span key={`highlight-${i}`} className='step-title-highlight'>{text.substring(index, index + filterText.length)}</span>);
+      index += filterText.length;
+    }
+    parts.push(text.substring(index, index + unmatched[i].length));
+    index += unmatched[i].length;
+  }
+  return parts;
+}
+
 function stepHasDescendantAttachments(step: TestStep): boolean {
   return step.steps.some(s => s.attachments.length > 0 || stepHasDescendantAttachments(s));
+}
+
+function waterfallBlockStyle(step: TestStep, waterfall: { startTime: number, duration: number }): React.CSSProperties {
+  const startOffset = new Date(step.startTime).valueOf() - waterfall.startTime;
+  const left = Math.min(100, Math.max(0, startOffset / waterfall.duration * 100));
+  const width = Math.min(100 - left, Math.max(0, step.duration) / waterfall.duration * 100);
+  return { left: `${left}%`, width: `${width}%` };
 }
 
 const StepTreeItem: React.FC<{
@@ -226,11 +262,13 @@ const StepTreeItem: React.FC<{
   step: TestStep;
   depth: number,
   filterText?: string,
-}> = ({ test, step, result, depth, filterText }) => {
+  waterfall: { startTime: number, duration: number },
+}> = ({ test, step, result, depth, filterText, waterfall }) => {
   const searchParams = useSearchParams();
 
   let expandByDefault = false;
   let title: React.ReactNode = <span>{step.title}</span>;
+  let subtitle: React.ReactNode = step.subtitle;
 
   if (filterText) {
     const matchesFilter = !!filterText && stepMatchesFilter(step, filterText);
@@ -239,25 +277,17 @@ const StepTreeItem: React.FC<{
       return null;
     expandByDefault = childrenMatchFilter;
     if (matchesFilter) {
-      const unmatched = step.title.toLowerCase().split(filterText.toLowerCase());
-      const parts: React.ReactNode[] = [];
-      let index = 0;
-      for (let i = 0; i < unmatched.length; i++) {
-        if (i) {
-          parts.push(<span key={i} className='step-title-highlight'>{step.title.substring(index, index + filterText.length)}</span>);
-          index += filterText.length;
-        }
-        parts.push(unmatched[i]);
-        index += unmatched[i].length;
-      }
-      title = parts;
+      title = highlightFilterText(step.title, filterText);
+      if (step.subtitle)
+        subtitle = highlightFilterText(step.subtitle, filterText);
     }
   }
 
-  return <TreeItem title={<div aria-label={step.title} className='step-title-container'>
+  return <TreeItem title={<div aria-label={step.subtitle ? `${step.title} ${step.subtitle}` : step.title} className='step-title-container'>
     {statusIcon(step.error || step.duration === -1 ? 'failed' : (step.skipped ? 'skipped' : 'passed'))}
     <span className='step-title-text'>
       {title}
+      {step.subtitle && <span className='step-subtitle'> {subtitle}</span>}
       {step.count > 1 && <> ✕ <span className='test-result-counter'>{step.count}</span></>}
       {step.location && <span className='test-result-path'>— {step.location.file}:{step.location.line}</span>}
     </span>
@@ -275,10 +305,13 @@ const StepTreeItem: React.FC<{
       aria-label='contains attachment'>
       {icons.indirectAttachment()}
     </span>}
+    <span className='step-waterfall'>
+      <span className='step-waterfall-block' style={waterfallBlockStyle(step, waterfall)}></span>
+    </span>
     <span className='step-duration'>{msToString(step.duration)}</span>
   </div>} loadChildren={step.steps.length || step.snippet ? () => {
     const snippet = step.snippet ? [<CodeSnippet testId='test-snippet' key='line' code={step.snippet} />] : [];
-    const steps = step.steps.map((s, i) => <StepTreeItem key={i} step={s} depth={depth + 1} result={result} test={test} filterText={filterText} />);
+    const steps = step.steps.map((s, i) => <StepTreeItem key={i} step={s} depth={depth + 1} result={result} test={test} filterText={filterText} waterfall={waterfall} />);
     return snippet.concat(steps);
   } : undefined} depth={depth} expandByDefault={expandByDefault}/>;
 };

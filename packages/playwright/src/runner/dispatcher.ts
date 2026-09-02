@@ -399,12 +399,14 @@ class JobDispatcher {
     const parentStep = params.parentStepId ? steps.get(params.parentStepId) : undefined;
     const step: TestStep = {
       title: params.title,
+      subtitle: params.subtitle,
       titlePath: () => {
         const parentPath = parentStep?.titlePath() || [];
         return [...parentPath, params.title];
       },
       parent: parentStep,
       category: params.category,
+      params: params.params,
       startTime: new Date(params.wallTime),
       duration: -1,
       steps: [],

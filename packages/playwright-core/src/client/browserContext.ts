@@ -58,6 +58,7 @@ import type * as actions from '@isomorphic/codegen/actions';
 
 interface RecorderEventSink {
   actionAdded?(page: Page, action: actions.Action, code: string): void;
+  actionUpdated?(page: Page, action: actions.Action, code: string): void;
   signalAdded?(page: Page, signal: actions.Signal, code: string): void;
 }
 
@@ -170,6 +171,8 @@ export class BrowserContext extends ChannelOwner<channels.BrowserContextChannel>
     this._channel.on('recorderEvent', ({ event, data, page, code }) => {
       if (event === 'actionAdded')
         this._onRecorderEventSink?.actionAdded?.(Page.from(page), data as actions.Action, code);
+      else if (event === 'actionUpdated')
+        this._onRecorderEventSink?.actionUpdated?.(Page.from(page), data as actions.Action, code);
       else if (event === 'signalAdded')
         this._onRecorderEventSink?.signalAdded?.(Page.from(page), data as actions.Signal, code);
     });
@@ -476,8 +479,8 @@ export class BrowserContext extends ChannelOwner<channels.BrowserContextChannel>
     });
   }
 
-  async storageState(options: { path?: string, indexedDB?: boolean, credentials?: boolean } = {}): Promise<StorageState> {
-    const state = await this._channel.storageState({ indexedDB: options.indexedDB, credentials: options.credentials }, kNoTimeout);
+  async storageState(options: { path?: string, indexedDB?: boolean, opfs?: boolean, credentials?: boolean } = {}): Promise<StorageState> {
+    const state = await this._channel.storageState({ indexedDB: options.indexedDB, opfs: options.opfs, credentials: options.credentials }, kNoTimeout);
     if (options.path) {
       await mkdirIfNeeded(options.path);
       await fs.promises.writeFile(options.path, JSON.stringify(state, undefined, 2), 'utf8');
@@ -542,8 +545,11 @@ export class BrowserContext extends ChannelOwner<channels.BrowserContextChannel>
   }
 
   async _disableRecorder() {
-    this._onRecorderEventSink = undefined;
-    await this._channel.disableRecorder({}, kNoTimeout);
+    try {
+      await this._channel.disableRecorder({}, kNoTimeout);
+    } finally {
+      this._onRecorderEventSink = undefined;
+    }
   }
 
   async _exposeConsoleApi() {

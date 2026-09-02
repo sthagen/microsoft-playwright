@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { renderTitleForCall } from '@isomorphic/protocolFormatter';
+import { renderFullTitleForCall } from '@isomorphic/protocolFormatter';
 import { ExpectError, Frame } from '../frames';
 import { Dispatcher } from './dispatcher';
 import { ElementHandleDispatcher } from './elementHandlerDispatcher';
@@ -272,15 +272,15 @@ export class FrameDispatcher extends Dispatcher<Frame, channels.FrameChannel, Br
   }
 
   async highlight(params: channels.FrameHighlightParams, progress: Progress): Promise<void> {
-    return await this._frame.addHighlight(progress, params.selector, params.style);
+    return await progress.race(this._frame._page.highlightController.addHighlight(params.selector, { style: params.style }));
   }
 
   async hideHighlight(params: channels.FrameHideHighlightParams, progress: Progress): Promise<void> {
-    return await this._frame.removeHighlight(progress, params.selector);
+    return await progress.race(this._frame._page.highlightController.removeHighlight(params.selector));
   }
 
   async expect(params: channels.FrameExpectParams, progress: Progress): Promise<channels.FrameExpectResult> {
-    progress.log(`${renderTitleForCall(progress.metadata)}${progress.timeout ? ` with timeout ${progress.timeout}ms` : ''}`);
+    progress.log(`${renderFullTitleForCall(progress.metadata, this._frame._page.browserContext._browser.sdkLanguage())}${progress.timeout ? ` with timeout ${progress.timeout}ms` : ''}`);
     const expectedValue = params.expectedValue ? parseArgument(params.expectedValue) : undefined;
     try {
       await this._frame.expect(progress, params.selector, { ...params, expectedValue });

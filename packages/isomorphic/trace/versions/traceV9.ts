@@ -14,9 +14,9 @@
  * limitations under the License.
  */
 
-import type { FrameSnapshot, ResourceSnapshot } from './snapshot';
-import type { Language } from '@isomorphic/locatorGenerators';
-import type { Point, Rect } from '@isomorphic/types';
+import type { Entry as HAREntry } from './har';
+import type { Language } from '../../locatorGenerators';
+import type { Point, Rect } from '../../types';
 
 export type Size = { width: number, height: number };
 
@@ -68,7 +68,11 @@ export type SerializedError = {
 };
 
 // Make sure you add _modernize_N_to_N1(event: any) to traceModernizer.ts.
-export type VERSION = 8;
+// 6 => released in ~1.40
+// 7 => released in ~1.45
+// 8 => released in 1.53
+// 9 => released in 1.63
+export type VERSION = 9;
 
 export type BrowserContextEventOptions = {
   baseURL?: string,
@@ -106,12 +110,23 @@ export type ScreencastFrameTraceEvent = {
   frameSwapWallTime?: number,
 };
 
+export type VideoTraceEvent = {
+  type: 'video',
+  pageId: string,
+  file: string,
+  width: number,
+  height: number,
+  timestamp: number,
+};
+
 export type ActionPhase = 'before' | 'action' | 'after';
 
 export type ScreenshotTraceEvent = {
   type: 'screenshot',
   callId: string,
   phase: ActionPhase,
+  pageId: string,
+  timestamp: number,
   file: string,
 };
 
@@ -119,6 +134,8 @@ export type AriaSnapshotTraceEvent = {
   type: 'aria-snapshot',
   callId: string,
   phase: ActionPhase,
+  pageId: string,
+  timestamp: number,
   file: string,
 };
 
@@ -127,13 +144,12 @@ export type BeforeActionTraceEvent = {
   callId: string;
   startTime: number;
   title?: string;
+  subtitle?: string;
   class: string;
   method: string;
   params: Record<string, any>;
   stepId?: string;
-  beforeSnapshot?: string;
   stack?: StackFrame[];
-  pageId?: string;
   parentId?: string;
   group?: string;
 };
@@ -141,7 +157,6 @@ export type BeforeActionTraceEvent = {
 export type InputActionTraceEvent = {
   type: 'input',
   callId: string;
-  inputSnapshot?: string;
   point?: Point;
   box?: Rect;
 };
@@ -163,7 +178,6 @@ export type AfterActionTraceEvent = {
   type: 'after',
   callId: string;
   endTime: number;
-  afterSnapshot?: string;
   error?: SerializedError['error'];
   attachments?: AfterActionTraceEventAttachment[];
   annotations?: TraceEventAnnotation[];
@@ -201,6 +215,51 @@ export type ConsoleMessageTraceEvent = {
   },
 };
 
+export type ResourceSnapshot = HAREntry;
+
+// Text node.
+export type TextNodeSnapshot = string;
+// Subtree reference, "x snapshots ago, node #y". Could point to a text node.
+// Only nodes that are not references are counted, starting from zero, using post-order traversal.
+export type SubtreeReferenceSnapshot = [ [number, number] ];
+// Node name, and optional attributes and child nodes.
+export type NodeNameAttributesChildNodesSnapshot = [ string ] | [ string, Record<string, string>, ...NodeSnapshot[] ];
+
+export type NodeSnapshot =
+  TextNodeSnapshot |
+  SubtreeReferenceSnapshot |
+  NodeNameAttributesChildNodesSnapshot;
+
+export type ResourceOverride = {
+  url: string,
+  file?: string,
+  ref?: number
+};
+
+export type FrameSnapshot = {
+  phase?: ActionPhase,
+  snapshotName?: string, // Legacy, only present in traces recorded before phase was introduced.
+  callId: string,
+  pageId: string,
+  frameId: string,
+  frameUrl: string,
+  timestamp: number,
+  wallTime?: number,
+  collectionTime: number,
+  doctype?: string,
+  html: NodeSnapshot,
+  resourceOverrides: ResourceOverride[],
+  viewport: { width: number, height: number },
+  isMainFrame: boolean,
+};
+
+export type RenderedFrameSnapshot = {
+  html: string;
+  pageId: string;
+  frameId: string;
+  index: number;
+};
+
 export type ResourceSnapshotTraceEvent = {
   type: 'resource-snapshot',
   snapshot: ResourceSnapshot,
@@ -233,6 +292,7 @@ export type ErrorTraceEvent = {
 export type TraceEvent =
     ContextCreatedTraceEvent |
     ScreencastFrameTraceEvent |
+    VideoTraceEvent |
     ScreenshotTraceEvent |
     AriaSnapshotTraceEvent |
     ActionTraceEvent |

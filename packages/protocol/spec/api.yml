@@ -21,7 +21,11 @@ APIRequestContext:
   commands:
 
     fetch:
-      title: '{method} "{url}"'
+      title: '{method}'
+      subtitle: '{url}'
+      renderParams:
+      - url
+      - method
       parameters:
         url: string
         encodedParams: string?
@@ -69,6 +73,7 @@ APIRequestContext:
       group: configuration
       parameters:
         indexedDB: boolean?
+        opfs: boolean?
       returns:
         cookies:
           type: array

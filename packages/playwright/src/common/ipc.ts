@@ -126,7 +126,9 @@ export type StepBeginPayload = {
   stepId: string;
   parentStepId: string | undefined;
   title: string;
+  subtitle?: string;
   category: string;
+  params?: Record<string, any>;
   wallTime: number;  // milliseconds since unix epoch
   location?: { file: string, line: number, column: number };
 };

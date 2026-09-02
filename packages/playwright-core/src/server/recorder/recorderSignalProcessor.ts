@@ -27,7 +27,7 @@ export interface ProcessorDelegate {
 }
 
 // How long an action is held back, waiting for a superseding action to merge with it:
-// a double click after a click, another keystroke after a fill, another navigation.
+// a double click after a click, another navigation after a navigation.
 const kActionBufferTimeout = 500;
 
 type BufferedSignal = { frame: Frame, signal: Signal, timestamp: number };
@@ -51,7 +51,7 @@ export class RecorderSignalProcessor {
         this._resetPendingTimeout();
         return;
       }
-      this._flushPendingAction();
+      this.flush();
     }
 
     if (this._shouldBuffer(actionInContext)) {
@@ -59,7 +59,7 @@ export class RecorderSignalProcessor {
         actionInContext,
         receivedAt: timestamp,
         signals: [],
-        timeout: setTimeout(() => this._flushPendingAction(), kActionBufferTimeout),
+        timeout: setTimeout(() => this.flush(), kActionBufferTimeout),
       };
       return;
     }
@@ -83,7 +83,7 @@ export class RecorderSignalProcessor {
 
   private _shouldBuffer(actionInContext: actions.ActionInContext): boolean {
     const action = actionInContext.action;
-    return (action.name === 'click' && action.button === 'left') || action.name === 'fill' || action.name === 'navigate';
+    return (action.name === 'click' && action.button === 'left') || action.name === 'navigate';
   }
 
   private _supersedes(actionInContext: actions.ActionInContext, pending: actions.ActionInContext): boolean {
@@ -94,9 +94,6 @@ export class RecorderSignalProcessor {
     // A higher click count on the same target is a double (or triple) click.
     if (action.name === 'click' && pendingAction.name === 'click')
       return action.selector === pendingAction.selector && action.clickCount > pendingAction.clickCount;
-    // Another keystroke into the same field supersedes the previous value.
-    if (action.name === 'fill' && pendingAction.name === 'fill')
-      return action.selector === pendingAction.selector;
     // Another navigation on the same page supersedes the previous url.
     if (action.name === 'navigate' && pendingAction.name === 'navigate')
       return true;
@@ -107,7 +104,7 @@ export class RecorderSignalProcessor {
     if (!this._pendingAction)
       return;
     clearTimeout(this._pendingAction.timeout);
-    this._pendingAction.timeout = setTimeout(() => this._flushPendingAction(), kActionBufferTimeout);
+    this._pendingAction.timeout = setTimeout(() => this.flush(), kActionBufferTimeout);
   }
 
   private _emitAction(actionInContext: actions.ActionInContext, timestamp: number) {
@@ -116,7 +113,7 @@ export class RecorderSignalProcessor {
     this._delegate.addAction(actionInContext);
   }
 
-  private _flushPendingAction() {
+  flush() {
     const pending = this._pendingAction;
     if (!pending)
       return;

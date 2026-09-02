@@ -21,12 +21,11 @@ import { TLSSocket } from 'tls';
 import * as zlib from 'zlib';
 
 import { createGuid } from '@utils/crypto';
-import { httpHappyEyeballsAgent, httpsHappyEyeballsAgent, timingForSocket } from '@utils/happyEyeballs';
 import { assert } from '@isomorphic/assert';
 import { constructURLBasedOnBaseURL } from '@isomorphic/urlMatch';
 import { eventsHelper } from '@utils/eventsHelper';
 import { monotonicTime } from '@isomorphic/time';
-import { createProxyAgent } from '@utils/network';
+import { createProxyAgent, flattenAggregateError, happyEyeballsOptions } from '@utils/network';
 import { getUserAgent } from './userAgent';
 import { BrowserContext, findMatchingHttpCredentials, verifyClientCertificates } from './browserContext';
 import { Cookie, CookieStore, domainMatches, parseRawCookie } from './cookieStore';
@@ -46,7 +45,7 @@ import type { HeadersArray, ProxySettings } from './types';
 import type { HttpCredentials } from '@protocol/structs';
 import type { RegisteredListener } from '@utils/eventsHelper';
 import type * as channels from './channels';
-import type * as har from '@trace/har';
+import type * as har from '@isomorphic/trace/versions/har';
 import type { LookupAddress } from 'dns';
 import type { Readable, TransformCallback } from 'stream';
 
@@ -113,6 +112,12 @@ export abstract class APIRequestContext extends SdkObject {
   protected static allInstances: Set<APIRequestContext> = new Set();
   _closeReason: string | undefined;
   private _disposed = false;
+  // Certificate details observed during a full TLS handshake are cached by endpoint, so that
+  // future requests that use a resumed TLS session can report security details.
+  private _certificateDetails = new Map<string, har.SecurityDetails>();
+  // Custom https agent ensures that we have our own TLS connection, and not reuse an existing
+  // one from the global Node.js agent.
+  private _agentForProtocol = new Map<string, http.Agent>();
 
   static findResponseBody(guid: string): Buffer | undefined {
     for (const request of APIRequestContext.allInstances) {
@@ -129,7 +134,7 @@ export abstract class APIRequestContext extends SdkObject {
     APIRequestContext.allInstances.add(this);
   }
 
-  abstract storageState(progress: Progress, indexedDB?: boolean): Promise<channels.APIRequestContextStorageStateResult>;
+  abstract storageState(progress: Progress, params: { indexedDB?: boolean, opfs?: boolean }): Promise<channels.APIRequestContextStorageStateResult>;
 
   fetchResponseBody(progress: Progress, fetchUid: string): Buffer | undefined {
     return this.fetchResponses.get(fetchUid);
@@ -156,7 +161,22 @@ export abstract class APIRequestContext extends SdkObject {
     APIRequestContext.allInstances.delete(this);
     this.fetchResponses.clear();
     this.fetchLog.clear();
+    for (const agent of this._agentForProtocol.values())
+      agent.destroy();
+    this._agentForProtocol.clear();
+    this._certificateDetails.clear();
     this.emit(APIRequestContext.Events.Dispose);
+  }
+
+  private _ensureAgent(protocol: string): http.Agent {
+    let agent = this._agentForProtocol.get(protocol);
+    if (!agent) {
+      // Aligned with the default Node.js global agent options. Connection options such as
+      // `lookup` stay per-request, since agent options take precedence over request ones.
+      agent = protocol === 'https:' ? new https.Agent({ keepAlive: true }) : new http.Agent({ keepAlive: true });
+      this._agentForProtocol.set(protocol, agent);
+    }
+    return agent;
   }
 
   _disposeResponse(fetchUid: string) {
@@ -342,9 +362,13 @@ export abstract class APIRequestContext extends SdkObject {
     const resultPromise = new Promise<SendRequestResult>((fulfill, reject) => {
       const requestConstructor: ((url: URL, options: http.RequestOptions, callback?: (res: http.IncomingMessage) => void) => http.ClientRequest)
         = (url.protocol === 'https:' ? https : http).request;
-      // If we have a proxy agent already, do not override it.
-      const agent = options.agent || (url.protocol === 'https:' ? httpsHappyEyeballsAgent : httpHappyEyeballsAgent);
-      const requestOptions = { ...options, agent };
+      // Without an explicit proxy agent, use this context's own agent, which has
+      // keep-alive enabled and connects with Happy Eyeballs (autoSelectFamily).
+      // Resolved per request so that a cross-protocol redirect picks the right agent.
+      const requestOptions = { ...options, ...happyEyeballsOptions };
+      requestOptions.agent = options.agent ?? this._ensureAgent(url.protocol);
+      if (options.__testHookLookup)
+        requestOptions.lookup = lookupWithTestHook(options.__testHookLookup);
 
       const startAt = monotonicTime();
       const startAtWallTime = Date.now();
@@ -357,6 +381,7 @@ export abstract class APIRequestContext extends SdkObject {
       let serverPort: number | undefined;
 
       let securityDetails: har.SecurityDetails | undefined;
+      const certificateCacheKey = `${url.host}:${(options as https.RequestOptions).servername ?? ''}`;
       let responseReceived = false;
 
       const listeners: RegisteredListener[] = [];
@@ -366,7 +391,7 @@ export abstract class APIRequestContext extends SdkObject {
         // https://github.com/nodejs/undici/blob/01a912e49a50c48009ed2639d2a457a6ec26752a/lib/dispatcher/client-h1.js#L735
         if (responseReceived && isNetworkConnectionError(error))
           return;
-        reject(error);
+        reject(flattenAggregateError(error));
       };
 
       const request = requestConstructor(url, requestOptions as any, async response => {
@@ -584,16 +609,23 @@ export abstract class APIRequestContext extends SdkObject {
       const captureSecurityDetails = (socket: net.Socket) => {
         if (!(socket instanceof TLSSocket))
           return;
+        const protocol = socket.getProtocol() ?? undefined;
         const peerCertificate = socket.getPeerCertificate();
+        if (!peerCertificate.valid_from) {
+          // A resumed TLS session returns an empty getPeerCertificate(), and we use the cached data.
+          securityDetails = { ...this._certificateDetails.get(certificateCacheKey), protocol };
+          return;
+        }
         // Multi-value RDNs are reported as string arrays, take the first common name.
         const commonName = (field: string | string[] | undefined) => Array.isArray(field) ? field[0] : field;
         securityDetails = {
-          protocol: socket.getProtocol() ?? undefined,
+          protocol,
           subjectName: commonName(peerCertificate.subject?.CN),
           validFrom: new Date(peerCertificate.valid_from).getTime() / 1000,
           validTo: new Date(peerCertificate.valid_to).getTime() / 1000,
           issuer: commonName(peerCertificate.issuer?.CN)
         };
+        this._certificateDetails.set(certificateCacheKey, securityDetails);
       };
 
       request.on('socket', socket => {
@@ -614,15 +646,13 @@ export abstract class APIRequestContext extends SdkObject {
           return;
         }
 
-        // happy eyeballs don't emit lookup and connect events, so we use our custom ones
-        const happyEyeBallsTimings = timingForSocket(socket);
-        dnsLookupAt = happyEyeBallsTimings.dnsLookupAt;
-        tcpConnectionAt = happyEyeBallsTimings.tcpConnectionAt;
-
-        // non-happy-eyeballs sockets
         listeners.push(
             eventsHelper.addEventListener(socket, 'lookup', () => { dnsLookupAt = monotonicTime(); }),
-            eventsHelper.addEventListener(socket, 'connect', () => { tcpConnectionAt = monotonicTime(); }),
+            eventsHelper.addEventListener(socket, 'connect', () => {
+              tcpConnectionAt = monotonicTime();
+              serverIPAddress = socket.remoteAddress;
+              serverPort = socket.remotePort;
+            }),
             eventsHelper.addEventListener(socket, 'secureConnect', () => {
               tlsHandshakeAt = monotonicTime();
               captureSecurityDetails(socket);
@@ -717,8 +747,8 @@ export class BrowserContextAPIRequestContext extends APIRequestContext {
     return await this._context.cookies(progress, url.toString());
   }
 
-  override async storageState(progress: Progress, indexedDB?: boolean): Promise<channels.APIRequestContextStorageStateResult> {
-    return this._context.storageState(progress, indexedDB);
+  override async storageState(progress: Progress, params: { indexedDB?: boolean, opfs?: boolean }): Promise<channels.APIRequestContextStorageStateResult> {
+    return this._context.storageState(progress, params);
   }
 }
 
@@ -732,7 +762,7 @@ export class GlobalAPIRequestContext extends APIRequestContext {
   constructor(playwright: Playwright, options: channels.PlaywrightNewRequestOptions) {
     super(playwright);
     if (options.storageState) {
-      this._origins = options.storageState.origins?.map(origin => ({ indexedDB: [], ...origin }));
+      this._origins = options.storageState.origins?.map(origin => ({ indexedDB: [], opfs: [], ...origin }));
       this._cookieStore.addCookies(options.storageState.cookies || []);
     }
     verifyClientCertificates(options.clientCertificates);
@@ -773,10 +803,14 @@ export class GlobalAPIRequestContext extends APIRequestContext {
     return this._cookieStore.cookies(url);
   }
 
-  override async storageState(progress: Progress, indexedDB = false): Promise<channels.APIRequestContextStorageStateResult> {
+  override async storageState(progress: Progress, { indexedDB = false, opfs = false }: { indexedDB?: boolean, opfs?: boolean }): Promise<channels.APIRequestContextStorageStateResult> {
     return {
       cookies: this._cookieStore.allCookies(),
-      origins: (this._origins || []).map(origin => ({ ...origin, indexedDB: indexedDB ? origin.indexedDB : [] })),
+      origins: (this._origins || []).map(origin => ({
+        ...origin,
+        indexedDB: indexedDB ? origin.indexedDB : [],
+        opfs: opfs ? origin.opfs : undefined,
+      })),
     };
   }
 }
@@ -864,4 +898,22 @@ function setBasicAuthorizationHeader(headers: { [name: string]: string }, creden
   const { username, password } = credentials;
   const encoded = Buffer.from(`${username || ''}:${password || ''}`).toString('base64');
   setHeader(headers, 'authorization', `Basic ${encoded}`);
+}
+
+function lookupWithTestHook(testHookLookup: (hostname: string) => LookupAddress[]): net.LookupFunction {
+  return (hostname, options, callback) => {
+    setImmediate(() => {
+      let addresses: LookupAddress[];
+      try {
+        addresses = testHookLookup(hostname);
+      } catch (error) {
+        callback(error as NodeJS.ErrnoException, '');
+        return;
+      }
+      if (options.all)
+        callback(null, addresses);
+      else
+        callback(null, addresses[0].address, addresses[0].family);
+    });
+  };
 }

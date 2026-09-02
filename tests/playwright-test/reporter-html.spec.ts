@@ -182,7 +182,7 @@ for (const useIntermediateMergeReport of [true, false] as const) {
       await expect(page.locator('text=Image mismatch')).toBeVisible();
       await expect(page.locator('text=Snapshot mismatch')).toHaveCount(0);
 
-      await expect(page.getByTestId('test-screenshot-error-view').getByTestId('test-result-image-mismatch-tabs').locator('div')).toHaveText([
+      await expect(page.getByTestId('test-screenshot-error-view').getByTestId('test-result-image-mismatch-tabs').getByRole('tab')).toHaveText([
         'Diff',
         'Actual',
         'Expected',
@@ -714,6 +714,45 @@ for (const useIntermediateMergeReport of [true, false] as const) {
       await expect(page.locator('.source-line-running')).toContainText('request.get');
     });
 
+    test('should show a thumbnail for every trace attachment', async ({ runInlineTest, page, server, showReport }) => {
+      const result = await runInlineTest({
+        'a.test.js': `
+          import { test, expect } from '@playwright/test';
+          test('passes', async ({ browser }, testInfo) => {
+            for (const index of [1, 2]) {
+              const context = await browser.newContext();
+              await context.tracing.start({ screenshots: true, snapshots: true });
+              const page = await context.newPage();
+              await page.goto('${server.EMPTY_PAGE}');
+              const tracePath = testInfo.outputPath('trace' + index + '.zip');
+              await context.tracing.stop({ path: tracePath });
+              await testInfo.attach('trace', { path: tracePath, contentType: 'application/zip' });
+              await context.close();
+            }
+          });
+        `,
+      }, { reporter: 'dot,html' }, { PLAYWRIGHT_HTML_OPEN: 'never' });
+      expect(result.exitCode).toBe(0);
+      expect(result.passed).toBe(1);
+
+      await showReport();
+      await page.getByRole('link', { name: 'passes' }).click();
+
+      const traces = page.locator('.chip').filter({ hasText: 'Traces' });
+      await expect(traces.locator('img')).toHaveCount(2);
+      await expect(traces.getByRole('link', { name: 'trace-1', exact: true })).toBeVisible();
+      await expect(traces.getByRole('link', { name: 'trace-2', exact: true })).toBeVisible();
+
+      const hrefs = await traces.locator('a').filter({ has: page.locator('img') }).evaluateAll(links => links.map(link => link.getAttribute('href')));
+      expect(hrefs).toHaveLength(2);
+      for (const href of hrefs)
+        expect(href!.match(/trace=/g)).toHaveLength(1);
+      expect(hrefs[0]).not.toBe(hrefs[1]);
+
+      await traces.locator('img').first().click();
+      await expect(page.locator('.action-title').first()).toBeVisible();
+    });
+
     test('trace should not hang when showing parallel api requests', async ({ runInlineTest, page, server, showReport }) => {
       const result = await runInlineTest({
         'playwright.config.js': `
@@ -740,10 +779,12 @@ for (const useIntermediateMergeReport of [true, false] as const) {
       await page.getByRole('link', { name: 'View Trace' }).click();
 
       // Trace viewer should not hang here when displaying parallal requests.
-      await expect(page.getByTestId('actions-tree')).toContainText('GET');
-      await page.getByText('GET "/empty.html"').nth(2).click();
-      await page.getByText('GET "/empty.html"').nth(1).click();
-      await page.getByText('GET "/empty.html"').nth(0).click();
+      const getActions = page.getByTestId('actions-tree').getByRole('treeitem', { name: /GET/ });
+      await expect(getActions).toHaveCount(4);
+      await expect(getActions.first()).toContainText('/empty.html');
+      await getActions.nth(2).click();
+      await getActions.nth(1).click();
+      await getActions.nth(0).click();
     });
 
     test('should warn user when viewing via file:// protocol', async ({ runInlineTest, page, showReport }, testInfo) => {
@@ -893,6 +934,30 @@ for (const useIntermediateMergeReport of [true, false] as const) {
       // children are collapsed again after clearing the filter
       await expect(page.locator('.tree-item-title', { hasText: 'fill username' })).toBeHidden();
       await expect(page.locator('.tree-item-title', { hasText: 'fill password' })).toBeHidden();
+    });
+
+    test('should highlight filter matches in step title and subtitle', async ({ runInlineTest, page, showReport }) => {
+      const result = await runInlineTest({
+        'a.test.js': `
+          import { test, expect } from '@playwright/test';
+          test('has steps', async ({ page }) => {
+            await page.setContent('<button id=target>Click me</button>');
+            await page.click('#target');
+          });
+        `,
+      }, { reporter: 'dot,html' }, { PLAYWRIGHT_HTML_OPEN: 'never' });
+      expect(result.exitCode).toBe(0);
+      expect(result.passed).toBe(1);
+
+      await showReport();
+      await page.getByRole('link', { name: 'has steps' }).click();
+
+      const filterInput = page.getByLabel('Filter steps');
+      await filterInput.fill('click');
+      await expect(page.locator('.step-title-highlight')).toHaveText(['Click']);
+
+      await filterInput.fill('#target');
+      await expect(page.locator('.step-subtitle .step-title-highlight')).toHaveText(['#target']);
     });
 
     test('should show step snippets from non-root', async ({ runInlineTest, page, showReport }) => {
@@ -1554,6 +1619,41 @@ for (const useIntermediateMergeReport of [true, false] as const) {
             - link "My PR"
           - listitem: /William <shakespeare@example.local>/
       `);
+    });
+
+    test('should toggle metadata with keyboard', async ({ runInlineTest, writeFiles, showReport, page }) => {
+      test.info().annotations.push({ type: 'issue', description: 'https://github.com/microsoft/playwright/issues/42323' });
+      const files = {
+        'playwright.config.ts': `
+          export default {
+            captureGitInfo: { commit: true },
+          };
+        `,
+        'example.spec.ts': `
+          import { test, expect } from '@playwright/test';
+          test('sample', async ({}) => { expect(2).toBe(2); });
+        `,
+      };
+      const baseDir = await writeFiles(files);
+      await initGitRepo(baseDir);
+
+      const result = await runInlineTest(files, { reporter: 'dot,html' }, {
+        PLAYWRIGHT_HTML_OPEN: 'never',
+      });
+
+      await showReport();
+
+      expect(result.exitCode).toBe(0);
+      const toggle = page.getByRole('button', { name: 'Metadata' });
+      await toggle.focus();
+      await expect(toggle).toBeFocused();
+      await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+      await toggle.press('Enter');
+      await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+      await expect(page.locator('.metadata-view')).toBeVisible();
+      await toggle.press(' ');
+      await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+      await expect(page.locator('.metadata-view')).toBeHidden();
     });
 
     test('should not include git metadata w/o CI', async ({ runInlineTest, showReport, page }) => {

@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import type * as trace from '@trace/trace';
+import type * as trace from './trace';
 import type * as traceV3 from './versions/traceV3';
 import type * as traceV4 from './versions/traceV4';
 import type * as traceV5 from './versions/traceV5';
@@ -31,9 +31,10 @@ export class TraceVersionError extends Error {
   }
 }
 
-// 6 => 10/2023 ~1.40
-// 7 => 05/2024 ~1.45
-const latestVersion: trace.VERSION = 8;
+const latestVersion: trace.VERSION = 9;
+
+// Ensures distinct api request refs across contexts of the same trace.
+let lastApiRequestRefOrdinal = 0;
 
 export class TraceModernizer {
   private _contextEntry: ContextEntry;
@@ -43,6 +44,8 @@ export class TraceModernizer {
   private _pageEntries = new Map<string, PageEntry>();
   private _jsHandles = new Map<string, { preview: string }>();
   private _consoleObjects = new Map<string, { type: string, text: string, location: { url: string, lineNumber: number, columnNumber: number }, args?: { preview: string, value: string }[] }>();
+  private _apiRequestRef: string | undefined;
+  private _snapshotPhases = new Map<string, trace.ActionPhase>();
 
   constructor(contextEntry: ContextEntry, snapshotStorage: SnapshotStorage) {
     this._contextEntry = contextEntry;
@@ -56,6 +59,11 @@ export class TraceModernizer {
 
   actions(): ActionEntry[] {
     return [...this._actionMap.values()];
+  }
+
+  private _collectSnapshotPhase(snapshotName: string | undefined, phase: trace.ActionPhase) {
+    if (snapshotName)
+      this._snapshotPhases.set(snapshotName, phase);
   }
 
   private _pageEntry(pageId: string): PageEntry {
@@ -110,6 +118,10 @@ export class TraceModernizer {
         contextEntry.screenshots.push(event);
         break;
       }
+      case 'video': {
+        contextEntry.videos.push(event);
+        break;
+      }
       case 'aria-snapshot': {
         contextEntry.ariaSnapshots.push(event);
         break;
@@ -120,7 +132,6 @@ export class TraceModernizer {
       }
       case 'input': {
         const existing = this._actionMap.get(event.callId);
-        existing!.inputSnapshot = event.inputSnapshot;
         existing!.point = event.point;
         existing!.box = event.box;
         break;
@@ -138,7 +149,6 @@ export class TraceModernizer {
       }
       case 'after': {
         const existing = this._actionMap.get(event.callId);
-        existing!.afterSnapshot = event.afterSnapshot;
         existing!.endTime = event.endTime;
         existing!.result = event.result;
         existing!.error = event.error;
@@ -153,6 +163,9 @@ export class TraceModernizer {
         break;
       }
       case 'event': {
+        // Make sure there is a page entry for each page.
+        if ((event.method === 'page' || event.method === 'pageClosed') && event.params?.pageId)
+          this._pageEntry(event.params.pageId);
         contextEntry.events.push(event);
         break;
       }
@@ -176,9 +189,13 @@ export class TraceModernizer {
         this._snapshotStorage.addResource(event.snapshot);
         contextEntry.resources.push(event.snapshot);
         break;
-      case 'frame-snapshot':
-        this._snapshotStorage.addFrameSnapshot(event.snapshot, this._pageEntry(event.snapshot.pageId).screencastFrames);
+      case 'frame-snapshot': {
+        const snapshot = event.snapshot;
+        this._snapshotStorage.addFrameSnapshot(snapshot, this._pageEntry(snapshot.pageId).screencastFrames);
+        if (snapshot.isMainFrame && snapshot.phase)
+          contextEntry.domSnapshots.push({ callId: snapshot.callId, phase: snapshot.phase });
         break;
+      }
     }
     // Make sure there is a page entry for each page, even without screencast frames,
     // to show in the metadata view.
@@ -209,46 +226,7 @@ export class TraceModernizer {
     let events = [event];
     for (; version < latestVersion; ++version)
       events = (this as any)[`_modernize_${version}_to_${version + 1}`].call(this, events);
-    for (const e of events)
-      this._normalizeResourceReferences(e);
     return events;
-  }
-
-  // Traces recorded before trace-relative paths referenced blobs by bare sha1-style names:
-  // `_sha1` in har entry content, `sha1` in snapshot resource overrides, screencast frames
-  // and attachments.
-  private _normalizeResourceReferences(event: any) {
-    if (event.type === 'resource-snapshot') {
-      const { request, response } = event.snapshot;
-      if (request?.postData?._sha1) {
-        request.postData._file = 'resources/' + request.postData._sha1;
-        delete request.postData._sha1;
-      }
-      if (response?.content?._sha1) {
-        response.content._file = 'resources/' + response.content._sha1;
-        delete response.content._sha1;
-      }
-    }
-    if (event.type === 'frame-snapshot') {
-      for (const override of event.snapshot.resourceOverrides || []) {
-        if (override.sha1) {
-          override.file = 'resources/' + override.sha1;
-          delete override.sha1;
-        }
-      }
-    }
-    if (event.type === 'screencast-frame' && event.sha1) {
-      event.file = 'resources/' + event.sha1;
-      delete event.sha1;
-    }
-    if (event.type === 'after' || event.type === 'action') {
-      for (const attachment of event.attachments || []) {
-        if (attachment.sha1) {
-          attachment.file = 'resources/' + attachment.sha1;
-          delete attachment.sha1;
-        }
-      }
-    }
   }
 
   _modernize_0_to_1(events: any[]): any[] {
@@ -487,5 +465,66 @@ export class TraceModernizer {
       }
     }
     return result;
+  }
+
+  _modernize_8_to_9(events: traceV8.TraceEvent[]): trace.TraceEvent[] {
+    for (const event of events) {
+      // Actions used to point at their snapshots by name, now snapshots know their own phase.
+      if (event.type === 'before' || event.type === 'input' || event.type === 'after' || event.type === 'action') {
+        const action = event as traceV8.ActionTraceEvent;
+        this._collectSnapshotPhase(action.beforeSnapshot, 'before');
+        this._collectSnapshotPhase(action.inputSnapshot, 'action');
+        this._collectSnapshotPhase(action.afterSnapshot, 'after');
+        delete action.beforeSnapshot;
+        delete action.inputSnapshot;
+        delete action.afterSnapshot;
+      }
+
+      // Blobs used to be referenced by a bare sha1-style name, now they use a trace-relative path.
+      if (event.type === 'after' || event.type === 'action') {
+        for (const attachment of event.attachments || []) {
+          if (attachment.sha1) {
+            (attachment as trace.AfterActionTraceEventAttachment).file = 'resources/' + attachment.sha1;
+            delete attachment.sha1;
+          }
+        }
+      }
+      if (event.type === 'screencast-frame' && event.sha1) {
+        (event as any as trace.ScreencastFrameTraceEvent).file = 'resources/' + event.sha1;
+        delete (event as any).sha1;
+      }
+
+      if (event.type === 'frame-snapshot') {
+        if (event.snapshot.snapshotName)
+          (event.snapshot as trace.FrameSnapshot).phase = this._snapshotPhases.get(event.snapshot.snapshotName);
+        for (const override of event.snapshot.resourceOverrides || []) {
+          if (override.sha1) {
+            (override as trace.ResourceOverride).file = 'resources/' + override.sha1;
+            delete override.sha1;
+          }
+        }
+      }
+
+      if (event.type === 'resource-snapshot') {
+        const postData = event.snapshot.request?.postData;
+        if (postData?._sha1) {
+          postData._file = 'resources/' + postData._sha1;
+          delete postData._sha1;
+        }
+        const content = event.snapshot.response?.content;
+        if (content?._sha1) {
+          content._file = 'resources/' + content._sha1;
+          delete content._sha1;
+        }
+        // Older hars marked api requests with a boolean instead of referencing their api request context.
+        if (event.snapshot._apiRequest) {
+          if (!this._apiRequestRef)
+            this._apiRequestRef = 'api-request-context@' + (++lastApiRequestRefOrdinal);
+          (event as trace.ResourceSnapshotTraceEvent).snapshot._apiRequestRef = this._apiRequestRef;
+          delete event.snapshot._apiRequest;
+        }
+      }
+    }
+    return events as trace.TraceEvent[];
   }
 }

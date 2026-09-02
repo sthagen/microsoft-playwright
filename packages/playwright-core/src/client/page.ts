@@ -60,7 +60,6 @@ import type { FilePayload, Headers, LifecycleEvent, SelectOption, SelectOptionOp
 import type * as structs from '../../types/structs';
 import type * as api from '../../types/types';
 import type { AriaSnapshotJSON } from '@isomorphic/ariaSnapshot';
-import type { By } from '@isomorphic/by';
 import type { ByRoleOptions } from '@isomorphic/locatorUtils';
 import type { URLMatch } from '@isomorphic/urlMatch';
 import type * as channels from './channels';
@@ -84,6 +83,7 @@ export type ExpectScreenshotOptions = Omit<channels.PageExpectScreenshotOptions,
   signal?: AbortSignal,
   isNot: boolean,
   mask?: api.Locator[],
+  title?: string,
 };
 
 export class Page extends ChannelOwner<channels.PageChannel> implements api.Page {
@@ -650,31 +650,33 @@ export class Page extends ChannelOwner<channels.PageChannel> implements api.Page
   }
 
   async _expectScreenshot(options: ExpectScreenshotOptions): Promise<{ actual?: Buffer, previous?: Buffer, diff?: Buffer, errorMessage?: string, log?: string[], timedOut?: boolean}> {
-    const { timeout, signal, ...optionsWithoutTimeout } = options;
-    const mask = options?.mask ? options?.mask.map(locator => ({
-      frame: (locator as Locator)._frame._channel,
-      selector: (locator as Locator)._selector,
-    })) : undefined;
-    const locator = options.locator ? {
-      frame: (options.locator as Locator)._frame._channel,
-      selector: (options.locator as Locator)._selector,
-    } : undefined;
-    try {
-      const result = await this._channel.expectScreenshot({
-        ...optionsWithoutTimeout,
-        isNot: !!options.isNot,
-        locator,
-        mask,
-      }, { timeout, signal });
-      return { actual: result.actual };
-    } catch (e) {
-      if (e instanceof AbortError)
-        return { errorMessage: 'Error: ' + assertionAbortedMessage(e.cause) };
-      if (!(e instanceof PlaywrightError))
-        throw e;
-      const details = e.details as channels.PageExpectScreenshotErrorDetails;
-      return { ...details, errorMessage: details.customErrorMessage };
-    }
+    const { timeout, signal, title, ...optionsWithoutTimeout } = options;
+    return await this._wrapApiCall(async () => {
+      const mask = options?.mask ? options?.mask.map(locator => ({
+        frame: (locator as Locator)._frame._channel,
+        selector: (locator as Locator)._selector,
+      })) : undefined;
+      const locator = options.locator ? {
+        frame: (options.locator as Locator)._frame._channel,
+        selector: (options.locator as Locator)._selector,
+      } : undefined;
+      try {
+        const result = await this._channel.expectScreenshot({
+          ...optionsWithoutTimeout,
+          isNot: !!options.isNot,
+          locator,
+          mask,
+        }, { timeout, signal });
+        return { actual: result.actual };
+      } catch (e) {
+        if (e instanceof AbortError)
+          return { errorMessage: 'Error: ' + assertionAbortedMessage(e.cause) };
+        if (!(e instanceof PlaywrightError))
+          throw e;
+        const details = e.details as channels.PageExpectScreenshotErrorDetails;
+        return { ...details, errorMessage: details.customErrorMessage };
+      }
+    }, { title });
   }
 
   async title(): Promise<string> {
@@ -753,10 +755,6 @@ export class Page extends ChannelOwner<channels.PageChannel> implements api.Page
     return this.mainFrame().locator(selector, options);
   }
 
-  get(by: By): Locator {
-    return this.mainFrame().get(by);
-  }
-
   getByTestId(testId: string | RegExp): Locator {
     return this.mainFrame().getByTestId(testId);
   }
@@ -785,12 +783,8 @@ export class Page extends ChannelOwner<channels.PageChannel> implements api.Page
     return this.mainFrame().getByRole(role, options);
   }
 
-  frameLocator(selector: string): FrameLocator {
+  frameLocator(selector?: string): FrameLocator {
     return this.mainFrame().frameLocator(selector);
-  }
-
-  pierceFrames(options?: { pierce?: boolean }): FrameLocator {
-    return this.mainFrame().pierceFrames(options);
   }
 
   async focus(selector: string, options?: channels.FrameFocusOptions & TimeoutOptions) {

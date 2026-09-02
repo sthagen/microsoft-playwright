@@ -357,11 +357,11 @@ it('reverse engineer hasNotText', async ({ page }) => {
 });
 
 it('reverse engineer visible', async ({ page }) => {
-  expect.soft(generate(page.getByText('Hello').filter({ visible: true }).locator('div'))).toEqual({
-    csharp: `GetByText("Hello").Filter(new() { Visible = true }).Locator("div")`,
-    java: `getByText("Hello").filter(new Locator.FilterOptions().setVisible(true)).locator("div")`,
-    javascript: `getByText('Hello').filter({ visible: true }).locator('div')`,
-    python: `get_by_text("Hello").filter(visible=True).locator("div")`,
+  expect.soft(generate(page.getByText('Hello').visible().locator('div'))).toEqual({
+    csharp: `GetByText("Hello").Visible.Locator("div")`,
+    java: `getByText("Hello").visible().locator("div")`,
+    javascript: `getByText('Hello').visible().locator('div')`,
+    python: `get_by_text("Hello").visible.locator("div")`,
   });
   expect.soft(generate(page.getByText('Hello').filter({ visible: false }).locator('div'))).toEqual({
     csharp: `GetByText("Hello").Filter(new() { Visible = false }).Locator("div")`,
@@ -369,6 +369,11 @@ it('reverse engineer visible', async ({ page }) => {
     javascript: `getByText('Hello').filter({ visible: false }).locator('div')`,
     python: `get_by_text("Hello").filter(visible=False).locator("div")`,
   });
+  const selector = (page.getByText('Hello').visible() as any)._selector;
+  expect.soft(parseLocator('javascript', `getByText('Hello').filter({ visible: true })`, 'data-testid')).toBe(selector);
+  expect.soft(parseLocator('java', `getByText("Hello").filter(new Locator.FilterOptions().setVisible(true))`, 'data-testid')).toBe(selector);
+  expect.soft(parseLocator('python', `get_by_text("Hello").filter(visible=True)`, 'data-testid')).toBe(selector);
+  expect.soft(parseLocator('csharp', `GetByText("Hello").Filter(new() { Visible = true })`, 'data-testid')).toBe(selector);
 });
 
 it('reverse engineer has', async ({ page }) => {
@@ -442,20 +447,18 @@ it('reverse engineer frameLocator', async ({ page }) => {
   expect.soft(asLocator('javascript', selector)).toBe(`locator('div').locator('iframe').contentFrame().locator('span')`);
 });
 
-it('reverse engineer pierceFrames', async ({ page }) => {
-  expect.soft(generate(page.pierceFrames().getByText('foo').locator('span'))).toEqual({
-    csharp: `PierceFrames.GetByText("foo").Locator("span")`,
-    java: `pierceFrames().getByText("foo").locator("span")`,
-    javascript: `pierceFrames().getByText('foo').locator('span')`,
-    python: `pierce_frames.get_by_text("foo").locator("span")`,
+it('reverse engineer frameLocator without a selector', async ({ page }) => {
+  expect.soft(generate(page.frameLocator().getByText('foo').locator('span'))).toEqual({
+    csharp: `FrameLocator().GetByText("foo").Locator("span")`,
+    java: `frameLocator().getByText("foo").locator("span")`,
+    javascript: `frameLocator().getByText('foo').locator('span')`,
+    python: `frame_locator().get_by_text("foo").locator("span")`,
   });
 
-  // Note that bare `pierce_frames` and `PierceFrames` are not restored back,
-  // because they are indistinguishable from a css selector.
-  expect.soft(asLocator('javascript', 'internal:control=pierce-frames')).toBe(`pierceFrames()`);
-  expect.soft(asLocator('python', 'internal:control=pierce-frames')).toBe(`pierce_frames`);
-  expect.soft(asLocator('java', 'internal:control=pierce-frames')).toBe(`pierceFrames()`);
-  expect.soft(asLocator('csharp', 'internal:control=pierce-frames')).toBe(`PierceFrames`);
+  expect.soft(asLocator('javascript', 'internal:control=any-frame')).toBe(`frameLocator()`);
+  expect.soft(asLocator('python', 'internal:control=any-frame')).toBe(`frame_locator()`);
+  expect.soft(asLocator('java', 'internal:control=any-frame')).toBe(`frameLocator()`);
+  expect.soft(asLocator('csharp', 'internal:control=any-frame')).toBe(`FrameLocator()`);
 });
 
 it('generate multiple locators', async ({ page }) => {

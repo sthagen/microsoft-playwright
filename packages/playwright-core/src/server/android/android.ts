@@ -24,7 +24,6 @@ import { PipeTransport } from '@utils/pipeTransport';
 import { createGuid } from '@utils/crypto';
 import { isUnderTest } from '@utils/debug';
 import { getPackageManagerExecCommand } from '@utils/env';
-import { makeWaitForNextTask } from '@utils/task';
 import { RecentLogsCollector } from '@utils/debugLogger';
 import { removeFolders } from '@utils/fileUtils';
 import { gracefullyCloseSet } from '@utils/processLauncher';
@@ -329,10 +328,10 @@ export class AndroidDevice extends SdkObject {
     const webView = this._webViews.get(socketName);
     if (!webView)
       throw new Error('WebView has been closed');
-    return await this._connectToBrowser(progress, socketName);
+    return await this._connectToBrowser(progress, socketName, {}, /* isWebView */ true);
   }
 
-  private async _connectToBrowser(progress: Progress, socketName: string, options: types.BrowserContextOptions = {}): Promise<BrowserContext> {
+  private async _connectToBrowser(progress: Progress, socketName: string, options: types.BrowserContextOptions = {}, isWebView?: boolean): Promise<BrowserContext> {
     const socket = await this._waitForLocalAbstract(progress, socketName);
     try {
       const androidBrowser = new AndroidBrowser(this, socket);
@@ -363,6 +362,7 @@ export class AndroidDevice extends SdkObject {
         protocolLogger: helper.debugProtocolLogger(),
         browserLogsCollector: new RecentLogsCollector(),
         originalLaunchOptions: {},
+        isWebView,
       };
       validateBrowserContextOptions(options, browserOptions);
 
@@ -467,7 +467,7 @@ export class AndroidDevice extends SdkObject {
     const procs = (await this._backend.runCommand(`shell:ps -A | grep ${pid}`)).toString().split('\n');
     for (const proc of procs) {
       const match = proc.match(/[^\s]+\s+(\d+).*$/);
-      if (!match)
+      if (!match || Number(match[1]) !== pid)
         continue;
       pkg = proc.substring(proc.lastIndexOf(' ') + 1);
     }
@@ -479,7 +479,6 @@ class AndroidBrowser extends EventEmitter {
   readonly device: AndroidDevice;
   private _socket: SocketBackend;
   private _receiver: stream.Writable;
-  private _waitForNextTask = makeWaitForNextTask();
   onmessage?: (message: any) => void;
   onclose?: () => void;
 
@@ -489,14 +488,14 @@ class AndroidBrowser extends EventEmitter {
     this.device = device;
     this._socket = socket;
     this._socket.on('close', () => {
-      this._waitForNextTask(() => {
+      setImmediate(() => {
         if (this.onclose)
           this.onclose();
       });
     });
     this._receiver = new wsReceiver() as stream.Writable;
     this._receiver.on('message', message => {
-      this._waitForNextTask(() => {
+      setImmediate(() => {
         if (this.onmessage)
           this.onmessage(JSON.parse(message));
       });

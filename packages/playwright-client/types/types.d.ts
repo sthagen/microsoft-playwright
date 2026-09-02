@@ -2992,6 +2992,11 @@ export interface Page {
    * When working with iframes, you can create a frame locator that will enter the iframe and allow selecting elements
    * in that iframe.
    *
+   * When called without [`selector`](https://playwright.dev/docs/api/class-page#page-frame-locator-option-selector),
+   * the search starts in any frame on the page - the main frame or any of the iframes - so that you don't need to
+   * locate each iframe first. Note that the rest of the locator is resolved inside a single frame, just like any other
+   * locator. If it matches elements inside multiple frames, an error is thrown.
+   *
    * **Usage**
    *
    * Following snippet locates element with text "Submit" in the iframe with id `my-frame`, like `<iframe
@@ -3002,49 +3007,21 @@ export interface Page {
    * await locator.click();
    * ```
    *
-   * @param selector A selector to use when resolving DOM element.
+   * Following snippet locates a button, either in the main frame or in one of the iframes:
+   *
+   * ```js
+   * const locator = page.frameLocator().getByRole('button');
+   * await locator.click();
+   * ```
+   *
+   * @param selector A selector that matches the frame element. When not specified, locator is matched in any frame on the page.
    */
-  frameLocator(selector: string): FrameLocator;
+  frameLocator(selector?: string): FrameLocator;
 
   /**
    * An array of all frames attached to the page.
    */
   frames(): Array<Frame>;
-
-  /**
-   * Binds a page-free [By](https://playwright.dev/docs/api/class-by) locator, returning a
-   * [Locator](https://playwright.dev/docs/api/class-locator) scoped to this object.
-   *
-   * **Usage**
-   *
-   * Consider a page object that describes elements without a page:
-   *
-   * ```js
-   * // todo-page.ts
-   * import { by } from '@playwright/test';
-   *
-   * export const newTodo = by.placeholder('What needs to be done?');
-   * export const todoItems = by.testId('todo-list').role('listitem');
-   * ```
-   *
-   * ```js
-   * import { expect, test } from '@playwright/test';
-   * import { newTodo, todoItems } from './todo-page';
-   *
-   * test('adds a todo', async ({ page }) => {
-   *   await page.get(newTodo).fill('buy milk');
-   *   await expect(page.get(todoItems)).toHaveCount(1);
-   * });
-   * ```
-   *
-   * **Details**
-   *
-   * The resolved [Locator](https://playwright.dev/docs/api/class-locator) is the same one the equivalent `getBy*` chain
-   * would produce, so `page.get(by.testId('list').text('Row'))` and `page.getByTestId('list').getByText('Row')` match
-   * the same element.
-   * @param by Page-free locator built with [playwright.by](https://playwright.dev/docs/api/class-playwright#playwright-by).
-   */
-  get(by: By): Locator;
 
   /**
    * **NOTE** Use locator-based
@@ -4253,34 +4230,6 @@ export interface Page {
    *
    */
   pickLocator(): Promise<Locator>;
-
-  /**
-   * When working with iframes, you can create a frame locator that will search for elements in the main frame and in
-   * all iframes on the page, so that you don't need to locate each iframe first.
-   *
-   * Note that all elements matching the locator must belong to a single frame. For example, if the page contains two
-   * iframes, each with a `Submit` button, piercing frames and locating a button will throw an error because it matches
-   * elements from multiple frames.
-   *
-   * **Usage**
-   *
-   * Following snippet locates a button, either in the main frame or in one of the iframes:
-   *
-   * ```js
-   * const locator = page.pierceFrames().getByRole('button');
-   * await locator.click();
-   * ```
-   *
-   * @param options
-   */
-  pierceFrames(options?: {
-    /**
-     * Whether to pierce frames. Pass `false` to opt out of frame piercing enabled by the
-     * [`pierceFrames`](https://playwright.dev/docs/api/class-browser#browser-new-context-option-pierce-frames) context
-     * option. Defaults to `true`.
-     */
-    pierce?: boolean;
-  }): FrameLocator;
 
   /**
    * **NOTE** Use locator-based [locator.press(key[, options])](https://playwright.dev/docs/api/class-locator#locator-press)
@@ -7382,6 +7331,11 @@ export interface Frame {
    * When working with iframes, you can create a frame locator that will enter the iframe and allow selecting elements
    * in that iframe.
    *
+   * When called without [`selector`](https://playwright.dev/docs/api/class-frame#frame-frame-locator-option-selector),
+   * the search starts in this frame or in any of the iframes inside it, so that you don't need to locate each iframe
+   * first. Note that the rest of the locator is resolved inside a single frame, just like any other locator. If it
+   * matches elements inside multiple frames, an error is thrown.
+   *
    * **Usage**
    *
    * Following snippet locates element with text "Submit" in the iframe with id `my-frame`, like `<iframe
@@ -7392,44 +7346,17 @@ export interface Frame {
    * await locator.click();
    * ```
    *
-   * @param selector A selector to use when resolving DOM element.
-   */
-  frameLocator(selector: string): FrameLocator;
-
-  /**
-   * Binds a page-free [By](https://playwright.dev/docs/api/class-by) locator, returning a
-   * [Locator](https://playwright.dev/docs/api/class-locator) scoped to this object.
-   *
-   * **Usage**
-   *
-   * Consider a page object that describes elements without a page:
+   * Following snippet locates a button, either in the frame or in one of the iframes inside it:
    *
    * ```js
-   * // todo-page.ts
-   * import { by } from '@playwright/test';
-   *
-   * export const newTodo = by.placeholder('What needs to be done?');
-   * export const todoItems = by.testId('todo-list').role('listitem');
+   * const locator = frame.frameLocator().getByRole('button');
+   * await locator.click();
    * ```
    *
-   * ```js
-   * import { expect, test } from '@playwright/test';
-   * import { newTodo, todoItems } from './todo-page';
-   *
-   * test('adds a todo', async ({ page }) => {
-   *   await page.get(newTodo).fill('buy milk');
-   *   await expect(page.get(todoItems)).toHaveCount(1);
-   * });
-   * ```
-   *
-   * **Details**
-   *
-   * The resolved [Locator](https://playwright.dev/docs/api/class-locator) is the same one the equivalent `getBy*` chain
-   * would produce, so `page.get(by.testId('list').text('Row'))` and `page.getByTestId('list').getByText('Row')` match
-   * the same element.
-   * @param by Page-free locator built with [playwright.by](https://playwright.dev/docs/api/class-playwright#playwright-by).
+   * @param selector A selector that matches the frame element. When not specified, locator is matched in this frame or in any of the
+   * iframes inside it.
    */
-  get(by: By): Locator;
+  frameLocator(selector?: string): FrameLocator;
 
   /**
    * **NOTE** Use locator-based
@@ -8337,34 +8264,6 @@ export interface Frame {
    * Parent frame, if any. Detached frames and main frames return `null`.
    */
   parentFrame(): null|Frame;
-
-  /**
-   * When working with iframes, you can create a frame locator that will search for elements in this frame and in all
-   * iframes inside it, so that you don't need to locate each iframe first.
-   *
-   * Note that all elements matching the locator must belong to a single frame. For example, if the frame contains two
-   * iframes, each with a `Submit` button, piercing frames and locating a button will throw an error because it matches
-   * elements from multiple frames.
-   *
-   * **Usage**
-   *
-   * Following snippet locates a button, either in the frame or in one of the iframes inside it:
-   *
-   * ```js
-   * const locator = frame.pierceFrames().getByRole('button');
-   * await locator.click();
-   * ```
-   *
-   * @param options
-   */
-  pierceFrames(options?: {
-    /**
-     * Whether to pierce frames. Pass `false` to opt out of frame piercing enabled by the
-     * [`pierceFrames`](https://playwright.dev/docs/api/class-browser#browser-new-context-option-pierce-frames) context
-     * option. Defaults to `true`.
-     */
-    pierce?: boolean;
-  }): FrameLocator;
 
   /**
    * **NOTE** Use locator-based [locator.press(key[, options])](https://playwright.dev/docs/api/class-locator#locator-press)
@@ -10672,7 +10571,11 @@ export interface BrowserContext {
   }): Promise<void>;
 
   /**
-   * @deprecated Browsers may cache credentials after successful authentication. Create a new browser context instead.
+   * Sets the credentials for HTTP authentication for this browser context.
+   *
+   * **NOTE** Browsers may cache credentials per origin after a successful authentication, so changing credentials for
+   * an origin that has already been authenticated may have no effect.
+   *
    * @param httpCredentials Pass an array to use different credentials for different origins. The first entry that matches the request origin
    * is used, and entries with no origin match any request.
    */
@@ -10702,10 +10605,11 @@ export interface BrowserContext {
   setOffline(offline: boolean): Promise<void>;
 
   /**
-   * Clears the existing cookies, local storage, IndexedDB entries and virtual WebAuthn credentials, and sets the new
-   * storage state. When the storage state contains credentials, the virtual WebAuthn authenticator is installed
-   * (equivalent to [credentials.install()](https://playwright.dev/docs/api/class-credentials#credentials-install)),
-   * preventing all real authenticators from working in this context.
+   * Clears the existing cookies, local storage, IndexedDB entries, origin private file system entries and virtual
+   * WebAuthn credentials, and sets the new storage state. When the storage state contains credentials, the virtual
+   * WebAuthn authenticator is installed (equivalent to
+   * [credentials.install()](https://playwright.dev/docs/api/class-credentials#credentials-install)), preventing all
+   * real authenticators from working in this context.
    *
    * **Usage**
    *
@@ -10771,7 +10675,7 @@ export interface BrowserContext {
 
   /**
    * Returns storage state for this browser context, contains current cookies, local storage snapshot, IndexedDB
-   * snapshot and virtual WebAuthn credentials.
+   * snapshot, origin private file system snapshot and virtual WebAuthn credentials.
    * @param options
    */
   storageState(options?: {
@@ -10794,6 +10698,16 @@ export interface BrowserContext {
      * enable this.
      */
     indexedDB?: boolean;
+
+    /**
+     * Set to `true` to include the
+     * [origin private file system](https://developer.mozilla.org/en-US/docs/Web/API/File_System_API/Origin_private_file_system)
+     * in the storage state snapshot.
+     *
+     * **NOTE** OPFS is currently not supported in ephemeral WebKit contexts.
+     *
+     */
+    opfs?: boolean;
 
     /**
      * The file path to save the storage state to. If
@@ -11557,13 +11471,6 @@ export interface Browser {
      * for more details. Defaults to none.
      */
     permissions?: Array<string>;
-
-    /**
-     * If set to true, all selectors in this context will pierce frames by default, as if every locator was created
-     * through [page.pierceFrames([options])](https://playwright.dev/docs/api/class-page#page-pierce-frames). Defaults to
-     * `false`.
-     */
-    pierceFrames?: boolean;
 
     /**
      * Network proxy settings to use with this context. Defaults to none.
@@ -15636,7 +15543,9 @@ export interface Locator {
     hasText?: string|RegExp;
 
     /**
-     * Only matches visible or invisible elements.
+     * Only matches visible or invisible elements. Prefer the
+     * [locator.visible()](https://playwright.dev/docs/api/class-locator#locator-visible) shortcut when matching only
+     * visible elements.
      */
     visible?: boolean;
   }): Locator;
@@ -15685,41 +15594,6 @@ export interface Locator {
    * @param selector A selector to use when resolving DOM element.
    */
   frameLocator(selector: string): FrameLocator;
-
-  /**
-   * Binds a page-free [By](https://playwright.dev/docs/api/class-by) locator, returning a
-   * [Locator](https://playwright.dev/docs/api/class-locator) scoped to this object.
-   *
-   * **Usage**
-   *
-   * Consider a page object that describes elements without a page:
-   *
-   * ```js
-   * // todo-page.ts
-   * import { by } from '@playwright/test';
-   *
-   * export const newTodo = by.placeholder('What needs to be done?');
-   * export const todoItems = by.testId('todo-list').role('listitem');
-   * ```
-   *
-   * ```js
-   * import { expect, test } from '@playwright/test';
-   * import { newTodo, todoItems } from './todo-page';
-   *
-   * test('adds a todo', async ({ page }) => {
-   *   await page.get(newTodo).fill('buy milk');
-   *   await expect(page.get(todoItems)).toHaveCount(1);
-   * });
-   * ```
-   *
-   * **Details**
-   *
-   * The resolved [Locator](https://playwright.dev/docs/api/class-locator) is the same one the equivalent `getBy*` chain
-   * would produce, so `page.get(by.testId('list').text('Row'))` and `page.getByTestId('list').getByText('Row')` match
-   * the same element.
-   * @param by Page-free locator built with [playwright.by](https://playwright.dev/docs/api/class-playwright#playwright-by).
-   */
-  get(by: By): Locator;
 
   /**
    * Returns the matching element's attribute value.
@@ -17345,6 +17219,34 @@ export interface Locator {
   }): Promise<void>;
 
   /**
+   * Returns a locator that matches only [visible](https://playwright.dev/docs/actionability#visible) elements, ignoring the invisible ones.
+   * This is the recommended way to distinguish elements by visibility, as opposed to the `:visible` CSS pseudo-class.
+   *
+   * Note that visibility is checked every time the locator is used, and not at the moment of the
+   * [locator.visible()](https://playwright.dev/docs/api/class-locator#locator-visible) call.
+   *
+   * **Usage**
+   *
+   * Consider a page with two buttons, the first invisible and the second visible.
+   *
+   * ```html
+   * <button style='display: none'>Invisible</button>
+   * <button>Visible</button>
+   * ```
+   *
+   * This will only find the second button, because it is visible, and then click it.
+   *
+   * ```js
+   * await page.locator('button').visible().click();
+   * ```
+   *
+   * To match invisible elements instead, use
+   * [locator.filter([options])](https://playwright.dev/docs/api/class-locator#locator-filter) with the
+   * [`visible`](https://playwright.dev/docs/api/class-locator#locator-filter-option-visible) option set to `false`.
+   */
+  visible(): Locator;
+
+  /**
    * Returns when element specified by locator satisfies the
    * [`state`](https://playwright.dev/docs/api/class-locator#locator-wait-for-option-state) option.
    *
@@ -17916,13 +17818,6 @@ export interface BrowserType<Unused = {}> {
      * for more details. Defaults to none.
      */
     permissions?: Array<string>;
-
-    /**
-     * If set to true, all selectors in this context will pierce frames by default, as if every locator was created
-     * through [page.pierceFrames([options])](https://playwright.dev/docs/api/class-page#page-pierce-frames). Defaults to
-     * `false`.
-     */
-    pierceFrames?: boolean;
 
     /**
      * Network proxy settings.
@@ -20435,6 +20330,11 @@ export interface APIRequestContext {
     indexedDB?: boolean;
 
     /**
+     * Set to `true` to include the origin private file system in the storage state snapshot.
+     */
+    opfs?: boolean;
+
+    /**
      * The file path to save the storage state to. If
      * [`path`](https://playwright.dev/docs/api/class-apirequestcontext#api-request-context-storage-state-option-path) is
      * a relative path, then it is resolved relative to current working directory. If no path is provided, storage state
@@ -20538,319 +20438,6 @@ export interface BrowserServer {
   wsEndpoint(): string;
 
   [Symbol.asyncDispose](): Promise<void>;
-}
-
-/**
- * [By](https://playwright.dev/docs/api/class-by) describes an element without being bound to a
- * [Page](https://playwright.dev/docs/api/class-page) or a [Frame](https://playwright.dev/docs/api/class-frame). It is
- * built with the top-level [playwright.by](https://playwright.dev/docs/api/class-playwright#playwright-by) object and
- * turned into a regular [Locator](https://playwright.dev/docs/api/class-locator) with
- * [page.get(by)](https://playwright.dev/docs/api/class-page#page-get),
- * [frame.get(by)](https://playwright.dev/docs/api/class-frame#frame-get) or
- * [locator.get(by)](https://playwright.dev/docs/api/class-locator#locator-get).
- *
- * Since a [By](https://playwright.dev/docs/api/class-by) carries no page, it can be defined once at module scope and
- * reused by every test, which makes it a natural fit for page objects.
- *
- * **Usage**
- *
- * ```js
- * import { by, expect, test } from '@playwright/test';
- *
- * const saveButton = by.role('button', { name: 'Save' });
- * const todoItems = by.testId('todo-list').role('listitem');
- *
- * test('saves a todo', async ({ page }) => {
- *   await page.get(saveButton).click();
- *   await expect(page.get(todoItems)).toHaveCount(1);
- * });
- * ```
- *
- * A [By](https://playwright.dev/docs/api/class-by) chain resolves to the same element as the matching
- * [Locator](https://playwright.dev/docs/api/class-locator) chain, so `page.get(by.testId('list').text('Row'))` and
- * `page.getByTestId('list').getByText('Row')` are interchangeable. Chaining composes rather than replaces:
- * `page.get(outer.get(inner))` and `page.get(outer).get(inner)` describe the same element.
- */
-export interface By {
-  /**
-   * Matches a descendant element by its `alt` text.
-   * @param text Text to locate the element for.
-   * @param options
-   */
-  altText(text: string|RegExp, options?: {
-    /**
-     * Whether to find an exact match: case-sensitive and whole-string. Default to false. Ignored when locating by a
-     * regular expression. Note that exact match still trims whitespace.
-     */
-    exact?: boolean;
-  }): By;
-
-  /**
-   * Narrows down the match to elements that match both this and the given
-   * [By](https://playwright.dev/docs/api/class-by).
-   *
-   * **Usage**
-   *
-   * ```js
-   * const saveButton = by.role('button').and(by.title('Subscribe'));
-   * ```
-   *
-   * @param by Additional locator to match.
-   */
-  and(by: By): By;
-
-  /**
-   * Describes the element, the description is used in the trace viewer and the reports.
-   * @param description Locator description.
-   */
-  describe(description: string): By;
-
-  /**
-   * Narrows down the match according to the options, for example filters by text. It can be chained to filter multiple
-   * times.
-   *
-   * **Usage**
-   *
-   * ```js
-   * const rowWithButton = by.get('tr')
-   *     .filter({ hasText: 'text in column 1' })
-   *     .filter({ has: by.role('button', { name: 'column 2 button' }) });
-   * ```
-   *
-   * @param options
-   */
-  filter(options?: {
-    /**
-     * Narrows down the results to those which contain elements matching this relative
-     * [By](https://playwright.dev/docs/api/class-by). The inner [By](https://playwright.dev/docs/api/class-by) is queried
-     * starting with the outer match, not the document root.
-     */
-    has?: By;
-
-    /**
-     * Matches elements that do not contain an element matching this relative
-     * [By](https://playwright.dev/docs/api/class-by). The inner [By](https://playwright.dev/docs/api/class-by) is queried
-     * starting with the outer match, not the document root.
-     */
-    hasNot?: By;
-
-    /**
-     * Matches elements that do not contain specified text somewhere inside, possibly in a child or a descendant element.
-     * When passed a [string], matching is case-insensitive and searches for a substring.
-     */
-    hasNotText?: string|RegExp;
-
-    /**
-     * Matches elements containing specified text somewhere inside, possibly in a child or a descendant element. When
-     * passed a [string], matching is case-insensitive and searches for a substring. For example, `"Playwright"` matches
-     * `<article><div>Playwright</div></article>`.
-     */
-    hasText?: string|RegExp;
-
-    /**
-     * Only matches visible or invisible elements.
-     */
-    visible?: boolean;
-  }): By;
-
-  /**
-   * Matches the first matching element.
-   */
-  first(): By;
-
-  /**
-   * Matches a descendant element by a selector or by another [By](https://playwright.dev/docs/api/class-by).
-   *
-   * **Usage**
-   *
-   * ```js
-   * const firstCell = by.get('table').get('td').first();
-   *
-   * const listItem = by.role('listitem');
-   * const unread = by.testId('inbox').get(listItem).filter({ hasText: 'Unread' });
-   * ```
-   *
-   * **Details**
-   *
-   * Passing a [By](https://playwright.dev/docs/api/class-by) composes rather than replaces, so
-   * `outer.get(inner.get(innermost))` and `outer.get(inner).get(innermost)` describe the same element.
-   * @param selectorOrBy A selector or a [By](https://playwright.dev/docs/api/class-by) to match inside this one.
-   */
-  get(selectorOrBy: string|By): By;
-
-  /**
-   * Matches an input element by the text of the associated `<label>` or `aria-label` attribute.
-   * @param text Text to locate the element for.
-   * @param options
-   */
-  label(text: string|RegExp, options?: {
-    /**
-     * Whether to find an exact match: case-sensitive and whole-string. Default to false. Ignored when locating by a
-     * regular expression. Note that exact match still trims whitespace.
-     */
-    exact?: boolean;
-  }): By;
-
-  /**
-   * Matches the last matching element.
-   */
-  last(): By;
-
-  /**
-   * Matches the n-th matching element. It is zero based, `nth(0)` selects the first element.
-   * @param index
-   */
-  nth(index: number): By;
-
-  /**
-   * Matches elements matching either this or the given [By](https://playwright.dev/docs/api/class-by).
-   *
-   * **Usage**
-   *
-   * ```js
-   * const dialogOrButton = by.role('dialog').or(by.role('button'));
-   * ```
-   *
-   * @param by Alternative locator to match.
-   */
-  or(by: By): By;
-
-  /**
-   * Matches an input element by the placeholder text.
-   * @param text Text to locate the element for.
-   * @param options
-   */
-  placeholder(text: string|RegExp, options?: {
-    /**
-     * Whether to find an exact match: case-sensitive and whole-string. Default to false. Ignored when locating by a
-     * regular expression. Note that exact match still trims whitespace.
-     */
-    exact?: boolean;
-  }): By;
-
-  /**
-   * Matches an element by its [ARIA role](https://www.w3.org/TR/wai-aria-1.2/#roles),
-   * [ARIA attributes](https://www.w3.org/TR/wai-aria-1.2/#aria-attributes) and
-   * [accessible name](https://w3c.github.io/accname/#dfn-accessible-name).
-   * @param role Required aria role.
-   * @param options
-   */
-  role(role: "alert"|"alertdialog"|"application"|"article"|"banner"|"blockquote"|"button"|"caption"|"cell"|"checkbox"|"code"|"columnheader"|"combobox"|"complementary"|"contentinfo"|"definition"|"deletion"|"dialog"|"directory"|"document"|"emphasis"|"feed"|"figure"|"form"|"generic"|"grid"|"gridcell"|"group"|"heading"|"img"|"insertion"|"link"|"list"|"listbox"|"listitem"|"log"|"main"|"marquee"|"math"|"meter"|"menu"|"menubar"|"menuitem"|"menuitemcheckbox"|"menuitemradio"|"navigation"|"none"|"note"|"option"|"paragraph"|"presentation"|"progressbar"|"radio"|"radiogroup"|"region"|"row"|"rowgroup"|"rowheader"|"scrollbar"|"search"|"searchbox"|"separator"|"slider"|"spinbutton"|"status"|"strong"|"subscript"|"superscript"|"switch"|"tab"|"table"|"tablist"|"tabpanel"|"term"|"textbox"|"time"|"timer"|"toolbar"|"tooltip"|"tree"|"treegrid"|"treeitem", options?: {
-    /**
-     * An attribute that is usually set by `aria-checked` or native `<input type=checkbox>` controls.
-     *
-     * Learn more about [`aria-checked`](https://www.w3.org/TR/wai-aria-1.2/#aria-checked).
-     */
-    checked?: boolean;
-
-    /**
-     * Option to match the [accessible description](https://w3c.github.io/accname/#dfn-accessible-description). By
-     * default, matching is case-insensitive and searches for a substring, use
-     * [`exact`](https://playwright.dev/docs/api/class-by#by-role-option-exact) to control this behavior.
-     *
-     * Learn more about [accessible description](https://w3c.github.io/accname/#dfn-accessible-description).
-     */
-    description?: string|RegExp;
-
-    /**
-     * An attribute that is usually set by `aria-disabled` or `disabled`.
-     *
-     * **NOTE** Unlike most other attributes, `disabled` is inherited through the DOM hierarchy. Learn more about
-     * [`aria-disabled`](https://www.w3.org/TR/wai-aria-1.2/#aria-disabled).
-     *
-     */
-    disabled?: boolean;
-
-    /**
-     * Whether [`name`](https://playwright.dev/docs/api/class-by#by-role-option-name) and
-     * [`description`](https://playwright.dev/docs/api/class-by#by-role-option-description) are matched exactly:
-     * case-sensitive and whole-string. Defaults to false. Ignored when the value is a regular expression. Note that exact
-     * match still trims whitespace.
-     */
-    exact?: boolean;
-
-    /**
-     * An attribute that is usually set by `aria-expanded`.
-     *
-     * Learn more about [`aria-expanded`](https://www.w3.org/TR/wai-aria-1.2/#aria-expanded).
-     */
-    expanded?: boolean;
-
-    /**
-     * Option that controls whether hidden elements are matched. By default, only non-hidden elements, as
-     * [defined by ARIA](https://www.w3.org/TR/wai-aria-1.2/#tree_exclusion), are matched by role selector.
-     *
-     * Learn more about [`aria-hidden`](https://www.w3.org/TR/wai-aria-1.2/#aria-hidden).
-     */
-    includeHidden?: boolean;
-
-    /**
-     * A number attribute that is usually present for roles `heading`, `listitem`, `row`, `treeitem`, with default values
-     * for `<h1>-<h6>` elements.
-     *
-     * Learn more about [`aria-level`](https://www.w3.org/TR/wai-aria-1.2/#aria-level).
-     */
-    level?: number;
-
-    /**
-     * Option to match the [accessible name](https://w3c.github.io/accname/#dfn-accessible-name). By default, matching is
-     * case-insensitive and searches for a substring, use
-     * [`exact`](https://playwright.dev/docs/api/class-by#by-role-option-exact) to control this behavior.
-     *
-     * Learn more about [accessible name](https://w3c.github.io/accname/#dfn-accessible-name).
-     */
-    name?: string|RegExp;
-
-    /**
-     * An attribute that is usually set by `aria-pressed`.
-     *
-     * Learn more about [`aria-pressed`](https://www.w3.org/TR/wai-aria-1.2/#aria-pressed).
-     */
-    pressed?: boolean;
-
-    /**
-     * An attribute that is usually set by `aria-selected`.
-     *
-     * Learn more about [`aria-selected`](https://www.w3.org/TR/wai-aria-1.2/#aria-selected).
-     */
-    selected?: boolean;
-  }): By;
-
-  /**
-   * Matches an element by the test id. The test id attribute is resolved when the
-   * [By](https://playwright.dev/docs/api/class-by) is bound to a page, so a
-   * [By](https://playwright.dev/docs/api/class-by) built at module scope still honours
-   * [selectors.setTestIdAttribute(attributeName)](https://playwright.dev/docs/api/class-selectors#selectors-set-test-id-attribute)
-   * and the `testIdAttribute` option.
-   * @param testId Id to locate the element by.
-   */
-  testId(testId: string|RegExp): By;
-
-  /**
-   * Matches an element containing the given text.
-   * @param text Text to locate the element for.
-   * @param options
-   */
-  text(text: string|RegExp, options?: {
-    /**
-     * Whether to find an exact match: case-sensitive and whole-string. Default to false. Ignored when locating by a
-     * regular expression. Note that exact match still trims whitespace.
-     */
-    exact?: boolean;
-  }): By;
-
-  /**
-   * Matches an element by its `title` attribute.
-   * @param text Text to locate the element for.
-   * @param options
-   */
-  title(text: string|RegExp, options?: {
-    /**
-     * Whether to find an exact match: case-sensitive and whole-string. Default to false. Ignored when locating by a
-     * regular expression. Note that exact match still trims whitespace.
-     */
-    exact?: boolean;
-  }): By;
 }
 
 /**
@@ -21761,7 +21348,7 @@ export interface FileChooser {
  * FrameLocator represents a view to the `iframe` on the page. It captures the logic sufficient to retrieve the
  * `iframe` and locate elements in that iframe. FrameLocator can be created with either
  * [locator.contentFrame()](https://playwright.dev/docs/api/class-locator#locator-content-frame),
- * [page.frameLocator(selector)](https://playwright.dev/docs/api/class-page#page-frame-locator) or
+ * [page.frameLocator([selector])](https://playwright.dev/docs/api/class-page#page-frame-locator) or
  * [locator.frameLocator(selector)](https://playwright.dev/docs/api/class-locator#locator-frame-locator) method.
  *
  * ```js
@@ -21781,6 +21368,32 @@ export interface FileChooser {
  * // Works because we explicitly tell locator to pick the first frame:
  * await page.locator('.result-frame').contentFrame().first().getByRole('button').click();
  * ```
+ *
+ * **Any frame**
+ *
+ * Calling [page.frameLocator([selector])](https://playwright.dev/docs/api/class-page#page-frame-locator) or
+ * [frame.frameLocator([selector])](https://playwright.dev/docs/api/class-frame#frame-frame-locator) without a
+ * selector creates a frame locator that starts the search in any frame of the subtree - so that you don't need to
+ * locate the iframe first.
+ *
+ * ```js
+ * // Finds the button in any frame on the page:
+ * await page.frameLocator().getByRole('button').click();
+ *
+ * // Finds the iframe with id "my-frame" anywhere on the page, and clicks the button inside it:
+ * await page.frameLocator().locator('#my-frame').contentFrame().getByRole('button').click();
+ * ```
+ *
+ * Only the start of the search is affected - the rest of the locator is resolved inside a single frame, just like any
+ * other locator. Following the strictness rules above, an error is thrown when elements are matched in multiple
+ * frames.
+ *
+ * Such a frame locator does not point to a particular `iframe`, so
+ * [frameLocator.owner()](https://playwright.dev/docs/api/class-framelocator#frame-locator-owner),
+ * [frameLocator.first()](https://playwright.dev/docs/api/class-framelocator#frame-locator-first),
+ * [frameLocator.last()](https://playwright.dev/docs/api/class-framelocator#frame-locator-last) and
+ * [frameLocator.nth(index)](https://playwright.dev/docs/api/class-framelocator#frame-locator-nth) are not supported
+ * on it.
  *
  * **Converting Locator to FrameLocator**
  *
@@ -21808,41 +21421,6 @@ export interface FrameLocator {
    * @param selector A selector to use when resolving DOM element.
    */
   frameLocator(selector: string): FrameLocator;
-
-  /**
-   * Binds a page-free [By](https://playwright.dev/docs/api/class-by) locator, returning a
-   * [Locator](https://playwright.dev/docs/api/class-locator) scoped to this object.
-   *
-   * **Usage**
-   *
-   * Consider a page object that describes elements without a page:
-   *
-   * ```js
-   * // todo-page.ts
-   * import { by } from '@playwright/test';
-   *
-   * export const newTodo = by.placeholder('What needs to be done?');
-   * export const todoItems = by.testId('todo-list').role('listitem');
-   * ```
-   *
-   * ```js
-   * import { expect, test } from '@playwright/test';
-   * import { newTodo, todoItems } from './todo-page';
-   *
-   * test('adds a todo', async ({ page }) => {
-   *   await page.get(newTodo).fill('buy milk');
-   *   await expect(page.get(todoItems)).toHaveCount(1);
-   * });
-   * ```
-   *
-   * **Details**
-   *
-   * The resolved [Locator](https://playwright.dev/docs/api/class-locator) is the same one the equivalent `getBy*` chain
-   * would produce, so `page.get(by.testId('list').text('Row'))` and `page.getByTestId('list').getByText('Row')` match
-   * the same element.
-   * @param by Page-free locator built with [playwright.by](https://playwright.dev/docs/api/class-playwright#playwright-by).
-   */
-  get(by: By): Locator;
 
   /**
    * Allows locating elements by their alt text.
@@ -22610,26 +22188,6 @@ export interface Mouse {
    */
   wheel(deltaX: number, deltaY: number): Promise<void>;
 }
-
-/**
- * Builds page-free locators that are resolved with
- * [page.get(by)](https://playwright.dev/docs/api/class-page#page-get),
- * [frame.get(by)](https://playwright.dev/docs/api/class-frame#frame-get) or
- * [locator.get(by)](https://playwright.dev/docs/api/class-locator#locator-get). See
- * [By](https://playwright.dev/docs/api/class-by) for details.
- *
- * ```js
- * import { by, test } from '@playwright/test';
- *
- * const saveButton = by.role('button', { name: 'Save' });
- *
- * test('saves', async ({ page }) => {
- *   await page.get(saveButton).click();
- * });
- * ```
- *
- */
-export const by: By;
 
 /**
  * This object can be used to launch or connect to Chromium, returning instances of
@@ -25134,13 +24692,6 @@ export interface AndroidDevice {
     permissions?: Array<string>;
 
     /**
-     * If set to true, all selectors in this context will pierce frames by default, as if every locator was created
-     * through [page.pierceFrames([options])](https://playwright.dev/docs/api/class-page#page-pierce-frames). Defaults to
-     * `false`.
-     */
-    pierceFrames?: boolean;
-
-    /**
      * Optional package name to launch instead of default Chrome for Android.
      */
     pkg?: string;
@@ -26356,13 +25907,6 @@ export interface BrowserContextOptions {
    * for more details. Defaults to none.
    */
   permissions?: Array<string>;
-
-  /**
-   * If set to true, all selectors in this context will pierce frames by default, as if every locator was created
-   * through [page.pierceFrames([options])](https://playwright.dev/docs/api/class-page#page-pierce-frames). Defaults to
-   * `false`.
-   */
-  pierceFrames?: boolean;
 
   /**
    * Network proxy settings to use with this context. Defaults to none.
