@@ -22,12 +22,18 @@ import { Context } from './context';
 import { Response } from './response';
 import { SessionLog } from './sessionLog';
 import type { ContextConfig } from './context';
+import type { IdleTimer } from './idleTimer';
 import type * as playwright from '../../..';
 import type { Tool } from './tool';
 import type * as mcpServer from '../utils/mcp/server';
 import type { ClientInfo, ServerBackend } from '../utils/mcp/server';
 
 const backendDebug = debug('pw:mcp:backend');
+
+export type BrowserBackendOptions = {
+  dispose?: () => Promise<void>;
+  idleTimer?: IdleTimer;
+};
 
 export class BrowserBackend extends EventEmitter<{ disconnected: [] }> implements ServerBackend {
   private _tools: Tool[];
@@ -38,13 +44,15 @@ export class BrowserBackend extends EventEmitter<{ disconnected: [] }> implement
   private _disposed = false;
   private _browserContext: playwright.BrowserContext;
   private _disposeCallback: (() => Promise<void>) | undefined;
+  private _idleTimer: IdleTimer | undefined;
 
-  constructor(config: ContextConfig, browserContext: playwright.BrowserContext, tools: Tool[], disposeCallback?: () => Promise<void>) {
+  constructor(config: ContextConfig, browserContext: playwright.BrowserContext, tools: Tool[], options: BrowserBackendOptions = {}) {
     super();
     this._config = config;
     this._tools = tools;
     this._browserContext = browserContext;
-    this._disposeCallback = disposeCallback;
+    this._disposeCallback = options.dispose;
+    this._idleTimer = options.idleTimer;
     const markDisconnected = () => {
       if (this._disconnected)
         return;
@@ -74,6 +82,7 @@ export class BrowserBackend extends EventEmitter<{ disconnected: [] }> implement
   }
 
   async callTool(name: string, rawArguments: mcpServer.CallToolRequest['params']['arguments'] & { _meta?: Record<string, any> } = {}, signal?: AbortSignal): Promise<mcpServer.CallToolResult> {
+    this._idleTimer?.poke();
     const json = !!rawArguments._meta?.json;
     const formatError = (message: string): mcpServer.CallToolResult => ({
       content: [{ type: 'text' as const, text: json ? JSON.stringify({ isError: true, error: message }, null, 2) : `### Error\n${message}` }],

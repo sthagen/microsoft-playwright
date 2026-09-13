@@ -29,6 +29,7 @@ import { commands } from './commands';
 
 import { SocketConnection } from '../utils/socketConnection';
 import type * as playwright from '../../..';
+import type { IdleTimer } from '../backend/idleTimer';
 import type { SessionConfig, ClientInfo } from '../cli-client/registry';
 import type { CallToolRequest, CallToolResult } from '../backend/tool';
 import type { ContextConfig } from '../backend/context';
@@ -45,6 +46,29 @@ async function socketExists(socketPath: string): Promise<boolean> {
   return false;
 }
 
+async function monitorSocketPath(socketPath: string): Promise<void> {
+  if (process.platform === 'win32')
+    return;
+
+  const socketStat = await fs.promises.stat(socketPath);
+
+  async function checkSocketPath() {
+    const currentStat = await fs.promises.stat(socketPath).catch(() => undefined);
+    if (!currentStat || !currentStat.isSocket() || currentStat.dev !== socketStat.dev || currentStat.ino !== socketStat.ino) {
+      gracefullyProcessExitDoNotHang(0);
+      return;
+    }
+    scheduleSocketCheck();
+  }
+
+  function scheduleSocketCheck() {
+    const timer = setTimeout(() => void checkSocketPath(), 1000);
+    timer.unref();
+  }
+
+  scheduleSocketCheck();
+}
+
 export async function startCliDaemonServer(
   sessionName: string,
   browserContext: playwright.BrowserContext,
@@ -56,6 +80,7 @@ export async function startCliDaemonServer(
     ownership?: 'attached' | 'own',
     persistent?: boolean,
     exitOnClose?: boolean,
+    idleTimer?: IdleTimer,
   }
 ): Promise<string> {
   const sessionConfig = createSessionConfig(clientInfo, sessionName, browserInfo, options);
@@ -70,7 +95,7 @@ export async function startCliDaemonServer(
     }
   }
 
-  const backend = new BrowserBackend(contextConfig, browserContext, browserTools);
+  const backend = new BrowserBackend(contextConfig, browserContext, browserTools, { idleTimer: options.idleTimer });
   await backend.initialize(mcpClientInfo);
 
   if (browserContext.isClosed())
@@ -118,6 +143,8 @@ export async function startCliDaemonServer(
   });
 
   await saveSessionFile(clientInfo, sessionConfig);
+  options.idleTimer?.poke();
+  await monitorSocketPath(socketPath);
   return socketPath;
 }
 

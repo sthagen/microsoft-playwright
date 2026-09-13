@@ -21,7 +21,7 @@ import { ManualPromise } from '@isomorphic/manualPromise';
 import { captureRawStack, stringifyStackFrames, filteredStackTrace } from '@utils/stackTrace';
 import { escapeWithQuotes } from '@isomorphic/stringUtils';
 import { monotonicTime } from '@isomorphic/time';
-import { createGuid } from '@utils/crypto';
+import { createCallIdGenerator } from '@isomorphic/trace/traceUtils';
 import { sanitizeForFilePath, trimLongString } from '@utils/fileUtils';
 import { currentZone } from '@utils/zones';
 
@@ -43,7 +43,7 @@ interface TestStepData {
   title: string;
   subtitle?: string;
   category: TestStepCategory;
-  location?: Location;
+  stack?: StackFrame[];
   params?: Record<string, any>;
   box?: boolean;
   // steps with any defined group are hidden from the report
@@ -52,6 +52,7 @@ interface TestStepData {
 }
 
 export interface TestStepInternal extends TestStepData {
+  stack: StackFrame[];
   complete(result: { error?: Error | unknown, softError?: Error | unknown, shouldNotRetryTest?: boolean, suggestedRebaseline?: string, attachments?: TestInfo['attachments'] }): void;
   info: TestStepInfoImpl;
   attachmentIndices: number[];
@@ -82,6 +83,9 @@ export const emtpyTestInfoCallbacks: TestInfoCallbacks = {
   onTestPaused: () => Promise.reject(new Error('TestInfoImpl not initialized')),
 };
 
+// Keep step ids globally unique, to avoid cross-test callId collisions on the same playwright instance.
+const nextStepId = createCallIdGenerator();
+
 export class TestInfoImpl implements TestInfo {
   private _callbacks: TestInfoCallbacks;
   private _snapshotNames: SnapshotNames = { lastAnonymousSnapshotIndex: 0, lastNamedSnapshotIndex: {} };
@@ -93,7 +97,6 @@ export class TestInfoImpl implements TestInfo {
   readonly _uniqueSymbol;
 
   private _interruptedPromise = new ManualPromise<void>();
-  _lastStepId = 0;
   private readonly _requireFile: string;
   readonly _projectInternal: commonConfig.FullProjectInternal;
   readonly _configInternal: FullConfigInternal;
@@ -284,7 +287,7 @@ export class TestInfoImpl implements TestInfo {
   }
 
   _addStep(data: Readonly<TestStepData>, parentStep?: TestStepInternal): TestStepInternal {
-    const stepId = `${data.category}@${++this._lastStepId}`;
+    const stepId = nextStepId();
 
     if (data.category === 'hook' || data.category === 'fixture') {
       // Predefined steps form a fixed hierarchy - use the current one as parent.
@@ -295,19 +298,19 @@ export class TestInfoImpl implements TestInfo {
     }
 
     let boxedStack = parentStep?.boxedStack;
-    let location = data.location;
+    let stack = data.stack;
     if (!boxedStack && data.box) {
       boxedStack = filteredStackTrace(captureRawStack()).slice(1);
-      location ??= boxedStack[0];
+      stack ??= boxedStack;
     }
-    location ??= filteredStackTrace(captureRawStack())[0];
+    stack ??= filteredStackTrace(captureRawStack());
 
     const step: TestStepInternal = {
       ...data,
       stepId,
       group: parentStep?.group ?? data.group,
       boxedStack,
-      location,
+      stack,
       steps: [],
       attachmentIndices: [],
       info: new TestStepInfoImpl(this, stepId, data.title, parentStep?.info),
@@ -380,7 +383,7 @@ export class TestInfoImpl implements TestInfo {
         category: step.category,
         params: toReportedParams(step.params),
         wallTime: Date.now(),
-        location: step.location,
+        location: step.stack[0],
       };
       this._callbacks.onStepBegin(payload);
     }
@@ -392,7 +395,7 @@ export class TestInfoImpl implements TestInfo {
         subtitle: step.subtitle,
         category: step.category,
         params: step.params,
-        stack: step.location ? [step.location] : [],
+        stack: step.stack,
         group: step.group,
       });
     }
@@ -433,7 +436,7 @@ export class TestInfoImpl implements TestInfo {
     visit(root);
   }
 
-  async _runAsStep(stepInfo: { title: string, category: 'hook' | 'fixture', location?: Location, group?: string }, cb: () => Promise<any>) {
+  async _runAsStep(stepInfo: { title: string, category: 'hook' | 'fixture', stack?: StackFrame[], group?: string }, cb: () => Promise<any>) {
     const step = this._addStep(stepInfo);
     try {
       await cb();
@@ -525,7 +528,7 @@ export class TestInfoImpl implements TestInfo {
     if (step) {
       step.attachmentIndices.push(index);
     } else {
-      const stepId = `attach@${createGuid()}`;
+      const stepId = nextStepId();
       this._tracing.appendBeforeActionForStep({ stepId, title: `Attach ${escapeWithQuotes(attachment.name, '"')}`, category: 'test.attach', stack: [] });
       this._tracing.appendAfterActionForStep(stepId, undefined, [attachment]);
     }

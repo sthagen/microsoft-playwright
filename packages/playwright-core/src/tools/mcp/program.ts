@@ -18,7 +18,7 @@ import { Option as ProgramOption } from 'commander';
 import * as mcpServer from '../utils/mcp/server';
 import { commaSeparatedList, defaultCodegenLanguage, dotenvFileLoader, enumParser, headerParser, numberParser, resolutionParser, resolveCLIConfigForMCP, semicolonSeparatedList } from './config';
 import { setupExitWatchdog } from './watchdog';
-import { createBrowserWithInfo } from './browserFactory';
+import { connectToBrowserEndpoint, createBrowserWithInfo } from './browserFactory';
 import { BrowserBackend } from '../backend/browserBackend';
 import { filteredTools } from '../backend/tools';
 import { testDebug } from './log';
@@ -26,6 +26,7 @@ import { packageJSON } from '../../package';
 
 import type { Command } from 'commander';
 import type { ClientInfo } from '../utils/mcp/server';
+import type { BrowserWithInfo } from './browserFactory';
 import type * as playwright from '../../..';
 
 const version = packageJSON.version;
@@ -53,15 +54,17 @@ export function decorateMCPCommand(command: Command) {
       .option('--grant-permissions <permissions...>', 'List of permissions to grant to the browser context, for example "geolocation", "clipboard-read", "clipboard-write".', commaSeparatedList)
       .option('--headless', 'run browser in headless mode, headed by default')
       .option('--host <host>', 'host to bind server to. Default is localhost. Use 0.0.0.0 to bind to all interfaces.')
+      .option('--idle-timeout <timeout>', 'close the browser after this many milliseconds without a completed tool call, the next tool call relaunches it. Defaults to one hour for headless browsers, never for headed ones, 0 disables.', numberParser)
       .option('--ignore-https-errors', 'ignore https errors')
       .option('--init-page <path...>', 'path to TypeScript file to evaluate on Playwright page object')
       .option('--init-script <path...>', 'path to JavaScript file to add as an initialization script. The script will be evaluated in every page before any of the page\'s scripts. Can be specified multiple times.')
       .option('--isolated', 'keep the browser profile in memory, do not save it to disk.')
-      .option('--image-responses <mode>', 'whether to send image responses to the client. Can be "allow" or "omit", Defaults to "allow".', enumParser.bind(null, '--image-responses', ['allow', 'omit']))
+      .option('--image-responses <mode>', 'whether to send image responses to the client. Can be "allow", "omit" or "only". With "only", a response that carries an image consists of the image parts alone, without the text part. Defaults to "allow".', enumParser.bind(null, '--image-responses', ['allow', 'omit', 'only']))
       .option('--no-sandbox', 'disable the sandbox for all process types that are normally sandboxed.')
-      .option('--output-dir <path>', 'path to the directory for output files.')
+      .option('--output-dir <path>', 'path to the directory for automatically named output files, for example a screenshot taken without an explicit file name. Files with an explicit name are resolved against the workspace root instead and are not affected by this option.')
       .option('--output-max-size <bytes>', 'Threshold for evicting old output files, in bytes.', numberParser)
       .option('--port <port>', 'port to listen on for SSE transport.')
+      .option('--profile-dir-name <name>', 'name of the profile directory in the user data dir to connect to with --extension, for example "Profile 1". Defaults to the last used profile that has the extension installed.')
       .option('--proxy-bypass <bypass>', 'comma-separated domains to bypass proxy, for example ".com,chromium.org,.domain.com"')
       .option('--proxy-server <proxy>', 'specify proxy server, for example "http://myproxy:3128" or "socks5://myproxy:8080"')
       .addOption(new ProgramOption('--remote-header <headers...>', 'headers to send with the remote endpoint connect request, multiple can be specified.').argParser(headerParser).hideHelp())
@@ -96,7 +99,7 @@ export function decorateMCPCommand(command: Command) {
         const config = await resolveCLIConfigForMCP(options);
         const tools = filteredTools(config);
         const useSharedBrowser = config.sharedBrowserContext || config.browser.isolated;
-        let sharedBrowserPromise: Promise<playwright.Browser> | undefined;
+        let sharedBrowserPromise: Promise<BrowserWithInfo> | undefined;
         let clientCount = 0;
         const clientNameCounters = new Map<string, number>();
 
@@ -107,16 +110,13 @@ export function decorateMCPCommand(command: Command) {
           toolSchemas: tools.map(tool => tool.schema),
           create: async (clientInfo: ClientInfo) => {
             if (useSharedBrowser && !sharedBrowserPromise) {
-              const promise = (async () => {
-                const { browser, canBind } = await createBrowserWithInfo(config, clientInfo, options);
-                if (canBind)
-                  await browser.bind(clientInfo.clientName, { workspaceDir: clientInfo.cwd });
-                browser.once('disconnected', () => {
+              const promise = createBrowserWithInfo(config, clientInfo, options, { title: clientInfo.clientName, workspaceDir: clientInfo.cwd }).then(shared => {
+                shared.browser.once('disconnected', () => {
                   if (sharedBrowserPromise === promise)
                     sharedBrowserPromise = undefined;
                 });
-                return browser;
-              })().catch(error => {
+                return shared;
+              }, error => {
                 if (sharedBrowserPromise === promise)
                   sharedBrowserPromise = undefined;
                 throw error;
@@ -124,38 +124,64 @@ export function decorateMCPCommand(command: Command) {
               sharedBrowserPromise = promise;
             }
             clientCount++;
+            const promise = sharedBrowserPromise;
+            let shared: BrowserWithInfo | undefined;
+            let info: BrowserWithInfo;
+            let browser: BrowserWithInfo['browser'];
             try {
-              const promise = sharedBrowserPromise;
-              const { browser, canBind } = promise ? { browser: await promise, canBind: false } : await createBrowserWithInfo(config, clientInfo, options);
-              if (canBind) {
+              shared = await promise;
+              if (shared) {
+                testDebug('connect to shared browser');
+                info = shared;
+                browser = await connectToBrowserEndpoint(config, shared.browser, shared.endpoint);
+              } else {
                 const count = (clientNameCounters.get(clientInfo.clientName) ?? 0) + 1;
                 clientNameCounters.set(clientInfo.clientName, count);
                 const sessionName = count > 1 ? `${clientInfo.clientName} (${count})` : clientInfo.clientName;
-                await browser.bind(sessionName, { workspaceDir: clientInfo.cwd });
+                info = await createBrowserWithInfo(config, clientInfo, options, { title: sessionName, workspaceDir: clientInfo.cwd });
+                browser = info.browser;
               }
-              const browserContext = config.browser.isolated ? await browser.newContext(config.browser.contextOptions) : browser.contexts()[0];
-              return new BrowserBackend(config, browserContext, tools, async () => {
-                clientCount--;
-
-                if (sharedBrowserPromise && clientCount > 0) {
-                  if (config.browser.isolated) {
-                    testDebug('close context');
-                    await browserContext.close().catch(() => { });
-                  }
-                  return;
-                }
-
-                testDebug('close browser');
-                if (sharedBrowserPromise === promise)
-                  sharedBrowserPromise = undefined;
-                await browserContext.close().catch(() => { });
-                await browser.close().catch(() => { });
-              });
             } catch (error) {
               // The dispose callback never runs for a failed create.
               clientCount--;
               throw error;
             }
+
+            let browserContext: playwright.BrowserContext;
+            try {
+              // A `launchServer` remote isolates contexts per connection, so a fresh connection may see none.
+              browserContext = config.browser.isolated ? await browser.newContext(config.browser.contextOptions) : browser.contexts()[0] ?? await browser.newContext(config.browser.contextOptions);
+            } catch (error) {
+              clientCount--;
+              await browser.close().catch(() => { });
+              throw error;
+            }
+
+            return new BrowserBackend(config, browserContext, tools, {
+              idleTimer: info.idleTimer,
+              dispose: async () => {
+                clientCount--;
+                const last = !shared || !clientCount;
+                if (last && sharedBrowserPromise === promise)
+                  sharedBrowserPromise = undefined;
+
+                if (!last) {
+                  if (config.browser.isolated) {
+                    testDebug('close context');
+                    await browserContext.close().catch(() => { });
+                  } else {
+                    testDebug('disconnect from shared browser');
+                  }
+                  await browser.close().catch(() => { });
+                  return;
+                }
+
+                testDebug('close browser');
+                await browserContext.close().catch(() => { });
+                await browser.close().catch(() => { });
+                await shared?.browser.close().catch(() => { });
+              },
+            });
           },
         };
         await mcpServer.start(factory, config.server);

@@ -25,7 +25,7 @@ const videoStart = defineTool({
     title: 'Start video',
     description: 'Start video recording',
     inputSchema: z.object({
-      filename: z.string().optional().describe('Filename to save the video.'),
+      filename: z.string().optional().describe('File name to save the video to. Relative file names are resolved against the workspace root. If not specified, the video is saved into the output directory as `video-{timestamp}.webm`.'),
       size: z.object({
         width: z.number().describe('Video width'),
         height: z.number().describe('Video height'),
@@ -35,7 +35,7 @@ const videoStart = defineTool({
   },
 
   handle: async (context, params, response) => {
-    const resolvedFile = await response.resolveClientFile({ prefix: 'video', ext: 'webm', suggestedFilename: params.filename }, 'Video');
+    const resolvedFile = await response.resolveClientOutputFile({ prefix: 'video', ext: 'webm', suggestedFilename: params.filename }, 'Video');
     await context.startVideoRecording(resolvedFile.fileName, { size: params.size });
     response.addTextResult('Video recording started.');
   },
@@ -59,7 +59,7 @@ const videoStop = defineTool({
       return;
     }
     for (const fileName of fileNames) {
-      const resolvedFile = await response.resolveClientFile({
+      const resolvedFile = await response.resolveClientOutputFile({
         prefix: 'video',
         ext: 'webm',
         suggestedFilename: fileName

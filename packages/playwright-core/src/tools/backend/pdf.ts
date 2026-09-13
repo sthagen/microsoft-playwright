@@ -20,7 +20,7 @@ import { formatObject } from '@isomorphic/stringUtils';
 import { defineTabTool } from './tool';
 
 const pdfSchema = z.object({
-  filename: z.string().optional().describe('File name to save the pdf to. Defaults to `page-{timestamp}.pdf` if not specified. Prefer relative file names to stay within the output directory.'),
+  filename: z.string().optional().describe('File name to save the pdf to. Relative file names are resolved against the workspace root. If not specified, the pdf is saved into the output directory as `page-{timestamp}.pdf`.'),
 });
 
 const pdf = defineTabTool({
@@ -36,7 +36,7 @@ const pdf = defineTabTool({
 
   handle: async (tab, params, response) => {
     const data = await tab.page.pdf();
-    const result = await response.resolveClientFile({ prefix: 'page', ext: 'pdf', suggestedFilename: params.filename }, 'Page as pdf');
+    const result = await response.resolveClientOutputFile({ prefix: 'page', ext: 'pdf', suggestedFilename: params.filename }, 'Page as pdf');
     await response.addFileResult(result, data);
     response.addCode(`await page.pdf(${formatObject({ path: result.relativeName })});`);
   },

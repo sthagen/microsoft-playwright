@@ -197,8 +197,8 @@ export interface TestType<TestArgs extends {}, WorkerArgs extends {}> {
   afterAll(title: string, inner: (args: TestArgs & WorkerArgs, testInfo: TestInfo) => Promise<any> | any): void;
   use(fixtures: Fixtures<{}, {}, TestArgs, WorkerArgs>): void;
   step: {
-    <T>(title: string, body: (step: TestStepInfo) => T | Promise<T>, options?: { box?: boolean, location?: Location, timeout?: number, params?: { [key: string]: any } }): Promise<T>;
-    skip(title: string, body: (step: TestStepInfo) => any | Promise<any>, options?: { box?: boolean, location?: Location, timeout?: number, params?: { [key: string]: any } }): Promise<void>;
+    <T>(title: string, body: (step: TestStepInfo) => T | Promise<T>, options?: { box?: boolean, location?: Location, timeout?: number, params?: { [key: string]: any }, subtitle?: string }): Promise<T>;
+    skip(title: string, body: (step: TestStepInfo) => any | Promise<any>, options?: { box?: boolean, location?: Location, timeout?: number, params?: { [key: string]: any }, subtitle?: string }): Promise<void>;
   }
   expect: Expect<{}>;
   extend<T extends {}, W extends {} = {}>(fixtures: Fixtures<T, W, TestArgs, WorkerArgs>): TestType<TestArgs & T, WorkerArgs & W>;
@@ -317,17 +317,23 @@ export interface PlaywrightWorkerArgs {
   browser: Browser;
 }
 
+export interface Stories {}
+
 type StoryProps<Story> =
   Story extends (props: infer Props) => any ? Props :
   Story extends new (...args: any[]) => { $props: infer Props } ? Props :
   Story extends new (props: infer Props, ...args: any[]) => any ? Props :
   Story;
+type StoryId = keyof Stories | (string & {});
+type StoryPropsFor<Id> = Id extends keyof Stories ? StoryProps<Stories[Id]> : Record<string, any>;
+// Explicit mount<typeof Story>() wins over the id lookup; the indexed access keeps Story from being inferred from props.
+type MountProps<Story, Id> = [Story] extends [never] ? StoryPropsFor<Id> : StoryProps<[Story][Story extends any ? 0 : never]>;
 
 export interface PlaywrightTestArgs {
   context: BrowserContext;
   page: Page;
   request: APIRequestContext;
-  mount: <Story = Record<string, any>>(storyId: string, props?: StoryProps<Story>) => Promise<Locator & { update(props?: StoryProps<Story>): Promise<void>, unmount(): Promise<void> }>;
+  mount: <Story = never, Id extends StoryId = StoryId>(storyId: Id, props?: MountProps<Story, Id>) => Promise<Locator & { update(props?: MountProps<Story, Id>): Promise<void>, unmount(): Promise<void> }>;
 }
 
 type ExcludeProps<A, B> = {

@@ -1440,6 +1440,51 @@ index 87efe769a8e2d2f8d3502957127de50aed1e9971..b8545e4c788bbee7b1d53efff0812898
  };
  
  // Mozilla-specific stuff
+diff --git a/dom/workers/ScriptLoader.cpp b/dom/workers/ScriptLoader.cpp
+index 8c88d73aa9c65ea858e2e1a475f40a4e0dd7edd2..7058eb325322c4fe19704e9fe3aa30ad38e21340 100644
+--- a/dom/workers/ScriptLoader.cpp
++++ b/dom/workers/ScriptLoader.cpp
+@@ -1169,6 +1169,14 @@ bool WorkerScriptLoader::EvaluateScript(JSContext* aCx,
+   mWorkerRef->Private()->AssertIsOnWorkerThread();
+   MOZ_ASSERT(!IsDynamicImport(aRequest));
+ 
++  // ----- Playwright begin -----
++  ++mEvaluatingScriptCount;
++  auto decrementEvaluatingCount = MakeScopeExit([&] {
++    MOZ_ASSERT(mEvaluatingScriptCount > 0);
++    --mEvaluatingScriptCount;
++  });
++  // ----- Playwright end -------
++
+   WorkerLoadContext* loadContext = aRequest->GetWorkerLoadContext();
+ 
+   NS_ASSERTION(!loadContext->mChannel, "Should no longer have a channel!");
+diff --git a/dom/workers/ScriptLoader.h b/dom/workers/ScriptLoader.h
+index 6ea3f0a9ed4f1e31a36e9657010b694177bd79d3..496b805f198f266751f0cc9fc64035ba81be11cc 100644
+--- a/dom/workers/ScriptLoader.h
++++ b/dom/workers/ScriptLoader.h
+@@ -157,6 +157,10 @@ class WorkerScriptLoader : public JS::loader::ScriptLoaderInterface,
+   bool mExecutionAborted = false;
+   bool mMutedErrorFlag = false;
+ 
++  // ----- Playwright begin -----
++  uint32_t mEvaluatingScriptCount = 0;
++  // ----- Playwright end -------
++
+   // Count of loading module requests. mLoadingRequests doesn't keep track of
+   // child module requests.
+   // This member should be accessed on worker thread.
+@@ -228,7 +232,9 @@ class WorkerScriptLoader : public JS::loader::ScriptLoaderInterface,
+   bool ProcessPendingRequests(JSContext* aCx);
+ 
+   bool AllScriptsExecuted() {
+-    return mLoadingRequests.isEmpty() && mLoadedRequests.isEmpty();
++    // https://github.com/microsoft/playwright/issues/42565
++    return mEvaluatingScriptCount == 0 && mLoadingRequests.isEmpty() &&
++           mLoadedRequests.isEmpty();
+   }
+ 
+   bool IsDebuggerScript() const { return mWorkerScriptType == DebuggerScript; }
 diff --git a/js/src/debugger/Object.cpp b/js/src/debugger/Object.cpp
 index 29e128ec723f557292f8ed0a2fc338503002f238..270ee326e169889ef5bb42dff4c3ac6eda6f0f01 100644
 --- a/js/src/debugger/Object.cpp

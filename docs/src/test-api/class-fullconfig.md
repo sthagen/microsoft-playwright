@@ -27,6 +27,12 @@ Path to the configuration file used to run the tests. The value is an empty stri
 
 See [`property: TestConfig.failOnFlakyTests`].
 
+## property: FullConfig.filteredProjects
+* since: v1.64
+- type: <[Array]<[FullProject]>>
+
+List of projects that were selected to run, after applying the `--project` command line filter. When no filter is specified, this is the same as [`property: FullConfig.projects`].
+
 ## property: FullConfig.forbidOnly
 * since: v1.10
 - type: <[boolean]>
@@ -137,7 +143,7 @@ Resolved global tags. See [`property: TestConfig.tag`].
 
 ## property: FullConfig.updateSnapshots
 * since: v1.10
-- type: <[UpdateSnapshots]<"all"|"changed"|"missing"|"none">>
+- type: <[UpdateSnapshots]<"all"|"changed"|"missing"|"none"|"default">>
 
 See [`property: TestConfig.updateSnapshots`].
 

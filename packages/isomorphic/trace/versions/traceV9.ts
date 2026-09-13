@@ -14,9 +14,153 @@
  * limitations under the License.
  */
 
-import type { Entry as HAREntry } from './har';
-import type { Language } from '../../locatorGenerators';
-import type { Point, Rect } from '../../types';
+// This is a frozen copy of the trace format, keep it self-contained.
+
+// see http://www.softwareishard.com/blog/har-12-spec/
+type HAREntry = {
+  pageref?: string;
+  startedDateTime: string;
+  time: number;
+  request: Request;
+  response: Response;
+  cache: Cache;
+  timings: Timings;
+  serverIPAddress?: string;
+  connection?: string;
+  _frameref?: string;
+  _monotonicTime?: number;
+  _serverPort?: number;
+  _securityDetails?: SecurityDetails;
+  _wasAborted?: boolean;
+  _wasFulfilled?: boolean;
+  _wasContinued?: boolean;
+  _serviceWorkerRef?: string;
+  _apiRequestRef?: string;
+  _resourceType?: string;
+  _webSocketMessages?: WebSocketMessage[];
+};
+
+type WebSocketMessage = {
+  type: 'send' | 'receive';
+  time: number;
+  opcode: number;
+  data: string;
+};
+
+type Request = {
+  method: string;
+  url: string;
+  httpVersion: string;
+  cookies: Cookie[];
+  headers: Header[];
+  queryString: QueryParameter[];
+  postData?: PostData;
+  headersSize: number;
+  bodySize: number;
+  comment?: string;
+};
+
+type Response = {
+  status: number;
+  statusText: string;
+  httpVersion: string;
+  cookies: Cookie[];
+  headers: Header[];
+  content: Content;
+  redirectURL: string;
+  headersSize: number;
+  bodySize: number;
+  comment?: string;
+  _transferSize?: number;
+  _failureText?: string
+};
+
+type Cookie = {
+  name: string;
+  value: string;
+  path?: string;
+  domain?: string;
+  expires?: string;
+  httpOnly?: boolean;
+  secure?: boolean;
+  sameSite?: string;
+  comment?: string;
+};
+
+type Header = {
+  name: string;
+  value: string;
+  comment?: string;
+};
+
+type QueryParameter = {
+  name: string;
+  value: string;
+  comment?: string;
+};
+
+type PostData = {
+  mimeType: string;
+  params: Param[];
+  text: string;
+  comment?: string;
+  _file?: string;
+};
+
+type Param = {
+  name: string;
+  value?: string;
+  fileName?: string;
+  contentType?: string;
+  comment?: string;
+};
+
+type Content = {
+  size: number;
+  compression?: number;
+  mimeType: string;
+  text?: string;
+  encoding?: string;
+  comment?: string;
+  _file?: string;
+};
+
+type Cache = {
+  beforeRequest?: CacheState | null;
+  afterRequest?: CacheState | null;
+  comment?: string;
+};
+
+type CacheState = {
+  expires?: string;
+  lastAccess: string;
+  eTag: string;
+  hitCount: number;
+  comment?: string;
+};
+
+type Timings = {
+  blocked?: number;
+  dns?: number;
+  connect?: number;
+  send: number;
+  wait: number;
+  receive: number;
+  ssl?: number;
+  comment?: string;
+};
+
+type SecurityDetails = {
+  protocol?: string;
+  subjectName?: string;
+  issuer?: string;
+  validFrom?: number;
+  validTo?: number;
+};
+
+type Language = 'javascript' | 'python' | 'java' | 'csharp' | 'jsonl';
+type Point = { x: number, y: number };
+type Rect = Size & Point;
 
 export type Size = { width: number, height: number };
 
@@ -251,13 +395,6 @@ export type FrameSnapshot = {
   resourceOverrides: ResourceOverride[],
   viewport: { width: number, height: number },
   isMainFrame: boolean,
-};
-
-export type RenderedFrameSnapshot = {
-  html: string;
-  pageId: string;
-  frameId: string;
-  index: number;
 };
 
 export type ResourceSnapshotTraceEvent = {

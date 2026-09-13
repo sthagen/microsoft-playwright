@@ -246,6 +246,31 @@ test('browser_take_screenshot (filename: "output.png")', async ({ client, server
   expect(files[0]).toMatch(/^output\.png$/);
 });
 
+test('browser_take_screenshot (filename: "sub/dir/output.png")', async ({ client, server }, testInfo) => {
+  expect(await client.callTool({
+    name: 'browser_navigate',
+    arguments: { url: server.HELLO_WORLD },
+  })).toHaveResponse({
+    code: expect.stringContaining(`page.goto('http://localhost`),
+  });
+
+  expect(await client.callTool({
+    name: 'browser_take_screenshot',
+    arguments: {
+      filename: 'sub/dir/output.png',
+    },
+  })).toEqual({
+    content: [
+      {
+        text: expect.stringContaining(`output.png`),
+        type: 'text',
+      },
+    ],
+  });
+
+  expect(fs.existsSync(testInfo.outputPath('sub', 'dir', 'output.png'))).toBeTruthy();
+});
+
 test('browser_take_screenshot (imageResponses=omit)', async ({ startClient, server }, testInfo) => {
   const outputDir = testInfo.outputPath('output');
   const { client } = await startClient({
@@ -272,6 +297,44 @@ test('browser_take_screenshot (imageResponses=omit)', async ({ startClient, serv
     content: [
       {
         text: expect.stringContaining(`await page.screenshot`),
+        type: 'text',
+      },
+    ],
+  });
+});
+
+test('browser_take_screenshot (imageResponses=only)', async ({ startClient, server }, testInfo) => {
+  const outputDir = testInfo.outputPath('output');
+  const { client } = await startClient({
+    args: ['--image-responses=only'],
+    config: { outputDir },
+  });
+
+  await client.callTool({
+    name: 'browser_navigate',
+    arguments: { url: server.HELLO_WORLD },
+  });
+
+  expect(await client.callTool({
+    name: 'browser_take_screenshot',
+  })).toEqual({
+    content: [
+      {
+        data: expect.any(String),
+        mimeType: 'image/png',
+        type: 'image',
+      },
+    ],
+  });
+  expect(fs.readdirSync(outputDir).filter(f => f.endsWith('.png'))).toHaveLength(1);
+
+  expect(await client.callTool({
+    name: 'browser_take_screenshot',
+    arguments: { filename: 'screenshot.png' },
+  })).toEqual({
+    content: [
+      {
+        text: expect.stringContaining('[Screenshot of viewport](./screenshot.png)'),
         type: 'text',
       },
     ],

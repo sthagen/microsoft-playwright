@@ -227,7 +227,7 @@ testWithOldExtensionVersion(`works with old extension version`, async ({ startEx
 
 test(`extension needs update`, async ({ startExtensionClient, server }) => {
   // Prelaunch the browser, so that it is properly closed after the test.
-  const { browserContext, client } = await startExtensionClient({ PLAYWRIGHT_EXTENSION_PROTOCOL: '1000' });
+  const { browserContext, client } = await startExtensionClient({ PWTEST_EXTENSION_PROTOCOL: '1000' });
 
   const confirmationPagePromise = browserContext.waitForEvent('page', page => {
     return page.url().startsWith(`chrome-extension://${extensionId}/connect.html`);
@@ -244,7 +244,7 @@ test(`extension needs update`, async ({ startExtensionClient, server }) => {
 });
 
 test(`extension rejects outdated client protocol version`, async ({ startExtensionClient, server }) => {
-  const { browserContext, client } = await startExtensionClient({ PLAYWRIGHT_EXTENSION_PROTOCOL: '1' });
+  const { browserContext, client } = await startExtensionClient({ PWTEST_EXTENSION_PROTOCOL: '1' });
 
   const confirmationPagePromise = browserContext.waitForEvent('page', page => {
     return page.url().startsWith(`chrome-extension://${extensionId}/connect.html`);
@@ -343,6 +343,31 @@ test(`ignores orphaned preferences entries of an uninstalled extension`, {
   }).toPass();
 });
 
+test(`--profile-dir-name selects the profile`, {
+  annotation: { type: 'issue', description: 'https://github.com/microsoft/playwright-mcp/issues/1732' },
+}, async ({ startClient, server }, testInfo) => {
+  // Both profiles have the extension and Default was used last, so only the option selects Profile 1.
+  const userDataDir = testInfo.outputPath('multi-profile');
+  await fs.mkdir(path.join(userDataDir, 'Default', 'Extensions', extensionId), { recursive: true });
+  await fs.mkdir(path.join(userDataDir, 'Profile 1', 'Extensions', extensionId), { recursive: true });
+  await fs.writeFile(path.join(userDataDir, 'Local State'), JSON.stringify({
+    profile: { last_used: 'Default' },
+  }));
+
+  const executablePath = testInfo.outputPath('echo.sh');
+  await fs.writeFile(executablePath, '#!/bin/bash\necho "Custom exec args: $@" > "$(dirname "$0")/output.txt"', { mode: 0o755 });
+
+  const { client } = await startClient({
+    args: [`--extension`, `--executable-path=${executablePath}`, `--user-data-dir=${userDataDir}`, `--profile-dir-name=Profile 1`],
+  });
+
+  client.callTool({ name: 'browser_navigate', arguments: { url: server.HELLO_WORLD } }).catch(() => {});
+  await expect(async () => {
+    const output = await fs.readFile(testInfo.outputPath('output.txt'), 'utf8');
+    expect(output).toContain(`--user-data-dir=${userDataDir} --profile-directory=Profile 1`);
+  }).toPass();
+});
+
 test(`fails when extension is missing in custom userDataDir`, async ({ startClient, server }) => {
   const userDataDir = test.info().outputPath('empty-profile');
 
@@ -367,6 +392,23 @@ test(`navigate with extension via --user-data-dir`, {
 
   const { client } = await startClient({
     args: [`--extension`, `--user-data-dir=${browserWithExtension.userDataDir}`],
+  });
+
+  const response = await connectAndNavigate(browserContext, client, server.HELLO_WORLD);
+  expect(response).toHaveResponse({
+    snapshot: expect.stringContaining(`Hello, world!`),
+  });
+});
+
+test(`navigate with extension via PLAYWRIGHT_MCP_PROFILE_DIR_NAME`, async ({ browserWithExtension, startClient, server }) => {
+  const browserContext = await browserWithExtension.launch();
+
+  const { client } = await startClient({
+    args: [`--extension`],
+    env: {
+      PLAYWRIGHT_MCP_PROFILE_DIR_NAME: 'Default',
+      PWTEST_EXTENSION_USER_DATA_DIR: browserWithExtension.userDataDir,
+    },
   });
 
   const response = await connectAndNavigate(browserContext, client, server.HELLO_WORLD);
@@ -450,6 +492,35 @@ test(`bypass connection dialog with token`, async ({ browserWithExtension, start
   const page = await browserContext.newPage();
   await page.goto(`chrome-extension://${extensionId}/status.html`);
   await expect(page.locator('.client-info')).toContainText(`Connected to "${clientName}"`);
+});
+
+test(`times out when the extension rejects the token`, {
+  annotation: { type: 'issue', description: 'https://github.com/microsoft/playwright-mcp/issues/1732' },
+}, async ({ startExtensionClient, server }) => {
+  const { browserContext, client } = await startExtensionClient({
+    PLAYWRIGHT_MCP_EXTENSION_TOKEN: 'wrong-token',
+    PWTEST_EXTENSION_CONNECT_TIMEOUT: '500',
+  });
+  const waitForConnectPage = () => browserContext.waitForEvent('page', page => page.url().startsWith(`chrome-extension://${extensionId}/connect.html`));
+
+  const connectPagePromise = waitForConnectPage();
+  expect(await client.callTool({
+    name: 'browser_navigate',
+    arguments: { url: server.HELLO_WORLD },
+  })).toHaveResponse({
+    error: expect.stringContaining(`Playwright extension did not connect within 0.5s after opening the connect page. Make sure the extension is installed in the Chrome profile "Default" and PLAYWRIGHT_MCP_EXTENSION_TOKEN matches its token.`),
+    isError: true,
+  });
+  await expect((await connectPagePromise).locator('.status-banner')).toContainText('Invalid token provided.');
+
+  // The failed attempt is not cached, the next call opens a new connect page.
+  const retryConnectPagePromise = waitForConnectPage();
+  const retryPromise = client.callTool({
+    name: 'browser_navigate',
+    arguments: { url: server.HELLO_WORLD },
+  });
+  await retryConnectPagePromise;
+  await retryPromise;
 });
 
 test(`reconnects after the extension connection drops`, {

@@ -85,12 +85,13 @@ export class Response {
     return rel;
   }
 
-  async resolveClientFile(template: FilenameTemplate, title: string): Promise<ResolvedFile> {
+  async resolveClientOutputFile(template: FilenameTemplate, title: string): Promise<ResolvedFile> {
     let fileName: string;
     if (template.suggestedFilename)
       fileName = await this.resolveClientFilename(template.suggestedFilename);
     else
       fileName = await this._context.outputFile(template, { origin: 'llm' });
+    await fs.promises.mkdir(path.dirname(fileName), { recursive: true });
     const relativeName = this._computeRelativeTo(fileName);
     const printableLink = `- [${title}](${relativeName})`;
     return { fileName, relativeName, printableLink };
@@ -106,7 +107,7 @@ export class Response {
 
   async addResult(title: string, data: Buffer | string, file: FilenameTemplate) {
     if (file.suggestedFilename || typeof data !== 'string') {
-      const resolvedFile = await this.resolveClientFile(file, title);
+      const resolvedFile = await this.resolveClientOutputFile(file, title);
       await this.addFileResult(resolvedFile, data);
     } else {
       this.addTextResult(data);
@@ -170,10 +171,10 @@ export class Response {
     const rawSections = ['Error', 'Result', 'Snapshot'] as const;
     const sections = this._raw ? allSections.filter(section => rawSections.includes(section.title as typeof rawSections[number])) : allSections;
 
+    const isError = sections.some(section => section.isError);
     let serializedText: string;
     if (this._json) {
       const payload: Record<string, unknown> = {};
-      const isError = sections.some(section => section.isError);
       if (isError)
         payload.isError = true;
       for (const section of sections) {
@@ -213,23 +214,18 @@ export class Response {
       serializedText = text.join('\n');
     }
 
-    const content: (TextContent | ImageContent)[] = [
-      {
-        type: 'text',
-        text: sanitizeUnicode(this._context.redactSecrets(serializedText)),
-      }
+    const imageResponses = this._context.config.imageResponses ?? 'allow';
+    const images: ImageContent[] = imageResponses === 'omit' ? [] : this._imageResults.map(imageResult => ({ type: 'image', data: imageResult.data.toString('base64'), mimeType: `image/${imageResult.imageType}` }));
+    const imagesOnly = imageResponses === 'only' && images.length > 0 && !isError;
+    const content: (TextContent | ImageContent)[] = imagesOnly ? images : [
+      { type: 'text', text: sanitizeUnicode(this._context.redactSecrets(serializedText)) },
+      ...images,
     ];
-
-    // Image attachments.
-    if (this._context.config.imageResponses !== 'omit') {
-      for (const imageResult of this._imageResults)
-        content.push({ type: 'image', data: imageResult.data.toString('base64'), mimeType: `image/${imageResult.imageType}` });
-    }
 
     return {
       content,
       ...(this._isClose ? { isClose: true } : {}),
-      ...(sections.some(section => section.isError) ? { isError: true } : {}),
+      ...(isError ? { isError: true } : {}),
     };
   }
 
@@ -288,7 +284,8 @@ export class Response {
     // Render tab titles upon changes or when more than one tab.
     const snapshotToFile = this._includeSnapshot !== 'explicit' || !!this._includeSnapshotFileName;
     const ariaFormat = this._includeSnapshot === 'none' ? 'none' : (this._json && !snapshotToFile ? 'json' : 'text');
-    const tabSnapshot = this._context.currentTab() ? await this._context.currentTabOrDie().captureSnapshot(this._includeSnapshotRoot, this._includeSnapshotDepth, this._includeSnapshotBoxes, this._clientWorkspace, ariaFormat) : undefined;
+    const updateWebMCP = this._includeSnapshot !== 'none'; // Collect the page's WebMCP tools whenever a snapshot is taken anyway.
+    const tabSnapshot = this._context.currentTab() ? await this._context.currentTabOrDie().captureSnapshot(this._includeSnapshotRoot, this._includeSnapshotDepth, this._includeSnapshotBoxes, this._clientWorkspace, ariaFormat, updateWebMCP) : undefined;
     const tabHeaders = await Promise.all(this._context.tabs().map(tab => tab.headerSnapshot()));
     if (this._includeSnapshot !== 'none' || tabHeaders.some(header => header.changed)) {
       if (tabHeaders.length !== 1)
@@ -304,7 +301,7 @@ export class Response {
     if (tabSnapshot && this._includeSnapshot !== 'none') {
       if (snapshotToFile) {
         const suggestedFilename = this._includeSnapshotFileName === '<auto>' ? undefined : this._includeSnapshotFileName;
-        const resolvedFile = await this.resolveClientFile({ prefix: 'page', ext: 'yml', suggestedFilename }, 'Snapshot');
+        const resolvedFile = await this.resolveClientOutputFile({ prefix: 'page', ext: 'yml', suggestedFilename }, 'Snapshot');
         await this._writeFile(resolvedFile, tabSnapshot.ariaSnapshot);
         addSection('Snapshot', [resolvedFile.printableLink]);
       } else if (tabSnapshot.ariaSnapshotJSON !== undefined) {
@@ -351,6 +348,8 @@ export function renderTabMarkdown(tab: TabHeader): string[] {
     lines.push(`- HTTP status: ${status.status}${status.statusText ? ' ' + status.statusText : ''}`);
   if (tab.console.errors || tab.console.warnings)
     lines.push(`- Console: ${tab.console.errors} errors, ${tab.console.warnings} warnings`);
+  if (tab.webmcpToolCount)
+    lines.push(`- ${tab.webmcpToolCount} webmcp tool${tab.webmcpToolCount === 1 ? '' : 's'} available on the page`);
   return lines;
 }
 

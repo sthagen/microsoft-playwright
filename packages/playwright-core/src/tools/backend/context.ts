@@ -22,7 +22,7 @@ import debug from 'debug';
 import { escapeWithQuotes } from '@isomorphic/stringUtils';
 import { disposeAll } from '@isomorphic/disposable';
 import { eventsHelper } from '@utils/eventsHelper';
-import { isPathInside, isSystemDirectory, isWritable } from '@utils/fileUtils';
+import { isPathInside, isSystemDirectory, isWritable, resolveSymlinks } from '@utils/fileUtils';
 import { playwright } from '../../inprocess';
 
 import { dedent, languageGeneratorId, secretCode } from './codegen';
@@ -42,7 +42,7 @@ export type ContextConfig = {
   capabilities?: ToolCapability[];
   codegen?: 'typescript' | 'python' | 'java' | 'csharp' | 'none';
   console?: { level?: 'error' | 'warning' | 'info' | 'debug' };
-  imageResponses?: 'allow' | 'omit';
+  imageResponses?: 'allow' | 'omit' | 'only';
   network?: {
     allowedOrigins?: string[];
     blockedOrigins?: string[];
@@ -183,6 +183,7 @@ export class Context {
       throw new Error(`Tab ${index} not found`);
     await tab.page.bringToFront();
     this._currentTab = tab;
+    await tab.updateWebMCPTools();
     return tab;
   }
 
@@ -242,13 +243,10 @@ export class Context {
     if (this._recordedActions)
       throw new Error('Recording is already in progress.');
     const browserContext = await this.ensureBrowserContext() as BrowserContextEx;
-    if (typeof browserContext._enableRecorder !== 'function')
+    if (typeof browserContext._startRecording !== 'function')
       throw new Error('Recording requires a newer version of Playwright, please upgrade.');
     const recordedActions: string[] = [];
-    await browserContext._enableRecorder({
-      mode: 'recording',
-      recorderMode: 'api',
-      omitCallTracking: true,
+    await browserContext._startRecording({
       language: languageGeneratorId(this.codegenLanguage()),
     }, {
       actionAdded: (page, action, code) => {
@@ -273,7 +271,7 @@ export class Context {
     if (!recordedActions)
       return undefined;
     this._recordedActions = undefined;
-    await (this._rawBrowserContext as BrowserContextEx)._disableRecorder();
+    await (this._rawBrowserContext as BrowserContextEx)._stopRecording();
     return recordedActions.filter(code => code.trim()).map(dedent);
   }
 
@@ -467,6 +465,12 @@ async function checkFile(options: ContextOptions, resolvedFilename: string, flag
   // Trust llm to use valid characters in file names.
   const output = outputDir(options);
   const workspace = options.cwd;
-  if (!isPathInside(output, resolvedFilename) && !isPathInside(workspace, resolvedFilename))
+  // Follow symlinks, an unresolvable root cannot be traversed anyway.
+  const [realOutput, realWorkspace, realFilename] = await Promise.all([
+    resolveSymlinks(output).catch(() => output),
+    resolveSymlinks(workspace).catch(() => workspace),
+    resolveSymlinks(resolvedFilename),
+  ]);
+  if (!isPathInside(realOutput, realFilename) && !isPathInside(realWorkspace, realFilename))
     throw new Error(`File access denied: ${resolvedFilename} is outside allowed roots. Allowed roots: ${output}, ${workspace}`);
 }

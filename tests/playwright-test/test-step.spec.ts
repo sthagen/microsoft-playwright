@@ -1250,9 +1250,9 @@ pw:api    |Wait for navigation @ a.test.ts:5
 pw:api    |Navigate data: @ a.test.ts:6
 pw:api    |Click locator('button') @ a.test.ts:8
 pw:api    |Click getByRole('button') @ a.test.ts:9
-pw:api    |GET /empty.html @ a.test.ts:10
+pw:api    |GET ${server.HOST}/empty.html @ a.test.ts:10
 pw:api    |↪ error: <error message>
-pw:api    |GET /empty.html @ a.test.ts:11
+pw:api    |GET ${server.HOST}/empty.html @ a.test.ts:11
 pw:api    |↪ error: <error message>
 hook      |After Hooks
 fixture   |  Fixture "request"
@@ -1464,7 +1464,7 @@ fixture   |  Fixture "context"
 pw:api    |    Create context
 fixture   |  Fixture "page"
 pw:api    |    Create page
-pw:api    |Navigate /empty.html @ a.test.ts:4
+pw:api    |Navigate ${server.HOST}/empty.html @ a.test.ts:4
 pw:api    |Set content @ a.test.ts:5
 test.step |custom step @ a.test.ts:6
 pw:api    |  Wait for event "response" @ a.test.ts:7
@@ -1511,7 +1511,7 @@ fixture   |  Fixture "page"
 pw:api    |    Create page
 pw:api    |Wait for event "request" @ a.test.ts:5
 pw:api    |Wait for event "response" @ a.test.ts:6
-pw:api    |Navigate /empty.html @ a.test.ts:7
+pw:api    |Navigate ${server.HOST}/empty.html @ a.test.ts:7
 hook      |After Hooks
 fixture   |  Fixture "page"
 fixture   |  Fixture "context"
@@ -1554,8 +1554,8 @@ pw:api    |    Create context
 fixture   |  Fixture "page"
 pw:api    |    Create page
 test.step |custom step @ a.test.ts:4
-pw:api    |  Navigate /empty.html @ a.test.ts:12
-pw:api    |  GET /empty.html @ a.test.ts:6
+pw:api    |  Navigate ${server.HOST}/empty.html @ a.test.ts:12
+pw:api    |  GET ${server.HOST}/empty.html @ a.test.ts:6
 expect    |  Expect "toBe" @ a.test.ts:8
 hook      |After Hooks
 fixture   |  Fixture "page"
@@ -1896,6 +1896,38 @@ test('should report step params', async ({ runInlineTest }) => {
     `pw:api | Click | getByRole('button') | {"locator":"getByRole('button')"}`,
     `expect | Expect "toBeVisible" | getByRole('button') | {"locator":"getByRole('button')"}`,
     `test.step | my step | undefined | {"foo":"bar","count":7}`,
+  ]);
+});
+
+test('should report step subtitle', async ({ runInlineTest }) => {
+  const result = await runInlineTest({
+    'reporter.ts': `
+      import type { Reporter, TestCase, TestResult, TestStep } from '@playwright/test/reporter';
+      export default class MyReporter implements Reporter {
+        onStepEnd(test: TestCase, result: TestResult, step: TestStep) {
+          if (step.category === 'test.step')
+            console.log('%%' + step.title + ' | ' + step.subtitle);
+        }
+      }
+    `,
+    'playwright.config.ts': `
+      module.exports = { reporter: './reporter' };
+    `,
+    'a.test.ts': `
+      import { test, expect } from '@playwright/test';
+      test('pass', async ({}) => {
+        await test.step('my step', async () => {}, { subtitle: 'my subtitle' });
+        await test.step.skip('skipped step', async () => {}, { subtitle: 'skipped subtitle' });
+        await test.step('plain step', async () => {});
+      });
+    `
+  }, { reporter: '' });
+
+  expect(result.exitCode).toBe(0);
+  expect(result.outputLines).toEqual([
+    `my step | my subtitle`,
+    `skipped step | skipped subtitle`,
+    `plain step | undefined`,
   ]);
 });
 

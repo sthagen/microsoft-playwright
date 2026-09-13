@@ -28,7 +28,7 @@ type ImageFormat = 'png' | 'jpeg' | 'webp';
 
 const screenshotSchema = optionalElementSchema.extend({
   type: z.enum(['png', 'jpeg', 'webp']).optional().describe('Image format for the screenshot. If unset, inferred from the filename extension, otherwise png.'),
-  filename: z.string().optional().describe('File name to save the screenshot to. Defaults to `page-{timestamp}.{png|jpeg|webp}` if not specified. Prefer relative file names to stay within the output directory.'),
+  filename: z.string().optional().describe('File name to save the screenshot to. Relative file names are resolved against the workspace root. If not specified, the screenshot is saved into the output directory as `page-{timestamp}.{png|jpeg|webp}`.'),
   fullPage: z.boolean().optional().describe('When true, takes a screenshot of the full scrollable page, instead of the currently visible viewport. Cannot be used with element screenshots.'),
   scale: z.enum(['css', 'device']).default('css').describe('Image resolution scale. "css" produces a screenshot sized in CSS pixels (smaller, consistent across devices). "device" produces a high-resolution screenshot using device pixels (larger, accounts for the device pixel ratio). Default is css.'),
 });
@@ -72,7 +72,7 @@ const screenshot = defineTabTool({
     const target = params.target ? await tab.targetLocator({ element: params.element, target: params.target }) : null;
     const data = target ? await target.locator.screenshot(options) : await tab.page.screenshot(options);
 
-    const resolvedFile = await response.resolveClientFile({ prefix: target ? 'element' : 'page', ext: fileType, suggestedFilename: params.filename }, `Screenshot of ${screenshotTargetLabel}`);
+    const resolvedFile = await response.resolveClientOutputFile({ prefix: target ? 'element' : 'page', ext: fileType, suggestedFilename: params.filename }, `Screenshot of ${screenshotTargetLabel}`);
 
     response.addCode(`// Screenshot ${screenshotTargetLabel} and save it as ${resolvedFile.relativeName}`);
     if (target)

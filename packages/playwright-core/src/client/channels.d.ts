@@ -390,6 +390,7 @@ export type AndroidDeviceLaunchBrowserParams = {
     key?: Binary,
     passphrase?: string,
     pfx?: Binary,
+    noCertificate?: boolean,
   }[],
   javaScriptEnabled?: boolean,
   bypassCSP?: boolean,
@@ -457,6 +458,7 @@ export type AndroidDeviceLaunchBrowserOptions = {
     key?: Binary,
     passphrase?: string,
     pfx?: Binary,
+    noCertificate?: boolean,
   }[],
   javaScriptEnabled?: boolean,
   bypassCSP?: boolean,
@@ -839,6 +841,7 @@ export type BrowserNewContextParams = {
     key?: Binary,
     passphrase?: string,
     pfx?: Binary,
+    noCertificate?: boolean,
   }[],
   javaScriptEnabled?: boolean,
   bypassCSP?: boolean,
@@ -909,6 +912,7 @@ export type BrowserNewContextOptions = {
     key?: Binary,
     passphrase?: string,
     pfx?: Binary,
+    noCertificate?: boolean,
   }[],
   javaScriptEnabled?: boolean,
   bypassCSP?: boolean,
@@ -982,6 +986,7 @@ export type BrowserNewContextForReuseParams = {
     key?: Binary,
     passphrase?: string,
     pfx?: Binary,
+    noCertificate?: boolean,
   }[],
   javaScriptEnabled?: boolean,
   bypassCSP?: boolean,
@@ -1052,6 +1057,7 @@ export type BrowserNewContextForReuseOptions = {
     key?: Binary,
     passphrase?: string,
     pfx?: Binary,
+    noCertificate?: boolean,
   }[],
   javaScriptEnabled?: boolean,
   bypassCSP?: boolean,
@@ -1164,6 +1170,7 @@ export type BrowserContextInitializer = {
       key?: Binary,
       passphrase?: string,
       pfx?: Binary,
+      noCertificate?: boolean,
     }[],
     javaScriptEnabled?: boolean,
     bypassCSP?: boolean,
@@ -1246,8 +1253,9 @@ export interface BrowserContextChannel extends BrowserContextEventTarget, Channe
   storageState(params: BrowserContextStorageStateParams, options: TimeoutOptions): Promise<BrowserContextStorageStateResult>;
   setStorageState(params: BrowserContextSetStorageStateParams, options: TimeoutOptions): Promise<BrowserContextSetStorageStateResult>;
   pause(params: BrowserContextPauseParams, options: TimeoutOptions): Promise<BrowserContextPauseResult>;
-  enableRecorder(params: BrowserContextEnableRecorderParams, options: TimeoutOptions): Promise<BrowserContextEnableRecorderResult>;
-  disableRecorder(params: BrowserContextDisableRecorderParams, options: TimeoutOptions): Promise<BrowserContextDisableRecorderResult>;
+  showRecorder(params: BrowserContextShowRecorderParams, options: TimeoutOptions): Promise<BrowserContextShowRecorderResult>;
+  startRecording(params: BrowserContextStartRecordingParams, options: TimeoutOptions): Promise<BrowserContextStartRecordingResult>;
+  stopRecording(params: BrowserContextStopRecordingParams, options: TimeoutOptions): Promise<BrowserContextStopRecordingResult>;
   exposeConsoleApi(params: BrowserContextExposeConsoleApiParams, options: TimeoutOptions): Promise<BrowserContextExposeConsoleApiResult>;
   newCDPSession(params: BrowserContextNewCDPSessionParams, options: TimeoutOptions): Promise<BrowserContextNewCDPSessionResult>;
   createTempFiles(params: BrowserContextCreateTempFilesParams, options: TimeoutOptions): Promise<BrowserContextCreateTempFilesResult>;
@@ -1522,10 +1530,9 @@ export type BrowserContextSetStorageStateResult = void;
 export type BrowserContextPauseParams = {};
 export type BrowserContextPauseOptions = {};
 export type BrowserContextPauseResult = void;
-export type BrowserContextEnableRecorderParams = {
+export type BrowserContextShowRecorderParams = {
   language?: string,
   mode?: 'inspecting' | 'recording',
-  recorderMode?: 'default' | 'api',
   pauseOnNextStatement?: boolean,
   testIdAttributeName?: string,
   launchOptions?: any,
@@ -1536,10 +1543,9 @@ export type BrowserContextEnableRecorderParams = {
   handleSIGINT?: boolean,
   omitCallTracking?: boolean,
 };
-export type BrowserContextEnableRecorderOptions = {
+export type BrowserContextShowRecorderOptions = {
   language?: string,
   mode?: 'inspecting' | 'recording',
-  recorderMode?: 'default' | 'api',
   pauseOnNextStatement?: boolean,
   testIdAttributeName?: string,
   launchOptions?: any,
@@ -1550,10 +1556,17 @@ export type BrowserContextEnableRecorderOptions = {
   handleSIGINT?: boolean,
   omitCallTracking?: boolean,
 };
-export type BrowserContextEnableRecorderResult = void;
-export type BrowserContextDisableRecorderParams = {};
-export type BrowserContextDisableRecorderOptions = {};
-export type BrowserContextDisableRecorderResult = void;
+export type BrowserContextShowRecorderResult = void;
+export type BrowserContextStartRecordingParams = {
+  language?: string,
+};
+export type BrowserContextStartRecordingOptions = {
+  language?: string,
+};
+export type BrowserContextStartRecordingResult = void;
+export type BrowserContextStopRecordingParams = {};
+export type BrowserContextStopRecordingOptions = {};
+export type BrowserContextStopRecordingResult = void;
 export type BrowserContextExposeConsoleApiParams = {};
 export type BrowserContextExposeConsoleApiOptions = {};
 export type BrowserContextExposeConsoleApiResult = void;
@@ -1809,6 +1822,7 @@ export type BrowserTypeLaunchPersistentContextParams = {
     key?: Binary,
     passphrase?: string,
     pfx?: Binary,
+    noCertificate?: boolean,
   }[],
   javaScriptEnabled?: boolean,
   bypassCSP?: boolean,
@@ -1892,6 +1906,7 @@ export type BrowserTypeLaunchPersistentContextOptions = {
     key?: Binary,
     passphrase?: string,
     pfx?: Binary,
+    noCertificate?: boolean,
   }[],
   javaScriptEnabled?: boolean,
   bypassCSP?: boolean,
@@ -2238,10 +2253,12 @@ export type FrameEvalOnSelectorParams = {
   expression: string,
   isFunction?: boolean,
   arg: SerializedArgument,
+  world?: 'main' | 'utility',
 };
 export type FrameEvalOnSelectorOptions = {
   strict?: boolean,
   isFunction?: boolean,
+  world?: 'main' | 'utility',
 };
 export type FrameEvalOnSelectorResult = {
   value: SerializedValue,
@@ -2251,9 +2268,11 @@ export type FrameEvalOnSelectorAllParams = {
   expression: string,
   isFunction?: boolean,
   arg: SerializedArgument,
+  world?: 'main' | 'utility',
 };
 export type FrameEvalOnSelectorAllOptions = {
   isFunction?: boolean,
+  world?: 'main' | 'utility',
 };
 export type FrameEvalOnSelectorAllResult = {
   value: SerializedValue,
@@ -2460,9 +2479,11 @@ export type FrameEvaluateExpressionParams = {
   expression: string,
   isFunction?: boolean,
   arg: SerializedArgument,
+  world?: 'main' | 'utility',
 };
 export type FrameEvaluateExpressionOptions = {
   isFunction?: boolean,
+  world?: 'main' | 'utility',
 };
 export type FrameEvaluateExpressionResult = {
   value: SerializedValue,
@@ -2917,9 +2938,11 @@ export type JSHandleEvaluateExpressionParams = {
   expression: string,
   isFunction?: boolean,
   arg: SerializedArgument,
+  world?: 'main' | 'utility',
 };
 export type JSHandleEvaluateExpressionOptions = {
   isFunction?: boolean,
+  world?: 'main' | 'utility',
 };
 export type JSHandleEvaluateExpressionResult = {
   value: SerializedValue,
@@ -3011,10 +3034,12 @@ export type ElementHandleEvalOnSelectorParams = {
   expression: string,
   isFunction?: boolean,
   arg: SerializedArgument,
+  world?: 'main' | 'utility',
 };
 export type ElementHandleEvalOnSelectorOptions = {
   strict?: boolean,
   isFunction?: boolean,
+  world?: 'main' | 'utility',
 };
 export type ElementHandleEvalOnSelectorResult = {
   value: SerializedValue,
@@ -3024,9 +3049,11 @@ export type ElementHandleEvalOnSelectorAllParams = {
   expression: string,
   isFunction?: boolean,
   arg: SerializedArgument,
+  world?: 'main' | 'utility',
 };
 export type ElementHandleEvalOnSelectorAllOptions = {
   isFunction?: boolean,
+  world?: 'main' | 'utility',
 };
 export type ElementHandleEvalOnSelectorAllResult = {
   value: SerializedValue,
@@ -4615,6 +4642,7 @@ export type PlaywrightNewRequestParams = {
     key?: Binary,
     passphrase?: string,
     pfx?: Binary,
+    noCertificate?: boolean,
   }[],
   maxRedirects?: number,
   httpCredentials?: HttpCredentials[],
@@ -4642,6 +4670,7 @@ export type PlaywrightNewRequestOptions = {
     key?: Binary,
     passphrase?: string,
     pfx?: Binary,
+    noCertificate?: boolean,
   }[],
   maxRedirects?: number,
   httpCredentials?: HttpCredentials[],

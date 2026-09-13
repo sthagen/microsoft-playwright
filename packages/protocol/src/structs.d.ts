@@ -91,12 +91,11 @@ export type Metadata = {
   },
   title?: string,
   internal?: boolean,
-  stepId?: string,
   timeout?: number,
 };
 
 export type ClientSideCallMetadata = {
-  id: number,
+  id: string,
   stack?: StackFrame[],
 };
 
@@ -314,6 +313,12 @@ export type SerializedError = {
     message: string,
     name: string,
     stack?: string,
+    code?: string,
+    errno?: number,
+    syscall?: string,
+    address?: string,
+    port?: number,
+    hostname?: string,
   },
   value?: SerializedValue,
 };

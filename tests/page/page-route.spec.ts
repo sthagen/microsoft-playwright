@@ -16,7 +16,6 @@
  */
 
 import type { Route } from 'playwright-core';
-import { chromiumVersionLessThan } from '../config/utils';
 import { test as it, expect } from './pageTest';
 
 it('should intercept @smoke', async ({ page, server }) => {
@@ -274,11 +273,11 @@ it('should pause intercepted fetch request until continue', async ({ page, serve
   expect(status).toBe(200);
 });
 
-it('should work with custom referer headers', async ({ page, server, browserName, browserVersion }) => {
+it('should work with custom referer headers', async ({ page, server, browserName, browserMajorVersion }) => {
   await page.setExtraHTTPHeaders({ 'referer': server.EMPTY_PAGE });
   await page.route('**/*', route => {
     // See https://github.com/microsoft/playwright/issues/8999
-    if (browserName === 'chromium' && chromiumVersionLessThan(browserVersion, '154.0.8014.0'))
+    if (browserName === 'chromium' && browserMajorVersion < 154)
       expect(route.request().headers()['referer']).toBe(server.EMPTY_PAGE + ', ' + server.EMPTY_PAGE);
     else
       expect(route.request().headers()['referer']).toBe(server.EMPTY_PAGE);
@@ -1020,6 +1019,47 @@ it('should contain raw request header', async ({ page, server }) => {
   });
   await page.goto(server.PREFIX + '/empty.html');
   expect(headers.accept).toBeTruthy();
+});
+
+it('should contain sec-fetch headers in route', async ({ page, server, browserName }) => {
+  it.info().annotations.push({ type: 'issue', description: 'https://github.com/microsoft/playwright/issues/42620' });
+  it.fail(browserName === 'chromium', 'Fetch.requestPaused fires before Chromium attaches Fetch Metadata headers');
+
+  const secFetch = (headers: Record<string, string | string[] | undefined>) => Object.fromEntries(
+      Object.entries(headers).filter(([name]) => name.toLowerCase().startsWith('sec-fetch-')));
+  const modes = ['cors', 'no-cors', 'same-origin'];
+
+  await page.goto(server.EMPTY_PAGE);
+
+  const routed = new Map<string, { headers: any, allHeaders: any }>();
+  await page.route('**/probe-*', async route => {
+    const request = route.request();
+    const path = new URL(request.url()).pathname;
+    routed.set(path, { headers: secFetch(request.headers()), allHeaders: secFetch(await request.allHeaders()) });
+    void route.continue();
+  });
+
+  const [serverRequests] = await Promise.all([
+    Promise.all(modes.map(mode => server.waitForRequest(`/probe-${mode}`))),
+    page.evaluate(async modes => {
+      for (const mode of modes)
+        await (await fetch(`/probe-${mode}`, { mode: mode as RequestMode })).text();
+    }, modes),
+  ]);
+
+  for (let i = 0; i < modes.length; i++) {
+    const path = `/probe-${modes[i]}`;
+    const onServer = secFetch(serverRequests[i].headers);
+    // The server does receive the browser-computed Fetch Metadata.
+    expect.soft(onServer, `${path} on server`).toEqual({
+      'sec-fetch-site': 'same-origin',
+      'sec-fetch-mode': modes[i],
+      'sec-fetch-dest': 'empty',
+    });
+    // The route handler should see the same headers.
+    expect.soft(routed.get(path)!.headers, `${path} route.request().headers()`).toEqual(onServer);
+    expect.soft(routed.get(path)!.allHeaders, `${path} route.request().allHeaders()`).toEqual(onServer);
+  }
 });
 
 it('should contain raw response header', async ({ page, server }) => {

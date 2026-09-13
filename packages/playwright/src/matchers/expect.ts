@@ -114,7 +114,7 @@ export type ExpectConfig = {
   testInfo: ExpectTestInfo | null;
   filteredStackTrace: (rawStack: string[]) => StackFrame[];
   ignoreSnapshots: boolean;
-  updateSnapshots: 'all' | 'changed' | 'missing' | 'none';
+  updateSnapshots: 'all' | 'changed' | 'missing' | 'none' | 'default';
   timeout?: number;
   toHaveScreenshot?: {
     threshold?: number;
@@ -144,7 +144,7 @@ function unfilteredStackTrace(rawStack: string[]): StackFrame[] {
   return rawStack.map(frame => parseStackFrame(frame)).filter(f => !!f);
 }
 
-let _expectConfig: ExpectConfig = { testInfo: null, filteredStackTrace: unfilteredStackTrace, ignoreSnapshots: false, updateSnapshots: 'missing' };
+let _expectConfig: ExpectConfig = { testInfo: null, filteredStackTrace: unfilteredStackTrace, ignoreSnapshots: false, updateSnapshots: 'default' };
 
 export function setExpectConfig(config: ExpectConfig) {
   _expectConfig = config;
@@ -342,7 +342,7 @@ function callMatcherAsStep(matcherName: string, info: ExpectMetaInfo, actual: un
     category: 'expect' as const,
     title,
     subtitle: suffixes.subtitle,
-    location: stackFrames[0],
+    stack: stackFrames,
     params: Object.keys(params).length ? params : undefined,
   };
   const step = testInfo?._addStep(stepData);

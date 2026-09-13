@@ -57,12 +57,14 @@ export type CLIOptions = {
   initScript?: string[];
   initPage?: string[];
   isolated?: boolean;
-  imageResponses?: 'allow' | 'omit';
+  idleTimeout?: number;
+  imageResponses?: 'allow' | 'omit' | 'only';
   mobile?: boolean;
   sandbox?: boolean;
   outputDir?: string;
   outputMaxSize?: number;
   port?: number;
+  profileDirName?: string;
   proxyBypass?: string;
   proxyServer?: string;
   remoteHeader?: Record<string, string>;
@@ -170,6 +172,7 @@ export async function resolveCLIConfigForCLI(daemonProfilesDir: string, sessionN
     mobile: options.mobile,
     extension: options.extension,
     userDataDir: options.profile,
+    idleTimeout: options.idleTimeout,
     snapshotMode: 'full',
   });
 
@@ -208,11 +211,12 @@ export async function resolveCLIConfigForCLI(daemonProfilesDir: string, sessionN
   return { ...result, browser, configFile, skillMode: true };
 }
 
-export function resolveExtensionOptions(cliOptions: CLIOptions): { channel: string, executablePath?: string } {
+export function resolveExtensionOptions(cliOptions: CLIOptions): { channel: string, executablePath?: string, profileDirName?: string } {
   const browser = cliOptions.browser ?? envToString(process.env.PLAYWRIGHT_MCP_BROWSER);
   const { channel } = resolveBrowserParam(browser);
   const executablePath = cliOptions.executablePath ?? envToString(process.env.PLAYWRIGHT_MCP_EXECUTABLE_PATH);
-  return { channel: channel ?? 'chrome', executablePath };
+  const profileDirName = cliOptions.profileDirName ?? envToString(process.env.PLAYWRIGHT_MCP_PROFILE_DIR_NAME);
+  return { channel: channel ?? 'chrome', executablePath, profileDirName };
 }
 
 async function validateBrowserConfig(browser: MergedConfig['browser']): Promise<FullConfig['browser']> {
@@ -389,6 +393,7 @@ function configFromCLIOptions(cliOptions: CLIOptions): Config & { configFile?: s
     testIdAttribute: cliOptions.testIdAttribute,
     timeouts: {
       action: cliOptions.timeoutAction,
+      idle: cliOptions.idleTimeout,
       navigation: cliOptions.timeoutNavigation,
       settle: cliOptions.timeoutSettle,
     },
@@ -435,7 +440,7 @@ export function configFromEnv(env?: NodeJS.ProcessEnv): Config & { configFile?: 
     options.initScript = [initScript];
   options.isolated = envToBoolean(e.PLAYWRIGHT_MCP_ISOLATED);
   if (e.PLAYWRIGHT_MCP_IMAGE_RESPONSES)
-    options.imageResponses = enumParser<'allow' | 'omit'>('--image-responses', ['allow', 'omit'], e.PLAYWRIGHT_MCP_IMAGE_RESPONSES);
+    options.imageResponses = enumParser<'allow' | 'omit' | 'only'>('--image-responses', ['allow', 'omit', 'only'], e.PLAYWRIGHT_MCP_IMAGE_RESPONSES);
   options.mobile = envToBoolean(e.PLAYWRIGHT_MCP_MOBILE);
   options.sandbox = envToBoolean(e.PLAYWRIGHT_MCP_SANDBOX);
   options.outputDir = envToString(e.PLAYWRIGHT_MCP_OUTPUT_DIR);
@@ -448,6 +453,7 @@ export function configFromEnv(env?: NodeJS.ProcessEnv): Config & { configFile?: 
   options.storageState = envToString(e.PLAYWRIGHT_MCP_STORAGE_STATE);
   options.testIdAttribute = envToString(e.PLAYWRIGHT_MCP_TEST_ID_ATTRIBUTE);
   options.timeoutAction = numberParser(e.PLAYWRIGHT_MCP_TIMEOUT_ACTION);
+  options.idleTimeout = numberParser(e.PLAYWRIGHT_MCP_IDLE_TIMEOUT);
   options.timeoutNavigation = numberParser(e.PLAYWRIGHT_MCP_TIMEOUT_NAVIGATION);
   options.timeoutSettle = numberParser(e.PLAYWRIGHT_MCP_TIMEOUT_SETTLE);
   options.userAgent = envToString(e.PLAYWRIGHT_MCP_USER_AGENT);

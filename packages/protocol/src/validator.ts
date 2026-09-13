@@ -158,6 +158,7 @@ scheme.AndroidDeviceLaunchBrowserParams = tObject({
     key: tOptional(tBinary),
     passphrase: tOptional(tString),
     pfx: tOptional(tBinary),
+    noCertificate: tOptional(tBoolean),
   }))),
   javaScriptEnabled: tOptional(tBoolean),
   bypassCSP: tOptional(tBoolean),
@@ -440,6 +441,7 @@ scheme.BrowserNewContextParams = tObject({
     key: tOptional(tBinary),
     passphrase: tOptional(tString),
     pfx: tOptional(tBinary),
+    noCertificate: tOptional(tBoolean),
   }))),
   javaScriptEnabled: tOptional(tBoolean),
   bypassCSP: tOptional(tBoolean),
@@ -513,6 +515,7 @@ scheme.BrowserNewContextForReuseParams = tObject({
     key: tOptional(tBinary),
     passphrase: tOptional(tString),
     pfx: tOptional(tBinary),
+    noCertificate: tOptional(tBoolean),
   }))),
   javaScriptEnabled: tOptional(tBoolean),
   bypassCSP: tOptional(tBoolean),
@@ -608,6 +611,7 @@ scheme.BrowserContextInitializer = tObject({
       key: tOptional(tBinary),
       passphrase: tOptional(tString),
       pfx: tOptional(tBinary),
+      noCertificate: tOptional(tBoolean),
     }))),
     javaScriptEnabled: tOptional(tBoolean),
     bypassCSP: tOptional(tBoolean),
@@ -837,10 +841,9 @@ scheme.BrowserContextSetStorageStateParams = tObject({
 scheme.BrowserContextSetStorageStateResult = tOptional(tObject({}));
 scheme.BrowserContextPauseParams = tOptional(tObject({}));
 scheme.BrowserContextPauseResult = tOptional(tObject({}));
-scheme.BrowserContextEnableRecorderParams = tObject({
+scheme.BrowserContextShowRecorderParams = tObject({
   language: tOptional(tString),
   mode: tOptional(tEnum(['inspecting', 'recording'])),
-  recorderMode: tOptional(tEnum(['default', 'api'])),
   pauseOnNextStatement: tOptional(tBoolean),
   testIdAttributeName: tOptional(tString),
   launchOptions: tOptional(tAny),
@@ -851,9 +854,13 @@ scheme.BrowserContextEnableRecorderParams = tObject({
   handleSIGINT: tOptional(tBoolean),
   omitCallTracking: tOptional(tBoolean),
 });
-scheme.BrowserContextEnableRecorderResult = tOptional(tObject({}));
-scheme.BrowserContextDisableRecorderParams = tOptional(tObject({}));
-scheme.BrowserContextDisableRecorderResult = tOptional(tObject({}));
+scheme.BrowserContextShowRecorderResult = tOptional(tObject({}));
+scheme.BrowserContextStartRecordingParams = tObject({
+  language: tOptional(tString),
+});
+scheme.BrowserContextStartRecordingResult = tOptional(tObject({}));
+scheme.BrowserContextStopRecordingParams = tOptional(tObject({}));
+scheme.BrowserContextStopRecordingResult = tOptional(tObject({}));
 scheme.BrowserContextExposeConsoleApiParams = tOptional(tObject({}));
 scheme.BrowserContextExposeConsoleApiResult = tOptional(tObject({}));
 scheme.BrowserContextNewCDPSessionParams = tObject({
@@ -1005,6 +1012,7 @@ scheme.BrowserTypeLaunchPersistentContextParams = tObject({
     key: tOptional(tBinary),
     passphrase: tOptional(tString),
     pfx: tOptional(tBinary),
+    noCertificate: tOptional(tBoolean),
   }))),
   javaScriptEnabled: tOptional(tBoolean),
   bypassCSP: tOptional(tBoolean),
@@ -1081,11 +1089,10 @@ scheme.Metadata = tObject({
   })),
   title: tOptional(tString),
   internal: tOptional(tBoolean),
-  stepId: tOptional(tString),
   timeout: tOptional(tFloat),
 });
 scheme.ClientSideCallMetadata = tObject({
-  id: tInt,
+  id: tString,
   stack: tOptional(tArray(tType('StackFrame'))),
 });
 scheme.SDKLanguage = tEnum(['javascript', 'python', 'java', 'csharp']);
@@ -1208,6 +1215,7 @@ scheme.FrameEvalOnSelectorParams = tObject({
   expression: tString,
   isFunction: tOptional(tBoolean),
   arg: tType('SerializedArgument'),
+  world: tOptional(tEnum(['main', 'utility'])),
 });
 scheme.FrameEvalOnSelectorResult = tObject({
   value: tType('SerializedValue'),
@@ -1217,6 +1225,7 @@ scheme.FrameEvalOnSelectorAllParams = tObject({
   expression: tString,
   isFunction: tOptional(tBoolean),
   arg: tType('SerializedArgument'),
+  world: tOptional(tEnum(['main', 'utility'])),
 });
 scheme.FrameEvalOnSelectorAllResult = tObject({
   value: tType('SerializedValue'),
@@ -1340,6 +1349,7 @@ scheme.FrameEvaluateExpressionParams = tObject({
   expression: tString,
   isFunction: tOptional(tBoolean),
   arg: tType('SerializedArgument'),
+  world: tOptional(tEnum(['main', 'utility'])),
 });
 scheme.FrameEvaluateExpressionResult = tObject({
   value: tType('SerializedValue'),
@@ -1629,6 +1639,7 @@ scheme.JSHandleEvaluateExpressionParams = tObject({
   expression: tString,
   isFunction: tOptional(tBoolean),
   arg: tType('SerializedArgument'),
+  world: tOptional(tEnum(['main', 'utility'])),
 });
 scheme.ElementHandleEvaluateExpressionParams = tType('JSHandleEvaluateExpressionParams');
 scheme.JSHandleEvaluateExpressionResult = tObject({
@@ -1677,6 +1688,7 @@ scheme.ElementHandleEvalOnSelectorParams = tObject({
   expression: tString,
   isFunction: tOptional(tBoolean),
   arg: tType('SerializedArgument'),
+  world: tOptional(tEnum(['main', 'utility'])),
 });
 scheme.ElementHandleEvalOnSelectorResult = tObject({
   value: tType('SerializedValue'),
@@ -1686,6 +1698,7 @@ scheme.ElementHandleEvalOnSelectorAllParams = tObject({
   expression: tString,
   isFunction: tOptional(tBoolean),
   arg: tType('SerializedArgument'),
+  world: tOptional(tEnum(['main', 'utility'])),
 });
 scheme.ElementHandleEvalOnSelectorAllResult = tObject({
   value: tType('SerializedValue'),
@@ -2673,6 +2686,7 @@ scheme.PlaywrightNewRequestParams = tObject({
     key: tOptional(tBinary),
     passphrase: tOptional(tString),
     pfx: tOptional(tBinary),
+    noCertificate: tOptional(tBoolean),
   }))),
   maxRedirects: tOptional(tInt),
   httpCredentials: tOptional(tArray(tType('HttpCredentials'))),
@@ -2998,6 +3012,12 @@ scheme.SerializedError = tObject({
     message: tString,
     name: tString,
     stack: tOptional(tString),
+    code: tOptional(tString),
+    errno: tOptional(tInt),
+    syscall: tOptional(tString),
+    address: tOptional(tString),
+    port: tOptional(tInt),
+    hostname: tOptional(tString),
   })),
   value: tOptional(tType('SerializedValue')),
 });

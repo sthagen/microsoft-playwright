@@ -106,21 +106,21 @@ const utilityFixtures: Fixtures<UtilityTestFixtures, UtilityWorkerFixtures> = {
         const zone = currentZone().data<TestStepInternal>('stepZone');
         const isExpectCall = (channel.type === 'Frame' && channel.method === 'expect') || (channel.type === 'Page' && channel.method === 'expectScreenshot');
         if (zone && zone.category === 'expect' && isExpectCall) {
-          data.stepId = zone.stepId;
+          data.callId = zone.stepId;
           return;
         }
 
-        // In the general case, create a step for each api call and connect them through the stepId.
+        // In the general case, create a step for each api call, use it as a callId.
         const params = renderParamsForCall({ type: channel.type, method: channel.method, params: channel.params });
         const step = testInfo._addStep({
-          location: data.frames[0],
+          stack: data.frames,
           category: 'pw:api',
           title: renderTitle(channel.type, channel.method, channel.params, data.title),
           subtitle: renderSubtitle(channel.type, channel.method, channel.params),
           params,
           group: getActionGroup({ type: channel.type, method: channel.method }),
         }, tracingGroupSteps[tracingGroupSteps.length - 1]);
-        data.stepId = step.stepId;
+        data.callId = step.stepId;
         if (channel.type === 'Tracing' && channel.method === 'tracingGroup') {
           // The step will end later, when the corresponding "tracing.groupEnd" call finishes.
           tracingGroupSteps.push(step);

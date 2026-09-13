@@ -1967,13 +1967,15 @@ interface TestConfig<TestArgs = {}, WorkerArgs = {}> {
   tsconfig?: string;
 
   /**
-   * Whether to update expected snapshots with the actual results produced by the test run. Defaults to `'missing'`.
+   * Whether to update expected snapshots with the actual results produced by the test run. Defaults to `'default'`.
    * - `'all'` - All tests that are executed will update snapshots.
    * - `'changed'` - All tests that are executed will update snapshots that did not match. Matching snapshots will not
    *   be updated. Also creates missing snapshots.
    * - `'missing'` - Missing snapshots are created, for example when authoring a new test and running it for the first
-   *   time. This is the default.
+   *   time. Tests that only create missing snapshots pass.
    * - `'none'` - No snapshots are updated.
+   * - `'default'` - Missing snapshots are created, but the tests that create them fail, so that the run does not
+   *   silently pass in CI. This is the default.
    *
    * Learn more about [snapshots](https://playwright.dev/docs/test-snapshots).
    *
@@ -1984,12 +1986,12 @@ interface TestConfig<TestArgs = {}, WorkerArgs = {}> {
    * import { defineConfig } from '@playwright/test';
    *
    * export default defineConfig({
-   *   updateSnapshots: 'missing',
+   *   updateSnapshots: 'default',
    * });
    * ```
    *
    */
-  updateSnapshots?: "all"|"changed"|"missing"|"none";
+  updateSnapshots?: "all"|"changed"|"missing"|"none"|"default";
 
   /**
    * Defines how to update snapshots in the source code.
@@ -2067,6 +2069,13 @@ export interface FullConfig<TestArgs = {}, WorkerArgs = {}> {
    * [testConfig.failOnFlakyTests](https://playwright.dev/docs/api/class-testconfig#test-config-fail-on-flaky-tests).
    */
   failOnFlakyTests: boolean;
+
+  /**
+   * List of projects that were selected to run, after applying the `--project` command line filter. When no filter is
+   * specified, this is the same as
+   * [fullConfig.projects](https://playwright.dev/docs/api/class-fullconfig#full-config-projects).
+   */
+  filteredProjects: Array<FullProject>;
 
   /**
    * See [testConfig.forbidOnly](https://playwright.dev/docs/api/class-testconfig#test-config-forbid-only).
@@ -2166,7 +2175,7 @@ export interface FullConfig<TestArgs = {}, WorkerArgs = {}> {
   /**
    * See [testConfig.updateSnapshots](https://playwright.dev/docs/api/class-testconfig#test-config-update-snapshots).
    */
-  updateSnapshots: "all"|"changed"|"missing"|"none";
+  updateSnapshots: "all"|"changed"|"missing"|"none"|"default";
 
   /**
    * See
@@ -6727,7 +6736,7 @@ export interface TestType<TestArgs extends {}, WorkerArgs extends {}> {
      * @param body Step body.
      * @param options
      */
-    <T>(title: string, body: (step: TestStepInfo) => T | Promise<T>, options?: { box?: boolean, location?: Location, timeout?: number, params?: { [key: string]: any } }): Promise<T>;
+    <T>(title: string, body: (step: TestStepInfo) => T | Promise<T>, options?: { box?: boolean, location?: Location, timeout?: number, params?: { [key: string]: any }, subtitle?: string }): Promise<T>;
     /**
      * Mark a test step as "skip" to temporarily disable its execution, useful for steps that are currently failing and
      * planned for a near-term fix. Playwright will not run the step. See also
@@ -6755,7 +6764,7 @@ export interface TestType<TestArgs extends {}, WorkerArgs extends {}> {
      * @param body Step body.
      * @param options
      */
-    skip(title: string, body: (step: TestStepInfo) => any | Promise<any>, options?: { box?: boolean, location?: Location, timeout?: number, params?: { [key: string]: any } }): Promise<void>;
+    skip(title: string, body: (step: TestStepInfo) => any | Promise<any>, options?: { box?: boolean, location?: Location, timeout?: number, params?: { [key: string]: any }, subtitle?: string }): Promise<void>;
   }
   /**
    * `expect` function can be used to create test assertions. Read more about [test assertions](https://playwright.dev/docs/test-assertions).
@@ -7368,8 +7377,10 @@ export interface PlaywrightTestOptions {
    * with an exact match to the request origin that the certificate is valid for.
    *
    * Client certificate authentication is only active when at least one client certificate is provided. If you want to
-   * reject all client certificates sent by the server, you need to provide a client certificate with an `origin` that
-   * does not match any of the domains you plan to visit.
+   * reject all client certificates sent by the server for an origin you visit, set `noCertificate` to `true` for that
+   * origin instead of omitting it: omitting the origin entirely leaves the connection unintercepted, so the server's
+   * own certificate request still reaches the browser and may trigger a native certificate-selection prompt on some
+   * platforms. `noCertificate` forces interception for that origin while still presenting no client certificate.
    *
    * **NOTE** When using WebKit on macOS, accessing `localhost` will not pick up client certificates. You can make it
    * work by replacing `localhost` with `local.playwright`.
@@ -7974,11 +7985,17 @@ export interface PlaywrightWorkerArgs {
   browser: Browser;
 }
 
+export interface Stories {}
+
 type StoryProps<Story> =
   Story extends (props: infer Props) => any ? Props :
   Story extends new (...args: any[]) => { $props: infer Props } ? Props :
   Story extends new (props: infer Props, ...args: any[]) => any ? Props :
   Story;
+type StoryId = keyof Stories | (string & {});
+type StoryPropsFor<Id> = Id extends keyof Stories ? StoryProps<Stories[Id]> : Record<string, any>;
+// Explicit mount<typeof Story>() wins over the id lookup; the indexed access keeps Story from being inferred from props.
+type MountProps<Story, Id> = [Story] extends [never] ? StoryPropsFor<Id> : StoryProps<[Story][Story extends any ? 0 : never]>;
 
 /**
  * Playwright Test is based on the concept of the [test fixtures](https://playwright.dev/docs/test-fixtures). Test fixtures are used to
@@ -8112,7 +8129,7 @@ export interface PlaywrightTestArgs {
    * exported story name, for example `'components/Button/Primary'`.
    * @param props Optional plain, serializable props passed to the story.
    */
-  mount: <Story = Record<string, any>>(storyId: string, props?: StoryProps<Story>) => Promise<Locator & { update(props?: StoryProps<Story>): Promise<void>, unmount(): Promise<void> }>;
+  mount: <Story = never, Id extends StoryId = StoryId>(storyId: Id, props?: MountProps<Story, Id>) => Promise<Locator & { update(props?: MountProps<Story, Id>): Promise<void>, unmount(): Promise<void> }>;
 }
 
 type ExcludeProps<A, B> = {

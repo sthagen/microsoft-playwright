@@ -26,7 +26,7 @@ const storageState = defineTool({
     title: 'Save storage state',
     description: 'Save storage state (cookies, local storage) to a file for later reuse',
     inputSchema: z.object({
-      filename: z.string().optional().describe('File name to save the storage state to. Defaults to `storage-state-{timestamp}.json` if not specified.'),
+      filename: z.string().optional().describe('File name to save the storage state to. Relative file names are resolved against the workspace root. If not specified, the storage state is saved into the output directory as `storage-state-{timestamp}.json`.'),
     }),
     type: 'readOnly',
   },
@@ -35,7 +35,7 @@ const storageState = defineTool({
     const browserContext = await context.ensureBrowserContext();
     const state = await browserContext.storageState();
     const serializedState = JSON.stringify(state, null, 2);
-    const resolvedFile = await response.resolveClientFile({ prefix: 'storage-state', ext: 'json', suggestedFilename: params.filename }, 'Storage state');
+    const resolvedFile = await response.resolveClientOutputFile({ prefix: 'storage-state', ext: 'json', suggestedFilename: params.filename }, 'Storage state');
     response.addCode(`await page.context().storageState({ path: ${escapeWithQuotes(resolvedFile.relativeName)} });`);
     await response.addFileResult(resolvedFile, serializedState);
   },
@@ -49,7 +49,7 @@ const setStorageState = defineTool({
     title: 'Restore storage state',
     description: 'Restore storage state (cookies, local storage) from a file. This clears existing cookies and local storage before restoring.',
     inputSchema: z.object({
-      filename: z.string().describe('Path to the storage state file to restore from'),
+      filename: z.string().describe('Path to the storage state file to restore from. Relative file names are resolved against the workspace root.'),
     }),
     type: 'action',
   },

@@ -16,7 +16,9 @@
 
 import { test, expect } from './playwright-test-fixtures';
 import { parseTrace, parseTraceRaw } from '../config/utils';
+
 import fs from 'fs';
+import path from 'path';
 
 test.describe.configure({ mode: 'parallel' });
 
@@ -98,7 +100,7 @@ test('should record api trace', async ({ runInlineTest, server }, testInfo) => {
     '  Fixture "page"',
     '    Create page',
     'Navigate about:blank',
-    'GET /empty.html',
+    `GET ${server.HOST}/empty.html`,
     'After Hooks',
     '  Fixture "page"',
     '  Fixture "context"',
@@ -109,7 +111,7 @@ test('should record api trace', async ({ runInlineTest, server }, testInfo) => {
   expect(trace2.model.renderActionTree()).toEqual([
     'Before Hooks',
     'Create request context',
-    'GET /empty.html',
+    `GET ${server.HOST}/empty.html`,
     'After Hooks',
   ]);
   const trace3 = await parseTrace(testInfo.outputPath('test-results', 'a-fail', 'trace.zip'));
@@ -122,7 +124,7 @@ test('should record api trace', async ({ runInlineTest, server }, testInfo) => {
     '  Fixture "page"',
     '    Create page',
     'Navigate about:blank',
-    'GET /empty.html',
+    `GET ${server.HOST}/empty.html`,
     'Expect "toBe"',
     'After Hooks',
     '  Fixture "page"',
@@ -420,7 +422,7 @@ test('should not override trace file in afterAll', async ({ runInlineTest, serve
     '  afterAll hook',
     '    Fixture "request"',
     '      Create request context',
-    '    GET /empty.html',
+    `    GET ${server.HOST}/empty.html`,
     '    Fixture "request"',
     'Worker Cleanup',
     '  Fixture "browser"',
@@ -580,7 +582,7 @@ test(`trace:retain-on-failure should create trace if request context is disposed
   }, { trace: 'retain-on-failure' });
   const tracePath = test.info().outputPath('test-results', 'a-passing-test', 'trace.zip');
   const trace = await parseTrace(tracePath);
-  expect(trace.model.renderActionTree()).toContain('GET /empty.html');
+  expect(trace.model.renderActionTree()).toContain(`GET ${server.HOST}/empty.html`);
   expect(result.failed).toBe(1);
 });
 
@@ -1240,7 +1242,7 @@ test('trace:retain-on-first-failure should create trace if request context is di
   }, { trace: 'retain-on-first-failure' });
   const tracePath = test.info().outputPath('test-results', 'a-fail', 'trace.zip');
   const trace = await parseTrace(tracePath);
-  expect(trace.model.renderActionTree()).toContain('GET /empty.html');
+  expect(trace.model.renderActionTree()).toContain(`GET ${server.HOST}/empty.html`);
   expect(result.failed).toBe(1);
 });
 
@@ -1387,8 +1389,8 @@ test('should not nest top level expect into unfinished api calls ', {
     '    Create context',
     '  Fixture "page"',
     '    Create page',
-    'Navigate /index',
-    'GET /hang',
+    `Navigate ${server.HOST}/index`,
+    `GET ${server.HOST}/hang`,
     `Expect "toBeVisible" getByText('Hello!')`,
     'After Hooks',
     '  Fixture "page"',
@@ -1552,4 +1554,50 @@ test('should record step params in trace', async ({ runInlineTest }, testInfo) =
   const actionByTitle = (title: string) => trace.model.actions.find(a => a.title === title)!;
   expect(actionByTitle('my step').params).toEqual({ foo: 'bar' });
   expect(actionByTitle('Expect "toBe"').params).toEqual({ expected: '1' });
+});
+
+test('should record step stack in trace', async ({ runInlineTest }, testInfo) => {
+  const result = await runInlineTest({
+    'a.spec.ts': `
+      import { test, expect } from '@playwright/test';
+      async function helper(page) {
+        await test.step('my step', async () => {
+          await page.setContent('<title>hello</title>');
+          await expect(page).toHaveTitle('hello');
+        });
+      }
+      test('pass', async ({ page }) => {
+        await helper(page);
+      });
+    `,
+  }, { trace: 'on' });
+
+  expect(result.exitCode).toBe(0);
+  expect(result.passed).toBe(1);
+  const trace = await parseTrace(testInfo.outputPath('test-results', 'a-pass', 'trace.zip'));
+  const stacks = trace.model.actions.filter(a => a.stack?.length).map(a => a.stack!.map(f => `${path.basename(f.file)}:${f.line}:${f.column}`));
+  expect(stacks).toEqual([
+    // test.step
+    ['a.spec.ts:4:9', 'a.spec.ts:10:9'],
+    // page.setContent
+    ['a.spec.ts:5:22', 'a.spec.ts:4:9', 'a.spec.ts:10:9'],
+    // expect
+    ['a.spec.ts:6:30', 'a.spec.ts:4:9', 'a.spec.ts:10:9'],
+  ]);
+});
+
+test('should record step subtitle in trace', async ({ runInlineTest }, testInfo) => {
+  const result = await runInlineTest({
+    'a.spec.ts': `
+      import { test, expect } from '@playwright/test';
+      test('pass', async ({}) => {
+        await test.step('my step', async () => {}, { subtitle: 'my subtitle' });
+      });
+    `,
+  }, { trace: 'on' });
+
+  expect(result.exitCode).toBe(0);
+  expect(result.passed).toBe(1);
+  const trace = await parseTrace(testInfo.outputPath('test-results', 'a-pass', 'trace.zip'));
+  expect(trace.model.actions.find(a => a.title === 'my step')!.subtitle).toBe('my subtitle');
 });
