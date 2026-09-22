@@ -422,11 +422,17 @@ export type AndroidDeviceLaunchBrowserParams = {
       width: number,
       height: number,
     },
+    fps?: number,
     showActions?: {
       duration?: number,
       position?: 'top-left' | 'top' | 'top-right' | 'bottom-left' | 'bottom' | 'bottom-right',
       fontSize?: number,
       cursor?: 'none' | 'pointer',
+      style?: {
+        point?: string,
+        highlight?: string,
+        title?: string,
+      },
     },
   },
   strictSelectors?: boolean,
@@ -490,11 +496,17 @@ export type AndroidDeviceLaunchBrowserOptions = {
       width: number,
       height: number,
     },
+    fps?: number,
     showActions?: {
       duration?: number,
       position?: 'top-left' | 'top' | 'top-right' | 'bottom-left' | 'bottom' | 'bottom-right',
       fontSize?: number,
       cursor?: 'none' | 'pointer',
+      style?: {
+        point?: string,
+        highlight?: string,
+        title?: string,
+      },
     },
   },
   strictSelectors?: boolean,
@@ -873,11 +885,17 @@ export type BrowserNewContextParams = {
       width: number,
       height: number,
     },
+    fps?: number,
     showActions?: {
       duration?: number,
       position?: 'top-left' | 'top' | 'top-right' | 'bottom-left' | 'bottom' | 'bottom-right',
       fontSize?: number,
       cursor?: 'none' | 'pointer',
+      style?: {
+        point?: string,
+        highlight?: string,
+        title?: string,
+      },
     },
   },
   strictSelectors?: boolean,
@@ -944,11 +962,17 @@ export type BrowserNewContextOptions = {
       width: number,
       height: number,
     },
+    fps?: number,
     showActions?: {
       duration?: number,
       position?: 'top-left' | 'top' | 'top-right' | 'bottom-left' | 'bottom' | 'bottom-right',
       fontSize?: number,
       cursor?: 'none' | 'pointer',
+      style?: {
+        point?: string,
+        highlight?: string,
+        title?: string,
+      },
     },
   },
   strictSelectors?: boolean,
@@ -1018,11 +1042,17 @@ export type BrowserNewContextForReuseParams = {
       width: number,
       height: number,
     },
+    fps?: number,
     showActions?: {
       duration?: number,
       position?: 'top-left' | 'top' | 'top-right' | 'bottom-left' | 'bottom' | 'bottom-right',
       fontSize?: number,
       cursor?: 'none' | 'pointer',
+      style?: {
+        point?: string,
+        highlight?: string,
+        title?: string,
+      },
     },
   },
   strictSelectors?: boolean,
@@ -1089,11 +1119,17 @@ export type BrowserNewContextForReuseOptions = {
       width: number,
       height: number,
     },
+    fps?: number,
     showActions?: {
       duration?: number,
       position?: 'top-left' | 'top' | 'top-right' | 'bottom-left' | 'bottom' | 'bottom-right',
       fontSize?: number,
       cursor?: 'none' | 'pointer',
+      style?: {
+        point?: string,
+        highlight?: string,
+        title?: string,
+      },
     },
   },
   strictSelectors?: boolean,
@@ -1202,11 +1238,17 @@ export type BrowserContextInitializer = {
         width: number,
         height: number,
       },
+      fps?: number,
       showActions?: {
         duration?: number,
         position?: 'top-left' | 'top' | 'top-right' | 'bottom-left' | 'bottom' | 'bottom-right',
         fontSize?: number,
         cursor?: 'none' | 'pointer',
+        style?: {
+          point?: string,
+          highlight?: string,
+          title?: string,
+        },
       },
     },
     strictSelectors?: boolean,
@@ -1854,11 +1896,17 @@ export type BrowserTypeLaunchPersistentContextParams = {
       width: number,
       height: number,
     },
+    fps?: number,
     showActions?: {
       duration?: number,
       position?: 'top-left' | 'top' | 'top-right' | 'bottom-left' | 'bottom' | 'bottom-right',
       fontSize?: number,
       cursor?: 'none' | 'pointer',
+      style?: {
+        point?: string,
+        highlight?: string,
+        title?: string,
+      },
     },
   },
   strictSelectors?: boolean,
@@ -1938,11 +1986,17 @@ export type BrowserTypeLaunchPersistentContextOptions = {
       width: number,
       height: number,
     },
+    fps?: number,
     showActions?: {
       duration?: number,
       position?: 'top-left' | 'top' | 'top-right' | 'bottom-left' | 'bottom' | 'bottom-right',
       fontSize?: number,
       cursor?: 'none' | 'pointer',
+      style?: {
+        point?: string,
+        highlight?: string,
+        title?: string,
+      },
     },
   },
   strictSelectors?: boolean,
@@ -2040,11 +2094,17 @@ export type ElectronLaunchParams = {
       width: number,
       height: number,
     },
+    fps?: number,
     showActions?: {
       duration?: number,
       position?: 'top-left' | 'top' | 'top-right' | 'bottom-left' | 'bottom' | 'bottom-right',
       fontSize?: number,
       cursor?: 'none' | 'pointer',
+      style?: {
+        point?: string,
+        highlight?: string,
+        title?: string,
+      },
     },
   },
   strictSelectors?: boolean,
@@ -2079,11 +2139,17 @@ export type ElectronLaunchOptions = {
       width: number,
       height: number,
     },
+    fps?: number,
     showActions?: {
       duration?: number,
       position?: 'top-left' | 'top' | 'top-right' | 'bottom-left' | 'bottom' | 'bottom-right',
       fontSize?: number,
       cursor?: 'none' | 'pointer',
+      style?: {
+        point?: string,
+        highlight?: string,
+        title?: string,
+      },
     },
   },
   strictSelectors?: boolean,
@@ -2384,8 +2450,12 @@ export type FrameClickOptions = {
   steps?: number,
 };
 export type FrameClickResult = void;
-export type FrameContentParams = {};
-export type FrameContentOptions = {};
+export type FrameContentParams = {
+  includeShadow?: boolean,
+};
+export type FrameContentOptions = {
+  includeShadow?: boolean,
+};
 export type FrameContentResult = {
   value: string,
 };
@@ -2480,10 +2550,12 @@ export type FrameEvaluateExpressionParams = {
   expression: string,
   isFunction?: boolean,
   arg: SerializedArgument,
+  serialize?: ('Map' | 'Set')[],
   world?: 'main' | 'utility',
 };
 export type FrameEvaluateExpressionOptions = {
   isFunction?: boolean,
+  serialize?: ('Map' | 'Set')[],
   world?: 'main' | 'utility',
 };
 export type FrameEvaluateExpressionResult = {
@@ -2493,9 +2565,11 @@ export type FrameEvaluateExpressionHandleParams = {
   expression: string,
   isFunction?: boolean,
   arg: SerializedArgument,
+  serialize?: ('Map' | 'Set')[],
 };
 export type FrameEvaluateExpressionHandleOptions = {
   isFunction?: boolean,
+  serialize?: ('Map' | 'Set')[],
 };
 export type FrameEvaluateExpressionHandleResult = {
   handle: JSHandleChannel,
@@ -2939,10 +3013,12 @@ export type JSHandleEvaluateExpressionParams = {
   expression: string,
   isFunction?: boolean,
   arg: SerializedArgument,
+  serialize?: ('Map' | 'Set')[],
   world?: 'main' | 'utility',
 };
 export type JSHandleEvaluateExpressionOptions = {
   isFunction?: boolean,
+  serialize?: ('Map' | 'Set')[],
   world?: 'main' | 'utility',
 };
 export type JSHandleEvaluateExpressionResult = {
@@ -2952,9 +3028,11 @@ export type JSHandleEvaluateExpressionHandleParams = {
   expression: string,
   isFunction?: boolean,
   arg: SerializedArgument,
+  serialize?: ('Map' | 'Set')[],
 };
 export type JSHandleEvaluateExpressionHandleOptions = {
   isFunction?: boolean,
+  serialize?: ('Map' | 'Set')[],
 };
 export type JSHandleEvaluateExpressionHandleResult = {
   handle: JSHandleChannel,
@@ -4474,12 +4552,22 @@ export type PageScreencastShowActionsParams = {
   position?: 'top-left' | 'top' | 'top-right' | 'bottom-left' | 'bottom' | 'bottom-right',
   fontSize?: number,
   cursor?: 'none' | 'pointer',
+  style?: {
+    point?: string,
+    highlight?: string,
+    title?: string,
+  },
 };
 export type PageScreencastShowActionsOptions = {
   duration?: number,
   position?: 'top-left' | 'top' | 'top-right' | 'bottom-left' | 'bottom' | 'bottom-right',
   fontSize?: number,
   cursor?: 'none' | 'pointer',
+  style?: {
+    point?: string,
+    highlight?: string,
+    title?: string,
+  },
 };
 export type PageScreencastShowActionsResult = void;
 export type PageScreencastHideActionsParams = {};
@@ -4491,6 +4579,7 @@ export type PageScreencastStartParams = {
     height: number,
   },
   quality?: number,
+  fps?: number,
   sendFrames?: boolean,
   record?: boolean,
 };
@@ -4500,6 +4589,7 @@ export type PageScreencastStartOptions = {
     height: number,
   },
   quality?: number,
+  fps?: number,
   sendFrames?: boolean,
   record?: boolean,
 };
@@ -5076,6 +5166,7 @@ export type TracingTracingStartParams = {
   snapshotAria?: boolean,
   snapshotScreen?: boolean,
   screencast?: boolean,
+  coverage?: boolean,
   live?: boolean,
 };
 export type TracingTracingStartOptions = {
@@ -5084,6 +5175,7 @@ export type TracingTracingStartOptions = {
   snapshotAria?: boolean,
   snapshotScreen?: boolean,
   screencast?: boolean,
+  coverage?: boolean,
   live?: boolean,
 };
 export type TracingTracingStartResult = void;

@@ -140,7 +140,7 @@ export default defineConfig({
 ```
 
 ## property: TestOptions.clientCertificates = %%-context-option-clientCertificates-%%
-* since: 1.46
+* since: v1.46
 
 **Usage**
 
@@ -561,6 +561,27 @@ export default defineConfig({
 });
 ```
 
+## property: TestOptions.screen
+* since: v1.64
+- type: ?<[Object]>
+  - `width` <[int]> page width in pixels.
+  - `height` <[int]> page height in pixels.
+
+Emulates consistent window screen size available inside web page via `window.screen`. Is only used when the [`property: TestOptions.viewport`] is set.
+
+**Usage**
+
+```js title="playwright.config.ts"
+import { defineConfig } from '@playwright/test';
+
+export default defineConfig({
+  use: {
+    viewport: { width: 390, height: 664 },
+    screen: { width: 390, height: 844 },
+  },
+});
+```
+
 ## property: TestOptions.screenshot
 * since: v1.10
 - type: <[Object]|[ScreenshotMode]<"off"|"on"|"only-on-failure"|"on-first-failure">>
@@ -673,6 +694,7 @@ export default defineConfig({
     - `dom` ?<[boolean]> Capture DOM snapshot on every action and record network activity. Optional.
     - `aria` ?<[boolean]> Capture aria snapshot of the page on every action. Optional.
     - `screen` ?<[boolean]> Capture a screenshot of the page on every action. Optional.
+  - `coverage` ?<[boolean]> Whether to collect coverage from istanbul-instrumented application code into the trace. Defaults to false. Optional.
   - `sources` ?<[boolean]> Whether to include source files for trace actions. Defaults to true. Optional.
 
 Whether to record trace for each test. Defaults to `'off'`. The initial run of a test is the "first run"; subsequent runs caused by [retries](../test-retries.md) are "retries".
@@ -724,14 +746,19 @@ export default defineConfig({
   - `size` ?<[Object]> Size of the recorded video. Optional.
     - `width` <[int]>
     - `height` <[int]>
+  - `fps` ?<[int]> Frame rate of the recorded video in frames per second. Defaults to `25`.
   - `show` ?<[Object]> If specified, visually annotates the video with test information and action highlights.
     - `actions` ?<[Object]> Controls visual annotations on interacted elements.
       - `duration` ?<[float]> How long each annotation is displayed in milliseconds. Defaults to `500`.
       - `position` ?<[AnnotatePosition]<"top-left"|"top"|"top-right"|"bottom-left"|"bottom"|"bottom-right">> Position of the action title overlay. Defaults to `"top-right"`.
-      - `fontSize` ?<[int]> Font size of the action title in pixels. Defaults to `24`.
+      - `fontSize` ?<[int]> Font size of the action title in pixels. Defaults to `24`. Deprecated, use `style.title` instead.
       - `cursor` ?<[ScreencastCursor]<"none"|"pointer">> Cursor decoration shown for pointer actions. `"pointer"` (the default) renders a mouse pointer that animates from the previous action point to the next one. `"none"` disables the cursor decoration.
+      - `style` ?<[Object]> Styles of the action decorations.
+        - `point` ?<[string]> CSS declarations for the zero-sized marker centered on the action point. Not shown when omitted.
+        - `highlight` ?<[string]> CSS declarations for the box that covers the target element. Not shown when omitted.
+        - `title` ?<[string]> CSS declarations for the action title.
     - `test` ?<[Object]> Controls test information displayed as a status overlay in the video.
-      - `level` ?<[TestAnnotationLevel]<"file"|"test"|"step">> Level of the detail to include about the current test.
+      - `level` ?<[TestAnnotationLevel]<"file"|"title"|"step">> Level of the detail to include about the current test.
       - `position` ?<[AnnotatePosition]<"top-left"|"top"|"top-right"|"bottom-left"|"bottom"|"bottom-right">> Position of the test information overlay. Defaults to `"top-left"`.
       - `fontSize` ?<[int]> Font size of the test information in pixels. Defaults to `14`.
 
@@ -748,7 +775,9 @@ See [video modes](../test-use-options.md#video-modes) for a side-by-side compari
 
 To control video size, pass an object with `mode` and `size` properties. If video size is not specified, it will be equal to [`property: TestOptions.viewport`] scaled down to fit into 800x800. If `viewport` is not configured explicitly the video size defaults to 800x450. Actual picture of each page will be scaled down if necessary to fit the specified size.
 
-To annotate actions in the video, pass `show` with `action` and/or `test` sub-options. The `action` option controls visual highlights on interacted elements with an optional `delay` in milliseconds (defaults to `500`). The `test` option controls which test information is displayed as a status overlay.
+To record smoother video of animations and scrolling, pass `fps`, for example `{ mode: 'on', size: { width: 1920, height: 1080 }, fps: 60 }`. Higher frame rates and sizes use more CPU for encoding. Firefox and WebKit currently capture up to 25 frames per second.
+
+To annotate actions in the video, pass `show` with `actions` and/or `test` sub-options. The `actions` option controls visual highlights on interacted elements, each shown for an optional `duration` in milliseconds (defaults to `500`). The `test` option controls which test information is displayed as a status overlay.
 
 **Usage**
 

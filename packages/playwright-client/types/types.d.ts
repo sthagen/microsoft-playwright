@@ -134,7 +134,7 @@ export interface Page {
    * [`pageFunction`](https://playwright.dev/docs/api/class-page#page-evaluate-option-expression).
    * @param options
    */
-  evaluate<R, Arg>(pageFunction: PageFunction<Arg, R>, arg: Arg, options?: { exposeFunctions?: boolean, world?: 'main'|'utility' }): Promise<R>;
+  evaluate<R, Arg>(pageFunction: PageFunction<Arg, R>, arg: Arg, options?: { exposeFunctions?: boolean, serialize?: ('Map'|'Set')[], world?: 'main'|'utility' }): Promise<R>;
   /**
    * Returns the value of the
    * [`pageFunction`](https://playwright.dev/docs/api/class-page#page-evaluate-option-expression) invocation.
@@ -187,7 +187,7 @@ export interface Page {
    * [`pageFunction`](https://playwright.dev/docs/api/class-page#page-evaluate-option-expression).
    * @param options
    */
-  evaluate<R>(pageFunction: PageFunction<void, R>, arg?: any, options?: { exposeFunctions?: boolean, world?: 'main'|'utility' }): Promise<R>;
+  evaluate<R>(pageFunction: PageFunction<void, R>, arg?: any, options?: { exposeFunctions?: boolean, serialize?: ('Map'|'Set')[], world?: 'main'|'utility' }): Promise<R>;
 
   /**
    * Returns the value of the
@@ -235,7 +235,7 @@ export interface Page {
    * [`pageFunction`](https://playwright.dev/docs/api/class-page#page-evaluate-handle-option-expression).
    * @param options
    */
-  evaluateHandle<R, Arg>(pageFunction: PageFunction<Arg, R>, arg: Arg, options?: { exposeFunctions?: boolean }): Promise<SmartHandle<R>>;
+  evaluateHandle<R, Arg>(pageFunction: PageFunction<Arg, R>, arg: Arg, options?: { exposeFunctions?: boolean, serialize?: ('Map'|'Set')[] }): Promise<SmartHandle<R>>;
   /**
    * Returns the value of the
    * [`pageFunction`](https://playwright.dev/docs/api/class-page#page-evaluate-handle-option-expression) invocation as a
@@ -282,7 +282,7 @@ export interface Page {
    * [`pageFunction`](https://playwright.dev/docs/api/class-page#page-evaluate-handle-option-expression).
    * @param options
    */
-  evaluateHandle<R>(pageFunction: PageFunction<void, R>, arg?: any, options?: { exposeFunctions?: boolean }): Promise<SmartHandle<R>>;
+  evaluateHandle<R>(pageFunction: PageFunction<void, R>, arg?: any, options?: { exposeFunctions?: boolean, serialize?: ('Map'|'Set')[] }): Promise<SmartHandle<R>>;
 
   /**
    * Adds a script which would be evaluated in one of the following scenarios:
@@ -2458,8 +2458,17 @@ export interface Page {
 
   /**
    * Gets the full HTML contents of the page, including the doctype.
+   * @param options
    */
-  content(): Promise<string>;
+  content(options?: {
+    /**
+     * When true, contents of open shadow roots are included as
+     * [declarative shadow DOM](https://developer.mozilla.org/en-US/docs/Web/API/Web_components/Using_shadow_DOM#declaratively_with_html),
+     * i.e. `<template shadowrootmode="open">` elements nested inside their host elements. Closed shadow roots are never
+     * included. Defaults to `false`.
+     */
+    includeShadow?: boolean;
+  }): Promise<string>;
 
   /**
    * Get the browser context that the page belongs to.
@@ -5963,7 +5972,7 @@ export interface Frame {
    * [`pageFunction`](https://playwright.dev/docs/api/class-frame#frame-evaluate-option-expression).
    * @param options
    */
-  evaluate<R, Arg>(pageFunction: PageFunction<Arg, R>, arg: Arg, options?: { exposeFunctions?: boolean, world?: 'main'|'utility' }): Promise<R>;
+  evaluate<R, Arg>(pageFunction: PageFunction<Arg, R>, arg: Arg, options?: { exposeFunctions?: boolean, serialize?: ('Map'|'Set')[], world?: 'main'|'utility' }): Promise<R>;
   /**
    * Returns the return value of
    * [`pageFunction`](https://playwright.dev/docs/api/class-frame#frame-evaluate-option-expression).
@@ -6012,7 +6021,7 @@ export interface Frame {
    * [`pageFunction`](https://playwright.dev/docs/api/class-frame#frame-evaluate-option-expression).
    * @param options
    */
-  evaluate<R>(pageFunction: PageFunction<void, R>, arg?: any, options?: { exposeFunctions?: boolean, world?: 'main'|'utility' }): Promise<R>;
+  evaluate<R>(pageFunction: PageFunction<void, R>, arg?: any, options?: { exposeFunctions?: boolean, serialize?: ('Map'|'Set')[], world?: 'main'|'utility' }): Promise<R>;
 
   /**
    * Returns the return value of
@@ -6062,7 +6071,7 @@ export interface Frame {
    * [`pageFunction`](https://playwright.dev/docs/api/class-frame#frame-evaluate-handle-option-expression).
    * @param options
    */
-  evaluateHandle<R, Arg>(pageFunction: PageFunction<Arg, R>, arg: Arg, options?: { exposeFunctions?: boolean }): Promise<SmartHandle<R>>;
+  evaluateHandle<R, Arg>(pageFunction: PageFunction<Arg, R>, arg: Arg, options?: { exposeFunctions?: boolean, serialize?: ('Map'|'Set')[] }): Promise<SmartHandle<R>>;
   /**
    * Returns the return value of
    * [`pageFunction`](https://playwright.dev/docs/api/class-frame#frame-evaluate-handle-option-expression) as a
@@ -6111,7 +6120,7 @@ export interface Frame {
    * [`pageFunction`](https://playwright.dev/docs/api/class-frame#frame-evaluate-handle-option-expression).
    * @param options
    */
-  evaluateHandle<R>(pageFunction: PageFunction<void, R>, arg?: any, options?: { exposeFunctions?: boolean }): Promise<SmartHandle<R>>;
+  evaluateHandle<R>(pageFunction: PageFunction<void, R>, arg?: any, options?: { exposeFunctions?: boolean, serialize?: ('Map'|'Set')[] }): Promise<SmartHandle<R>>;
 
   /**
    * **NOTE** Use locator-based [frame.locator(selector[, options])](https://playwright.dev/docs/api/class-frame#frame-locator)
@@ -6945,8 +6954,17 @@ export interface Frame {
 
   /**
    * Gets the full HTML contents of the frame, including the doctype.
+   * @param options
    */
-  content(): Promise<string>;
+  content(options?: {
+    /**
+     * When true, contents of open shadow roots are included as
+     * [declarative shadow DOM](https://developer.mozilla.org/en-US/docs/Web/API/Web_components/Using_shadow_DOM#declaratively_with_html),
+     * i.e. `<template shadowrootmode="open">` elements nested inside their host elements. Closed shadow roots are never
+     * included. Defaults to `false`.
+     */
+    includeShadow?: boolean;
+  }): Promise<string>;
 
   /**
    * **NOTE** Use locator-based [locator.dblclick([options])](https://playwright.dev/docs/api/class-locator#locator-dblclick)
@@ -11456,8 +11474,8 @@ export interface Browser {
 
     /**
      * Whether the `meta viewport` tag is taken into account and touch events are enabled. isMobile is a part of device,
-     * so you don't actually need to set it manually. Defaults to `false` and is not supported in Firefox. Learn more
-     * about [mobile emulation](https://playwright.dev/docs/emulation#ismobile).
+     * so you don't actually need to set it manually. Defaults to `false`. Learn more about
+     * [mobile emulation](https://playwright.dev/docs/emulation#ismobile).
      */
     isMobile?: boolean;
 
@@ -11592,6 +11610,12 @@ export interface Browser {
       };
 
       /**
+       * Frame rate of the recorded videos in frames per second. Defaults to `25`. Firefox and WebKit currently capture up
+       * to 25 frames per second.
+       */
+      fps?: number;
+
+      /**
        * If specified, enables visual annotations on interacted elements during video recording.
        */
       showActions?: {
@@ -11606,7 +11630,7 @@ export interface Browser {
         position?: "top-left"|"top"|"top-right"|"bottom-left"|"bottom"|"bottom-right";
 
         /**
-         * Font size of the action title in pixels. Defaults to `24`.
+         * Font size of the action title in pixels. Defaults to `24`. Deprecated, use `style.title` instead.
          */
         fontSize?: number;
 
@@ -11615,6 +11639,26 @@ export interface Browser {
          * the previous action point to the next one. `"none"` disables the cursor decoration.
          */
         cursor?: "none"|"pointer";
+
+        /**
+         * Styles of the action decorations.
+         */
+        style?: {
+          /**
+           * CSS declarations for the zero-sized marker centered on the action point. Not shown when omitted.
+           */
+          point?: string;
+
+          /**
+           * CSS declarations for the box that covers the target element. Not shown when omitted.
+           */
+          highlight?: string;
+
+          /**
+           * CSS declarations for the action title.
+           */
+          title?: string;
+        };
       };
     };
 
@@ -12035,7 +12079,7 @@ export interface JSHandle<T = any> {
    * [`pageFunction`](https://playwright.dev/docs/api/class-elementhandle#element-handle-evaluate-option-expression).
    * @param options
    */
-  evaluate<R, Arg, O extends T = T>(pageFunction: PageFunctionOn<O, Arg, R>, arg: Arg, options?: { exposeFunctions?: boolean }): Promise<R>;
+  evaluate<R, Arg, O extends T = T>(pageFunction: PageFunctionOn<O, Arg, R>, arg: Arg, options?: { exposeFunctions?: boolean, serialize?: ('Map'|'Set')[] }): Promise<R>;
   /**
    * Returns the return value of
    * [`pageFunction`](https://playwright.dev/docs/api/class-elementhandle#element-handle-evaluate-option-expression).
@@ -12058,7 +12102,7 @@ export interface JSHandle<T = any> {
    * [`pageFunction`](https://playwright.dev/docs/api/class-elementhandle#element-handle-evaluate-option-expression).
    * @param options
    */
-  evaluate<R, O extends T = T>(pageFunction: PageFunctionOn<O, void, R>, arg?: any, options?: { exposeFunctions?: boolean }): Promise<R>;
+  evaluate<R, O extends T = T>(pageFunction: PageFunctionOn<O, void, R>, arg?: any, options?: { exposeFunctions?: boolean, serialize?: ('Map'|'Set')[] }): Promise<R>;
 
   /**
    * Returns the return value of
@@ -12082,7 +12126,7 @@ export interface JSHandle<T = any> {
    * [`pageFunction`](https://playwright.dev/docs/api/class-elementhandle#element-handle-evaluate-handle-option-expression).
    * @param options
    */
-  evaluateHandle<R, Arg, O extends T = T>(pageFunction: PageFunctionOn<O, Arg, R>, arg: Arg, options?: { exposeFunctions?: boolean }): Promise<SmartHandle<R>>;
+  evaluateHandle<R, Arg, O extends T = T>(pageFunction: PageFunctionOn<O, Arg, R>, arg: Arg, options?: { exposeFunctions?: boolean, serialize?: ('Map'|'Set')[] }): Promise<SmartHandle<R>>;
   /**
    * Returns the return value of
    * [`pageFunction`](https://playwright.dev/docs/api/class-elementhandle#element-handle-evaluate-handle-option-expression)
@@ -12105,7 +12149,7 @@ export interface JSHandle<T = any> {
    * [`pageFunction`](https://playwright.dev/docs/api/class-elementhandle#element-handle-evaluate-handle-option-expression).
    * @param options
    */
-  evaluateHandle<R, O extends T = T>(pageFunction: PageFunctionOn<O, void, R>, arg?: any, options?: { exposeFunctions?: boolean }): Promise<SmartHandle<R>>;
+  evaluateHandle<R, O extends T = T>(pageFunction: PageFunctionOn<O, void, R>, arg?: any, options?: { exposeFunctions?: boolean, serialize?: ('Map'|'Set')[] }): Promise<SmartHandle<R>>;
 
   /**
    * Returns a JSON representation of the object. If the object has a `toJSON` function, it **will not be called**.
@@ -14300,7 +14344,7 @@ export interface Locator {
    * [`pageFunction`](https://playwright.dev/docs/api/class-locator#locator-evaluate-option-expression).
    * @param options
    */
-  evaluate<R, Arg, E extends SVGElement | HTMLElement = SVGElement | HTMLElement>(pageFunction: PageFunctionOn<E, Arg, R>, arg?: Arg, options?: { timeout?: number, signal?: AbortSignal, exposeFunctions?: boolean, world?: 'main'|'utility' }): Promise<R>;
+  evaluate<R, Arg, E extends SVGElement | HTMLElement = SVGElement | HTMLElement>(pageFunction: PageFunctionOn<E, Arg, R>, arg?: Arg, options?: { timeout?: number, signal?: AbortSignal, exposeFunctions?: boolean, serialize?: ('Map'|'Set')[], world?: 'main'|'utility' }): Promise<R>;
   /**
    * Execute JavaScript code in the page, taking the matching element as an argument, and return a
    * [JSHandle](https://playwright.dev/docs/api/class-jshandle) with the result.
@@ -14334,7 +14378,7 @@ export interface Locator {
    * [`pageFunction`](https://playwright.dev/docs/api/class-locator#locator-evaluate-handle-option-expression).
    * @param options
    */
-  evaluateHandle<R, Arg, E extends SVGElement | HTMLElement = SVGElement | HTMLElement>(pageFunction: PageFunctionOn<E, Arg, R>, arg?: Arg, options?: { timeout?: number, signal?: AbortSignal, exposeFunctions?: boolean }): Promise<SmartHandle<R>>;
+  evaluateHandle<R, Arg, E extends SVGElement | HTMLElement = SVGElement | HTMLElement>(pageFunction: PageFunctionOn<E, Arg, R>, arg?: Arg, options?: { timeout?: number, signal?: AbortSignal, exposeFunctions?: boolean, serialize?: ('Map'|'Set')[] }): Promise<SmartHandle<R>>;
   /**
    * Execute JavaScript code in the page, taking all matching elements as an argument.
    *
@@ -17819,8 +17863,8 @@ export interface BrowserType<Unused = {}> {
 
     /**
      * Whether the `meta viewport` tag is taken into account and touch events are enabled. isMobile is a part of device,
-     * so you don't actually need to set it manually. Defaults to `false` and is not supported in Firefox. Learn more
-     * about [mobile emulation](https://playwright.dev/docs/emulation#ismobile).
+     * so you don't actually need to set it manually. Defaults to `false`. Learn more about
+     * [mobile emulation](https://playwright.dev/docs/emulation#ismobile).
      */
     isMobile?: boolean;
 
@@ -17955,6 +17999,12 @@ export interface BrowserType<Unused = {}> {
       };
 
       /**
+       * Frame rate of the recorded videos in frames per second. Defaults to `25`. Firefox and WebKit currently capture up
+       * to 25 frames per second.
+       */
+      fps?: number;
+
+      /**
        * If specified, enables visual annotations on interacted elements during video recording.
        */
       showActions?: {
@@ -17969,7 +18019,7 @@ export interface BrowserType<Unused = {}> {
         position?: "top-left"|"top"|"top-right"|"bottom-left"|"bottom"|"bottom-right";
 
         /**
-         * Font size of the action title in pixels. Defaults to `24`.
+         * Font size of the action title in pixels. Defaults to `24`. Deprecated, use `style.title` instead.
          */
         fontSize?: number;
 
@@ -17978,6 +18028,26 @@ export interface BrowserType<Unused = {}> {
          * the previous action point to the next one. `"none"` disables the cursor decoration.
          */
         cursor?: "none"|"pointer";
+
+        /**
+         * Styles of the action decorations.
+         */
+        style?: {
+          /**
+           * CSS declarations for the zero-sized marker centered on the action point. Not shown when omitted.
+           */
+          point?: string;
+
+          /**
+           * CSS declarations for the box that covers the target element. Not shown when omitted.
+           */
+          highlight?: string;
+
+          /**
+           * CSS declarations for the action title.
+           */
+          title?: string;
+        };
       };
     };
 
@@ -18693,6 +18763,7 @@ export interface Screencast {
       height: number;
     };
     quality?: number;
+    fps?: number;
   }): Promise<Disposable>;
   /**
    * Removes action decorations.
@@ -18722,6 +18793,8 @@ export interface Screencast {
 
     /**
      * Font size of the action title in pixels. Defaults to `24`.
+     * @deprecated Use `title` in [`style`](https://playwright.dev/docs/api/class-screencast#screencast-show-actions-option-style)
+     * instead, for example `style: { title: 'font-size: 32px' }`.
      */
     fontSize?: number;
 
@@ -18729,6 +18802,44 @@ export interface Screencast {
      * Position of the action title overlay. Defaults to `"top-right"`.
      */
     position?: "top-left"|"top"|"top-right"|"bottom-left"|"bottom"|"bottom-right";
+
+    /**
+     * Styles of the action decorations. All decorations fade out over
+     * [`duration`](https://playwright.dev/docs/api/class-screencast#screencast-show-actions-option-duration).
+     *
+     * **Usage**
+     *
+     * ```js
+     * await page.screencast.showActions({
+     *   style: {
+     *     point: 'width: 20px; height: 20px; border-radius: 50%; background: red',
+     *     highlight: 'outline: 2px solid #333; background: rgba(0, 128, 255, .15)',
+     *     title: 'font-size: 16px',
+     *   },
+     * });
+     * ```
+     *
+     */
+    style?: {
+      /**
+       * CSS declarations for the marker at the action point. The marker is positioned at the action point, has zero size
+       * and is centered on the point, so its size and look come from this style. Not shown when omitted.
+       */
+      point?: string;
+
+      /**
+       * CSS declarations for the box that covers the target element. The box is positioned and sized to the element bounds.
+       * Not shown when omitted.
+       */
+      highlight?: string;
+
+      /**
+       * CSS declarations for the action title, for example `'font-size: 32px; background: #333'`. The title is placed
+       * according to
+       * [`position`](https://playwright.dev/docs/api/class-screencast#screencast-show-actions-option-position).
+       */
+      title?: string;
+    };
   }): Promise<Disposable>;
 
   /**
@@ -20511,6 +20622,7 @@ export interface Clock {
   /**
    * Install fake implementations for the following time-related functions:
    * - `Date`
+   * - `Temporal.Now`
    * - `setTimeout`
    * - `clearTimeout`
    * - `setInterval`
@@ -20908,7 +21020,7 @@ export interface Coverage {
  *
  * **Usage: save credentials in the storage state, restore later**
  *
- * See [authentication guide](https://playwright.dev/docs/auth) for examples of using saving and resotring the storage state.
+ * See [authentication guide](https://playwright.dev/docs/auth) for examples of using saving and restoring the storage state.
  *
  * **Defaults**
  */
@@ -23269,6 +23381,16 @@ export interface Tracing {
    */
   start(options?: {
     /**
+     * Whether to collect code coverage from istanbul-instrumented application code. Build the application with an
+     * istanbul instrumentation plugin, for example
+     * [`vite-plugin-istanbul`](https://www.npmjs.com/package/vite-plugin-istanbul) or
+     * [`babel-plugin-istanbul`](https://www.npmjs.com/package/babel-plugin-istanbul), so that pages expose the
+     * `window.__coverage__` object. Playwright collects accumulated counters from all pages and frames, including right
+     * before navigations and page closes, and stores them in istanbul format inside the trace file.
+     */
+    coverage?: boolean;
+
+    /**
      * When enabled, the trace is written to an unarchived file that is updated in real time as actions occur, instead of
      * caching changes and archiving them into a zip file at the end. This is useful for live trace viewing during test
      * execution.
@@ -24124,6 +24246,12 @@ export interface Electron {
       };
 
       /**
+       * Frame rate of the recorded videos in frames per second. Defaults to `25`. Firefox and WebKit currently capture up
+       * to 25 frames per second.
+       */
+      fps?: number;
+
+      /**
        * If specified, enables visual annotations on interacted elements during video recording.
        */
       showActions?: {
@@ -24138,7 +24266,7 @@ export interface Electron {
         position?: "top-left"|"top"|"top-right"|"bottom-left"|"bottom"|"bottom-right";
 
         /**
-         * Font size of the action title in pixels. Defaults to `24`.
+         * Font size of the action title in pixels. Defaults to `24`. Deprecated, use `style.title` instead.
          */
         fontSize?: number;
 
@@ -24147,6 +24275,26 @@ export interface Electron {
          * the previous action point to the next one. `"none"` disables the cursor decoration.
          */
         cursor?: "none"|"pointer";
+
+        /**
+         * Styles of the action decorations.
+         */
+        style?: {
+          /**
+           * CSS declarations for the zero-sized marker centered on the action point. Not shown when omitted.
+           */
+          point?: string;
+
+          /**
+           * CSS declarations for the box that covers the target element. Not shown when omitted.
+           */
+          highlight?: string;
+
+          /**
+           * CSS declarations for the action title.
+           */
+          title?: string;
+        };
       };
     };
 
@@ -24698,8 +24846,8 @@ export interface AndroidDevice {
 
     /**
      * Whether the `meta viewport` tag is taken into account and touch events are enabled. isMobile is a part of device,
-     * so you don't actually need to set it manually. Defaults to `false` and is not supported in Firefox. Learn more
-     * about [mobile emulation](https://playwright.dev/docs/emulation#ismobile).
+     * so you don't actually need to set it manually. Defaults to `false`. Learn more about
+     * [mobile emulation](https://playwright.dev/docs/emulation#ismobile).
      */
     isMobile?: boolean;
 
@@ -24839,6 +24987,12 @@ export interface AndroidDevice {
       };
 
       /**
+       * Frame rate of the recorded videos in frames per second. Defaults to `25`. Firefox and WebKit currently capture up
+       * to 25 frames per second.
+       */
+      fps?: number;
+
+      /**
        * If specified, enables visual annotations on interacted elements during video recording.
        */
       showActions?: {
@@ -24853,7 +25007,7 @@ export interface AndroidDevice {
         position?: "top-left"|"top"|"top-right"|"bottom-left"|"bottom"|"bottom-right";
 
         /**
-         * Font size of the action title in pixels. Defaults to `24`.
+         * Font size of the action title in pixels. Defaults to `24`. Deprecated, use `style.title` instead.
          */
         fontSize?: number;
 
@@ -24862,6 +25016,26 @@ export interface AndroidDevice {
          * the previous action point to the next one. `"none"` disables the cursor decoration.
          */
         cursor?: "none"|"pointer";
+
+        /**
+         * Styles of the action decorations.
+         */
+        style?: {
+          /**
+           * CSS declarations for the zero-sized marker centered on the action point. Not shown when omitted.
+           */
+          point?: string;
+
+          /**
+           * CSS declarations for the box that covers the target element. Not shown when omitted.
+           */
+          highlight?: string;
+
+          /**
+           * CSS declarations for the action title.
+           */
+          title?: string;
+        };
       };
     };
 
@@ -25922,8 +26096,8 @@ export interface BrowserContextOptions {
 
   /**
    * Whether the `meta viewport` tag is taken into account and touch events are enabled. isMobile is a part of device,
-   * so you don't actually need to set it manually. Defaults to `false` and is not supported in Firefox. Learn more
-   * about [mobile emulation](https://playwright.dev/docs/emulation#ismobile).
+   * so you don't actually need to set it manually. Defaults to `false`. Learn more about
+   * [mobile emulation](https://playwright.dev/docs/emulation#ismobile).
    */
   isMobile?: boolean;
 
@@ -26058,6 +26232,12 @@ export interface BrowserContextOptions {
     };
 
     /**
+     * Frame rate of the recorded videos in frames per second. Defaults to `25`. Firefox and WebKit currently capture up
+     * to 25 frames per second.
+     */
+    fps?: number;
+
+    /**
      * If specified, enables visual annotations on interacted elements during video recording.
      */
     showActions?: {
@@ -26072,7 +26252,7 @@ export interface BrowserContextOptions {
       position?: "top-left"|"top"|"top-right"|"bottom-left"|"bottom"|"bottom-right";
 
       /**
-       * Font size of the action title in pixels. Defaults to `24`.
+       * Font size of the action title in pixels. Defaults to `24`. Deprecated, use `style.title` instead.
        */
       fontSize?: number;
 
@@ -26081,6 +26261,26 @@ export interface BrowserContextOptions {
        * the previous action point to the next one. `"none"` disables the cursor decoration.
        */
       cursor?: "none"|"pointer";
+
+      /**
+       * Styles of the action decorations.
+       */
+      style?: {
+        /**
+         * CSS declarations for the zero-sized marker centered on the action point. Not shown when omitted.
+         */
+        point?: string;
+
+        /**
+         * CSS declarations for the box that covers the target element. Not shown when omitted.
+         */
+        highlight?: string;
+
+        /**
+         * CSS declarations for the action title.
+         */
+        title?: string;
+      };
     };
   };
 

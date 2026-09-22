@@ -262,7 +262,10 @@ await browser.CloseAsync();
 * since: v1.8
 
 ### option: Browser.newContext.clientCertificates = %%-context-option-clientCertificates-%%
-* since: 1.46
+* since: v1.46
+
+### option: Browser.newContext.recordVideoFps = %%-context-option-recordvideo-fps-%%
+* since: v1.64
 
 ### option: Browser.newContext.storageState = %%-js-python-context-option-storage-state-%%
 * since: v1.8
@@ -290,7 +293,10 @@ testing frameworks should explicitly create [`method: Browser.newContext`] follo
 * since: v1.8
 
 ### option: Browser.newPage.clientCertificates = %%-context-option-clientCertificates-%%
-* since: 1.46
+* since: v1.46
+
+### option: Browser.newPage.recordVideoFps = %%-context-option-recordvideo-fps-%%
+* since: v1.64
 
 ### option: Browser.newPage.storageState = %%-js-python-context-option-storage-state-%%
 * since: v1.8

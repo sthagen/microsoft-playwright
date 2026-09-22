@@ -450,6 +450,58 @@ it('should work when service worker is intefering', async ({ page, context, serv
   expect(storageState.origins[0].localStorage[0]).toEqual({ name: 'foo', value: 'bar' });
 });
 
+it('should work when service worker is intefering and the origin is not open', async ({ page, context, server, isAndroid, isElectron, electronMajorVersion }) => {
+  it.skip(isAndroid);
+  it.skip(isElectron && electronMajorVersion < 30, 'error: Browser context management is not supported.');
+  it.info().annotations.push({ type: 'issue', description: 'https://github.com/microsoft/playwright/issues/42656' });
+
+  server.setRoute('/', (req, res) => {
+    res.writeHead(200, { 'content-type': 'text/html' });
+    res.end(`
+      <script>
+        window.localStorage.foo = 'bar';
+        window.registrationPromise = navigator.serviceWorker.register('sw.js');
+        window.activationPromise = new Promise(resolve => navigator.serviceWorker.oncontrollerchange = resolve);
+      </script>
+    `);
+  });
+
+  server.setRoute('/sw.js', (req, res) => {
+    res.writeHead(200, { 'content-type': 'application/javascript' });
+    res.end(`
+      const kHtmlPage = \`
+        <script>
+          window.localStorage.fromServiceWorker = 'yes';
+          window.location.href = 'redirected.html';
+        </script>
+      \`;
+
+      self.addEventListener('fetch', event => {
+        if (new URL(event.request.url).pathname !== '/')
+          return;
+        const blob = new Blob([kHtmlPage], { type: 'text/html' });
+        event.respondWith(new Response(blob, { status: 200, statusText: 'OK' }));
+      });
+
+      self.addEventListener('activate', event => {
+        event.waitUntil(clients.claim());
+      });
+    `);
+  });
+
+  server.setRoute('/redirected.html', (req, res) => {
+    res.writeHead(200, { 'content-type': 'text/html' });
+    res.end('<html></html>');
+  });
+
+  await page.goto(server.PREFIX);
+  await page.evaluate(() => window['activationPromise']);
+  await page.goto('about:blank');
+
+  const storageState = await context.storageState();
+  expect(storageState.origins[0].localStorage).toEqual([{ name: 'foo', value: 'bar' }]);
+});
+
 it('should set local storage in third-party context', async ({ contextFactory, server }) => {
   const context = await contextFactory({
     storageState: {
@@ -595,6 +647,66 @@ it('should support IndexedDB', async ({ page, server, contextFactory }) => {
 
   expect(await context.storageState()).toEqual({ cookies: [], origins: [] });
 });
+
+for (const restore of ['newContext', 'setStorageState'] as const) {
+  it(`should roundtrip IndexedDB Map and Set with ${restore}`, { annotation: { type: 'issue', description: 'https://github.com/microsoft/playwright/issues/42703' } }, async ({ page, server, contextFactory }, testInfo) => {
+    await page.goto(server.EMPTY_PAGE);
+    await page.evaluate(() => new Promise<void>((resolve, reject) => {
+      const request = indexedDB.open('collections', 1);
+      request.onupgradeneeded = () => request.result.createObjectStore('store');
+      request.onerror = () => reject(request.error);
+      request.onsuccess = () => {
+        const db = request.result;
+        const transaction = db.transaction('store', 'readwrite');
+        const store = transaction.objectStore('store');
+        store.put(new Map([['mk', 'mv']]), 'map');
+        store.put(new Set([1, 2]), 'set');
+        transaction.oncomplete = () => {
+          db.close();
+          resolve();
+        };
+        transaction.onerror = () => reject(transaction.error);
+      };
+    }));
+
+    const path = testInfo.outputPath('storage-state.json');
+    const storageState = await page.context().storageState({ indexedDB: true, path });
+    const context = await contextFactory(restore === 'newContext' ? { storageState: path } : {});
+    if (restore === 'setStorageState')
+      await context.setStorageState(storageState);
+    expect(await context.storageState({ indexedDB: true })).toEqual(storageState);
+
+    const restoredPage = await context.newPage();
+    await restoredPage.goto(server.EMPTY_PAGE);
+    const values = await restoredPage.evaluate(async () => {
+      const db = await new Promise<IDBDatabase>((resolve, reject) => {
+        const request = indexedDB.open('collections', 1);
+        request.onerror = () => reject(request.error);
+        request.onsuccess = () => resolve(request.result);
+      });
+      const transaction = db.transaction('store', 'readonly');
+      const store = transaction.objectStore('store');
+      transaction.oncomplete = () => db.close();
+      const [map, set] = await Promise.all(['map', 'set'].map(key => new Promise<any>((resolve, reject) => {
+        const request = store.get(key);
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+      })));
+      return {
+        isMap: map instanceof Map,
+        map: [...map],
+        isSet: set instanceof Set,
+        set: [...set],
+      };
+    });
+    expect(values).toEqual({
+      isMap: true,
+      map: [['mk', 'mv']],
+      isSet: true,
+      set: [1, 2],
+    });
+  });
+}
 
 it('should support empty indexedDB', { annotation: { type: 'issue', description: 'https://github.com/microsoft/playwright/issues/35760' } }, async ({ page, server, contextFactory }) => {
   await page.goto(server.EMPTY_PAGE);

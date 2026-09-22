@@ -808,21 +808,21 @@ export class Frame extends SdkObject<FrameEventMap> {
     return this.context('utility');
   }
 
-  async evaluateExpression(progress: Progress, expression: string, options: { isFunction?: boolean, world?: types.World } = {}, arg?: any): Promise<any> {
+  async evaluateExpression(progress: Progress, expression: string, options: { isFunction?: boolean, world?: types.World, serialize?: ('Map' | 'Set')[] } = {}, arg?: any): Promise<any> {
     return await progress.race(this._evaluateExpression(expression, options, arg));
   }
 
-  private async _evaluateExpression(expression: string, options: { isFunction?: boolean, world?: types.World } = {}, arg?: any): Promise<any> {
+  private async _evaluateExpression(expression: string, options: { isFunction?: boolean, world?: types.World, serialize?: ('Map' | 'Set')[] } = {}, arg?: any): Promise<any> {
     const context = await this.context(options.world ?? 'main');
     const value = await context.evaluateExpression(expression, options, arg);
     return value;
   }
 
-  async evaluateExpressionHandle(progress: Progress, expression: string, options: { isFunction?: boolean, world?: types.World } = {}, arg?: any): Promise<js.JSHandle<any>> {
+  async evaluateExpressionHandle(progress: Progress, expression: string, options: { isFunction?: boolean, world?: types.World, serialize?: ('Map' | 'Set')[] } = {}, arg?: any): Promise<js.JSHandle<any>> {
     return await progress.race(this._evaluateExpressionHandle(expression, options, arg));
   }
 
-  private async _evaluateExpressionHandle(expression: string, options: { isFunction?: boolean, world?: types.World } = {}, arg?: any): Promise<js.JSHandle<any>> {
+  private async _evaluateExpressionHandle(expression: string, options: { isFunction?: boolean, world?: types.World, serialize?: ('Map' | 'Set')[] } = {}, arg?: any): Promise<js.JSHandle<any>> {
     const context = await this.context(options.world ?? 'main');
     const value = await context.evaluateExpressionHandle(expression, options, arg);
     return value;
@@ -939,21 +939,15 @@ export class Frame extends SdkObject<FrameEventMap> {
     }
   }
 
-  async content(progress: Progress): Promise<string> {
-    return progress.race(this._content());
+  async content(progress: Progress, options: channels.FrameContentParams): Promise<string> {
+    return progress.race(this._content(options));
   }
 
-  private async _content(): Promise<string> {
+  private async _content(options: channels.FrameContentParams): Promise<string> {
     try {
       const context = await this.utilityContext();
-      return await context.evaluate(() => {
-        let retVal = '';
-        if (document.doctype)
-          retVal = new XMLSerializer().serializeToString(document.doctype);
-        if (document.documentElement)
-          retVal += document.documentElement.outerHTML;
-        return retVal;
-      });
+      const injected = await context.injectedScript();
+      return await injected.evaluate((injected, includeShadow) => injected.documentContent(includeShadow), !!options.includeShadow);
     } catch (e) {
       if (this.isNonRetriableError(e))
         throw e;

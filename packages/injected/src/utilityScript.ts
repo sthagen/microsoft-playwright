@@ -30,6 +30,7 @@ export type Builtins = {
   Intl: typeof window['Intl'],
   Date: typeof window['Date'],
   AbortSignal: typeof window['AbortSignal'],
+  Temporal: typeof window['Temporal'],
 };
 
 export class UtilityScript {
@@ -57,13 +58,14 @@ export class UtilityScript {
         Intl: global.Intl,
         Date: global.Date,
         AbortSignal: global.AbortSignal,
+        Temporal: (global as any).Temporal,
       } satisfies Builtins;
     }
     if (this.isUnderTest)
       (global as any).builtins = this.builtins;
   }
 
-  evaluate(isFunction: boolean | undefined, returnByValue: boolean, expression: string, argCount: number, ...argsAndHandles: any[]) {
+  evaluate(isFunction: boolean | undefined, returnByValue: boolean, serialize: ('Map' | 'Set')[] | undefined, expression: string, argCount: number, ...argsAndHandles: any[]) {
     const args = argsAndHandles.slice(0, argCount);
     const handles = argsAndHandles.slice(argCount);
     const parameters = [];
@@ -80,20 +82,20 @@ export class UtilityScript {
       if (typeof result === 'function')
         result = result(...parameters);
     }
-    return returnByValue ? this._promiseAwareJsonValueNoThrow(result) : result;
+    return returnByValue ? this._promiseAwareJsonValueNoThrow(result, serialize) : result;
   }
 
-  jsonValue(returnByValue: true, value: any) {
+  jsonValue(returnByValue: true, value: any, serialize?: ('Map' | 'Set')[]) {
     // Special handling of undefined to work-around multi-step returnByValue handling in WebKit.
     if (value === undefined)
       return undefined;
-    return serializeAsCallArgument(value, (value: any) => ({ fallThrough: value }));
+    return serializeAsCallArgument(value, (value: any) => ({ fallThrough: value }), { serialize });
   }
 
-  private _promiseAwareJsonValueNoThrow(value: any) {
+  private _promiseAwareJsonValueNoThrow(value: any, serialize?: ('Map' | 'Set')[]) {
     const safeJson = (value: any) => {
       try {
-        return this.jsonValue(true, value);
+        return this.jsonValue(true, value, serialize);
       } catch (e) {
         return undefined;
       }

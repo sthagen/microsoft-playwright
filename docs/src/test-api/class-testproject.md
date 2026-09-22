@@ -86,6 +86,38 @@ export default defineConfig({
 });
 ```
 
+## property: TestProject.default
+* since: v1.64
+- type: ?<[boolean]>
+
+Whether the project runs when no `--project` command line option is passed. Defaults to `true`.
+
+To run a project with `default: false`, select it with the `--project` command line option.
+
+A project with `default: false` still runs when another running project lists it in [`property: TestProject.dependencies`] or [`property: TestProject.teardown`].
+
+**Usage**
+
+```js title="playwright.config.ts"
+import { defineConfig } from '@playwright/test';
+
+export default defineConfig({
+  projects: [
+    {
+      name: 'chromium',
+      use: devices['Desktop Chrome'],
+    },
+    {
+      name: 'slow',
+      testDir: './slow-tests',
+      default: false,
+    },
+  ],
+});
+```
+
+Now `npx playwright test` only runs `chromium`, while `npx playwright test --project=slow` runs `slow`.
+
 ## property: TestProject.expect
 * since: v1.10
 - type: ?<[Object]>
@@ -98,6 +130,7 @@ export default defineConfig({
     - `caret` ?<[ScreenshotCaret]<"hide"|"initial">> See [`option: Page.screenshot.caret`] in [`method: Page.screenshot`]. Defaults to `"hide"`.
     - `scale` ?<[ScreenshotScale]<"css"|"device">> See [`option: Page.screenshot.scale`] in [`method: Page.screenshot`]. Defaults to `"css"`.
     - `stylePath` ?<[string]|[Array]<[string]>> See [`option: Page.screenshot.style`] in [`method: Page.screenshot`].
+    - `type` ?<[ScreenshotType]<"png"|"webp">> Format of the screenshots taken when the snapshot name is omitted, defaults to `"png"`. Snapshots with an explicit name use the format matching their `.png` or `.webp` extension.
     - `pathTemplate` ?<[string]> A template controlling location of the screenshots. See [`property: TestProject.snapshotPathTemplate`] for details.
     - `timeout` ?<[int]> Default timeout for [`method: PageAssertions.toHaveScreenshot#1`] in milliseconds, defaults to the global expect timeout. Setting to `0` disables the timeout.
   - `toMatchAriaSnapshot` ?<[Object]> Configuration for the [`method: LocatorAssertions.toMatchAriaSnapshot#2`] method.

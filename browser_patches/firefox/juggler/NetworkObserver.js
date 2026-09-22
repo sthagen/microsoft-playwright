@@ -46,6 +46,7 @@ export class PageNetwork {
     this._extraHTTPHeaders = null;
     this._responseStorage = new ResponseStorage(MAX_RESPONSE_STORAGE_SIZE, MAX_RESPONSE_STORAGE_SIZE / 10);
     this._requestInterceptionEnabled = false;
+    this._bypassServiceWorker = false;
     // This is requestId => NetworkRequest map, only contains requests that are
     // awaiting interception action (abort, resume, fulfill) over the protocol.
     this._interceptedRequests = new Map();
@@ -62,12 +63,14 @@ export class PageNetwork {
     ];
   }
 
-  enableRequestInterception() {
+  enableRequestInterception(bypassServiceWorker) {
     this._requestInterceptionEnabled = true;
+    this._bypassServiceWorker = !!bypassServiceWorker;
   }
 
   disableRequestInterception() {
     this._requestInterceptionEnabled = false;
+    this._bypassServiceWorker = false;
     for (const intercepted of this._interceptedRequests.values())
       intercepted.resume();
     this._interceptedRequests.clear();
@@ -182,6 +185,8 @@ class NetworkRequest {
     if (this.redirectedFromId) {
       // Redirects are not interceptable.
       this._sendOnRequest(false);
+      // Everything we need from the previous request has been inherited above.
+      redirectedFrom._releaseReferences();
     }
   }
 
@@ -318,7 +323,7 @@ class NetworkRequest {
 
   // nsINetworkInterceptController
   shouldPrepareForIntercept(aURI, channel) {
-    const interceptController = this._fallThroughInterceptController();
+    const interceptController = this._shouldBypassServiceWorker() ? undefined : this._fallThroughInterceptController();
     if (interceptController && interceptController.shouldPrepareForIntercept(aURI, channel)) {
       // We assume that interceptController is a service worker if there is one,
       // and yield interception to it.
@@ -444,6 +449,16 @@ class NetworkRequest {
     }
 
     delete this._responseBodyChunks;
+    this._releaseReferences();
+  }
+
+  // Firefox may keep this object alive long after the request has finished
+  // through callbacks or delegates, and we don't want to retain the page/window/context.
+  _releaseReferences() {
+    this.httpChannel = undefined;
+    this._originalListener = undefined;
+    this._pageNetwork = undefined;
+    this._interceptedChannel = undefined;
   }
 
   _shouldIntercept() {
@@ -460,6 +475,10 @@ class NetworkRequest {
     if (browserContext.requestInterceptionEnabled)
       return true;
     return false;
+  }
+
+  _shouldBypassServiceWorker() {
+    return !!this._pageNetwork?._bypassServiceWorker && this._shouldIntercept();
   }
 
   _fallThroughInterceptController() {
@@ -534,7 +553,7 @@ class NetworkRequest {
       responseStart: this.httpChannel.responseStartTime,
     };
 
-    const { status, statusText, headers } = responseHead(this.httpChannel, opt_statusCode, opt_statusText);
+    const { status, statusText, headers } = responseHead(this.httpChannel, fromCache, opt_statusCode, opt_statusText);
     if (redirectStatus.includes(status) && this._overriddenHeadersForRedirect)
       this._overriddenHeadersForRedirect = filterHeadersForRedirect(this._overriddenHeadersForRedirect, this.httpChannel.requestMethod, status);
     let remoteIPAddress = undefined;
@@ -949,19 +968,39 @@ class ResponseStorage {
   }
 }
 
-function responseHead(httpChannel, opt_statusCode, opt_statusText) {
-  const headers = [];
+function responseHead(httpChannel, fromCache, opt_statusCode, opt_statusText) {
+  let headers = [];
   let status = opt_statusCode || 0;
   let statusText = opt_statusText || '';
   try {
     status = httpChannel.responseStatus;
     statusText = httpChannel.responseStatusText;
-    httpChannel.visitResponseHeaders({
-      visitHeader: (name, value) => headers.push({name, value}),
-    });
   } catch (e) {
-    // Response headers, status and/or statusText are not available
-    // when redirect did not actually hit the network.
+    if (e.result !== Cr.NS_ERROR_NOT_AVAILABLE)
+      console.error('Failed to read response status', e);
+    return { status, statusText, headers };
+  }
+  const visitor = {
+    visitHeader: (name, value) => headers.push({name, value}),
+  };
+  // Responses are cached after cookies and authentication headers are revalidated/pruned.
+  // As such, do not use the original headers as that may not reflect what was actually used.
+  if (!fromCache) {
+    try {
+      httpChannel.visitOriginalResponseHeaders(visitor);
+    } catch (e) {
+      if (e.result !== Cr.NS_ERROR_NOT_AVAILABLE)
+        console.error('Failed to read original response headers', e);
+      headers = [];
+    }
+  }
+  if (!headers.length) {
+    try {
+      httpChannel.visitResponseHeaders(visitor);
+    } catch (e) {
+      if (e.result !== Cr.NS_ERROR_NOT_AVAILABLE)
+        console.error('Failed to read response headers', e);
+    }
   }
   return { status, statusText, headers };
 }

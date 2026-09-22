@@ -866,6 +866,9 @@ Defaults to `false`. Whether to run the
 
 Gets the full HTML contents of the page, including the doctype.
 
+### option: Page.content.includeShadow = %%-content-option-include-shadow-%%
+* since: v1.64
+
 ## method: Page.context
 * since: v1.8
 - returns: <[BrowserContext]>
@@ -1605,6 +1608,9 @@ Optional argument to pass to [`param: expression`].
 ### option: Page.evaluate.exposeFunctions = %%-js-evaluate-expose-functions-%%
 * since: v1.62
 
+### option: Page.evaluate.serialize = %%-js-evaluate-serialize-%%
+* since: v1.64
+
 ### option: Page.evaluate.world = %%-js-evaluate-world-%%
 * since: v1.64
 
@@ -1719,6 +1725,9 @@ Optional argument to pass to [`param: expression`].
 
 ### option: Page.evaluateHandle.exposeFunctions = %%-js-evaluate-expose-functions-%%
 * since: v1.62
+
+### option: Page.evaluateHandle.serialize = %%-js-evaluate-serialize-%%
+* since: v1.64
 
 ## async method: Page.exposeBinding
 * since: v1.8

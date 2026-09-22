@@ -16,6 +16,8 @@
 
 import fs from 'fs';
 import path from 'path';
+import { spawnSync } from 'child_process';
+import { registry } from '../../packages/playwright-core/lib/coreBundle';
 import { test, expect } from './cli-fixtures';
 
 test('console', async ({ cli, server }) => {
@@ -245,6 +247,31 @@ test('video-start-stop', async ({ cli, server }) => {
   expect(tabCloseOutput).toContain(`0: (current) [](${server.EMPTY_PAGE})`);
   const { output: videoStopOutput } = await cli('video-stop');
   expect(videoStopOutput).toContain(`### Result\n- [Video](recordings${path.sep}video.webm)\n- [Video](recordings${path.sep}video-1.webm)`);
+});
+
+test('video-start with fps', async ({ cli, server }, testInfo) => {
+  await cli('open', server.HELLO_WORLD);
+  const { output } = await cli('video-start', 'video.webm', '--fps=60');
+  expect(output).toContain('Video recording started.');
+  await cli('video-stop');
+  const ffmpeg = registry.registry.findExecutable('ffmpeg')!.executablePath();
+  const { stderr } = spawnSync(ffmpeg, ['-i', testInfo.outputPath('video.webm')]);
+  expect(stderr.toString()).toContain(', 60 fps,');
+});
+
+test('video-start --cursor', async ({ boundBrowser, cli }) => {
+  const page = await boundBrowser.newPage();
+  await page.setContent(`<button>Submit</button>`);
+
+  await cli('attach', 'default');
+  await cli('snapshot');
+  await cli('video-start', 'video.webm', '--cursor');
+  await cli('click', 'e2');
+
+  // The cursor travels to the action point, the action title stays out of the video.
+  await expect(page.locator('x-pw-action-cursor')).toBeVisible();
+  await expect(page.locator('x-pw-title')).toBeHidden();
+  await cli('video-stop');
 });
 
 test('video-chapter', async ({ cli, server }) => {

@@ -164,6 +164,7 @@ export class FullProjectInternal {
   readonly respectGitIgnore: boolean;
   readonly snapshotPathTemplate: string | undefined;
   readonly workers: number | undefined;
+  readonly default: boolean;
   id = '';
   deps: FullProjectInternal[] = [];
   teardown: FullProjectInternal | undefined;
@@ -209,6 +210,7 @@ export class FullProjectInternal {
     this.workers = projectConfig.workers ? resolveWorkers(projectConfig.workers) : undefined;
     if (configCLIOverrides.debug && this.workers)
       this.workers = 1;
+    this.default = projectConfig.default ?? true;
   }
 }
 
@@ -291,7 +293,7 @@ export function toReporters(reporters: BuiltInReporter | ReporterDescription[] |
   return reporters;
 }
 
-export const builtInReporters = ['list', 'line', 'dot', 'json', 'junit', 'null', 'github', 'html', 'blob', 'perfetto'] as const;
+export const builtInReporters = ['list', 'line', 'dot', 'json', 'junit', 'null', 'github', 'html', 'blob', 'perfetto', 'coverage'] as const;
 export type BuiltInReporter = typeof builtInReporters[number];
 
 export type ContextReuseMode = 'none' | 'when-possible';

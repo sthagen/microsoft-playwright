@@ -189,11 +189,17 @@ scheme.AndroidDeviceLaunchBrowserParams = tObject({
       width: tInt,
       height: tInt,
     })),
+    fps: tOptional(tInt),
     showActions: tOptional(tObject({
       duration: tOptional(tFloat),
       position: tOptional(tEnum(['top-left', 'top', 'top-right', 'bottom-left', 'bottom', 'bottom-right'])),
       fontSize: tOptional(tInt),
       cursor: tOptional(tEnum(['none', 'pointer'])),
+      style: tOptional(tObject({
+        point: tOptional(tString),
+        highlight: tOptional(tString),
+        title: tOptional(tString),
+      })),
     })),
   })),
   strictSelectors: tOptional(tBoolean),
@@ -472,11 +478,17 @@ scheme.BrowserNewContextParams = tObject({
       width: tInt,
       height: tInt,
     })),
+    fps: tOptional(tInt),
     showActions: tOptional(tObject({
       duration: tOptional(tFloat),
       position: tOptional(tEnum(['top-left', 'top', 'top-right', 'bottom-left', 'bottom', 'bottom-right'])),
       fontSize: tOptional(tInt),
       cursor: tOptional(tEnum(['none', 'pointer'])),
+      style: tOptional(tObject({
+        point: tOptional(tString),
+        highlight: tOptional(tString),
+        title: tOptional(tString),
+      })),
     })),
   })),
   strictSelectors: tOptional(tBoolean),
@@ -546,11 +558,17 @@ scheme.BrowserNewContextForReuseParams = tObject({
       width: tInt,
       height: tInt,
     })),
+    fps: tOptional(tInt),
     showActions: tOptional(tObject({
       duration: tOptional(tFloat),
       position: tOptional(tEnum(['top-left', 'top', 'top-right', 'bottom-left', 'bottom', 'bottom-right'])),
       fontSize: tOptional(tInt),
       cursor: tOptional(tEnum(['none', 'pointer'])),
+      style: tOptional(tObject({
+        point: tOptional(tString),
+        highlight: tOptional(tString),
+        title: tOptional(tString),
+      })),
     })),
   })),
   strictSelectors: tOptional(tBoolean),
@@ -642,11 +660,17 @@ scheme.BrowserContextInitializer = tObject({
         width: tInt,
         height: tInt,
       })),
+      fps: tOptional(tInt),
       showActions: tOptional(tObject({
         duration: tOptional(tFloat),
         position: tOptional(tEnum(['top-left', 'top', 'top-right', 'bottom-left', 'bottom', 'bottom-right'])),
         fontSize: tOptional(tInt),
         cursor: tOptional(tEnum(['none', 'pointer'])),
+        style: tOptional(tObject({
+          point: tOptional(tString),
+          highlight: tOptional(tString),
+          title: tOptional(tString),
+        })),
       })),
     })),
     strictSelectors: tOptional(tBoolean),
@@ -1043,11 +1067,17 @@ scheme.BrowserTypeLaunchPersistentContextParams = tObject({
       width: tInt,
       height: tInt,
     })),
+    fps: tOptional(tInt),
     showActions: tOptional(tObject({
       duration: tOptional(tFloat),
       position: tOptional(tEnum(['top-left', 'top', 'top-right', 'bottom-left', 'bottom', 'bottom-right'])),
       fontSize: tOptional(tInt),
       cursor: tOptional(tEnum(['none', 'pointer'])),
+      style: tOptional(tObject({
+        point: tOptional(tString),
+        highlight: tOptional(tString),
+        title: tOptional(tString),
+      })),
     })),
   })),
   strictSelectors: tOptional(tBoolean),
@@ -1132,11 +1162,17 @@ scheme.ElectronLaunchParams = tObject({
       width: tInt,
       height: tInt,
     })),
+    fps: tOptional(tInt),
     showActions: tOptional(tObject({
       duration: tOptional(tFloat),
       position: tOptional(tEnum(['top-left', 'top', 'top-right', 'bottom-left', 'bottom', 'bottom-right'])),
       fontSize: tOptional(tInt),
       cursor: tOptional(tEnum(['none', 'pointer'])),
+      style: tOptional(tObject({
+        point: tOptional(tString),
+        highlight: tOptional(tString),
+        title: tOptional(tString),
+      })),
     })),
   })),
   strictSelectors: tOptional(tBoolean),
@@ -1292,7 +1328,9 @@ scheme.FrameClickParams = tObject({
   steps: tOptional(tInt),
 });
 scheme.FrameClickResult = tOptional(tObject({}));
-scheme.FrameContentParams = tOptional(tObject({}));
+scheme.FrameContentParams = tObject({
+  includeShadow: tOptional(tBoolean),
+});
 scheme.FrameContentResult = tObject({
   value: tString,
 });
@@ -1349,6 +1387,7 @@ scheme.FrameEvaluateExpressionParams = tObject({
   expression: tString,
   isFunction: tOptional(tBoolean),
   arg: tType('SerializedArgument'),
+  serialize: tOptional(tArray(tEnum(['Map', 'Set']))),
   world: tOptional(tEnum(['main', 'utility'])),
 });
 scheme.FrameEvaluateExpressionResult = tObject({
@@ -1358,6 +1397,7 @@ scheme.FrameEvaluateExpressionHandleParams = tObject({
   expression: tString,
   isFunction: tOptional(tBoolean),
   arg: tType('SerializedArgument'),
+  serialize: tOptional(tArray(tEnum(['Map', 'Set']))),
 });
 scheme.FrameEvaluateExpressionHandleResult = tObject({
   handle: tChannel(['ElementHandle', 'JSHandle']),
@@ -1639,6 +1679,7 @@ scheme.JSHandleEvaluateExpressionParams = tObject({
   expression: tString,
   isFunction: tOptional(tBoolean),
   arg: tType('SerializedArgument'),
+  serialize: tOptional(tArray(tEnum(['Map', 'Set']))),
   world: tOptional(tEnum(['main', 'utility'])),
 });
 scheme.ElementHandleEvaluateExpressionParams = tType('JSHandleEvaluateExpressionParams');
@@ -1650,6 +1691,7 @@ scheme.JSHandleEvaluateExpressionHandleParams = tObject({
   expression: tString,
   isFunction: tOptional(tBoolean),
   arg: tType('SerializedArgument'),
+  serialize: tOptional(tArray(tEnum(['Map', 'Set']))),
 });
 scheme.ElementHandleEvaluateExpressionHandleParams = tType('JSHandleEvaluateExpressionHandleParams');
 scheme.JSHandleEvaluateExpressionHandleResult = tObject({
@@ -2597,6 +2639,11 @@ scheme.PageScreencastShowActionsParams = tObject({
   position: tOptional(tEnum(['top-left', 'top', 'top-right', 'bottom-left', 'bottom', 'bottom-right'])),
   fontSize: tOptional(tInt),
   cursor: tOptional(tEnum(['none', 'pointer'])),
+  style: tOptional(tObject({
+    point: tOptional(tString),
+    highlight: tOptional(tString),
+    title: tOptional(tString),
+  })),
 });
 scheme.PageScreencastShowActionsResult = tOptional(tObject({}));
 scheme.PageScreencastHideActionsParams = tOptional(tObject({}));
@@ -2607,6 +2654,7 @@ scheme.PageScreencastStartParams = tObject({
     height: tInt,
   })),
   quality: tOptional(tInt),
+  fps: tOptional(tInt),
   sendFrames: tOptional(tBoolean),
   record: tOptional(tBoolean),
 });
@@ -2998,6 +3046,11 @@ scheme.SerializedValue = tObject({
     k: tString,
     v: tType('SerializedValue'),
   }))),
+  me: tOptional(tArray(tObject({
+    k: tType('SerializedValue'),
+    v: tType('SerializedValue'),
+  }))),
+  se: tOptional(tArray(tType('SerializedValue'))),
   h: tOptional(tInt),
   fn: tOptional(tString),
   id: tOptional(tInt),
@@ -3065,6 +3118,7 @@ scheme.TracingTracingStartParams = tObject({
   snapshotAria: tOptional(tBoolean),
   snapshotScreen: tOptional(tBoolean),
   screencast: tOptional(tBoolean),
+  coverage: tOptional(tBoolean),
   live: tOptional(tBoolean),
 });
 scheme.TracingTracingStartResult = tOptional(tObject({}));

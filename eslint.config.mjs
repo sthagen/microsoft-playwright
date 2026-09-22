@@ -41,6 +41,7 @@ const ignores = [
   "*.js",
   "**/.cache/",
   "**/*.d.ts",
+  "coverage/",
   "index.d.ts",
   "node_modules/",
   "output/",
@@ -237,6 +238,7 @@ const noWebGlobalsRuleList = [
   { name: "cancelIdleCallback", message: "Use InjectedScript.utils.builtins.cancelIdleCallback instead" },
   { name: "Date", message: "Use InjectedScript.utils.builtins.Date instead" },
   { name: "Intl", message: "Use InjectedScript.utils.builtins.Intl instead" },
+  { name: "Temporal", message: "Use InjectedScript.utils.builtins.Temporal instead" },
   { name: "performance", message: "Use InjectedScript.utils.builtins.performance instead" },
 ];
 
