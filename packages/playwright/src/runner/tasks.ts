@@ -30,7 +30,7 @@ import { applySuggestedRebaselines, clearSuggestedRebaselines } from './rebase';
 import { TaskRunner } from './taskRunner';
 import { detectChangedTestFiles } from './vcs';
 import { cc, config as commonConfig, FullConfigInternal, suiteUtils, test as testNs } from '../common';
-import { createTestGroups } from '../runner/testGroups';
+import { createTestGroups, shuffleTestGroups } from '../runner/testGroups';
 import { createTitleMatcher, forceRegExp, removeDirAndLogToConsole } from '../util';
 
 import type { TestGroup } from '../runner/testGroups';
@@ -91,6 +91,7 @@ export class TestRun {
   topLevelProjects: commonConfig.FullProjectInternal[] = [];
   hasWorkerErrors = false;
   failedTestCount = 0;
+  testCountBeforeSharding = 0;
   readonly loadFileFilters: Matcher[] = [];
   readonly preOnlyTestFilters: TestCaseFilter[] = [];
   readonly postShardTestFilters: TestCaseFilter[] = [];
@@ -335,9 +336,10 @@ export function createLoadTask(mode: 'out-of-process' | 'in-process', options: {
 
       await createRootSuite(testRun, options.failOnLoadErrors ? errors : softErrors, !!options.filterOnly);
       // Fail when no tests.
-      if (options.failOnLoadErrors && !testRun.rootSuite?.allTests().length
+      const testCount = testRun.config.config.shard ? testRun.testCountBeforeSharding : testRun.rootSuite?.allTests().length;
+      if (options.failOnLoadErrors && !testCount
           && !testRun.options.passWithNoTests
-          && !testRun.config.config.shard && !testRun.options.onlyChanged
+          && !testRun.options.onlyChanged
           && !testRun.options.testList && !testRun.options.testListInvert) {
         if (testRun.options.locations?.length) {
           throw new Error([
@@ -418,6 +420,8 @@ function createPhasesTask(): Task<TestRun> {
       }
 
       testRun.config.config.metadata.actualWorkers = Math.min(testRun.config.config.workers, maxConcurrentTestGroups);
+      if (testRun.config.configCLIOverrides.shuffle)
+        testRun.config.config.metadata.shuffleSeed = testRun.config.configCLIOverrides.shuffle;
     },
   };
 }
@@ -448,6 +452,9 @@ function createRunTestsTask(): Task<TestRun> {
           if (!hasFailedDeps)
             phaseTestGroups.push(...testGroups);
         }
+
+        if (testRun.config.configCLIOverrides.shuffle)
+          shuffleTestGroups(phaseTestGroups, testRun.config.configCLIOverrides.shuffle);
 
         if (phaseTestGroups.length) {
           await dispatcher!.run(phaseTestGroups, extraEnvByProjectId);

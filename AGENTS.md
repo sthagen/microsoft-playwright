@@ -1,3 +1,8 @@
+### Language
+
+- Use 80% of the way to ASD-STE100 when talking to me
+- No jargon, metaphors, or invented shorthands in replies
+
 ### Monorepo Packages
 
 | Package | npm name | Purpose |
@@ -6,7 +11,7 @@
 | `playwright` | `playwright` | Test runner + browser automation (public package) |
 | `playwright-test` | `@playwright/test` | Test runner entry point |
 | `playwright-client` | `@playwright/client` | Standalone client package |
-| `protocol` | *(internal)* | RPC protocol definitions (`protocol.yml` → generated `channels.d.ts`) |
+| `protocol` | *(internal)* | RPC protocol definitions (`spec/*.yml` → generated validators and channel types) |
 
 ### Browser Packages
 

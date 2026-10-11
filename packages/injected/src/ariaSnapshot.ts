@@ -100,6 +100,10 @@ export function generateAriaTree(rootElement: Element, publicOptions: AriaTreeOp
     if (node.nodeType === Node.TEXT_NODE && node.nodeValue) {
       if (!parentElementVisible)
         return;
+      // Text nodes that are not rendered are neither visible nor exposed to aria,
+      // so they are skipped regardless of the visibility option.
+      if (roleUtils.isTextNodeNotRendered(node as Text))
+        return;
 
       const text = node.nodeValue;
       // <textarea>AAA</textarea> should not report AAA as a child of the textarea.
@@ -120,8 +124,9 @@ export function generateAriaTree(rootElement: Element, publicOptions: AriaTreeOp
       visible = isElementVisibleForAria && isElementVisible(element);
 
     // Optimization: if we only consider aria visibility, we can skip child elements because
-    // they will not be visible for aria as well.
-    if (options.visibility === 'aria' && !visible)
+    // they will not be visible for aria as well. The only exception is the topmost modal dialog
+    // that escapes inertness of its ancestors.
+    if (options.visibility === 'aria' && !visible && !roleUtils.containsTopmostModalDialog(element))
       return;
 
     const ariaChildren: Element[] = [];

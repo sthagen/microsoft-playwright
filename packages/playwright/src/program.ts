@@ -129,6 +129,7 @@ function addMergeReportsCommand(program: Command) {
   });
   command.option('-c, --config <file>', `Configuration file. Can be used to specify additional configuration for the output report.`);
   command.option('--reporter <reporter>', `Reporter to use, comma-separated, can be ${builtInReporters.map(name => `"${name}"`).join(', ')} (default: "${config.defaultReporter}")`);
+  command.option('--reporter-only-failures', 'Only include tests with failures in JSON, JUnit, and HTML reports');
   command.addHelpText('afterAll', `
 Arguments [dir]:
   Directory containing blob reports.
@@ -230,11 +231,13 @@ const testOptions: [string, { description: string, choices?: string[], preset?: 
   ['--quiet', { description: `Suppress stdio` }],
   ['--repeat-each <N>', { description: `Run each test N times (default: 1)` }],
   ['--reporter <reporter>', { description: `Reporter to use, comma-separated, can be ${builtInReporters.map(name => `"${name}"`).join(', ')} (default: "${config.defaultReporter}")` }],
+  ['--reporter-only-failures', { description: `Only include tests with failures in JSON, JUnit, and HTML reports` }],
   ['--retries <retries>', { description: `Maximum retry count for flaky tests, zero for no retries (default: no retries)` }],
   ['--run-agents <mode>', { description: `Run agents to generate the code for page.perform`, choices: ['missing', 'all', 'none'], preset: 'none' }],
   ['--shard <shard>', { description: `Shard tests and execute only the selected shard, specify in the form "current/all", 1-based, for example "3/5"` }],
   ['--test-list <file>', { description: `Path to a file containing a list of tests to run. See https://playwright.dev/docs/test-cli for more details.` }],
   ['--test-list-invert <file>', { description: `Path to a file containing a list of tests to skip. See https://playwright.dev/docs/test-cli for more details.` }],
+  ['--shuffle [seed]', { description: `Schedule test files, and tests in parallel mode, in a random order; pass a seed to reproduce a previous order` }],
   ['--timeout <timeout>', { description: `Specify test timeout threshold in milliseconds, zero for unlimited (default: ${config.defaultTimeout})` }],
   ['--trace <mode>', { description: `Force tracing mode`, choices: kTraceModes as string[] }],
   ['--tsconfig <path>', { description: `Path to a single tsconfig applicable to all imported files (default: look up tsconfig for each imported file separately)` }],

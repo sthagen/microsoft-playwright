@@ -197,7 +197,7 @@ export default defineConfig({
 });
 ```
 
-When connect options are specified, default [`property: Fixtures.browser`], [`property: Fixtures.context`] and [`property: Fixtures.page`] use the remote browser instead of launching a browser locally, and any launch options like [`property: TestOptions.headless`] or [`property: TestOptions.channel`] are ignored.
+When connect options are specified, default [`property: Fixtures.browser`], [`property: Fixtures.context`] and [`property: Fixtures.page`] use the remote browser instead of launching a browser locally.
 
 ## property: TestOptions.contextOptions
 * since: v1.10
@@ -343,6 +343,17 @@ export default defineConfig({
       password: 'pass',
     },
   },
+});
+```
+
+When passing an array of credentials to [`method: Test.use`], wrap it into an extra array, see [fixture options](../test-fixtures.md#fixtures-options).
+
+```js title="example.spec.ts"
+test.use({
+  httpCredentials: [[
+    { username: 'alice', password: 'alice-pass', origin: 'https://a.example.com' },
+    { username: 'bob', password: 'bob-pass', origin: 'https://b.example.com' },
+  ], { scope: 'test' }],
 });
 ```
 
@@ -686,7 +697,7 @@ export default defineConfig({
 
 ## property: TestOptions.trace
 * since: v1.10
-- type: <[Object]|[TraceMode]<"off"|"on"|"retain-on-failure"|"on-first-retry"|"retain-on-first-failure"|"retain-on-failure-and-retries">>
+- type: <[Object]|[TraceMode]<"off"|"on"|"on-first-retry"|"on-all-retries"|"retain-on-failure"|"retain-on-first-failure"|"retain-on-failure-and-retries">>
   - `mode` <[TraceMode]<"off"|"on"|"retain-on-failure"|"on-first-retry"|"on-all-retries"|"retain-on-first-failure"|"retain-on-failure-and-retries">> Trace recording mode.
   - `attachments` ?<[boolean]> Whether to include test attachments. Defaults to true. Optional.
   - `screenshots` ?<[boolean]> Whether to capture screenshots during tracing. Screenshots are used to build a timeline preview. Defaults to true. Optional.
@@ -694,7 +705,6 @@ export default defineConfig({
     - `dom` ?<[boolean]> Capture DOM snapshot on every action and record network activity. Optional.
     - `aria` ?<[boolean]> Capture aria snapshot of the page on every action. Optional.
     - `screen` ?<[boolean]> Capture a screenshot of the page on every action. Optional.
-  - `coverage` ?<[boolean]> Whether to collect coverage from istanbul-instrumented application code into the trace. Defaults to false. Optional.
   - `sources` ?<[boolean]> Whether to include source files for trace actions. Defaults to true. Optional.
 
 Whether to record trace for each test. Defaults to `'off'`. The initial run of a test is the "first run"; subsequent runs caused by [retries](../test-retries.md) are "retries".

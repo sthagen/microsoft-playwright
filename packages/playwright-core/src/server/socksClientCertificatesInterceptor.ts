@@ -108,7 +108,8 @@ class SocksProxyConnection {
     this.uid = uid;
     this.host = host;
     this.port = port;
-    this._serverCloseEventListener = () => {
+    this._serverCloseEventListener = async () => {
+      await this._brorwserDecrypted?.catch(() => {});
       this._browserEncrypted.destroy();
     };
     this._browserEncrypted = new stream.Duplex({
@@ -161,8 +162,9 @@ class SocksProxyConnection {
       this._firstPackageReceived = true;
       // 0x16 is the TLS "handshake" content type. Only intercept it when the origin has a client
       // certificate; otherwise pass the connection through so the browser talks TLS to the server directly.
-      if (data[0] === 0x16 && this.socksProxy.secureContextMap.has(normalizeOrigin(`https://${this.host}:${this.port}`)))
-        this._establishTlsTunnel(this._browserEncrypted, data, this.socksProxy.secureContextMap.get(normalizeOrigin(`https://${this.host}:${this.port}`)));
+      const secureContext = data[0] === 0x16 ? this.socksProxy.secureContextMap.get(normalizeOrigin(`https://${this.host}:${this.port}`)) : undefined;
+      if (secureContext)
+        this._establishTlsTunnel(this._browserEncrypted, data, secureContext);
       else
         this._establishPlaintextTunnel(this._browserEncrypted);
     }
@@ -176,7 +178,7 @@ class SocksProxyConnection {
     this._serverEncrypted.pipe(browserEncrypted);
   }
 
-  private _establishTlsTunnel(browserEncrypted: stream.Duplex, clientHello: Buffer, secureContext?: tls.SecureContext) {
+  private _establishTlsTunnel(browserEncrypted: stream.Duplex, clientHello: Buffer, secureContext: tls.SecureContext) {
     const browserALPNProtocols = parseALPNFromClientHello(clientHello) || ['http/1.1'];
     debugLogger.log('client-certificates', `Browser->Proxy ${this.host}:${this.port} offers ALPN ${browserALPNProtocols}`);
 
@@ -279,7 +281,7 @@ export class ClientCertificatesProxy {
   _socksProxy: SocksProxy;
   private _connections: Map<string, SocksProxyConnection> = new Map();
   ignoreHTTPSErrors: boolean | undefined;
-  secureContextMap: Map<string, tls.SecureContext | undefined> = new Map();
+  secureContextMap: Map<string, tls.SecureContext> = new Map();
   private _proxy: types.ProxySettings | undefined;
 
   private constructor(
@@ -312,17 +314,17 @@ export class ClientCertificatesProxy {
   }
 
   _getProxyAgent(host: string, port: number) {
-    const proxyFromOptions = createProxyAgent(this._proxy);
-    if (proxyFromOptions)
-      return proxyFromOptions;
-    const proxyFromEnv = getProxyForUrl(`https://${host}:${port}`);
+    const url = new URL(`https://${net.isIPv6(host) ? `[${host}]` : host}:${port}`);
+    if (this._proxy)
+      return createProxyAgent(this._proxy, url);
+    const proxyFromEnv = getProxyForUrl(url.href);
     if (proxyFromEnv)
       return createProxyAgent({ server: proxyFromEnv });
   }
 
   _initSecureContexts(clientCertificates: types.BrowserContextOptions['clientCertificates']) {
     // Step 1. Group certificates by origin.
-    const origin2certs = new Map<string, NonNullable<types.BrowserContextOptions['clientCertificates']>>();
+    const origin2certs = new Map<string, types.BrowserContextOptions['clientCertificates']>();
     for (const cert of clientCertificates || []) {
       const origin = normalizeOrigin(cert.origin);
       const certs = origin2certs.get(origin) || [];
@@ -332,13 +334,6 @@ export class ClientCertificatesProxy {
 
     // Step 2. Create secure contexts for each origin.
     for (const [origin, certs] of origin2certs) {
-      const noCertificateCount = certs.filter(cert => cert.noCertificate).length;
-      if (noCertificateCount > 0 && noCertificateCount < certs.length)
-        throw new Error(`clientCertificates for origin "${origin}" mix noCertificate with a real certificate`);
-      if (noCertificateCount > 0) {
-        this.secureContextMap.set(origin, undefined);
-        continue;
-      }
       try {
         this.secureContextMap.set(origin, tls.createSecureContext(convertClientCertificatesToTLSOptions(certs)));
       } catch (error) {

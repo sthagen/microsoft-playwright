@@ -36,8 +36,10 @@ export type ConfigCLIOverrides = {
   repeatEach?: number;
   retries?: number;
   reporter?: ReporterDescription[];
+  reporterOnlyFailures?: boolean;
   additionalReporters?: ReporterDescription[];
   shard?: { current: number, total: number };
+  shuffle?: string;
   timeout?: number;
   tsconfig?: string;
   ignoreSnapshots?: boolean;
@@ -57,7 +59,6 @@ export type SerializedConfig = {
 
 export type ProcessInitParams = {
   timeOrigin: number;
-  processName: string;
 };
 
 export type WorkerInitParams = {

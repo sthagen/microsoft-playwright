@@ -41,7 +41,7 @@ export class BidiFirefox extends BrowserType {
   }
 
   override async connectToTransport(transport: ConnectionTransport, options: BrowserOptions): Promise<BidiBrowser> {
-    return BidiBrowser.connect(this.attribution.playwright, transport, options);
+    return BidiBrowser.connect(this.attribution.playwright, transport, options, { proxyAuthentication: 'header' });
   }
 
   override doRewriteStartupLog(logs: string): string {
@@ -57,6 +57,7 @@ export class BidiFirefox extends BrowserType {
       throw new Error(`Cannot launch Firefox with relative home directory. Did you set ${os.platform() === 'win32' ? 'USERPROFILE' : 'HOME'} to a relative path?`);
 
     env = {
+      'MOZ_DISABLE_SAFE_MODE_KEY': '1',
       ...env,
       'MOZ_CRASHREPORTER': '1',
       'MOZ_CRASHREPORTER_NO_REPORT': '1',

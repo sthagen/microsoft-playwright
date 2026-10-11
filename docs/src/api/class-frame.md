@@ -575,9 +575,6 @@ var html = await frame.EvalOnSelectorAsync(".main-container", "(e, suffix) => e.
 
 Optional argument to pass to [`param: expression`].
 
-### option: Frame.evalOnSelector.world = %%-js-evaluate-world-%%
-* since: v1.64
-
 ### option: Frame.evalOnSelector.strict = %%-input-strict-%%
 * since: v1.14
 
@@ -634,9 +631,6 @@ var divsCount = await frame.EvalOnSelectorAllAsync<bool>("div", "(divs, min) => 
 - `arg` ?<[EvaluationArgument]>
 
 Optional argument to pass to [`param: expression`].
-
-### option: Frame.evalOnSelectorAll.world = %%-js-evaluate-world-%%
-* since: v1.64
 
 ## async method: Frame.evaluate
 * since: v1.8
@@ -757,12 +751,6 @@ Optional argument to pass to [`param: expression`].
 ### option: Frame.evaluate.exposeFunctions = %%-js-evaluate-expose-functions-%%
 * since: v1.62
 
-### option: Frame.evaluate.serialize = %%-js-evaluate-serialize-%%
-* since: v1.64
-
-### option: Frame.evaluate.world = %%-js-evaluate-world-%%
-* since: v1.64
-
 ## async method: Frame.evaluateHandle
 * since: v1.8
 - returns: <[JSHandle]>
@@ -877,9 +865,6 @@ Optional argument to pass to [`param: expression`].
 
 ### option: Frame.evaluateHandle.exposeFunctions = %%-js-evaluate-expose-functions-%%
 * since: v1.62
-
-### option: Frame.evaluateHandle.serialize = %%-js-evaluate-serialize-%%
-* since: v1.64
 
 ## async method: Frame.fill
 * since: v1.8
@@ -2433,3 +2418,9 @@ await frame.WaitForURLAsync("**/target.html");
 
 ### option: Frame.waitForURL.waitUntil = %%-navigation-wait-until-%%
 * since: v1.11
+
+## property: Frame.webmcp
+* since: v1.64
+- type: <[WebMCP]>
+
+Tools that the frame registers through the experimental [WebMCP](https://webmachinelearning.github.io/webmcp/) browser API. See [WebMCP] for details.

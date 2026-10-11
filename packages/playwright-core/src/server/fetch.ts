@@ -28,8 +28,9 @@ import { monotonicTime } from '@isomorphic/time';
 import { createProxyAgent, flattenAggregateError, happyEyeballsOptions } from '@utils/network';
 import { getUserAgent } from './userAgent';
 import { BrowserContext, findMatchingHttpCredentials, verifyClientCertificates } from './browserContext';
-import { Cookie, CookieStore, domainMatches, parseRawCookie } from './cookieStore';
+import { CookieStore, parseCookieNameValue, parseRawCookie, serializeCookieNameValue } from './cookieStore';
 import { MultipartFormData } from './formData';
+import { cookieMatchesClearFilter, domainMatches, filterCookies, rewriteCookies } from './network';
 import { TargetClosedError } from './errors';
 import { SdkObject } from './instrumentation';
 import { isAbortError } from './progress';
@@ -40,6 +41,7 @@ import type net from 'net';
 
 import type { Playwright } from './playwright';
 import type { Progress } from './progress';
+import type { ClearCookiesOptions } from './network';
 import type * as types from './types';
 import type { HeadersArray, ProxySettings } from './types';
 import type { HttpCredentials } from '@protocol/structs';
@@ -153,8 +155,9 @@ export abstract class APIRequestContext extends SdkObject {
   abstract dispose(options: { reason?: string }): Promise<void>;
 
   abstract _defaultOptions(): FetchRequestOptions;
-  abstract addCookies(cookies: channels.NetworkCookie[]): Promise<void>;
-  abstract cookies(progress: Progress, url: URL): Promise<channels.NetworkCookie[]>;
+  abstract addCookies(cookies: channels.SetNetworkCookie[]): Promise<void>;
+  abstract cookies(progress: Progress, urls: string[]): Promise<channels.NetworkCookie[]>;
+  abstract clearCookies(options: ClearCookiesOptions): Promise<void>;
 
   protected _disposeImpl() {
     this._disposed = true;
@@ -166,13 +169,6 @@ export abstract class APIRequestContext extends SdkObject {
     this._agentForProtocol.clear();
     this._certificateDetails.clear();
     this.emit(APIRequestContext.Events.Dispose);
-  }
-
-  private _proxyAgentForUrl(url: URL): http.Agent | undefined {
-    const proxy = this._defaultOptions().proxy;
-    // We skip 'per-context' in order to not break existing users. 'per-context' was previously used to
-    // workaround an upstream Chromium bug. Can be removed in the future.
-    return createProxyAgent(proxy?.server === 'per-context' ? undefined : proxy, url);
   }
 
   private _ensureAgent(protocol: string): http.Agent {
@@ -217,7 +213,10 @@ export abstract class APIRequestContext extends SdkObject {
 
     const requestUrl = new URL(constructURLBasedOnBaseURL(defaults.baseURL, params.url));
     if (params.encodedParams) {
-      requestUrl.search = params.encodedParams;
+      // Append to the query that the URL already has, like the object form does.
+      const encodedParams = params.encodedParams.replace(/^\?/, '');
+      if (encodedParams)
+        requestUrl.search = requestUrl.search ? requestUrl.search + '&' + encodedParams : encodedParams;
     } else if (params.params) {
       for (const { name, value } of params.params)
         requestUrl.searchParams.append(name, value);
@@ -291,13 +290,9 @@ export abstract class APIRequestContext extends SdkObject {
   private async _updateRequestCookieHeader(progress: Progress, url: URL, headers: HeadersObject) {
     if (getHeader(headers, 'cookie') !== undefined)
       return;
-    const contextCookies = await this.cookies(progress, url);
-    // Browser context returns cookies with domain matching both .example.com and
-    // example.com. Those without leading dot are only sent when domain is strictly
-    // matching example.com, but not for sub.example.com.
-    const cookies = contextCookies.filter(c => new Cookie(c).matches(url));
+    const cookies = await this.cookies(progress, [url.toString()]);
     if (cookies.length) {
-      const valueArray = cookies.map(c => `${c.name}=${c.value}`);
+      const valueArray = cookies.map(serializeCookieNameValue);
       setHeader(headers, 'cookie', valueArray.join('; '));
     }
   }
@@ -337,12 +332,7 @@ export abstract class APIRequestContext extends SdkObject {
     };
     await this._updateRequestCookieHeader(progress, url, options.headers);
 
-    const requestCookies = getHeader(options.headers, 'cookie')?.split(';').map(p => {
-      const indexOfEquals = p.indexOf('=');
-      const name = indexOfEquals !== -1 ? p.substring(0, indexOfEquals).trim() : p.trim();
-      const value = indexOfEquals !== -1 ? p.substring(indexOfEquals + 1).trim() : '';
-      return { name, value };
-    }) || [];
+    const requestCookies = getHeader(options.headers, 'cookie')?.split(';').map(parseCookieNameValue) || [];
     const requestEvent: APIRequestEvent = {
       url,
       method: options.method!,
@@ -367,7 +357,7 @@ export abstract class APIRequestContext extends SdkObject {
         ...options,
         ...happyEyeballsOptions,
         ...getMatchingTLSOptionsForOrigin(this._defaultOptions().clientCertificates, url.origin),
-        agent: this._proxyAgentForUrl(url) ?? this._ensureAgent(url.protocol),
+        agent: createProxyAgent(this._defaultOptions().proxy, url) ?? this._ensureAgent(url.protocol),
       };
       if (options.__testHookLookup)
         requestOptions.lookup = lookupWithTestHook(options.__testHookLookup);
@@ -735,12 +725,16 @@ export class BrowserContextAPIRequestContext extends APIRequestContext {
     };
   }
 
-  async addCookies(cookies: channels.NetworkCookie[]): Promise<void> {
+  async addCookies(cookies: channels.SetNetworkCookie[]): Promise<void> {
     await this._context.addCookies(cookies);
   }
 
-  async cookies(progress: Progress, url: URL): Promise<channels.NetworkCookie[]> {
-    return await this._context.cookies(progress, url.toString());
+  async cookies(progress: Progress, urls: string[]): Promise<channels.NetworkCookie[]> {
+    return await this._context.cookies(progress, urls);
+  }
+
+  async clearCookies(options: ClearCookiesOptions): Promise<void> {
+    await this._context.clearCookies(options);
   }
 
   override async storageState(progress: Progress, params: { indexedDB?: boolean, opfs?: boolean }): Promise<channels.APIRequestContextStorageStateResult> {
@@ -791,12 +785,24 @@ export class GlobalAPIRequestContext extends APIRequestContext {
     return this._options;
   }
 
-  async addCookies(cookies: channels.NetworkCookie[]): Promise<void> {
-    this._cookieStore.addCookies(cookies);
+  async addCookies(cookies: channels.SetNetworkCookie[]): Promise<void> {
+    this._cookieStore.addCookies(rewriteCookies(cookies).map(c => ({
+      expires: -1,
+      httpOnly: false,
+      secure: false,
+      sameSite: 'Lax',
+      ...c,
+      domain: c.domain!,
+      path: c.path!,
+    })));
   }
 
-  async cookies(progress: Progress, url: URL): Promise<channels.NetworkCookie[]> {
-    return this._cookieStore.cookies(url);
+  async cookies(progress: Progress, urls: string[]): Promise<channels.NetworkCookie[]> {
+    return filterCookies(this._cookieStore.allCookies(), urls);
+  }
+
+  async clearCookies(options: ClearCookiesOptions): Promise<void> {
+    this._cookieStore.removeCookies(cookie => cookieMatchesClearFilter(cookie, options));
   }
 
   override async storageState(progress: Progress, { indexedDB = false, opfs = false }: { indexedDB?: boolean, opfs?: boolean }): Promise<channels.APIRequestContextStorageStateResult> {

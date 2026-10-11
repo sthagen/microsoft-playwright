@@ -19,13 +19,15 @@ export * from 'playwright-core';
 
 export type BlobReporterOptions = { outputDir?: string, fileName?: string };
 export type DotReporterOptions = { omitTags?: boolean };
+export type FailuresReporterOptions = { omitTags?: boolean };
 export type LineReporterOptions = { omitTags?: boolean };
 export type ListReporterOptions = { printSteps?: boolean, printFailuresInline?: boolean, omitTags?: boolean };
 export type GitHubReporterOptions = { omitTags?: boolean };
-export type JUnitReporterOptions = { outputFile?: string, stripANSIControlSequences?: boolean, includeProjectInTestName?: boolean, includeRetries?: boolean, omitTags?: boolean };
-export type JsonReporterOptions = { outputFile?: string };
+export type JUnitReporterOptions = { outputFile?: string, stripANSIControlSequences?: boolean, includeProjectInTestName?: boolean, includeRetries?: boolean, omitTags?: boolean, onlyFailures?: boolean };
+export type JsonReporterOptions = { outputFile?: string, onlyFailures?: boolean };
 export type PerfettoReporterOptions = { outputFile?: string };
 export type HtmlReporterOptions = {
+  onlyFailures?: boolean;
   outputFolder?: string;
   open?: 'always' | 'never' | 'on-failure';
   host?: string;
@@ -41,6 +43,7 @@ export type HtmlReporterOptions = {
 export type ReporterDescription = Readonly<
   ['blob'] | ['blob', BlobReporterOptions] |
   ['dot'] | ['dot', DotReporterOptions] |
+  ['failures'] | ['failures', FailuresReporterOptions] |
   ['line'] | ['line', LineReporterOptions] |
   ['list'] | ['list', ListReporterOptions] |
   ['github'] | ['github', GitHubReporterOptions] |
@@ -69,7 +72,7 @@ type LiteralUnion<T extends U, U = string> = T | (U & { zz_IGNORE_ME?: never });
 
 interface TestConfig<TestArgs = {}, WorkerArgs = {}> {
   projects?: Project<TestArgs, WorkerArgs>[];
-  reporter?: LiteralUnion<'list'|'dot'|'line'|'github'|'json'|'junit'|'null'|'html'|'perfetto'|'coverage', string> | ReporterDescription[];
+  reporter?: LiteralUnion<'list'|'dot'|'failures'|'line'|'github'|'json'|'junit'|'null'|'html'|'blob'|'perfetto', string> | ReporterDescription[];
   use?: UseOptions<TestArgs, WorkerArgs>;
   webServer?: TestConfigWebServer | TestConfigWebServer[];
 }
@@ -160,12 +163,14 @@ export interface TestType<TestArgs extends {}, WorkerArgs extends {}> {
   skip(title: string, body: TestBody<TestArgs & WorkerArgs>): void;
   skip(title: string, details: TestDetails, body: TestBody<TestArgs & WorkerArgs>): void;
   skip(): void;
+  skip(description: string): void;
   skip(condition: boolean, description?: string): void;
   skip(callback: ConditionBody<TestArgs & WorkerArgs>, description?: string): void;
 
   fixme(title: string, body: TestBody<TestArgs & WorkerArgs>): void;
   fixme(title: string, details: TestDetails, body: TestBody<TestArgs & WorkerArgs>): void;
   fixme(): void;
+  fixme(description: string): void;
   fixme(condition: boolean, description?: string): void;
   fixme(callback: ConditionBody<TestArgs & WorkerArgs>, description?: string): void;
 
@@ -175,6 +180,7 @@ export interface TestType<TestArgs extends {}, WorkerArgs extends {}> {
     (condition: boolean, description?: string): void;
     (callback: ConditionBody<TestArgs & WorkerArgs>, description?: string): void;
     (): void;
+    (description: string): void;
 
     only(title: string, body: TestBody<TestArgs & WorkerArgs>): void;
     only(title: string, details: TestDetails, body: TestBody<TestArgs & WorkerArgs>): void;
@@ -183,6 +189,7 @@ export interface TestType<TestArgs extends {}, WorkerArgs extends {}> {
   abort(message?: string): never;
 
   slow(): void;
+  slow(description: string): void;
   slow(condition: boolean, description?: string): void;
   slow(callback: ConditionBody<TestArgs & WorkerArgs>, description?: string): void;
 
@@ -272,7 +279,7 @@ export interface PlaywrightWorkerOptions {
   connectOptions: ConnectOptions | undefined;
   reuseContext: boolean;
   screenshot: ScreenshotMode | { mode: ScreenshotMode } & Pick<PageScreenshotOptions, 'fullPage' | 'omitBackground'>;
-  trace: TraceMode | /** deprecated */ 'retry-with-trace' | { mode: TraceMode, snapshots?: boolean | { dom?: boolean, aria?: boolean, screen?: boolean }, screenshots?: boolean, coverage?: boolean, sources?: boolean, attachments?: boolean };
+  trace: TraceMode | /** deprecated */ 'retry-with-trace' | { mode: TraceMode, snapshots?: boolean | { dom?: boolean, aria?: boolean, screen?: boolean }, screenshots?: boolean, sources?: boolean, attachments?: boolean };
   video: VideoMode | /** deprecated */ 'retry-with-video' | { mode: VideoMode, size?: ViewportSize, fps?: number, show?: { actions?: { duration?: number, position?: 'top-left' | 'top' | 'top-right' | 'bottom-left' | 'bottom' | 'bottom-right', /** @deprecated Use `style.title` instead. */ fontSize?: number, cursor?: 'none' | 'pointer', style?: { point?: string, highlight?: string, title?: string } }, test?: { level?: 'file' | 'title' | 'step', position?: 'top-left' | 'top' | 'top-right' | 'bottom-left' | 'bottom' | 'bottom-right', fontSize?: number } } };
 }
 

@@ -265,6 +265,31 @@ test('--proxy-server overrides contextOptions.proxy from config file', {
   });
 });
 
+test('--proxy-server should use credentials from the url', {
+  annotation: { type: 'issue', description: 'https://github.com/microsoft/playwright/issues/43048' },
+}, async ({ startClient, server }) => {
+  server.setRoute('/target.html', (req, res) => {
+    const auth = req.headers['proxy-authorization'];
+    if (!auth) {
+      res.writeHead(407, 'Proxy Authentication Required', {
+        'Proxy-Authenticate': 'Basic realm="Access to internal site"'
+      });
+      res.end();
+    } else {
+      res.end(`<html><title>${auth}</title></html>`);
+    }
+  });
+  const { client } = await startClient({
+    args: [`--proxy-server=http://user:se%40cret@${server.HOST}`],
+  });
+  expect(await client.callTool({
+    name: 'browser_navigate',
+    arguments: { url: 'http://non-existent.com/target.html' },
+  })).toHaveResponse({
+    page: expect.stringContaining('Basic ' + Buffer.from('user:se@cret').toString('base64')),
+  });
+});
+
 test('proper launch error message for broken browser and persistent context', {
   annotation: { type: 'issue', description: 'https://github.com/microsoft/playwright-mcp/issues/1305' }
 }, async ({ startClient, server, mcpBrowser }, testInfo) => {
@@ -291,4 +316,24 @@ exit 1
     isError: true,
     error: expect.not.stringContaining(`Browser is already in use`),
   });
+});
+
+test('should gracefully close the browser once on stdin end', {
+  annotation: { type: 'issue', description: 'https://github.com/microsoft/playwright/issues/43098' }
+}, async ({ startClient, server }, testInfo) => {
+  const { client, stderr } = await startClient({
+    args: [`--user-data-dir=${testInfo.outputPath('user-data-dir')}`],
+    env: { DEBUG: 'pw:browser' },
+  });
+  await client.callTool({
+    name: 'browser_navigate',
+    arguments: { url: server.HELLO_WORLD },
+  });
+
+  await client.close();
+
+  await expect.poll(() => stderr()).toContain('<gracefully close end>');
+  expect(stderr()).toContain('<gracefully close start>');
+  expect(stderr()).not.toContain('<forcefully close>');
+  expect(stderr()).not.toContain('<will force kill>');
 });

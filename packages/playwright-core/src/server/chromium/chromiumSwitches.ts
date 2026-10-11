@@ -34,15 +34,19 @@ const disabledFeatures = [
   'PaintHolding',
   // See https://github.com/microsoft/playwright/issues/32230
   'ThirdPartyStoragePartitioning',
-  // Chromium 149 rejects re-applying the `origin` header on a redirect (as request interception
-  // does) with net::ERR_INVALID_ARGUMENT. See https://github.com/microsoft/playwright/issues/41690
-  'BlockOriginHeaderModificationOnRedirect',
+  // Chromium 155 aborts preflighted cross-origin redirects with net::ERR_ABORTED while
+  // Fetch interception is enabled. See https://github.com/microsoft/playwright/issues/43242
+  'AvoidCorsURLLoaderRestartOnRedirect',
   // See https://github.com/microsoft/playwright/issues/16126
   'Translate',
   // See https://issues.chromium.org/u/1/issues/435410220
   'AutoDeElevate',
   // Prevents downloading optimization hints on startup.
   'OptimizationHints',
+  // Prevents network time queries to clients2.google.com on startup.
+  'NetworkTimeServiceQuerying',
+  // Prevents AI Mode eligibility requests to www.google.com on startup.
+  'AimEnabled',
   // Disables forced sign-in in Edge.
   'msForceBrowserSignIn',
   // Disables updating the preferred version in LaunchServices preferences on mac.

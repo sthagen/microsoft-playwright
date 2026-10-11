@@ -34,11 +34,6 @@ Frame:
         expression: string
         isFunction: boolean?
         arg: SerializedArgument
-        world:
-          type: enum?
-          literals:
-          - main
-          - utility
       returns:
         value: SerializedValue
       flags:
@@ -53,11 +48,6 @@ Frame:
         expression: string
         isFunction: boolean?
         arg: SerializedArgument
-        world:
-          type: enum?
-          literals:
-          - main
-          - utility
       returns:
         value: SerializedValue
       flags:
@@ -339,18 +329,6 @@ Frame:
         expression: string
         isFunction: boolean?
         arg: SerializedArgument
-        serialize:
-          type: array?
-          items:
-            type: enum
-            literals:
-            - Map
-            - Set
-        world:
-          type: enum?
-          literals:
-          - main
-          - utility
       returns:
         value: SerializedValue
       flags:
@@ -363,13 +341,6 @@ Frame:
         expression: string
         isFunction: boolean?
         arg: SerializedArgument
-        serialize:
-          type: array?
-          items:
-            type: enum
-            literals:
-            - Map
-            - Set
       returns:
         handle: JSHandle
       flags:
@@ -414,8 +385,10 @@ Frame:
       internal: true
       parameters:
         selector: string
+        sdkLanguage: SDKLanguage?
       returns:
         resolvedSelector: string
+        locatorCode: string?
 
     highlight:
       internal: true
@@ -908,6 +881,33 @@ Frame:
       flags:
         snapshot: true
         pause: true
+
+    webmcpTools:
+      title: List WebMCP tools
+      group: getter
+      returns:
+        tools:
+          type: array
+          items:
+            type: object
+            properties:
+              name: string
+              description: string
+              inputSchema: json?
+              annotations:
+                type: object?
+                properties:
+                  readOnly: boolean?
+                  untrustedContent: boolean?
+                  consequential: boolean?
+
+    webmcpCallTool:
+      title: Call WebMCP tool
+      parameters:
+        name: string
+        input: SerializedArgument
+      returns:
+        result: SerializedValue
 
   events:
 

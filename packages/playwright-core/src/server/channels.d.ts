@@ -18,8 +18,8 @@
 
 import type { Progress } from './progress';
 
-import type { Binary, Channel, AndroidWebView, AndroidSelector, AndroidElementInfo, APIResponse, Metadata, ClientSideCallMetadata, SDKLanguage, WaitInfo, HttpCredentials, SetNetworkCookie, NetworkCookie, ResourceTiming, SecurityDetails, RequestSizes, RemoteAddr, ExpectedTextValue, SelectorEngine, FormField, LifecycleEvent, ConsoleMessagesFilter, RecorderSource, IndexedDBDatabase, OPFSEntry, SetOriginStorage, OriginStorage, RecordHarOptions, SerializedValue, SerializedArgument, SerializedError, StackFrame, VirtualCredential, Point, Rect, URLPattern, NameValue } from '@protocol/structs';
-export type { Binary, Channel, AndroidWebView, AndroidSelector, AndroidElementInfo, APIResponse, Metadata, ClientSideCallMetadata, SDKLanguage, WaitInfo, HttpCredentials, SetNetworkCookie, NetworkCookie, ResourceTiming, SecurityDetails, RequestSizes, RemoteAddr, ExpectedTextValue, SelectorEngine, FormField, LifecycleEvent, ConsoleMessagesFilter, RecorderSource, IndexedDBDatabase, OPFSEntry, SetOriginStorage, OriginStorage, RecordHarOptions, SerializedValue, SerializedArgument, SerializedError, StackFrame, VirtualCredential, Point, Rect, URLPattern, NameValue } from '@protocol/structs';
+import type { Binary, Channel, AndroidWebView, AndroidSelector, AndroidElementInfo, APIResponse, Metadata, ClientSideCallMetadata, SDKLanguage, WaitInfo, HttpCredentials, SetNetworkCookie, NetworkCookie, ResourceTiming, SecurityDetails, RequestSizes, RemoteAddr, ExpectedTextValue, SelectorEngine, FormField, LifecycleEvent, ConsoleMessagesFilter, RecorderSource, IndexedDBDatabase, OPFSEntry, SetOriginStorage, OriginStorage, RecordHarOptions, SerializedValue, SerializedArgument, SerializedError, StackFrame, VirtualCredential, SetVirtualCredential, Point, Rect, URLPattern, NameValue } from '@protocol/structs';
+export type { Binary, Channel, AndroidWebView, AndroidSelector, AndroidElementInfo, APIResponse, Metadata, ClientSideCallMetadata, SDKLanguage, WaitInfo, HttpCredentials, SetNetworkCookie, NetworkCookie, ResourceTiming, SecurityDetails, RequestSizes, RemoteAddr, ExpectedTextValue, SelectorEngine, FormField, LifecycleEvent, ConsoleMessagesFilter, RecorderSource, IndexedDBDatabase, OPFSEntry, SetOriginStorage, OriginStorage, RecordHarOptions, SerializedValue, SerializedArgument, SerializedError, StackFrame, VirtualCredential, SetVirtualCredential, Point, Rect, URLPattern, NameValue } from '@protocol/structs';
 
 // ----------- Initializer Traits -----------
 export type InitializerTraits<T> =
@@ -391,7 +391,6 @@ export type AndroidDeviceLaunchBrowserParams = {
     key?: Binary,
     passphrase?: string,
     pfx?: Binary,
-    noCertificate?: boolean,
   }[],
   javaScriptEnabled?: boolean,
   bypassCSP?: boolean,
@@ -465,7 +464,6 @@ export type AndroidDeviceLaunchBrowserOptions = {
     key?: Binary,
     passphrase?: string,
     pfx?: Binary,
-    noCertificate?: boolean,
   }[],
   javaScriptEnabled?: boolean,
   bypassCSP?: boolean,
@@ -590,6 +588,9 @@ export interface APIRequestContextChannel extends APIRequestContextEventTarget, 
   fetch(params: APIRequestContextFetchParams, progress: Progress): Promise<APIRequestContextFetchResult>;
   fetchResponseBody(params: APIRequestContextFetchResponseBodyParams, progress: Progress): Promise<APIRequestContextFetchResponseBodyResult>;
   fetchLog(params: APIRequestContextFetchLogParams, progress: Progress): Promise<APIRequestContextFetchLogResult>;
+  addCookies(params: APIRequestContextAddCookiesParams, progress: Progress): Promise<APIRequestContextAddCookiesResult>;
+  clearCookies(params: APIRequestContextClearCookiesParams, progress: Progress): Promise<APIRequestContextClearCookiesResult>;
+  cookies(params: APIRequestContextCookiesParams, progress: Progress): Promise<APIRequestContextCookiesResult>;
   storageState(params: APIRequestContextStorageStateParams, progress: Progress): Promise<APIRequestContextStorageStateResult>;
   disposeAPIResponse(params: APIRequestContextDisposeAPIResponseParams, progress: Progress): Promise<APIRequestContextDisposeAPIResponseResult>;
   dispose(params: APIRequestContextDisposeParams, progress: Progress): Promise<APIRequestContextDisposeResult>;
@@ -643,6 +644,45 @@ export type APIRequestContextFetchLogOptions = {
 };
 export type APIRequestContextFetchLogResult = {
   log: string[],
+};
+export type APIRequestContextAddCookiesParams = {
+  cookies: SetNetworkCookie[],
+};
+export type APIRequestContextAddCookiesOptions = {
+
+};
+export type APIRequestContextAddCookiesResult = void;
+export type APIRequestContextClearCookiesParams = {
+  name?: string,
+  nameRegexSource?: string,
+  nameRegexFlags?: string,
+  domain?: string,
+  domainRegexSource?: string,
+  domainRegexFlags?: string,
+  path?: string,
+  pathRegexSource?: string,
+  pathRegexFlags?: string,
+};
+export type APIRequestContextClearCookiesOptions = {
+  name?: string,
+  nameRegexSource?: string,
+  nameRegexFlags?: string,
+  domain?: string,
+  domainRegexSource?: string,
+  domainRegexFlags?: string,
+  path?: string,
+  pathRegexSource?: string,
+  pathRegexFlags?: string,
+};
+export type APIRequestContextClearCookiesResult = void;
+export type APIRequestContextCookiesParams = {
+  urls: string[],
+};
+export type APIRequestContextCookiesOptions = {
+
+};
+export type APIRequestContextCookiesResult = {
+  cookies: NetworkCookie[],
 };
 export type APIRequestContextStorageStateParams = {
   indexedDB?: boolean,
@@ -854,7 +894,6 @@ export type BrowserNewContextParams = {
     key?: Binary,
     passphrase?: string,
     pfx?: Binary,
-    noCertificate?: boolean,
   }[],
   javaScriptEnabled?: boolean,
   bypassCSP?: boolean,
@@ -911,7 +950,7 @@ export type BrowserNewContextParams = {
   storageState?: {
     cookies?: SetNetworkCookie[],
     origins?: SetOriginStorage[],
-    credentials?: VirtualCredential[],
+    credentials?: SetVirtualCredential[],
   },
 };
 export type BrowserNewContextOptions = {
@@ -931,7 +970,6 @@ export type BrowserNewContextOptions = {
     key?: Binary,
     passphrase?: string,
     pfx?: Binary,
-    noCertificate?: boolean,
   }[],
   javaScriptEnabled?: boolean,
   bypassCSP?: boolean,
@@ -988,7 +1026,7 @@ export type BrowserNewContextOptions = {
   storageState?: {
     cookies?: SetNetworkCookie[],
     origins?: SetOriginStorage[],
-    credentials?: VirtualCredential[],
+    credentials?: SetVirtualCredential[],
   },
 };
 export type BrowserNewContextResult = {
@@ -1011,7 +1049,6 @@ export type BrowserNewContextForReuseParams = {
     key?: Binary,
     passphrase?: string,
     pfx?: Binary,
-    noCertificate?: boolean,
   }[],
   javaScriptEnabled?: boolean,
   bypassCSP?: boolean,
@@ -1068,7 +1105,7 @@ export type BrowserNewContextForReuseParams = {
   storageState?: {
     cookies?: SetNetworkCookie[],
     origins?: SetOriginStorage[],
-    credentials?: VirtualCredential[],
+    credentials?: SetVirtualCredential[],
   },
 };
 export type BrowserNewContextForReuseOptions = {
@@ -1088,7 +1125,6 @@ export type BrowserNewContextForReuseOptions = {
     key?: Binary,
     passphrase?: string,
     pfx?: Binary,
-    noCertificate?: boolean,
   }[],
   javaScriptEnabled?: boolean,
   bypassCSP?: boolean,
@@ -1145,7 +1181,7 @@ export type BrowserNewContextForReuseOptions = {
   storageState?: {
     cookies?: SetNetworkCookie[],
     origins?: SetOriginStorage[],
-    credentials?: VirtualCredential[],
+    credentials?: SetVirtualCredential[],
   },
 };
 export type BrowserNewContextForReuseResult = {
@@ -1207,7 +1243,6 @@ export type BrowserContextInitializer = {
       key?: Binary,
       passphrase?: string,
       pfx?: Binary,
-      noCertificate?: boolean,
     }[],
     javaScriptEnabled?: boolean,
     bypassCSP?: boolean,
@@ -1559,14 +1594,14 @@ export type BrowserContextSetStorageStateParams = {
   storageState?: {
     cookies?: SetNetworkCookie[],
     origins?: SetOriginStorage[],
-    credentials?: VirtualCredential[],
+    credentials?: SetVirtualCredential[],
   },
 };
 export type BrowserContextSetStorageStateOptions = {
   storageState?: {
     cookies?: SetNetworkCookie[],
     origins?: SetOriginStorage[],
-    credentials?: VirtualCredential[],
+    credentials?: SetVirtualCredential[],
   },
 };
 export type BrowserContextSetStorageStateResult = void;
@@ -1712,12 +1747,14 @@ export type BrowserContextCredentialsCreateParams = {
   userHandle?: string,
   privateKey?: string,
   publicKey?: string,
+  signCount?: number,
 };
 export type BrowserContextCredentialsCreateOptions = {
   id?: string,
   userHandle?: string,
   privateKey?: string,
   publicKey?: string,
+  signCount?: number,
 };
 export type BrowserContextCredentialsCreateResult = {
   credential: VirtualCredential,
@@ -1865,7 +1902,6 @@ export type BrowserTypeLaunchPersistentContextParams = {
     key?: Binary,
     passphrase?: string,
     pfx?: Binary,
-    noCertificate?: boolean,
   }[],
   javaScriptEnabled?: boolean,
   bypassCSP?: boolean,
@@ -1955,7 +1991,6 @@ export type BrowserTypeLaunchPersistentContextOptions = {
     key?: Binary,
     passphrase?: string,
     pfx?: Binary,
-    noCertificate?: boolean,
   }[],
   javaScriptEnabled?: boolean,
   bypassCSP?: boolean,
@@ -2301,6 +2336,8 @@ export interface FrameChannel extends FrameEventTarget, Channel {
   waitForFunction(params: FrameWaitForFunctionParams, progress: Progress): Promise<FrameWaitForFunctionResult>;
   waitForSelector(params: FrameWaitForSelectorParams, progress: Progress): Promise<FrameWaitForSelectorResult>;
   expect(params: FrameExpectParams, progress: Progress): Promise<FrameExpectResult>;
+  webmcpTools(params: FrameWebmcpToolsParams, progress: Progress): Promise<FrameWebmcpToolsResult>;
+  webmcpCallTool(params: FrameWebmcpCallToolParams, progress: Progress): Promise<FrameWebmcpCallToolResult>;
 }
 export type FrameLoadstateEvent = {
   add?: LifecycleEvent,
@@ -2320,12 +2357,10 @@ export type FrameEvalOnSelectorParams = {
   expression: string,
   isFunction?: boolean,
   arg: SerializedArgument,
-  world?: 'main' | 'utility',
 };
 export type FrameEvalOnSelectorOptions = {
   strict?: boolean,
   isFunction?: boolean,
-  world?: 'main' | 'utility',
 };
 export type FrameEvalOnSelectorResult = {
   value: SerializedValue,
@@ -2335,11 +2370,9 @@ export type FrameEvalOnSelectorAllParams = {
   expression: string,
   isFunction?: boolean,
   arg: SerializedArgument,
-  world?: 'main' | 'utility',
 };
 export type FrameEvalOnSelectorAllOptions = {
   isFunction?: boolean,
-  world?: 'main' | 'utility',
 };
 export type FrameEvalOnSelectorAllResult = {
   value: SerializedValue,
@@ -2550,13 +2583,9 @@ export type FrameEvaluateExpressionParams = {
   expression: string,
   isFunction?: boolean,
   arg: SerializedArgument,
-  serialize?: ('Map' | 'Set')[],
-  world?: 'main' | 'utility',
 };
 export type FrameEvaluateExpressionOptions = {
   isFunction?: boolean,
-  serialize?: ('Map' | 'Set')[],
-  world?: 'main' | 'utility',
 };
 export type FrameEvaluateExpressionResult = {
   value: SerializedValue,
@@ -2565,11 +2594,9 @@ export type FrameEvaluateExpressionHandleParams = {
   expression: string,
   isFunction?: boolean,
   arg: SerializedArgument,
-  serialize?: ('Map' | 'Set')[],
 };
 export type FrameEvaluateExpressionHandleOptions = {
   isFunction?: boolean,
-  serialize?: ('Map' | 'Set')[],
 };
 export type FrameEvaluateExpressionHandleResult = {
   handle: JSHandleChannel,
@@ -2600,12 +2627,14 @@ export type FrameFrameElementResult = {
 };
 export type FrameResolveSelectorParams = {
   selector: string,
+  sdkLanguage?: SDKLanguage,
 };
 export type FrameResolveSelectorOptions = {
-
+  sdkLanguage?: SDKLanguage,
 };
 export type FrameResolveSelectorResult = {
   resolvedSelector: string,
+  locatorCode?: string,
 };
 export type FrameHighlightParams = {
   selector: string,
@@ -2981,6 +3010,30 @@ export type FrameExpectErrorDetails = {
   timedOut?: boolean,
   customErrorMessage?: string,
 };
+export type FrameWebmcpToolsParams = {};
+export type FrameWebmcpToolsOptions = {};
+export type FrameWebmcpToolsResult = {
+  tools: {
+    name: string,
+    description: string,
+    inputSchema?: any,
+    annotations?: {
+      readOnly?: boolean,
+      untrustedContent?: boolean,
+      consequential?: boolean,
+    },
+  }[],
+};
+export type FrameWebmcpCallToolParams = {
+  name: string,
+  input: SerializedArgument,
+};
+export type FrameWebmcpCallToolOptions = {
+
+};
+export type FrameWebmcpCallToolResult = {
+  result: SerializedValue,
+};
 
 export interface FrameEvents {
   'loadstate': FrameLoadstateEvent;
@@ -3013,13 +3066,9 @@ export type JSHandleEvaluateExpressionParams = {
   expression: string,
   isFunction?: boolean,
   arg: SerializedArgument,
-  serialize?: ('Map' | 'Set')[],
-  world?: 'main' | 'utility',
 };
 export type JSHandleEvaluateExpressionOptions = {
   isFunction?: boolean,
-  serialize?: ('Map' | 'Set')[],
-  world?: 'main' | 'utility',
 };
 export type JSHandleEvaluateExpressionResult = {
   value: SerializedValue,
@@ -3028,11 +3077,9 @@ export type JSHandleEvaluateExpressionHandleParams = {
   expression: string,
   isFunction?: boolean,
   arg: SerializedArgument,
-  serialize?: ('Map' | 'Set')[],
 };
 export type JSHandleEvaluateExpressionHandleOptions = {
   isFunction?: boolean,
-  serialize?: ('Map' | 'Set')[],
 };
 export type JSHandleEvaluateExpressionHandleResult = {
   handle: JSHandleChannel,
@@ -3113,12 +3160,10 @@ export type ElementHandleEvalOnSelectorParams = {
   expression: string,
   isFunction?: boolean,
   arg: SerializedArgument,
-  world?: 'main' | 'utility',
 };
 export type ElementHandleEvalOnSelectorOptions = {
   strict?: boolean,
   isFunction?: boolean,
-  world?: 'main' | 'utility',
 };
 export type ElementHandleEvalOnSelectorResult = {
   value: SerializedValue,
@@ -3128,11 +3173,9 @@ export type ElementHandleEvalOnSelectorAllParams = {
   expression: string,
   isFunction?: boolean,
   arg: SerializedArgument,
-  world?: 'main' | 'utility',
 };
 export type ElementHandleEvalOnSelectorAllOptions = {
   isFunction?: boolean,
-  world?: 'main' | 'utility',
 };
 export type ElementHandleEvalOnSelectorAllResult = {
   value: SerializedValue,
@@ -3514,6 +3557,7 @@ export interface LocalUtilsChannel extends LocalUtilsEventTarget, Channel {
   addStackToTracingNoReply(params: LocalUtilsAddStackToTracingNoReplyParams, progress: Progress): Promise<LocalUtilsAddStackToTracingNoReplyResult>;
   traceDiscarded(params: LocalUtilsTraceDiscardedParams, progress: Progress): Promise<LocalUtilsTraceDiscardedResult>;
   globToRegex(params: LocalUtilsGlobToRegexParams, progress: Progress): Promise<LocalUtilsGlobToRegexResult>;
+  asLocatorDescription(params: LocalUtilsAsLocatorDescriptionParams, progress: Progress): Promise<LocalUtilsAsLocatorDescriptionResult>;
 }
 export type LocalUtilsZipParams = {
   zipFile: string,
@@ -3627,6 +3671,16 @@ export type LocalUtilsGlobToRegexOptions = {
 };
 export type LocalUtilsGlobToRegexResult = {
   regex: string,
+};
+export type LocalUtilsAsLocatorDescriptionParams = {
+  selector: string,
+  sdkLanguage: SDKLanguage,
+};
+export type LocalUtilsAsLocatorDescriptionOptions = {
+
+};
+export type LocalUtilsAsLocatorDescriptionResult = {
+  description: string,
 };
 
 export interface LocalUtilsEvents {
@@ -4733,7 +4787,6 @@ export type PlaywrightNewRequestParams = {
     key?: Binary,
     passphrase?: string,
     pfx?: Binary,
-    noCertificate?: boolean,
   }[],
   maxRedirects?: number,
   httpCredentials?: HttpCredentials[],
@@ -4761,7 +4814,6 @@ export type PlaywrightNewRequestOptions = {
     key?: Binary,
     passphrase?: string,
     pfx?: Binary,
-    noCertificate?: boolean,
   }[],
   maxRedirects?: number,
   httpCredentials?: HttpCredentials[],

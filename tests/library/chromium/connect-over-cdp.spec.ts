@@ -42,6 +42,124 @@ test('should connect to an existing cdp session', async ({ browserType, mode }, 
   }
 });
 
+test('should connect when an existing page has no renderer', {
+  annotation: { type: 'issue', description: 'https://github.com/microsoft/playwright/issues/41714' },
+}, async ({ browserType, server }, testInfo) => {
+  const port = 9339 + testInfo.workerIndex;
+  const browserServer = await browserType.launch({
+    args: ['--remote-debugging-port=' + port]
+  });
+  try {
+    // Prepare a page without a renderer, e.g. one discarded by the Memory Saver.
+    const cdpBrowser1 = await browserType.connectOverCDP({
+      endpointURL: `http://127.0.0.1:${port}/`,
+    });
+    const context1 = cdpBrowser1.contexts()[0];
+    const healthyPage1 = await context1.newPage();
+    await healthyPage1.goto(server.PREFIX + '/title.html');
+    const crashedPage1 = await context1.newPage();
+    await crashedPage1.goto(server.EMPTY_PAGE);
+    crashedPage1.goto('chrome://crash').catch(() => {});
+    await crashedPage1.waitForEvent('crash');
+    await cdpBrowser1.close();
+
+    // Connecting again should not hang on the page without a renderer,
+    // and should not report it at all.
+    const cdpBrowser2 = await browserType.connectOverCDP({
+      endpointURL: `http://127.0.0.1:${port}/`,
+    });
+    const pages = cdpBrowser2.contexts()[0].pages();
+    expect(pages.map(page => page.url())).toEqual([server.PREFIX + '/title.html']);
+    expect(await pages[0].title()).toBe('Woof-Woof');
+    await cdpBrowser2.close();
+  } finally {
+    await browserServer.close();
+  }
+});
+
+test('should connect when the opener of an existing page has no renderer', {
+  annotation: { type: 'issue', description: 'https://github.com/microsoft/playwright/issues/41714' },
+}, async ({ browserType, server }, testInfo) => {
+  const port = 9339 + testInfo.workerIndex;
+  const browserServer = await browserType.launch({
+    // The popup should be in a different process to survive the crash of the opener.
+    args: ['--remote-debugging-port=' + port, '--site-per-process']
+  });
+  try {
+    const cdpBrowser1 = await browserType.connectOverCDP({
+      endpointURL: `http://127.0.0.1:${port}/`,
+    });
+    const crashedPage1 = await cdpBrowser1.contexts()[0].newPage();
+    await crashedPage1.goto(server.EMPTY_PAGE);
+    const [popup1] = await Promise.all([
+      crashedPage1.waitForEvent('popup'),
+      crashedPage1.evaluate(url => { window.open(url); }, server.CROSS_PROCESS_PREFIX + '/title.html'),
+    ]);
+    await popup1.waitForLoadState();
+    crashedPage1.goto('chrome://crash').catch(() => {});
+    await crashedPage1.waitForEvent('crash');
+    await cdpBrowser1.close();
+
+    // Connecting again should not report the opener, and should not wait for it.
+    const cdpBrowser2 = await browserType.connectOverCDP({
+      endpointURL: `http://127.0.0.1:${port}/`,
+    });
+    const pages = cdpBrowser2.contexts()[0].pages();
+    expect(pages.map(page => page.url())).toEqual([server.CROSS_PROCESS_PREFIX + '/title.html']);
+    expect(await pages[0].title()).toBe('Woof-Woof');
+    expect(await pages[0].opener()).toBe(null);
+    await cdpBrowser2.close();
+  } finally {
+    await browserServer.close();
+  }
+});
+
+test('should connect when an existing page has been discarded', {
+  annotation: { type: 'issue', description: 'https://github.com/microsoft/playwright/issues/41714' },
+}, async ({ browserType, createUserDataDir, server }, testInfo) => {
+  const port = 9339 + testInfo.workerIndex;
+  const userDataDir = await createUserDataDir();
+  // chrome://discards is an internal debug page that is only available with this pref.
+  fs.writeFileSync(path.join(userDataDir, 'Local State'), JSON.stringify({ internal_only_uis_enabled: true }));
+  const context = await browserType.launchPersistentContext(userDataDir, {
+    headless: false,
+    // Emulating the viewport of a discarded tab crashes the browser in
+    // WebContentsImpl::SetDeviceEmulationSize, because it has no view.
+    viewport: null,
+    args: [
+      '--remote-debugging-port=' + port,
+      // Chrome refuses to discard tabs with DevTools attached, and we attach to all of them.
+      '--enable-features=AllowDevtoolsConnectedDiscard',
+    ],
+  });
+  try {
+    const victimUrl = server.PREFIX + '/title.html';
+    const victim = await context.newPage();
+    await victim.goto(victimUrl);
+    const discards = await context.newPage();
+    await discards.goto('chrome://discards/');
+    // Discarding replaces the tab's WebContents, but the url in the table survives.
+    const row = discards.getByRole('row', { name: victimUrl });
+    await row.getByText('Urgent Discard').click();
+    await expect(row).toContainText('discarded');
+    // The renderer process is shut down asynchronously after the discard.
+    await discards.waitForTimeout(3000);
+    await testInfo.attach('discards rows', { body: (await discards.getByRole('row').allInnerTexts()).map(text => text.replace(/\s+/g, ' ')).join('\n') });
+    const targets = await (await fetch(`http://127.0.0.1:${port}/json/list`)).json();
+    await testInfo.attach('targets', { body: JSON.stringify(targets, null, 2), contentType: 'application/json' });
+
+    // Connecting should not hang on the discarded page, and the page should not be reported.
+    const cdpBrowser = await browserType.connectOverCDP({
+      endpointURL: `http://127.0.0.1:${port}/`,
+    });
+    const pages = cdpBrowser.contexts()[0].pages();
+    expect(pages.map(page => page.url()).sort()).toEqual(['about:blank', discards.url()].sort());
+    await cdpBrowser.close();
+  } finally {
+    await context.close();
+  }
+});
+
 test('should cleanup artifacts dir after connectOverCDP disconnects due to ws close', async ({ browserType, toImpl, mode }, testInfo) => {
   const port = 9339 + testInfo.workerIndex;
   const browserServer = await browserType.launch({
@@ -59,6 +177,26 @@ test('should cleanup artifacts dir after connectOverCDP disconnects due to ws cl
   const exists2 = fs.existsSync(dir);
   expect(exists1).toBe(true);
   expect(exists2).toBe(false);
+});
+
+test('should reject pending CDPSession calls when the browser is killed', {
+  annotation: { type: 'issue', description: 'https://github.com/microsoft/playwright/issues/43200' },
+}, async ({ browserType, mode }, testInfo) => {
+  test.skip(mode !== 'default', 'launchServer is only available in-process');
+  const port = 9339 + testInfo.workerIndex;
+  const browserServer = await browserType.launchServer({
+    args: ['--remote-debugging-port=' + port]
+  });
+  const cdpBrowser = await browserType.connectOverCDP({
+    endpointURL: `http://127.0.0.1:${port}/`,
+  });
+  const context = cdpBrowser.contexts()[0];
+  const page = await context.newPage();
+  const session = await context.newCDPSession(page);
+  const sendPromise = session.send('Runtime.evaluate', { expression: 'new Promise(() => {})', awaitPromise: true }).catch(e => e);
+  await browserServer.kill();
+  const error = await sendPromise;
+  expect(error.message).toContain('Target page, context or browser has been closed');
 });
 
 test('should write traces to provided artifactsDir on connectOverCDP', async ({ browserType, toImpl, trace }, testInfo) => {
@@ -160,6 +298,9 @@ test('should connect to an existing cdp session twice', async ({ browserType, mo
 
     expect(context1.pages().length).toBe(2);
     expect(context2.pages().length).toBe(2);
+
+    await page1.evaluate(() => alert('dialog race'));
+    await expect(context2.pages()[0].title()).resolves.toBe('');
 
     await cdpBrowser1.close();
     await cdpBrowser2.close();

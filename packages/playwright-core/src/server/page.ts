@@ -89,7 +89,7 @@ export interface PageDelegate {
   getBoundingBox(handle: dom.ElementHandle): Promise<types.Rect | null>;
   getFrameElement(frame: frames.Frame): Promise<dom.ElementHandle>;
   scrollRectIntoViewIfNeeded(handle: dom.ElementHandle, rect?: types.Rect): Promise<'error:notvisible' | 'error:notconnected' | 'done'>;
-  startScreencast(options: { width: number, height: number, quality: number }): void;
+  startScreencast(options: { width: number, height: number, quality: number, fps?: number }): void;
   stopScreencast(): void;
 
   pdf?: (options: channels.PagePdfParams) => Promise<Buffer>;
@@ -107,8 +107,6 @@ export interface PageDelegate {
   // WebKit hack.
   shouldToggleStyleSheetToSyncAnimations(): boolean;
   setDockTile(image: Buffer): Promise<void>;
-  // Allow Bidi to set different ffmpeg video filter args.
-  getFFmpegVideoFilterArgs?: (options: { width: number, height: number }) => string;
 }
 
 type EmulatedSize = { screen: types.Size, viewport: types.Size };
@@ -301,6 +299,7 @@ export class Page extends SdkObject<PageEventMap> {
     if (this.openScope.isClosed())
       return;
     this.frameManager.dispose(error);
+    this.clearWorkers(error);
     this.screencast.dispose();
     this.overlay.dispose();
     this.highlightController.dispose();
@@ -576,7 +575,7 @@ export class Page extends SdkObject<PageEventMap> {
       return;
     for (const [uid, handler] of this._locatorHandlers) {
       if (!handler.resolved) {
-        if (await this.mainFrame().isVisibleInternal(progress, handler.selector, { strict: true })) {
+        if (await this.mainFrame().isVisibleInternal(progress, { selector: handler.selector, strict: true })) {
           handler.resolved = new ManualPromise();
           this.emit(Page.Events.LocatorHandlerTriggered, uid);
         }
@@ -587,7 +586,7 @@ export class Page extends SdkObject<PageEventMap> {
         const promise = handler.resolved.then(async () => {
           if (!handler.noWaitAfter) {
             progress.log(`  locator handler has finished, waiting for ${asLocator(this.browserContext._browser.sdkLanguage(), handler.selector)} to be hidden`);
-            await this.mainFrame().waitForSelector(progress, handler.selector, false, { state: 'hidden' });
+            await this.mainFrame().waitForSelector(progress, { selector: handler.selector }, false, { state: 'hidden' });
           } else {
             progress.log(`  locator handler has finished`);
           }
@@ -882,9 +881,9 @@ export class Page extends SdkObject<PageEventMap> {
     this._workers.delete(workerId);
   }
 
-  clearWorkers() {
+  clearWorkers(error?: TargetClosedError) {
     for (const [workerId, worker] of this._workers) {
-      worker.didClose();
+      worker.didClose(error);
       this._workers.delete(workerId);
     }
   }
@@ -1027,19 +1026,24 @@ export class Worker extends SdkObject<WorkerEventMap> {
       this._executionContextPromise.resolve(this.existingExecutionContext);
   }
 
-  didClose() {
+  didClose(error?: TargetClosedError) {
     if (this.existingExecutionContext)
-      this.existingExecutionContext.contextDestroyed('Worker was closed');
+      this.existingExecutionContext.contextDestroyed(error?.message ?? 'Worker was closed');
     this.emit(Worker.Events.Close, this);
-    this.openScope.close(new Error('Worker closed'));
+    this.openScope.close(error ?? new TargetClosedError(this.closeReason()));
   }
 
   async evaluateExpression(progress: Progress, expression: string, isFunction: boolean | undefined, arg: any): Promise<any> {
-    return progress.race(js.evaluateExpression(await this._executionContextPromise, expression, { returnByValue: true, isFunction }, arg));
+    return progress.race(js.evaluateExpression(await this._executionContext(progress), expression, { returnByValue: true, isFunction }, arg));
   }
 
   async evaluateExpressionHandle(progress: Progress, expression: string, isFunction: boolean | undefined, arg: any): Promise<any> {
-    return progress.race(js.evaluateExpression(await this._executionContextPromise, expression, { returnByValue: false, isFunction }, arg));
+    return progress.race(js.evaluateExpression(await this._executionContext(progress), expression, { returnByValue: false, isFunction }, arg));
+  }
+
+  private async _executionContext(progress: Progress): Promise<js.ExecutionContext> {
+    // The worker may close before its execution context is ready.
+    return await progress.race(this.openScope.race(this._executionContextPromise));
   }
 
   async disconnect(progress: Progress, options: { reason?: string } = {}) {
@@ -1122,7 +1126,7 @@ export async function ariaSnapshotJSONForFrame(progress: Progress, frame: frames
       // Note: the resolved frame might differ from the original |frame|.
       // See https://developer.mozilla.org/en-US/docs/Web/API/Document/body for body/frameset explanation.
       // Non-strict, because pages with nested framesets have multiple "frameset" elements.
-      const resolved = await progress.race(frame.selectors.callOnSelector(selector || 'body,frameset', { strict: options.strict ?? !!selector }, ({ injected, elements }, ariaOptions) => {
+      const resolved = await progress.race(frame.selectors.callOnSelector({ selector: selector || 'body,frameset', strict: options.strict ?? !!selector }, ({ injected, elements }, ariaOptions) => {
         return injected.ariaSnapshotJSON(elements[0], ariaOptions);
       }, {
         mode: options.mode ?? 'default',

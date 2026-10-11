@@ -129,6 +129,22 @@ function normalizeProxyURL(proxy: string): URL {
   return new URL(proxy);
 }
 
+// Moves credentials from the proxy string, e.g. "http://user:pass@myproxy:3128", into explicit fields.
+export function proxySettingsFromString(proxy: string): ProxySettings {
+  try {
+    const url = normalizeProxyURL(proxy);
+    if (url.username || url.password) {
+      return {
+        server: url.protocol + '//' + url.host,
+        username: decodeURIComponent(url.username),
+        password: decodeURIComponent(url.password),
+      };
+    }
+  } catch {
+  }
+  return { server: proxy };
+}
+
 export function createProxyAgent(proxy?: ProxySettings, forUrl?: URL) {
   if (!proxy)
     return;
@@ -167,11 +183,13 @@ export function createProxyAgent(proxy?: ProxySettings, forUrl?: URL) {
 // ::1 is served. Separate family: 4 and family: 6 lookups do not have these problems. Native
 // Happy Eyeballs (autoSelectFamily) then races connection attempts across the families.
 const dualStackLookup: net.LookupFunction = (hostname, options, callback) => {
-  const families = options.family === 4 || options.family === 6 ? [options.family] : [6, 4];
+  // Honor --dns-result-order=ipv4first, e.g. on networks where IPv6 is configured but not routed.
+  const defaultFamilies = dns.getDefaultResultOrder() === 'ipv4first' ? [4, 6] : [6, 4];
+  const families = options.family === 4 || options.family === 6 ? [options.family] : defaultFamilies;
   void Promise.allSettled(families.map(family => dns.promises.lookup(hostname, { all: true, family }))).then(results => {
     const perFamily = results.map(result => result.status === 'fulfilled' ? result.value : []);
     const addresses: dns.LookupAddress[] = [];
-    // Alternate IPv6 and IPv4 addresses per RFC 8305 (prefer IPv6 first).
+    // Alternate address families per RFC 8305.
     for (let i = 0; i < Math.max(...perFamily.map(list => list.length)); i++) {
       for (const list of perFamily) {
         if (list[i])

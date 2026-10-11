@@ -117,8 +117,7 @@ export async function loadConfig(location: ConfigLocation, overrides?: ConfigCLI
 
   // 3. Load transform options from the playwright config.
   const external = userConfig.build?.external || [];
-  const jsxImportSource = path.dirname(require.resolve('playwright'));
-  await setTransformConfig({ external, jsxImportSource });
+  await setTransformConfig({ external });
   if (!overrides?.tsconfig)
     await setSingleTSConfig(fullConfig?.singleTSConfigPath);
 
@@ -367,7 +366,7 @@ export async function loadConfigFromFile(configFile: string | undefined, overrid
   return await loadConfig(resolveConfigLocation(configFile), overrides, ignoreDeps);
 }
 
-export async function loadEmptyConfigForMergeReports() {
+export async function loadEmptyConfigForMergeReports(overrides?: ConfigCLIOverrides) {
   // Merge reports is "different" for no good reason. It should not pick up local config from the cwd.
-  return await loadConfig({ configDir: process.cwd() });
+  return await loadConfig({ configDir: process.cwd() }, overrides);
 }

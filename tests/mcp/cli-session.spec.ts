@@ -51,12 +51,26 @@ test('close', async ({ cli, server }) => {
   expect(listOutput).toContain('(no browsers)');
 });
 
+test('close lets the browser exit on its own', {
+  annotation: { type: 'issue', description: 'https://github.com/microsoft/playwright-cli/issues/475' },
+}, async ({ cli, server }, testInfo) => {
+  const logFile = testInfo.outputPath('daemon.log');
+  const { daemonPid } = await cli('open', server.HELLO_WORLD, { env: { DEBUG: 'pw:browser', DEBUG_FILE: logFile } });
+  await cli('close');
+  await expect.poll(() => isProcessAlive(daemonPid)).toBe(false);
+
+  const log = await fs.promises.readFile(logFile, 'utf-8');
+  expect(log).toContain('<gracefully close start>');
+  expect(log).not.toContain('<forcefully close>');
+});
+
 test('idle timeout shuts the session down', async ({ cli, server }) => {
   await cli('open', '--idle-timeout=3000', server.HELLO_WORLD);
   const { output } = await cli('list');
   expect(output).toContain('- default:');
 
-  await expect.poll(async () => (await cli('list')).output).toContain('(no browsers)');
+  // Firefox on Windows takes several seconds to shut down after the idle timer fires.
+  await expect.poll(async () => (await cli('list')).output, { timeout: 20_000 }).toContain('(no browsers)');
   const { output: afterOutput } = await cli('snapshot');
   expect(afterOutput).toContain(`The browser 'default' is not open, please run open first`);
 });

@@ -15,6 +15,7 @@
  * limitations under the License.
  */
 
+import type * as http from 'http';
 import type { Route } from 'playwright-core';
 import { test as it, expect } from './pageTest';
 
@@ -870,6 +871,42 @@ it('should support cors with credentials', async ({ page, server }) => {
   expect(resp).toEqual(['electric', 'gas']);
 });
 
+it('should not abort preflighted cross-origin redirect when a route is registered', {
+  annotation: { type: 'issue', description: 'https://github.com/microsoft/playwright/issues/43242' },
+}, async ({ page, server, isAndroid }) => {
+  it.skip(isAndroid, 'No cross-process on Android');
+
+  const allowCors = (request: http.IncomingMessage, response: http.ServerResponse) => {
+    response.setHeader('Access-Control-Allow-Origin', request.headers.origin || '*');
+    response.setHeader('Access-Control-Allow-Credentials', 'true');
+    response.setHeader('Access-Control-Allow-Headers', 'x-app-version');
+    if (request.method !== 'OPTIONS')
+      return false;
+    response.writeHead(204);
+    response.end();
+    return true;
+  };
+  server.setRoute('/download', (request, response) => {
+    if (allowCors(request, response))
+      return;
+    response.writeHead(302, { location: `${server.PREFIX}/file` });
+    response.end();
+  });
+  server.setRoute('/file', (request, response) => {
+    if (allowCors(request, response))
+      return;
+    response.end('file contents');
+  });
+
+  await page.goto(server.EMPTY_PAGE);
+  await page.route('**/never-matches', route => route.continue());
+  const result = await page.evaluate(async url => {
+    const response = await fetch(url, { credentials: 'include', headers: { 'X-App-Version': '1.2.3' } });
+    return `${response.status} ${await response.text()}`;
+  }, server.CROSS_PROCESS_PREFIX + '/download');
+  expect(result).toBe('200 file contents');
+});
+
 it('should reject cors with disallowed credentials', async ({ page, server }) => {
   await page.goto(server.EMPTY_PAGE);
   await page.route('**/cars', async route => {
@@ -985,9 +1022,9 @@ it('should support async handler w/ times', async ({ page, server }) => {
   await expect(page.locator('body')).not.toHaveText('intercepted');
 });
 
-it('route abort with times: 1 should not affect second sequential fetch', async ({ page, server, browserName }) => {
+it('route abort with times: 1 should not affect second sequential fetch', async ({ page, server, browserName, browserMajorVersion }) => {
   it.info().annotations.push({ type: 'issue', description: 'https://github.com/microsoft/playwright/issues/41802' });
-  it.fixme(browserName === 'chromium', 'Chromium drops a request that is intercepted while Fetch.disable is being processed; fix is not rolled yet');
+  it.skip(browserName === 'chromium' && browserMajorVersion < 155, 'Chromium drops a request that is intercepted while Fetch.disable is being processed; fix is not rolled yet');
 
   server.setRoute('/data', (req, res) => {
     res.writeHead(200, { 'Content-Type': 'text/plain' });
@@ -1137,4 +1174,24 @@ it('should be able to intercept every navigation to a page controlled by service
   await page.evaluate(() => window['activationPromise']);
   await page.goto(URL);
   expect(interceptions).toBe(2);
+});
+
+it('should respect URLPattern ignoreCase', async ({ page, server }) => {
+  it.info().annotations.push({ type: 'issue', description: 'https://github.com/microsoft/playwright/issues/42918' });
+  it.skip(globalThis.URLPattern === undefined, 'URLPattern is not supported in this environment');
+
+  const intercepted: string[] = [];
+  // @ts-ignore URLPattern is not in @types/node yet
+  await page.route(new URLPattern(server.PREFIX + '/EMPTY.html', { ignoreCase: true }), route => {
+    intercepted.push('ignoreCase');
+    return route.fulfill({ body: 'mock' });
+  });
+  // @ts-ignore URLPattern is not in @types/node yet
+  await page.route(new URLPattern(server.PREFIX + '/EMPTY.html'), route => {
+    intercepted.push('caseSensitive');
+    return route.fulfill({ body: 'mock' });
+  });
+  const response = await page.goto(server.EMPTY_PAGE);
+  expect(await response!.text()).toBe('mock');
+  expect(intercepted).toEqual(['ignoreCase']);
 });

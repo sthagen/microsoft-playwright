@@ -14,29 +14,13 @@
  * limitations under the License.
  */
 
-function jsx(type, props, key) {
-  return {
-    __pw_type: 'jsx',
-    type,
-    props,
-    key,
-  };
-}
+import { browserTest as test, expect } from '../config/browserTest';
 
-function jsxs(type, props, key) {
-  return {
-    __pw_type: 'jsx',
-    type,
-    props,
-    key,
-  };
-}
+test.skip(({ browserName }) => browserName === 'webkit', 'WebKit does not implement WebMCP');
+test.skip(({ isBidi }) => isBidi, 'WebMCP is not implemented over BiDi');
 
-// this is used in <></> notation
-const Fragment = { __pw_jsx_fragment: true };
-
-module.exports = {
-  Fragment,
-  jsx,
-  jsxs,
-};
+test('should throw when the browser was launched without WebMCP', async ({ page, browserName }) => {
+  const error = await page.webmcp.tools().catch(e => e);
+  expect(error.message).toContain('WebMCP is not enabled.');
+  expect(error.message).toContain(browserName === 'firefox' ? 'dom.modelcontext.enabled' : '--enable-features=WebMCP');
+});

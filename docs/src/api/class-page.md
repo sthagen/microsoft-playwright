@@ -1424,9 +1424,6 @@ var html = await page.EvalOnSelectorAsync(".main-container", "(e, suffix) => e.o
 
 Optional argument to pass to [`param: expression`].
 
-### option: Page.evalOnSelector.world = %%-js-evaluate-world-%%
-* since: v1.64
-
 ### option: Page.evalOnSelector.strict = %%-input-strict-%%
 * since: v1.14
 
@@ -1481,9 +1478,6 @@ var divsCount = await page.EvalOnSelectorAllAsync<bool>("div", "(divs, min) => d
 - `arg` ?<[EvaluationArgument]>
 
 Optional argument to pass to [`param: expression`].
-
-### option: Page.evalOnSelectorAll.world = %%-js-evaluate-world-%%
-* since: v1.64
 
 ## async method: Page.evaluate
 * since: v1.8
@@ -1608,12 +1602,6 @@ Optional argument to pass to [`param: expression`].
 ### option: Page.evaluate.exposeFunctions = %%-js-evaluate-expose-functions-%%
 * since: v1.62
 
-### option: Page.evaluate.serialize = %%-js-evaluate-serialize-%%
-* since: v1.64
-
-### option: Page.evaluate.world = %%-js-evaluate-world-%%
-* since: v1.64
-
 ## async method: Page.evaluateHandle
 * since: v1.8
 - returns: <[JSHandle]>
@@ -1725,9 +1713,6 @@ Optional argument to pass to [`param: expression`].
 
 ### option: Page.evaluateHandle.exposeFunctions = %%-js-evaluate-expose-functions-%%
 * since: v1.62
-
-### option: Page.evaluateHandle.serialize = %%-js-evaluate-serialize-%%
-* since: v1.64
 
 ## async method: Page.exposeBinding
 * since: v1.8
@@ -2360,6 +2345,49 @@ Attribute name to get the value for.
 ### param: Page.getByPlaceholder.text = %%-locator-get-by-text-text-%%
 
 ### option: Page.getByPlaceholder.exact = %%-locator-get-by-text-exact-%%
+
+## method: Page.getByRef
+* since: v1.64
+- returns: <[Locator]>
+
+Locate element by its aria ref. Refs like `[ref=e2]` are reported by [`method: Page.ariaSnapshot`] when called with
+the `"ai"` mode, and resolve against the latest snapshot taken in the element's frame.
+
+**Usage**
+
+Consider the following aria snapshot.
+
+```yaml
+- button "Submit" [ref=e2]
+```
+
+You can locate the button by its ref:
+
+```js
+await page.getByRef('e2').click();
+```
+
+```java
+page.getByRef("e2").click();
+```
+
+```python async
+await page.get_by_ref("e2").click()
+```
+
+```python sync
+page.get_by_ref("e2").click()
+```
+
+```csharp
+await page.GetByRef("e2").ClickAsync();
+```
+
+### param: Page.getByRef.ref
+* since: v1.64
+- `ref` <[string]>
+
+Aria ref of the element, for example `e2` or `f1e3`.
 
 ## method: Page.getByRole
 * since: v1.27
@@ -5924,6 +5952,19 @@ Receives the [Worker] object and resolves to truthy value when the waiting shoul
 
 ### param: Page.waitForWorker.callback = %%-java-wait-for-event-callback-%%
 * since: v1.9
+
+## property: Page.webmcp
+* since: v1.64
+- type: <[WebMCP]>
+
+Tools that the main frame registers through the experimental [WebMCP](https://webmachinelearning.github.io/webmcp/) browser API. Shortcut for [`property: Frame.webmcp`] of [`method: Page.mainFrame`], see [WebMCP] for details.
+
+**Usage**
+
+```js
+const tools = await page.webmcp.tools();
+const result = await page.webmcp.callTool('add', { a: 2, b: 40 });
+```
 
 ## method: Page.workers
 * since: v1.8

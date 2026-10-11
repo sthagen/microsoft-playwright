@@ -243,7 +243,7 @@ for (const [name, literals] of enumTypes)
  * @param {string} name
  */
 function toArgumentName(name) {
-  return name === 'event' ? `@${name}` : name;
+  return ['event', 'ref'].includes(name) ? `@${name}` : name;
 }
 
 /**
@@ -693,7 +693,7 @@ function renderMethod(member, parent, name, options, out) {
         if (!options.nodocs)
           printArgDoc(argType, paramDocs.get(argType), out);
       });
-      out.push(`${type} ${name}(${filteredArgs.join(', ')});`);
+      out.push(`${modifiers}${type} ${toAsync(name, member.async)}(${filteredArgs.join(', ')});`);
     }
   }
 }

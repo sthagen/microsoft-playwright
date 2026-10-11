@@ -15,7 +15,10 @@
  */
 
 import { isError } from '@isomorphic/rtti';
-import { parseSerializedValue, parseSystemErrorFields, serializeSystemErrorFields, serializeValue, systemErrorMessage } from '@protocol/serializers';
+import { parseSerializedValue, serializeValue, systemErrorCode, systemErrorMessage } from '@protocol/serializers';
+import { rewriteErrorMessage } from '@utils/stackTrace';
+
+import { isProtocolError } from './protocolError';
 
 import type { SerializedError } from './channels';
 
@@ -48,9 +51,22 @@ export function isTargetClosedError(error: Error) {
   return error instanceof TargetClosedError || error.name === 'TargetClosedError';
 }
 
+export function rewriteErrorForClosedTarget(error: Error, closeReason: string | undefined): Error {
+  if (isTargetClosedError(error)) {
+    if (closeReason)
+      rewriteErrorMessage(error, closeReason);
+  } else if (isProtocolError(error)) {
+    if (error.type === 'closed')
+      return new TargetClosedError(closeReason, error.browserLogMessage());
+    if (error.type === 'crashed')
+      rewriteErrorMessage(error, 'Target crashed ' + error.browserLogMessage());
+  }
+  return error;
+}
+
 export function serializeError(e: any): SerializedError {
   if (isError(e))
-    return { error: { message: systemErrorMessage(e), stack: e.stack, name: e.name, ...serializeSystemErrorFields(e) } };
+    return { error: { message: systemErrorMessage(e), stack: e.stack, name: e.name, code: systemErrorCode(e) } };
   return { value: serializeValue(e, value => ({ fallThrough: value })) };
 }
 
@@ -63,6 +79,7 @@ export function parseError(error: SerializedError): Error {
   const e = new Error(error.error.message);
   e.stack = error.error.stack || '';
   e.name = error.error.name;
-  parseSystemErrorFields(error.error, e);
+  if (error.error.code !== undefined)
+    (e as any).code = error.error.code;
   return e;
 }

@@ -377,20 +377,8 @@ browser_context.add_cookies([cookie_object1, cookie_object2])
 await context.AddCookiesAsync(new[] { cookie1, cookie2 });
 ```
 
-### param: BrowserContext.addCookies.cookies
+### param: BrowserContext.addCookies.cookies = %%-add-cookies-param-%%
 * since: v1.8
-- `cookies` <[Array]<[Object]>>
-  * alias-java: Cookie
-  - `name` <[string]>
-  - `value` <[string]>
-  - `url` ?<[string]> Either `url` or both `domain` and `path` are required. Optional.
-  - `domain` ?<[string]> For the cookie to apply to all subdomains as well, prefix domain with a dot, like this: ".example.com". Either `url` or both `domain` and `path` are required. Optional.
-  - `path` ?<[string]> Either `url` or both `domain` and `path` are required. Optional.
-  - `expires` ?<[float]> Unix time in seconds. Optional.
-  - `httpOnly` ?<[boolean]> Optional.
-  - `secure` ?<[boolean]> Optional.
-  - `sameSite` ?<[SameSiteAttribute]<"Strict"|"Lax"|"None">> Optional.
-  - `partitionKey` ?<[string]> For partitioned third-party cookies (aka [CHIPS](https://developer.mozilla.org/en-US/docs/Web/Privacy/Guides/Privacy_sandbox/Partitioned_cookies)), the partition key. Optional.
 
 ## async method: BrowserContext.addInitScript
 * since: v1.8
@@ -549,23 +537,14 @@ await context.ClearCookiesAsync(new() { Path = "/api/v1" });
 await context.ClearCookiesAsync(new() { Name = "session-id", Domain = "my-origin.com" });
 ```
 
-### option: BrowserContext.clearCookies.name
+### option: BrowserContext.clearCookies.name = %%-clear-cookies-option-name-%%
 * since: v1.43
-- `name` <[string]|[RegExp]>
 
-Only removes cookies with the given name.
-
-### option: BrowserContext.clearCookies.domain
+### option: BrowserContext.clearCookies.domain = %%-clear-cookies-option-domain-%%
 * since: v1.43
-- `domain` <[string]|[RegExp]>
 
-Only removes cookies with the given domain.
-
-### option: BrowserContext.clearCookies.path
+### option: BrowserContext.clearCookies.path = %%-clear-cookies-option-path-%%
 * since: v1.43
-- `path` <[string]|[RegExp]>
-
-Only removes cookies with the given path.
 
 ## async method: BrowserContext.clearPermissions
 * since: v1.8
@@ -638,11 +617,8 @@ The default browser context cannot be closed.
 If no URLs are specified, this method returns all cookies. If URLs are specified, only cookies that affect those URLs
 are returned.
 
-### param: BrowserContext.cookies.urls
+### param: BrowserContext.cookies.urls = %%-cookies-param-urls-%%
 * since: v1.8
-- `urls` ?<[string]|[Array]<[string]>>
-
-Optional list of URLs.
 
 ## async method: BrowserContext.exposeBinding
 * since: v1.8
@@ -1602,7 +1578,7 @@ OPFS is currently not supported in ephemeral WebKit contexts.
 - `credentials` ?<boolean>
 
 Set to `true` to include the context's virtual WebAuthn [`property: BrowserContext.credentials`] (passkeys) in the storage
-state snapshot. The captured credentials carry their private keys, so they can be re-seeded into a later context via the
+state snapshot. The captured credentials carry their private keys and signature counters, so they can be re-seeded into a later context via the
 [`option: Browser.newContext.storageState`] option or [`method: BrowserContext.setStorageState`].
 Note that restoring the storage state that contains credentials will automatically install the virtual WebAuthn authenticator (see [`method: Credentials.install`]), and prevent all real authenticators from working in this context.
 

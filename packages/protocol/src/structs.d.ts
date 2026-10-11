@@ -297,11 +297,6 @@ export type SerializedValue = {
     k: string,
     v: SerializedValue,
   }[],
-  me?: {
-    k: SerializedValue,
-    v: SerializedValue,
-  }[],
-  se?: SerializedValue[],
   h?: number,
   fn?: string,
   id?: number,
@@ -319,11 +314,6 @@ export type SerializedError = {
     name: string,
     stack?: string,
     code?: string,
-    errno?: number,
-    syscall?: string,
-    address?: string,
-    port?: number,
-    hostname?: string,
   },
   value?: SerializedValue,
 };
@@ -341,6 +331,16 @@ export type VirtualCredential = {
   userHandle: string,
   privateKey: string,
   publicKey: string,
+  signCount: number,
+};
+
+export type SetVirtualCredential = {
+  id: string,
+  rpId: string,
+  userHandle: string,
+  privateKey: string,
+  publicKey: string,
+  signCount?: number,
 };
 
 export type Point = {

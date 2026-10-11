@@ -55,6 +55,25 @@ it('should snapshot list with accessible name', async ({ page }) => {
   `);
 });
 
+it('should quote names that look like regexes', async ({ page }) => {
+  await page.setContent(`
+    <nav>
+      <a href="/">/</a>
+      <a href="/docs/">/docs/</a>
+      <a href="/a(b/">/a(b/</a>
+    </nav>
+  `);
+  await checkAndMatchSnapshot(page.locator('nav'), `
+    - navigation:
+      - link "/":
+        - /url: /
+      - link "/docs/":
+        - /url: /docs/
+      - link "/a(b/":
+        - /url: /a(b/
+  `);
+});
+
 it('should snapshot complex', async ({ page }) => {
   await page.setContent(`
     <ul>
@@ -94,6 +113,43 @@ it('should snapshot details visibility', async ({ page }) => {
   await checkAndMatchSnapshot(page.locator('body'), `
     - group: Summary
   `);
+});
+
+it('should not snapshot text directly inside closed details', async ({ page }) => {
+  it.info().annotations.push({ type: 'issue', description: 'https://github.com/microsoft/playwright/issues/43019' });
+
+  await page.setContent(`
+    <details>
+      <summary>Summary</summary>
+      Details
+    </details>
+  `);
+
+  await checkAndMatchSnapshot(page.locator('body'), `
+    - group: Summary
+  `);
+
+  await page.$eval('details', details => details.open = true);
+  await checkAndMatchSnapshot(page.locator('body'), `
+    - group: Summary Details
+  `);
+});
+
+it('should not snapshot text that is not assigned to a slot', async ({ page }) => {
+  it.info().annotations.push({ type: 'issue', description: 'https://github.com/microsoft/playwright/issues/43019' });
+
+  await page.setContent(`
+    <div role=button>Light</div>
+    <script>
+      document.querySelector('div').attachShadow({ mode: 'open' }).innerHTML = '<p>Shadow</p>';
+    </script>
+  `);
+
+  await checkAndMatchSnapshot(page.locator('body'), `
+    - button "Shadow":
+      - paragraph: Shadow
+  `);
+  await expect(page.getByRole('button', { name: 'Shadow', exact: true })).toBeVisible();
 });
 
 it('should snapshot integration', async ({ page }) => {
@@ -793,4 +849,61 @@ it('should not include box when option is omitted', async ({ page }) => {
   await page.setContent(`<button>click</button>`);
   const snapshot = await page.ariaSnapshot();
   expect(snapshot).not.toMatch(/\[box=/);
+});
+
+it('should not include hidden iframes', async ({ page }) => {
+  await page.setContent(`
+    <iframe name="visible" srcdoc="<button>Visible</button>"></iframe>
+    <iframe name="hidden" style="visibility: hidden" srcdoc="<button>Hidden</button>"></iframe>
+    <iframe name="none" style="display: none" srcdoc="<button>None</button>"></iframe>
+  `);
+  expect(await page.ariaSnapshot()).toBe(unshift(`
+    - iframe
+  `));
+});
+
+it('should not include inert elements', { annotation: { type: 'issue', description: 'https://github.com/microsoft/playwright/issues/36938' } }, async ({ page }) => {
+  await page.setContent(`
+    <button>Hi</button>
+    <button inert>Hello</button>
+    <div inert>
+      <button>Yay</button>
+      <p>Some text</p>
+    </div>
+    <p>Visible <span inert>inert</span> text</p>
+    <button><span inert>Save</span></button>
+  `);
+
+  await checkAndMatchSnapshot(page.locator('body'), `
+    - button "Hi"
+    - paragraph: Visible text
+    - button
+  `);
+});
+
+it('should only include the modal dialog content', { annotation: { type: 'issue', description: 'https://github.com/microsoft/playwright/issues/36938' } }, async ({ page }) => {
+  await page.setContent(`
+    <h1>Title</h1>
+    <button>Outside</button>
+    <dialog id=dialog>
+      <h2>Dialog</h2>
+      <button>Inside</button>
+      <div inert><button>Inert inside</button></div>
+    </dialog>
+    <script>
+      document.getElementById('dialog').showModal();
+    </script>
+  `);
+
+  await checkAndMatchSnapshot(page.locator('body'), `
+    - dialog:
+      - heading "Dialog" [level=2]
+      - button "Inside"
+  `);
+
+  await page.locator('#dialog').evaluate((e: HTMLDialogElement) => e.close());
+  await checkAndMatchSnapshot(page.locator('body'), `
+    - heading "Title" [level=1]
+    - button "Outside"
+  `);
 });

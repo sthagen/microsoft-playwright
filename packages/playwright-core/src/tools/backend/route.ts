@@ -60,6 +60,7 @@ const route = defineTool({
         await route.fulfill({
           status: params.status ?? 200,
           contentType: params.contentType,
+          headers: addHeaders,
           body: params.body,
         });
         return;
@@ -68,8 +69,9 @@ const route = defineTool({
       // Otherwise, modify headers and continue
       const headers = { ...route.request().headers() };
       if (addHeaders) {
+        // Header names are case-insensitive, and request headers use lowercase names.
         for (const [key, value] of Object.entries(addHeaders))
-          headers[key] = value as string;
+          headers[key.toLowerCase()] = value as string;
       }
       if (removeHeaders) {
         for (const header of removeHeaders)

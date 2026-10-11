@@ -58,3 +58,32 @@ test('run-code from file with template literals', async ({ cli, server }) => {
   const { output } = await cli('run-code', '--filename=template-script.js');
   expect(output).toContain('result: templated');
 });
+
+test('run-code delayed route with setTimeout', async ({ cli, server }) => {
+  server.setContent('/', '<div>Hello</div>', 'text/html');
+  await cli('open', server.PREFIX);
+  await cli('run-code', `async page => {
+    await page.route('**/api/slow', async route => {
+      await new Promise(r => setTimeout(r, 100));
+      await route.fulfill({ body: 'loaded' });
+    });
+  }`);
+  const { output } = await cli('eval', 'async () => { const r = await fetch("/api/slow"); return r.text(); }');
+  expect(output).toContain('loaded');
+});
+
+test('run-code reports route handler exception', async ({ cli, server }) => {
+  server.setContent('/', '<div>Hello</div>', 'text/html');
+  await cli('open', server.PREFIX);
+  const { output } = await cli('run-code', `async page => {
+    await page.route('**/route-throws', async route => {
+      throw new Error('route handler failed');
+    });
+    await page.goto('${server.PREFIX}/route-throws', { timeout: 5000 });
+  }`);
+  expect(output).toBe('### Error\nError: route handler failed');
+
+  server.setContent('/next', '<title>Next</title>', 'text/html');
+  const { output: gotoOutput } = await cli('goto', server.PREFIX + '/next');
+  expect(gotoOutput).toContain('Page Title: Next');
+});

@@ -49,6 +49,7 @@ export class CRBrowser extends Browser {
   _crPages = new Map<string, CRPage>();
   _serviceWorkers = new Map<string, CRServiceWorker>();
   _devtools?: CRDevTools;
+  _isConnecting = false;
   private _version = '';
   private _majorVersion = 0;
   _revision = '';
@@ -85,16 +86,21 @@ export class CRBrowser extends Browser {
       return browser;
     }
     browser._defaultContext = new CRBrowserContext(browser, undefined, options.persistent);
-    await Promise.all([
-      session.send('Target.setAutoAttach', { autoAttach: true, waitForDebuggerOnStart: true, flatten: true }).then(async () => {
-        // Target.setAutoAttach has a bug where it does not wait for new Targets being attached.
-        // However making a dummy call afterwards fixes this.
-        // This can be removed after https://chromium-review.googlesource.com/c/chromium/src/+/2885888 lands in stable.
-        await session.send('Target.getTargetInfo');
-      }),
-      browser._defaultContext.initialize(),
-    ]);
-    await browser._waitForAllPagesToBeInitialized();
+    browser._isConnecting = true;
+    try {
+      await Promise.all([
+        session.send('Target.setAutoAttach', { autoAttach: true, waitForDebuggerOnStart: true, flatten: true }).then(async () => {
+          // Target.setAutoAttach has a bug where it does not wait for new Targets being attached.
+          // However making a dummy call afterwards fixes this.
+          // This can be removed after https://chromium-review.googlesource.com/c/chromium/src/+/2885888 lands in stable.
+          await session.send('Target.getTargetInfo');
+        }),
+        browser._defaultContext.initialize(),
+      ]);
+      await browser._waitForAllPagesToBeInitialized();
+    } finally {
+      browser._isConnecting = false;
+    }
     return browser;
   }
 
@@ -225,6 +231,7 @@ export class CRBrowser extends Browser {
       serviceWorker.didClose();
       return;
     }
+    this._session.disposeChildSession(payload.sessionId);
   }
 
   private _didDisconnect() {

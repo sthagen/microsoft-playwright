@@ -66,6 +66,8 @@ export type BrowserOptions = {
   userDataDir?: string;
   noDefaults?: boolean;
   isWebView?: boolean;
+  // Do not send Inspector.enable to detect pages without a renderer while connecting.
+  noInspectorEnableOnConnect?: boolean;
 };
 
 export abstract class Browser extends SdkObject {
@@ -108,10 +110,8 @@ export abstract class Browser extends SdkObject {
     let context: BrowserContext | undefined;
     try {
       if (options.clientCertificates?.length) {
-        clientCertificatesProxy = await ClientCertificatesProxy.create(progress, options);
-        options = { ...options };
-        options.proxyOverride = clientCertificatesProxy.proxySettings();
-        options.internalIgnoreHTTPSErrors = true;
+        clientCertificatesProxy = await ClientCertificatesProxy.create(progress, { ...options, proxy: options.proxy || this.options.proxy });
+        options = { ...options, proxyOverride: clientCertificatesProxy.proxySettings(), internalIgnoreHTTPSErrors: true };
       }
       context = await progress.race(this.doCreateNewContext(options));
       context._clientCertificatesProxy = clientCertificatesProxy;

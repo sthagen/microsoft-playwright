@@ -18,7 +18,6 @@ import fs from 'fs';
 import path from 'path';
 
 import { gracefullyProcessExitDoNotHang } from '@utils/processLauncher';
-import { startProfiling, stopProfiling } from '@utils/profiler';
 
 import { builtInReporters, configLoader, ipc } from '../common';
 import { base, projectUtils, testServer, watchMode, testRunner, runnerReporters } from '../runner';
@@ -26,7 +25,6 @@ import type { ReporterDescription } from '../../types/test';
 import type { TestRunOptions } from '../runner/tasks';
 
 export async function runTests(args: string[], opts: { [key: string]: any }) {
-  await startProfiling();
   const cliOverrides = overridesFromOptions(opts);
   cliOverrides.argv = process.argv;
 
@@ -62,7 +60,6 @@ export async function runTests(args: string[], opts: { [key: string]: any }) {
       project: opts.project || undefined,
       reporter: Array.isArray(opts.reporter) ? opts.reporter : opts.reporter ? [opts.reporter] : undefined,
     });
-    await stopProfiling('runner');
     const exitCode = status === 'interrupted' ? 130 : (status === 'passed' ? 0 : 1);
     gracefullyProcessExitDoNotHang(exitCode);
     return;
@@ -80,14 +77,12 @@ export async function runTests(args: string[], opts: { [key: string]: any }) {
           grep: opts.grep
         }
     );
-    await stopProfiling('runner');
     const exitCode = status === 'interrupted' ? 130 : (status === 'passed' ? 0 : 1);
     gracefullyProcessExitDoNotHang(exitCode);
     return;
   }
 
   const status = await testRunner.runAllTestsWithConfig(config, options);
-  await stopProfiling('runner');
   const exitCode = status === 'interrupted' ? 130 : (status === 'passed' ? 0 : 1);
   gracefullyProcessExitDoNotHang(exitCode);
 }
@@ -126,8 +121,10 @@ function overridesFromOptions(options: { [key: string]: any }): ipc.ConfigCLIOve
     repeatEach: options.repeatEach ? parseInt(options.repeatEach, 10) : undefined,
     retries: options.retries ? parseInt(options.retries, 10) : undefined,
     reporter: resolveReporterOption(options.reporter),
+    reporterOnlyFailures: options.reporterOnlyFailures ? true : undefined,
     additionalReporters: resolveReporterOption(options.addReporter),
     shard: resolveShardOption(options.shard),
+    shuffle: resolveShuffleOption(options.shuffle),
     timeout: options.timeout ? parseInt(options.timeout, 10) : undefined,
     tsconfig: options.tsconfig ? path.resolve(process.cwd(), options.tsconfig) : undefined,
     ignoreSnapshots: options.ignoreSnapshots ? !!options.ignoreSnapshots : undefined,
@@ -168,6 +165,14 @@ function resolveReporterOption(reporter?: string): ReporterDescription[] | undef
   if (!reporter || !reporter.length)
     return undefined;
   return reporter.split(',').map((r: string) => [resolveReporter(r)]);
+}
+
+function resolveShuffleOption(shuffle?: string | boolean): string | undefined {
+  if (!shuffle)
+    return undefined;
+  if (shuffle === true)
+    return String(Math.floor(Math.random() * 1e9));
+  return shuffle;
 }
 
 function resolveShardOption(shard?: string): ipc.ConfigCLIOverrides['shard'] {

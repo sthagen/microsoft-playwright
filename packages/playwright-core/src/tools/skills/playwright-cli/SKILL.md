@@ -52,6 +52,8 @@ playwright-cli find "Sign in"
 playwright-cli find --regex "Sign (in|up)"
 # wrap the regexp in slashes to add flags, e.g. /i for case-insensitive
 playwright-cli find --regex "/sign (in|up)/i"
+# save results to a file when a query produces too many matches
+playwright-cli find "Add" --filename=results.md
 playwright-cli eval "document.title"
 playwright-cli eval "el => el.textContent" e5
 # get element id, class, or any attribute not visible in the snapshot
@@ -89,7 +91,10 @@ playwright-cli mousedown
 playwright-cli mousedown right
 playwright-cli mouseup
 playwright-cli mouseup right
+# scroll by <dx> <dy> pixels, negative dy scrolls up
+# the element under the mouse pointer scrolls, so mousemove over it first
 playwright-cli mousewheel 0 100
+playwright-cli mousewheel 0 -100
 ```
 
 ### Save as
@@ -108,6 +113,7 @@ playwright-cli pdf --filename=page.pdf
 playwright-cli tab-list
 playwright-cli tab-new
 playwright-cli tab-new https://example.com/page
+playwright-cli tab-new https://example.com/page --isolated-context=user-b
 playwright-cli tab-close
 playwright-cli tab-close 2
 playwright-cli tab-select 0

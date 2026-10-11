@@ -50,7 +50,7 @@ import { TimeoutSettings, kNoTimeout } from './timeoutSettings';
 import { mkdirIfNeeded } from './fileUtils';
 import { ConsoleMessage } from './consoleMessage';
 import type { BrowserContext } from './browserContext';
-import type { EvaluateOptions, EvaluateHandleOptions, ExposeFunctionsOptions, WorldOptions } from './jsHandle';
+import type { EvaluateOptions, ExposeFunctionsOptions } from './jsHandle';
 import type { Clock } from './clock';
 import type { APIRequestContext } from './fetch';
 import type { WaitForNavigationOptions } from './frame';
@@ -63,6 +63,7 @@ import type { AriaSnapshotJSON } from '@isomorphic/ariaSnapshot';
 import type { ByRoleOptions } from '@isomorphic/locatorUtils';
 import type { URLMatch } from '@isomorphic/urlMatch';
 import type * as channels from './channels';
+import type { WebMCP } from './webmcp';
 
 type PDFOptions = Omit<channels.PagePdfParams, 'width' | 'height' | 'margin'> & {
   width?: string | number,
@@ -109,7 +110,7 @@ export class Page extends ChannelOwner<channels.PageChannel> implements api.Page
   readonly screencast: Screencast;
   readonly localStorage: WebStorage;
   readonly sessionStorage: WebStorage;
-
+  readonly webmcp: WebMCP;
 
   readonly _bindings = new Map<string, (source: structs.BindingSource, ...args: any[]) => any>();
   readonly _timeoutSettings: TimeoutSettings;
@@ -146,6 +147,7 @@ export class Page extends ChannelOwner<channels.PageChannel> implements api.Page
 
     this._mainFrame = Frame.from(initializer.mainFrame);
     this._mainFrame._page = this;
+    this.webmcp = this._mainFrame.webmcp;
     this._frames.add(this._mainFrame);
     this._viewportSize = initializer.viewportSize;
     this._closed = initializer.isClosed;
@@ -339,19 +341,19 @@ export class Page extends ChannelOwner<channels.PageChannel> implements api.Page
     return await this._mainFrame.dispatchEvent(selector, type, eventInit, options);
   }
 
-  async evaluateHandle<R, Arg>(pageFunction: structs.PageFunction<Arg, R>, arg?: Arg, options?: EvaluateHandleOptions): Promise<structs.SmartHandle<R>> {
+  async evaluateHandle<R, Arg>(pageFunction: structs.PageFunction<Arg, R>, arg?: Arg, options?: EvaluateOptions): Promise<structs.SmartHandle<R>> {
     assertMaxArguments(arguments.length, 3);
     return await this._mainFrame.evaluateHandle(pageFunction, arg, options);
   }
 
-  async $eval<R, Arg>(selector: string, pageFunction: structs.PageFunctionOn<Element, Arg, R>, arg?: Arg, options?: WorldOptions): Promise<R> {
-    assertMaxArguments(arguments.length, 4);
-    return await this._mainFrame.$eval(selector, pageFunction, arg, options);
+  async $eval<R, Arg>(selector: string, pageFunction: structs.PageFunctionOn<Element, Arg, R>, arg?: Arg): Promise<R> {
+    assertMaxArguments(arguments.length, 3);
+    return await this._mainFrame.$eval(selector, pageFunction, arg);
   }
 
-  async $$eval<R, Arg>(selector: string, pageFunction: structs.PageFunctionOn<Element[], Arg, R>, arg?: Arg, options?: WorldOptions): Promise<R> {
-    assertMaxArguments(arguments.length, 4);
-    return await this._mainFrame.$$eval(selector, pageFunction, arg, options);
+  async $$eval<R, Arg>(selector: string, pageFunction: structs.PageFunctionOn<Element[], Arg, R>, arg?: Arg): Promise<R> {
+    assertMaxArguments(arguments.length, 3);
+    return await this._mainFrame.$$eval(selector, pageFunction, arg);
   }
 
   async $$(selector: string): Promise<ElementHandle<SVGElement | HTMLElement>[]> {
@@ -769,6 +771,10 @@ export class Page extends ChannelOwner<channels.PageChannel> implements api.Page
 
   getByPlaceholder(text: string | RegExp, options?: { exact?: boolean }): Locator {
     return this.mainFrame().getByPlaceholder(text, options);
+  }
+
+  getByRef(ref: string): Locator {
+    return this.locator(`aria-ref=${ref}`);
   }
 
   getByText(text: string | RegExp, options?: { exact?: boolean }): Locator {

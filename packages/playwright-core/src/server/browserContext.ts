@@ -171,7 +171,7 @@ export abstract class BrowserContext<EM extends EventMap = EventMap> extends Sdk
       await this._exposeConsoleApi();
 
     if (this._options.serviceWorkers === 'block')
-      await this.addInitScript(nullProgress, `\nif (navigator.serviceWorker) navigator.serviceWorker.register = async () => { console.warn('Service Worker registration blocked by Playwright'); };\n`);
+      await this.addInitScript(nullProgress, `\nif (self.ServiceWorkerContainer) ServiceWorkerContainer.prototype.register = async () => { console.warn('Service Worker registration blocked by Playwright'); };\n`);
 
     if (this._options.permissions)
       await this.grantPermissions(this._options.permissions);
@@ -310,36 +310,21 @@ export abstract class BrowserContext<EM extends EventMap = EventMap> extends Sdk
     return await this.doGetCookies(urls as string[]);
   }
 
-  async clearCookies(options: {name?: string | RegExp, domain?: string | RegExp, path?: string | RegExp}): Promise<void> {
-    const hasFilter = options.name !== undefined || options.domain !== undefined || options.path !== undefined;
-    if (!hasFilter) {
+  async clearCookies(options: network.ClearCookiesOptions): Promise<void> {
+    if (!network.hasClearCookiesFilter(options)) {
       await this.doClearCookies();
       return;
     }
 
-    const matches = (cookie: channels.NetworkCookie, prop: 'name' | 'domain' | 'path', value: string | RegExp | undefined) => {
-      if (!value)
-        return true;
-      if (value instanceof RegExp) {
-        value.lastIndex = 0;
-        return value.test(cookie[prop]);
-      }
-      return cookie[prop] === value;
-    };
-
     const currentCookies = await this._cookies();
-    const cookiesToExpire = currentCookies.filter(cookie => {
-      return matches(cookie, 'name', options.name)
-        && matches(cookie, 'domain', options.domain)
-        && matches(cookie, 'path', options.path);
-    });
+    const cookiesToExpire = currentCookies.filter(cookie => network.cookieMatchesClearFilter(cookie, options));
 
     if (!cookiesToExpire.length)
       return;
 
+    // Keep the original value: browsers reject or ignore cookies with both empty name and value.
     await this.addCookies(cookiesToExpire.map(cookie => ({
       ...cookie,
-      value: '',
       expires: 0,
     })));
   }
@@ -812,11 +797,6 @@ export function verifyClientCertificates(clientCertificates?: types.BrowserConte
   for (const cert of clientCertificates) {
     if (!cert.origin)
       throw new Error(`clientCertificates.origin is required`);
-    if (cert.noCertificate) {
-      if (cert.cert || cert.key || cert.passphrase || cert.pfx)
-        throw new Error('noCertificate is set together with cert, key, passphrase or pfx');
-      continue;
-    }
     if (!cert.cert && !cert.key && !cert.passphrase && !cert.pfx)
       throw new Error('None of cert, key, passphrase or pfx is specified');
     if (cert.cert && !cert.key)

@@ -16,7 +16,6 @@
 
 /* eslint-disable no-console */
 
-import '../bootstrap';
 import { program } from 'commander';
 import { gracefullyProcessExitDoNotHang } from '@utils/processLauncher';
 import { getPackageManagerExecCommand } from '@utils/env';
@@ -83,7 +82,7 @@ export function decorateProgram(program: Command) {
       .option('--no-shell', 'do not install chromium headless shell')
       .option('--no-progress', 'do not show download progress bars')
       .option('--no-remove', 'do not remove unused browsers')
-      .action(async function(args: string[], options: { withDeps?: boolean, force?: boolean, dryRun?: boolean, list?: boolean, shell?: boolean, noShell?: boolean, onlyShell?: boolean, progress?: boolean, remove?: boolean }) {
+      .action(async function(args: string[], options: { withDeps?: boolean, force?: boolean, dryRun?: boolean, list?: boolean, shell?: boolean, onlyShell?: boolean, progress?: boolean, remove?: boolean }) {
         try {
           await installBrowsers(args, options);
         } catch (e) {
@@ -280,7 +279,7 @@ function commandWithOpenOptions(command: string, description: string, options: a
       .option('--ignore-https-errors', 'ignore https errors')
       .option('--load-storage <filename>', 'load context storage state from the file, previously saved with --save-storage')
       .option('--lang <language>', 'specify language / locale, for example "en-GB"')
-      .option('--proxy-server <proxy>', 'specify proxy server, for example "http://myproxy:3128" or "socks5://myproxy:8080"')
+      .option('--proxy-server <proxy>', 'specify proxy server, for example "http://myproxy:3128", "http://user:password@myproxy:3128" or "socks5://myproxy:8080"')
       .option('--proxy-bypass <bypass>', 'comma-separated domains to bypass proxy, for example ".com,chromium.org,.domain.com"')
       .option('--save-har <filename>', 'save HAR file with all network activity at the end')
       .option('--save-har-glob <glob pattern>', 'filter entries in the HAR by matching url against this glob pattern')

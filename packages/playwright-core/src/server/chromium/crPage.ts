@@ -318,12 +318,13 @@ export class CRPage implements PageDelegate {
     return this._sessionForHandle(handle)._scrollRectIntoViewIfNeeded(handle, rect);
   }
 
-  startScreencast(options: { width: number; height: number; quality: number; }) {
+  startScreencast(options: { width: number; height: number; quality: number; fps?: number }) {
     this._mainFrameSession._client.send('Page.startScreencast', {
       format: 'jpeg',
       quality: options.quality,
       maxWidth: options.width,
       maxHeight: options.height,
+      maxFramesInFlight: (options.fps ?? 0) > 30 ? 10 : 5,
     }).catch(() => {});
   }
 
@@ -460,8 +461,8 @@ class FrameSession {
 
   private _addBrowserListeners() {
     this._eventListeners.push(...[
-      eventsHelper.addEventListener(this._client, 'Target.attachedToTarget', event => this._onAttachedToTarget(event)),
-      eventsHelper.addEventListener(this._client, 'Target.detachedFromTarget', event => this._onDetachedFromTarget(event)),
+      eventsHelper.addEventListener(this._client, 'Target.attachedToTarget', event => this._onAttachedToTarget(this._client, event)),
+      eventsHelper.addEventListener(this._client, 'Target.detachedFromTarget', event => this._onDetachedFromTarget(this._client, event)),
       eventsHelper.addEventListener(this._client, 'Inspector.targetCrashed', event => this._onTargetCrashed()),
       eventsHelper.addEventListener(this._client, 'Page.screencastFrame', event => this._onScreencastFrame(event)),
       eventsHelper.addEventListener(this._client, 'Page.windowOpen', event => this._onWindowOpen(event)),
@@ -486,8 +487,6 @@ class FrameSession {
       startAutomaticVideoRecording(this._crPage._page);
 
     let lifecycleEventsEnabled: Promise<any>;
-    if (!this._isMainFrame())
-      this._addRendererListeners();
     this._addBrowserListeners();
 
     // Buffer attachedToTarget events until we receive the frame tree.
@@ -499,18 +498,16 @@ class FrameSession {
     const promises: Promise<any>[] = [
       this._client.send('Page.enable'),
       this._client.send('Page.getFrameTree').then(({ frameTree }) => {
-        if (this._isMainFrame()) {
-          this._handleFrameTree(frameTree);
-          this._addRendererListeners();
-        }
+        const localFrames: frames.Frame[] = [];
+        this._handleFrameTree(frameTree, localFrames);
+        this._addRendererListeners();
 
         // Now that we have the frame tree, it is possible to insert oopif targets at the right place.
         const attachedToTargetEvents = this._bufferedAttachedToTargetEvents || [];
         this._bufferedAttachedToTargetEvents = undefined;
         for (const event of attachedToTargetEvents)
-          this._onAttachedToTarget(event);
+          this._onAttachedToTarget(this._client, event);
 
-        const localFrames = this._isMainFrame() ? this._page.frames() : [this._page.frameManager.frame(this._targetId)!];
         for (const frame of localFrames) {
           // Note: frames might be removed before we send these.
           this._client._sendMayFail('Page.createIsolatedWorld', {
@@ -579,6 +576,12 @@ class FrameSession {
       for (const initScript of this._crPage._page.allInitScripts())
         promises.push(this._evaluateOnNewDocument(initScript, 'main', true /* runImmediately */));
     }
+    if (this._isMainFrame() && this._crPage._browserContext._browser._isConnecting && !browserOptions.noInspectorEnableOnConnect) {
+      // An existing page without a renderer, e.g. crashed or discarded, never responds to the commands above.
+      // Get notified with Inspector.targetCrashed right away, so that such a page is reported as closed,
+      // and we do not stall while connecting to the browser.
+      promises.push(this._client._sendMayFail('Inspector.enable'));
+    }
     promises.push(this._client.send('Runtime.runIfWaitingForDebugger'));
     promises.push(this._firstNonInitialNavigationCommittedPromise);
     await Promise.all(promises);
@@ -629,14 +632,24 @@ class FrameSession {
       this._page.frameManager.frameLifecycleEvent(event.frameId, 'domcontentloaded');
   }
 
-  _handleFrameTree(frameTree: Protocol.Page.FrameTree) {
-    this._onFrameAttached(frameTree.frame.id, frameTree.frame.parentId || null);
-    this._onFrameNavigated(frameTree.frame, true);
-    if (!frameTree.childFrames)
+  _handleFrameTree(frameTree: Protocol.Page.FrameTree, collectedLocalFrames: frames.Frame[]) {
+    const isOopif = !this._isMainFrame() && frameTree.frame.id === this._targetId;
+    // Note: OOPIF frame has been already attached in the parent session, so skip it.
+    if (!isOopif)
+      this._onFrameAttached(frameTree.frame.id, frameTree.frame.parentId || null);
+
+    const isInitialOopifDocument = isOopif && (frameTree.frame.url === '' || frameTree.frame.url === ':');
+    // Note: do not fake an empty document commit in a newly created OOPIF.
+    if (!isInitialOopifDocument)
+      this._onFrameNavigated(frameTree.frame, true);
+
+    const frame = this._page.frameManager.frame(frameTree.frame.id);
+    if (!frame)
       return;
 
-    for (const child of frameTree.childFrames)
-      this._handleFrameTree(child);
+    collectedLocalFrames.push(frame);
+    for (const child of frameTree.childFrames || [])
+      this._handleFrameTree(child, collectedLocalFrames);
   }
 
   private _eventBelongsToStaleFrame(frameId: string)  {
@@ -743,13 +756,13 @@ class FrameSession {
       this._onExecutionContextDestroyed(contextId);
   }
 
-  _onAttachedToTarget(event: Protocol.Target.attachedToTargetPayload) {
+  _onAttachedToTarget(parentSession: CRSession, event: Protocol.Target.attachedToTargetPayload) {
     if (this._bufferedAttachedToTargetEvents) {
       this._bufferedAttachedToTargetEvents.push(event);
       return;
     }
 
-    const session = this._client.createChildSession(event.sessionId);
+    const session = parentSession.createChildSession(event.sessionId);
 
     if (event.targetInfo.type === 'iframe') {
       // Frame id equals target id.
@@ -758,7 +771,8 @@ class FrameSession {
       if (!frame && event.targetInfo.parentFrameId) {
         // When connecting to an existing page with an iframe, there is an "iframe" target,
         // but no local frame is reported in getFrameTree. We can create a remote frame here.
-        frame = this._page.frameManager.frameAttached(targetId, event.targetInfo.parentFrameId);
+        const parentFrame = this._page.frameManager.frame(event.targetInfo.parentFrameId) ?? this._page.mainFrame();
+        frame = this._page.frameManager.frameAttached(targetId, parentFrame._id);
       }
       if (!frame)
         return; // Subtree may be already gone due to renderer/browser race.
@@ -794,8 +808,8 @@ class FrameSession {
     this._crPage._networkManager.addSession(session, this._page.frameManager.frame(event.targetInfo.parentFrameId ?? this._targetId) ?? undefined).catch(() => {});
     session._sendMayFail('Runtime.runIfWaitingForDebugger');
     session._sendMayFail('Target.setAutoAttach', { autoAttach: true, waitForDebuggerOnStart: true, flatten: true });
-    session.on('Target.attachedToTarget', event => this._onAttachedToTarget(event));
-    session.on('Target.detachedFromTarget', event => this._onDetachedFromTarget(event));
+    session.on('Target.attachedToTarget', event => this._onAttachedToTarget(session, event));
+    session.on('Target.detachedFromTarget', event => this._onDetachedFromTarget(session, event));
     session.on('Runtime.consoleAPICalled', event => {
       const args = event.args.map(o => createHandle(worker.existingExecutionContext!, o));
       this._page.addConsoleMessage(worker, event.type, args, stackTraceToLocation(event.stackTrace), undefined, event.timestamp);
@@ -814,15 +828,18 @@ class FrameSession {
     return true;
   }
 
-  _onDetachedFromTarget(event: Protocol.Target.detachedFromTargetPayload) {
+  _onDetachedFromTarget(parentSession: CRSession, event: Protocol.Target.detachedFromTargetPayload) {
     // This might be a worker...
     if (this._removeWorkerSession(event.sessionId))
       return;
 
     // ... or an oopif.
     const childFrameSession = this._crPage._sessions.get(event.targetId!);
-    if (!childFrameSession)
+    if (!childFrameSession) {
+      // Something else - perhaps a stalled service worker? Just dispose of it to reject all the callbacks.
+      parentSession.disposeChildSession(event.sessionId);
       return;
+    }
 
     // Usually, we get frameAttached in this session first and mark child as swappedIn.
     if (childFrameSession._swappedIn) {
@@ -904,9 +921,14 @@ class FrameSession {
     this._page.addPageError(exceptionToError(exceptionDetails), stackTraceToLocation(exceptionDetails.stackTrace));
   }
 
-  async _onTargetCrashed() {
+  _onTargetCrashed() {
     this._client._markAsCrashed();
     this._page._didCrash();
+    if (this._crPage._browserContext._browser._isConnecting && !this._page.initializedOrUndefined()) {
+      // When connecting, any crashed/discarded/unloaded page is reported as closed right away.
+      this._crPage._browserContext._browser._crPages.delete(this._crPage._targetId);
+      this._crPage.didClose();
+    }
   }
 
   _onLogEntryAdded(event: Protocol.Log.entryAddedPayload) {

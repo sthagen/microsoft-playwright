@@ -13,9 +13,13 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+import { test } from './npmTest';
 
-import jsxRuntime from './jsx-runtime.js';
-
-export const jsx = jsxRuntime.jsx;
-export const jsxs = jsxRuntime.jsxs;
-export const Fragment = jsxRuntime.Fragment;
+test('playwright-core should bundle with esbuild', async ({ exec, writeFiles }) => {
+  test.info().annotations.push({ type: 'issue', description: 'https://github.com/microsoft/playwright/issues/43190' });
+  await exec('npm i playwright-core esbuild@0.28.1');
+  await writeFiles({
+    'main.js': `const { chromium } = require('playwright-core');\nconsole.log(typeof chromium.launch);\n`,
+  });
+  await exec('npx esbuild main.js --bundle --platform=node --outfile=out.js');
+});

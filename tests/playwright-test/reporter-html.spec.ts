@@ -95,6 +95,30 @@ for (const useIntermediateMergeReport of [true, false] as const) {
       await expect(page.getByTestId('metadata-view')).not.toBeVisible();
     });
 
+    test('speedboard "Show more" button should show the remaining test count', async ({ runInlineTest, showReport, page }) => {
+      const tests: string[] = [];
+      for (let i = 1; i <= 57; ++i)
+        tests.push(`test('test ${String(i).padStart(2, '0')}', async () => { await new Promise(f => setTimeout(f, ${i})); });`);
+      await runInlineTest({
+        'a.spec.ts': `
+          import { test } from '@playwright/test';
+          ${tests.join('\n          ')}
+        `,
+      }, { reporter: 'dot,html' }, { PLAYWRIGHT_HTML_OPEN: 'never' });
+
+      await showReport();
+      await page.getByRole('link', { name: 'Speedboard' }).click();
+
+      // 57 tests with the initial page size of 50 → exactly 7 remain.
+      const button = page.locator('button', { hasText: /Show \d+ more/ });
+      await expect(button).toHaveCount(1);
+      await expect(button).toContainText('Show 7 more');
+
+      // Revealing the remaining tests removes the button.
+      await button.click();
+      await expect(page.locator('button', { hasText: /Show \d+ more/ })).toHaveCount(0);
+    });
+
     test('should allow navigating to testId=test.id', async ({ runInlineTest, page, showReport }) => {
       const result = await runInlineTest({
         'a.test.js': `
@@ -3767,6 +3791,38 @@ test('should support merge files option', async ({ runInlineTest, showReport, pa
           - link "test 3"
           - link "b.test.js:4"
   `);
+});
+
+test('should print show-report command without path when invoked from the report dir', async ({ runInlineTest }, testInfo) => {
+  const result = await runInlineTest({
+    'playwright.config.ts': `
+      process.stdin.isTTY = true;
+      export default { reporter: 'html' };
+    `,
+    'a.test.js': `
+      import { test } from '@playwright/test';
+      test('passes', () => {});
+    `,
+  }, {}, { PLAYWRIGHT_HTML_OPEN: 'never', INIT_CWD: testInfo.outputPath() });
+  expect(result.exitCode).toBe(0);
+  expect(result.output).toContain('To open last HTML report run:');
+  expect(result.output).toMatch(/npx playwright show-report\n/);
+});
+
+test('should print show-report command with path relative to npm invocation dir', async ({ runInlineTest }, testInfo) => {
+  const result = await runInlineTest({
+    'sub/package.json': `{ "name": "sub" }`,
+    'sub/playwright.config.ts': `
+      process.stdin.isTTY = true;
+      export default { reporter: 'html' };
+    `,
+    'sub/a.test.js': `
+      import { test } from '@playwright/test';
+      test('passes', () => {});
+    `,
+  }, {}, { PLAYWRIGHT_HTML_OPEN: 'never', INIT_CWD: testInfo.outputPath() }, { cwd: 'sub' });
+  expect(result.exitCode).toBe(0);
+  expect(result.output).toContain(`npx playwright show-report ${path.join('sub', 'playwright-report')}\n`);
 });
 
 test.describe('show-report .zip support', () => {

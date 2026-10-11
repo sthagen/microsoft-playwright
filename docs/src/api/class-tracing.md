@@ -70,8 +70,9 @@ await context.Tracing.StopAsync(new()
 
 ## async method: Tracing.start
 * since: v1.12
+- returns: <[Disposable]>
 
-Start tracing.
+Start tracing. Disposing the returned [Disposable] stops tracing without saving the trace, similarly to calling [`method: Tracing.stop`] without a path.
 
 :::note
 You probably want to [enable tracing in your config file](https://playwright.dev/docs/api/class-testoptions#test-options-trace) instead of using `Tracing.start`.
@@ -146,13 +147,6 @@ To specify the final trace zip file name, you need to pass `path` option to
 Whether to capture screenshots during tracing. Screenshots are used to build
 a timeline preview.
 
-### option: Tracing.start.coverage
-* since: v1.64
-* langs: js
-- `coverage` <[boolean]>
-
-Whether to collect code coverage from istanbul-instrumented application code. Build the application with an istanbul instrumentation plugin, for example [`vite-plugin-istanbul`](https://www.npmjs.com/package/vite-plugin-istanbul) or [`babel-plugin-istanbul`](https://www.npmjs.com/package/babel-plugin-istanbul), so that pages expose the `window.__coverage__` object. Playwright collects accumulated counters from all pages and frames, including right before navigations and page closes, and stores them in istanbul format inside the trace file.
-
 ### option: Tracing.start.snapshots
 * since: v1.12
 * langs: js
@@ -216,8 +210,9 @@ viewing during test execution.
 
 ## async method: Tracing.startChunk
 * since: v1.15
+- returns: <[Disposable]>
 
-Start a new trace chunk. If you'd like to record multiple traces on the same [BrowserContext], use [`method: Tracing.start`] once, and then create multiple trace chunks with [`method: Tracing.startChunk`] and [`method: Tracing.stopChunk`].
+Start a new trace chunk. Disposing the returned [Disposable] stops the chunk without saving it, similarly to calling [`method: Tracing.stopChunk`] without a path. If you'd like to record multiple traces on the same [BrowserContext], use [`method: Tracing.start`] once, and then create multiple trace chunks with [`method: Tracing.startChunk`] and [`method: Tracing.stopChunk`].
 
 **Usage**
 

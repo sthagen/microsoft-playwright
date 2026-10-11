@@ -470,9 +470,6 @@ Assert.AreEqual("10", await tweetHandle.EvalOnSelectorAsync(".retweets", "node =
 
 Optional argument to pass to [`param: expression`].
 
-### option: ElementHandle.evalOnSelector.world = %%-js-evaluate-world-%%
-* since: v1.64
-
 ## async method: ElementHandle.evalOnSelectorAll
 * since: v1.9
 * discouraged: In most cases, [`method: Locator.evaluateAll`],
@@ -540,9 +537,6 @@ Assert.AreEqual(new [] { "Hello!", "Hi!" }, await feedHandle.EvalOnSelectorAllAs
 - `arg` ?<[EvaluationArgument]>
 
 Optional argument to pass to [`param: expression`].
-
-### option: ElementHandle.evalOnSelectorAll.world = %%-js-evaluate-world-%%
-* since: v1.64
 
 ## async method: ElementHandle.fill
 * since: v1.8
@@ -1221,7 +1215,7 @@ span = div.wait_for_selector("span", state="attached")
 await page.SetContentAsync("<div><span></span></div>");
 var div = await page.QuerySelectorAsync("div");
 // Waiting for the "span" selector relative to the div.
-var span = await page.WaitForSelectorAsync("span", WaitForSelectorState.Attached);
+var span = await div.WaitForSelectorAsync("span", new() { State = WaitForSelectorState.Attached });
 ```
 
 :::note

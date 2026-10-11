@@ -32,6 +32,7 @@ type TestOptions = {
     http2?: boolean;
     enableHTTP1FallbackWhenUsingHttp2?: boolean;
     useFakeLocalhost?: boolean;
+    rejectUnauthorized?: boolean;
   }): Promise<string>,
 };
 
@@ -47,7 +48,7 @@ const test = base.extend<TestOptions>({
           fs.readFileSync(asset('client-certificates/server/server_cert.pem')),
         ],
         requestCert: true,
-        rejectUnauthorized: false,
+        rejectUnauthorized: options?.rejectUnauthorized ?? false,
         allowHTTP1: options?.enableHTTP1FallbackWhenUsingHttp2,
       }, (req: (http2.Http2ServerRequest | http.IncomingMessage), res: http2.Http2ServerResponse | http.ServerResponse) => {
         const tlsSocket = req.socket as import('tls').TLSSocket;
@@ -88,13 +89,6 @@ const kValidationSubTests: [BrowserContextOptions, string][] = [
       passphrase: kDummyFileName,
     }]
   }, 'pfx is specified together with cert, key or passphrase'],
-  [{
-    clientCertificates: [{
-      origin: 'test',
-      noCertificate: true,
-      certPath: kDummyFileName,
-    }]
-  }, 'noCertificate is set together with cert, key, passphrase or pfx'],
 ];
 
 test.describe('fetch', () => {
@@ -106,21 +100,6 @@ test.describe('fetch', () => {
   test('should fail with no client certificates provided', async ({ playwright, startCCServer }) => {
     const serverURL = await startCCServer();
     const request = await playwright.request.newContext({ ignoreHTTPSErrors: true });
-    const response = await request.get(serverURL);
-    expect(response.status()).toBe(401);
-    expect(await response.text()).toContain('Sorry, but you need to provide a client certificate to continue.');
-    await request.dispose();
-  });
-
-  test('should send no client certificate when noCertificate is set', async ({ playwright, startCCServer }) => {
-    const serverURL = await startCCServer();
-    const request = await playwright.request.newContext({
-      ignoreHTTPSErrors: true,
-      clientCertificates: [{
-        origin: new URL(serverURL).origin,
-        noCertificate: true,
-      }],
-    });
     const response = await request.get(serverURL);
     expect(response.status()).toBe(401);
     expect(await response.text()).toContain('Sorry, but you need to provide a client certificate to continue.');
@@ -383,41 +362,6 @@ test.describe('browser', () => {
     await page.close();
   });
 
-  test('should intercept TLS and send no client certificate when noCertificate is set for the visited origin', {
-    annotation: { type: 'issue', description: 'https://github.com/microsoft/playwright/issues/42546' },
-  }, async ({ browser, startCCServer }) => {
-    const serverURL = await startCCServer();
-    const page = await browser.newPage({
-      ignoreHTTPSErrors: true,
-      clientCertificates: [{
-        origin: new URL(serverURL).origin,
-        noCertificate: true,
-      }],
-    });
-    const response = await page.goto(serverURL);
-    // noCertificate forces interception for this origin, so the browser sees the
-    // proxy's own dummy certificate (CN=localhost) instead of the real
-    // server's certificate.
-    const securityDetails = await response.securityDetails();
-    expect(securityDetails.subjectName).toBe('localhost');
-    // The app layer still receives no client certificate.
-    await expect(page.getByTestId('message')).toHaveText('Sorry, but you need to provide a client certificate to continue.');
-    await page.close();
-  });
-
-  test('should throw when noCertificate and a real certificate are both set for the same origin', async ({ browser, asset }) => {
-    await expect(browser.newContext({
-      clientCertificates: [
-        { origin: 'https://not-matching.com', noCertificate: true },
-        {
-          origin: 'https://not-matching.com',
-          certPath: asset('client-certificates/client/trusted/cert.pem'),
-          keyPath: asset('client-certificates/client/trusted/key.pem'),
-        },
-      ],
-    })).rejects.toThrow('clientCertificates for origin "https://not-matching.com" mix noCertificate with a real certificate');
-  });
-
   test('should fail with no client certificates', async ({ browser, startCCServer, asset, browserName, isMac }) => {
     const serverURL = await startCCServer({ useFakeLocalhost: browserName === 'webkit' && isMac });
     const page = await browser.newPage({
@@ -445,6 +389,30 @@ test.describe('browser', () => {
     });
     await page.goto(serverURL);
     await expect(page.getByTestId('message')).toHaveText('Sorry Bob, certificates from Bob are not welcome here.');
+    await page.close();
+  });
+
+  test('should complete browser TLS handshake when server rejects client certificate after it', {
+    annotation: { type: 'issue', description: 'https://github.com/microsoft/playwright/issues/43092' },
+  }, async ({ browser, startCCServer, asset, browserName, isMac }) => {
+    const serverURL = await startCCServer({ rejectUnauthorized: true, useFakeLocalhost: browserName === 'webkit' && isMac });
+    const page = await browser.newPage({
+      ignoreHTTPSErrors: true,
+      clientCertificates: [{
+        origin: new URL(serverURL).origin,
+        certPath: asset('client-certificates/client/self-signed/cert.pem'),
+        keyPath: asset('client-certificates/client/self-signed/key.pem'),
+      }],
+    });
+    const result = await page.goto(serverURL).catch(e => e);
+    if (result instanceof Error) {
+      // The server closed the connection with FIN after the TLS handshake.
+      expect(result.message).toMatch(/net::ERR_EMPTY_RESPONSE|NS_ERROR_NET_RESET|Connection terminated unexpectedly|The network connection was lost/);
+    } else {
+      // The server reset the connection, which the proxy reports as a client certificate error.
+      expect(result.status()).toBe(503);
+      await expect(page.getByText('Playwright client-certificate error')).toBeVisible();
+    }
     await page.close();
   });
 
@@ -540,6 +508,37 @@ test.describe('browser', () => {
     await expect(page.getByTestId('message')).toHaveText('Hello Alice, your certificate was issued by localhost!');
     await page.close();
     delete process.env.HTTPS_PROXY;
+  });
+
+  test('should respect launch proxy and proxy bypass', { annotation: { type: 'issue', description: 'https://github.com/microsoft/playwright/issues/42806' } }, async ({ browserType, startCCServer, asset, browserName, proxyServer, isMac }) => {
+    const serverURL = await startCCServer({ useFakeLocalhost: browserName === 'webkit' && isMac });
+    const { origin, hostname, port } = new URL(serverURL);
+    proxyServer.forwardTo(parseInt(port, 10), { allowConnectRequests: true });
+    const proxy = { server: `localhost:${proxyServer.PORT}` };
+    const serverHost = `${browserName === 'webkit' && isMac ? 'localhost' : '127.0.0.1'}:${port}`;
+    const clientCertificates = [{
+      origin,
+      certPath: asset('client-certificates/client/trusted/cert.pem'),
+      keyPath: asset('client-certificates/client/trusted/key.pem'),
+    }];
+    const browser = await browserType.launch({ proxy });
+    {
+      const page = await browser.newPage({ ignoreHTTPSErrors: true, clientCertificates });
+      await page.goto(serverURL);
+      await expect(page.getByTestId('message')).toHaveText('Hello Alice, your certificate was issued by localhost!');
+      // Headed Chromium also sends its own background requests through the launch proxy.
+      expect(proxyServer.connectHosts).toContain(serverHost);
+      await page.close();
+    }
+    proxyServer.connectHosts = [];
+    {
+      const page = await browser.newPage({ ignoreHTTPSErrors: true, clientCertificates, proxy: { ...proxy, bypass: hostname } });
+      await page.goto(serverURL);
+      await expect(page.getByTestId('message')).toHaveText('Hello Alice, your certificate was issued by localhost!');
+      expect(proxyServer.connectHosts).not.toContain(serverHost);
+      await page.close();
+    }
+    await browser.close();
   });
 
   test('should pass with matching certificates and when a socks proxy is used', async ({ browser, startCCServer, asset, browserName, isMac }) => {
@@ -657,7 +656,10 @@ test.describe('browser', () => {
       } else if (req.url === '/from-fetch-api') {
         res.writeHead(200, {
           'Content-Type': 'text/plain',
-          'Transfer-Encoding': 'chunked'
+          'Transfer-Encoding': 'chunked',
+          // A renegotiated connection must not be reused: a second renegotiation on
+          // the same socket trips Node's tls.CLIENT_RENEG_LIMIT and destroys it.
+          'Connection': 'close'
         });
         res.flushHeaders();
 
@@ -677,7 +679,8 @@ test.describe('browser', () => {
         res.writeHead(200, {
           'Content-Type': 'text/css',
           'Content-Encoding': 'gzip',
-          'Transfer-Encoding': 'chunked'
+          'Transfer-Encoding': 'chunked',
+          'Connection': 'close'
         });
         res.flushHeaders();
 
@@ -969,21 +972,6 @@ test.describe('browser', () => {
       });
       await page.goto(serverURL);
       await expect(page.getByTestId('message')).toHaveText('Hello Alice, your certificate was issued by localhost!');
-    });
-
-    test('should intercept TLS and send no client certificate when noCertificate is set for the visited origin', async ({ launchPersistent, startCCServer }) => {
-      const serverURL = await startCCServer();
-      const { page } = await launchPersistent({
-        ignoreHTTPSErrors: true,
-        clientCertificates: [{
-          origin: new URL(serverURL).origin,
-          noCertificate: true,
-        }],
-      });
-      const response = await page.goto(serverURL);
-      const securityDetails = await response.securityDetails();
-      expect(securityDetails.subjectName).toBe('localhost');
-      await expect(page.getByTestId('message')).toHaveText('Sorry, but you need to provide a client certificate to continue.');
     });
   });
 });

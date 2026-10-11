@@ -97,7 +97,6 @@ export class PageAgent {
     this._eventListeners = [
       helper.addObserver(this._linkClicked.bind(this, false), 'juggler-link-click'),
       helper.addObserver(this._linkClicked.bind(this, true), 'juggler-link-click-sync'),
-      helper.addObserver(this._onWindowOpenInNewContext.bind(this), 'juggler-window-open-in-new-context'),
       helper.addObserver(this._filePickerShown.bind(this), 'juggler-file-picker-shown'),
       helper.addObserver(this._onDocumentOpenLoad.bind(this), 'juggler-document-open-loaded'),
       helper.on(this._frameTree, 'frameattached', this._onFrameAttached.bind(this)),
@@ -221,14 +220,6 @@ export class PageAgent {
     if (anchorElement.documentGlobal.docShell !== this._docShell)
       return;
     this._browserPage.emit('pageLinkClicked', { phase: sync ? 'after' : 'before' });
-  }
-
-  _onWindowOpenInNewContext(docShell) {
-    // TODO: unify this with _onWindowOpen if possible.
-    const frame = this._frameTree.frameForDocShell(docShell);
-    if (!frame)
-      return;
-    this._browserPage.emit('pageWillOpenNewWindowAsynchronously');
   }
 
   _filePickerShown(inputElement) {
@@ -480,7 +471,23 @@ export class PageAgent {
         tip.commitCompositionWith(text, keyEvent);
       } else {
         const flags = 0;
-        tip.keydown(keyEvent, flags);
+        // On macOS, Firefox treats Option+<printable key> as text input. Empty text
+        // means no text should be inserted, so we consume keydown after the page
+        // has seen it, which prevents the keypress, same as in Chromium and WebKit.
+        const suppressTextInput = !text && [...key].length === 1 && Services.appinfo.OS === 'Darwin';
+        if (!suppressTextInput) {
+          tip.keydown(keyEvent, flags);
+        } else {
+          const dispose = helper.addEventListener(this._docShell.chromeEventHandler, 'keydown', event => {
+            if (event.altKey && !event.ctrlKey && !event.metaKey)
+              event.preventDefault();
+          }, { capture: true, mozSystemGroup: true });
+          try {
+            tip.keydown(keyEvent, flags);
+          } finally {
+            dispose();
+          }
+        }
       }
     } else if (type === 'keyup') {
       if (text)

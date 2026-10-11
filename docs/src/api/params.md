@@ -330,6 +330,40 @@ obtained via [`method: BrowserContext.storageState`].
 Populates context with given storage state. This option can be used to initialize context with logged-in information
 obtained via [`method: BrowserContext.storageState`]. Path to the file with saved storage state.
 
+## add-cookies-param
+- `cookies` <[Array]<[Object]>>
+  * alias-java: Cookie
+  - `name` <[string]>
+  - `value` <[string]>
+  - `url` ?<[string]> Either `url` or both `domain` and `path` are required. Optional.
+  - `domain` ?<[string]> For the cookie to apply to all subdomains as well, prefix domain with a dot, like this: ".example.com". Either `url` or both `domain` and `path` are required. Optional.
+  - `path` ?<[string]> Either `url` or both `domain` and `path` are required. Optional.
+  - `expires` ?<[float]> Unix time in seconds. Optional.
+  - `httpOnly` ?<[boolean]> Optional.
+  - `secure` ?<[boolean]> Optional.
+  - `sameSite` ?<[SameSiteAttribute]<"Strict"|"Lax"|"None">> Optional.
+  - `partitionKey` ?<[string]> For partitioned third-party cookies (aka [CHIPS](https://developer.mozilla.org/en-US/docs/Web/Privacy/Guides/Privacy_sandbox/Partitioned_cookies)), the partition key. Optional.
+
+## clear-cookies-option-name
+- `name` <[string]|[RegExp]>
+
+Only removes cookies with the given name.
+
+## clear-cookies-option-domain
+- `domain` <[string]|[RegExp]>
+
+Only removes cookies with the given domain.
+
+## clear-cookies-option-path
+- `path` <[string]|[RegExp]>
+
+Only removes cookies with the given path.
+
+## cookies-param-urls
+- `urls` ?<[string]|[Array]<[string]>>
+
+Optional list of URLs.
+
 ## storagestate-option-path
 - `path` <[path]>
 
@@ -590,12 +624,6 @@ to a function, the function is automatically invoked.
 
 Function to be evaluated in the page context.
 
-## js-evaluate-serialize
-* langs: js
-- `serialize` <[Array]<[SerializationType]<"Map"|"Set">>>
-
-Additional built-in types to preserve in the evaluation argument and return value, including nested collections and circular references. Supports `"Map"` and `"Set"`. For example, `serialize: ['Map', 'Set']` preserves both [Map] and [Set] instances. Defaults to an empty array, in which case these types are serialized as plain objects.
-
 ## js-evaluate-expose-functions
 * langs: js
 - `exposeFunctions` <[boolean]>
@@ -607,12 +635,6 @@ When set to `true`, functions passed inside [`param: arg`] are exposed in the pa
 - `exposeFunctions` <[boolean]>
 
 When set to `true`, functions passed inside [`param: arg`] are exposed in the page and can be called from the init script. Calling one returns a [Promise] of its result. Under the hood, each function is exposed via [`method: Page.exposeFunction`], so it is technically accessible from all frames of the page. Unlike functions passed to [`method: Page.evaluate`], functions passed to an init script are exposed in every new document, so they survive navigations. Defaults to `false`, in which case functions are not serializable and are silently dropped.
-
-## js-evaluate-world
-* langs: js
-- `world` <[EvaluationWorld]<"main"|"utility">>
-
-The JavaScript world to evaluate the function in. `"main"` is the world where the page's own scripts run. `"utility"` is an isolated world that shares the DOM with the page, but has a separate JavaScript environment that the page's scripts cannot observe or tamper with. Defaults to `"main"`. Exposed functions are only available in the `"main"` world.
 
 ## js-evalonselector-pagefunction
 * langs: js
@@ -663,7 +685,6 @@ Does not enforce fixed viewport, allows resizing window in the headed mode.
   - `pfxPath` ?<[path]> Path to the PFX or PKCS12 encoded private key and certificate chain.
   - `pfx` ?<[Buffer]> Direct value of the PFX or PKCS12 encoded private key and certificate chain.
   - `passphrase` ?<[string]> Passphrase for the private key (PEM or PFX).
-  - `noCertificate` ?<[boolean]> Explicitly send no client certificate for this origin. Must be the only field set besides `origin`.
 
 TLS Client Authentication allows the server to request a client certificate and verify it.
 
@@ -671,7 +692,7 @@ TLS Client Authentication allows the server to request a client certificate and 
 
 An array of client certificates to be used. Each certificate object must have either both `certPath` and `keyPath`, a single `pfxPath`, or their corresponding direct value equivalents (`cert` and `key`, or `pfx`). Optionally, `passphrase` property should be provided if the certificate is encrypted. The `origin` property should be provided with an exact match to the request origin that the certificate is valid for.
 
-Client certificate authentication is only active when at least one client certificate is provided. If you want to reject all client certificates sent by the server for an origin you visit, set `noCertificate` to `true` for that origin instead of omitting it: omitting the origin entirely leaves the connection unintercepted, so the server's own certificate request still reaches the browser and may trigger a native certificate-selection prompt on some platforms. `noCertificate` forces interception for that origin while still presenting no client certificate.
+Client certificate authentication is only active when at least one client certificate is provided. If you want to reject all client certificates sent by the server, you need to provide a client certificate with an `origin` that does not match any of the domains you plan to visit.
 
 :::note
 When using WebKit on macOS, accessing `localhost` will not pick up client certificates. You can make it work by replacing `localhost` with `local.playwright`.
@@ -1099,13 +1120,13 @@ Whether to perform case-insensitive match. [`option: ignoreCase`] option takes p
 * langs: js
 - `maxDiffPixels` <[int]>
 
-An acceptable amount of pixels that could be different. Default is configurable with `TestConfig.expect`. Unset by default.
+An acceptable amount of pixels that could be different. Default is configurable with `TestConfig.expect`. Note that [`option: threshold`] defines which pixels are considered different.
 
 ## assertions-max-diff-pixel-ratio
 * langs: js
 - `maxDiffPixelRatio` <[float]>
 
-An acceptable ratio of pixels that are different to the total amount of pixels, between `0` and `1`. Default is configurable with `TestConfig.expect`. Unset by default.
+An acceptable ratio of pixels that are different to the total amount of pixels, between `0` and `1`. Default is configurable with `TestConfig.expect`. Note that [`option: threshold`] defines which pixels are considered different.
 
 ## assertions-threshold
 * langs: js

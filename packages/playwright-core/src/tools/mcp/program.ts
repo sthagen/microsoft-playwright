@@ -33,7 +33,7 @@ const version = packageJSON.version;
 
 export function decorateMCPCommand(command: Command) {
   command
-      .option('--allowed-hosts <hosts...>', 'comma-separated list of hosts this server is allowed to serve from. Defaults to the host the server is bound to. Pass \'*\' to disable the host check.', commaSeparatedList)
+      .option('--allowed-hosts <hosts...>', 'comma-separated list of hosts this server is allowed to serve from. Defaults to localhost, loopback IPs and the host passed via --host; other hosts must be listed explicitly. Pass \'*\' to disable the host check.', commaSeparatedList)
       .option('--allowed-origins <origins>', 'semicolon-separated list of TRUSTED origins to allow the browser to request. Default is to allow all.\nImportant: *does not* serve as a security boundary and *does not* affect redirects. ', semicolonSeparatedList)
       .option('--allow-unrestricted-file-access', 'allow access to files outside of the workspace roots. Also allows unrestricted access to file:// URLs. By default access to file system is restricted to workspace root directories (or cwd if no roots are configured) only, and navigation to file:// URLs is blocked.')
       .option('--blocked-origins <origins>', 'semicolon-separated list of origins to block the browser from requesting. Blocklist is evaluated before allowlist. If used without the allowlist, requests not matching the blocklist are still allowed.\nImportant: *does not* serve as a security boundary and *does not* affect redirects.', semicolonSeparatedList)
@@ -68,7 +68,7 @@ export function decorateMCPCommand(command: Command) {
       .option('--port <port>', 'port to listen on for SSE transport.')
       .option('--profile-dir-name <name>', 'name of the profile directory in the user data dir to connect to with --extension, for example "Profile 1". Defaults to the last used profile that has the extension installed.')
       .option('--proxy-bypass <bypass>', 'comma-separated domains to bypass proxy, for example ".com,chromium.org,.domain.com"')
-      .option('--proxy-server <proxy>', 'specify proxy server, for example "http://myproxy:3128" or "socks5://myproxy:8080"')
+      .option('--proxy-server <proxy>', 'specify proxy server, for example "http://myproxy:3128", "http://user:password@myproxy:3128" or "socks5://myproxy:8080"')
       .addOption(new ProgramOption('--remote-header <headers...>', 'headers to send with the remote endpoint connect request, multiple can be specified.').argParser(headerParser).hideHelp())
       .option('--sandbox', 'enable the sandbox for all process types that are normally not sandboxed.')
       .option('--save-session', 'Whether to save the Playwright MCP session into the output directory.')

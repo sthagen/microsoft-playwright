@@ -89,7 +89,8 @@ export class CRConnection extends SdkObject {
     this._transport.onmessage = undefined;
     this._transport.onclose = undefined;
     this._browserDisconnectedLogs = helper.formatBrowserLogs(this._browserLogsCollector.recentLogs(), reason);
-    this.rootSession.dispose();
+    for (const session of [...this._sessions.values()])
+      session.dispose();
     Promise.resolve().then(() => this.emit(ConnectionEvents.Disconnected));
   }
 
@@ -135,6 +136,13 @@ export class CRSession extends SdkObject<Protocol.EventMap & ConnectionEventMap>
     return session;
   }
 
+  disposeChildSession(sessionId: string) {
+    const session = this._connection._sessions.get(sessionId);
+    if (session && session._parentSession !== this)
+      debugLogger.log('error', `Session ${sessionId} should be a child of ${this._sessionId}, but it has ${session._parentSession?._sessionId} as a parent`);
+    session?.dispose();
+  }
+
   async send<T extends keyof Protocol.CommandParameters>(
     method: T,
     params?: Protocol.CommandParameters[T]
@@ -163,6 +171,8 @@ export class CRSession extends SdkObject<Protocol.EventMap & ConnectionEventMap>
       }
     } else if (object.id && object.error?.code === -32001) {
       // Message to a closed session, just ignore it.
+    } else if (object.id && this._crashed) {
+      // _markAsCrashed() has already rejected all pending calls, nothing to do here.
     } else {
       assert(!object.id, object?.error?.message || undefined);
       Promise.resolve().then(() => {
